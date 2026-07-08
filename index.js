@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const path = require('path');
+const path = require('path');
 
 const db = require('./db/db');
 const { router: authRouter } = require('./routes/auth');
@@ -22,6 +23,10 @@ async function main() {
   app.use(express.json({ limit: '10mb' }));
 
   app.get('/health', (req, res) => res.json({ ok: true, service: 'ring-server', time: new Date().toISOString() }));
+
+  // 静的ファイル（クライアント側の HTML/JS）
+  app.use(express.static('public'));
+  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'talklist.html')));
 
   app.use('/api/auth', authRouter);
   app.use('/api/prekeys', prekeysRouter);

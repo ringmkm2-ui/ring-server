@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>グループチャット</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.pc{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
+.bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.75;mix-blend-mode:multiply}
+.o1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%;animation:lw 18s infinite alternate ease-in-out}
+.o2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%;animation:lw 22s infinite alternate ease-in-out;animation-delay:-4s}
+.o3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%;animation:lw 16s infinite alternate ease-in-out;animation-delay:-8s}
+.pc::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.6;animation:lw 20s infinite alternate ease-in-out;animation-delay:-12s}
+@keyframes lw{0%{transform:translate(0,0) scale(1) rotate(0deg);border-radius:40% 60% 70% 30%/40% 50% 60% 50%}33%{transform:translate(4vw,4vh) scale(1.05) rotate(40deg);border-radius:60% 40% 50% 50%/50% 60% 40% 60%}66%{transform:translate(-3vw,6vh) scale(.95) rotate(-20deg);border-radius:50% 50% 40% 60%/40% 40% 60% 50%}100%{transform:translate(2vw,-2vh) scale(1.02) rotate(15deg);border-radius:45% 55% 60% 40%/50% 45% 55% 50%}}
+.hdr-wrap,.cs,.ibc{position:relative;z-index:10}
+.hdr-wrap{padding:14px 16px}
+.hdr{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
+.back{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
+.gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1)}
+.hinfo{flex:1;min-width:0;cursor:pointer}
+.gname{font-weight:700;font-size:15px;color:#1e293b}
+.mcnt{font-size:12px;color:#64748b;font-weight:500}
+.hbtn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:36px;height:36px;flex-shrink:0}
+.pin-banner{position:relative;z-index:10;margin:0 16px 6px;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(-6px);transition:all .3s ease;pointer-events:none}
+.pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pin-cls{font-size:14px;color:#64748b;cursor:pointer}
+.cs{flex:1;padding:8px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.msg{display:flex;width:100%;align-items:flex-end;gap:8px}
+.msg.out{justify-content:flex-end}
+.msg.inc{justify-content:flex-start}
+.sav{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;align-self:flex-end;background-size:cover;background-position:center}
+.mwrap{display:flex;flex-direction:column;max-width:72%}
+.out .mwrap{align-items:flex-end}
+.inc .mwrap{align-items:flex-start}
+.sname{font-size:11px;font-weight:600;color:#64748b;margin-bottom:2px;padding-left:4px}
+.bub{padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
+.out .bub{border-radius:20px 20px 4px 20px}
+.inc .bub{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
+.bub.mbub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
+.bub.mbub img,.bub.mbub video{display:block;width:100%;max-height:260px;object-fit:cover;cursor:pointer}
+.fi{display:flex;align-items:center;gap:10px}
+.ficon{font-size:26px;flex-shrink:0}
+.finfo{flex:1;min-width:0}
+.fname{font-size:13px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsz{font-size:11px;color:#64748b}
+.dlbtn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
+.mmeta{align-self:flex-end;margin-top:4px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
+.chk{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
+.chk.lit{stroke:#059669}
+.rdrow{display:flex;align-items:center;gap:2px;margin-top:3px}
+.rav{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;cursor:pointer;border:1px solid rgba(255,255,255,.8);flex-shrink:0;background-size:cover;background-position:center;transition:transform .15s ease}
+.rav:hover{transform:scale(1.25)}
+.rext{font-size:10px;font-weight:700;color:#64748b;background:rgba(255,255,255,.7);border-radius:999px;padding:1px 4px;cursor:pointer}
+.cancel-notice{text-align:center;font-size:12px;color:#94a3b8;padding:6px 20px;font-weight:500;width:100%}
+.rbar{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.rbadge{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:999px;padding:3px 8px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .15s ease}
+.rbadge.active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3)}
+.ibc{padding:10px 16px 14px;width:100%}
+.ibar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(35px) saturate(200%);-webkit-backdrop-filter:blur(35px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
+.ibar.open{max-height:240px;border-radius:22px}
+.imrow{display:flex;align-items:center;width:100%;height:34px}
+.pbtn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
+.ibar.open .pbtn{transform:rotate(45deg)}
+.tform{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px}
+.tform input{flex:1;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
+.tform input::placeholder{color:rgba(15,23,42,.4)}
+.sbtn{background:none;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.mopts{display:flex;flex-direction:column;gap:4px;padding-top:10px;margin-top:8px;border-top:1px solid rgba(255,255,255,.4);opacity:0;transform:translateY(-8px);transition:all .4s ease}
+.ibar.open .mopts{opacity:1;transform:translateY(0)}
+.mopt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;border:none;background:none;width:100%;text-align:left}
+.mopt:hover{background:rgba(255,255,255,.5)}
+.mopt span{font-size:14px;font-weight:600;color:#1e293b}
+.mov{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.08);opacity:0;pointer-events:none;transition:all .3s ease;z-index:150}
+.mov.show{opacity:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
+.ctx{position:absolute;background:rgba(255,255,255,.6);backdrop-filter:blur(40px) saturate(200%);-webkit-backdrop-filter:blur(40px) saturate(200%);border:1px solid rgba(255,255,255,.7);border-top:1px solid #fff;border-left:1px solid #fff;box-shadow:0 20px 50px rgba(0,0,0,.12);min-width:190px;z-index:200;pointer-events:none;border-radius:24px;transform:scale(.4) translateY(30px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .2s ease;overflow:hidden}
+.ctx.show{pointer-events:auto;transform:scale(1) translateY(0);opacity:1}
+.ctxbtn{background:none;border:none;padding:14px 18px;width:100%;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+.ctxbtn:hover{background:rgba(255,255,255,.5)}
+.c-react{color:#f59e0b}.c-edit{color:#007aff}.c-pin{color:#8b5cf6}.c-del{color:#ff3b30}
+.cdiv{height:1px;background:rgba(0,0,0,.05);margin:0 12px}
+.rpicker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.34,1.56,.64,1);transform:scale(.8) translateY(10px)}
+.rpicker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
+.rpbtn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
+.rpbtn:hover{transform:scale(1.3)}
+.conf-ov{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.conf-ov.show{opacity:1;pointer-events:auto}
+.conf-box{background:rgba(255,255,255,.9);border-radius:24px;padding:24px 20px;width:80%;max-width:300px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.15)}
+.conf-title{font-size:16px;font-weight:800;color:#0f172a;margin-bottom:8px}
+.conf-msg{font-size:13px;color:#64748b;margin-bottom:20px}
+.conf-btns{display:flex;gap:10px}
+.cbtn{flex:1;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer}
+.cbtn.no{background:rgba(15,23,42,.06);color:#0f172a}
+.cbtn.yes{background:#ff3b30;color:#fff}
+.sheet-ov{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.25);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:300;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.sheet-ov.show{opacity:1;pointer-events:auto}
+.sheet{width:100%;max-height:78vh;overflow-y:auto;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border-radius:28px 28px 0 0;padding:20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.25,1,.5,1)}
+.sheet-ov.show .sheet{transform:translateY(0)}
+.sh-title{font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin-bottom:16px}
+.litem{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(15,23,42,.05)}
+.litem:last-child{border-bottom:none}
+.lav{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
+.lname{flex:1;font-size:14px;font-weight:600;color:#0f172a}
+.lrole{font-size:11px;font-weight:600;color:#64748b;background:rgba(15,23,42,.06);padding:2px 8px;border-radius:999px}
+.rmvbtn{background:rgba(255,59,48,.1);border:none;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;color:#ff3b30;cursor:pointer}
+.sh-close{width:100%;padding:13px;margin-top:10px;background:rgba(15,23,42,.06);border:none;border-radius:14px;font-size:15px;font-weight:700;color:#0f172a;cursor:pointer}
+.sh-save{width:100%;padding:13px;background:#0f172a;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
+.srow{margin-bottom:14px}
+.slabel{font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px;display:block}
+.sinput{width:100%;padding:11px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:15px;font-weight:600;outline:none;box-sizing:border-box}
+.crop-wrap{position:relative;display:inline-block}
+.crop-prev{width:70px;height:70px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;border:2px dashed rgba(15,23,42,.15);background-size:cover;background-position:center;overflow:hidden}
+.crop-file{position:absolute;inset:0;opacity:0;cursor:pointer;border-radius:50%}
+.cropbox{position:relative;width:100%;height:200px;background:#0f172a;border-radius:16px;overflow:hidden;display:none;margin-top:10px;touch-action:none}
+.cropimg{position:absolute;top:0;left:0;cursor:move;user-select:none;transform-origin:top left}
+.cropmask{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle 65px at center,transparent 99%,rgba(0,0,0,.6) 100%);pointer-events:none;border-radius:16px}
+.croprange{width:100%;margin-top:8px;display:none}
+.emojirow{display:flex;flex-wrap:wrap;gap:6px}
+.epbtn{font-size:20px;padding:5px 7px;border:none;background:rgba(255,255,255,.7);border-radius:10px;cursor:pointer;transition:transform .15s}
+.epbtn:hover{transform:scale(1.2)}
+.epbtn.sel{background:rgba(59,130,246,.15);outline:2px solid #3b82f6}
+.inv-row{display:flex;gap:8px;margin-top:10px}
+.inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
+.inv-btn{padding:10px 16px;background:#3b82f6;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
+.mm-ov{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
+.mm-ov.show{opacity:1;pointer-events:auto}
+.mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
+.mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
+.mm-cls{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
+</style>
+</head>
+<body>
+<div class="pc">
+  <div class="bg-orb o1"></div>
+  <div class="bg-orb o2"></div>
+  <div class="bg-orb o3"></div>
+
+  <div class="hdr-wrap">
+    <div class="hdr">
+      <a href="talklist.html" class="back">←</a>
+      <div class="gav" id="gavEl" onclick="openGS()">💬</div>
+      <div class="hinfo" id="hinfoEl">
+        <div class="gname" id="gnameEl">グループ</div>
+        <div class="mcnt" id="mcntEl">メンバー 0人</div>
+      </div>
+      <button class="hbtn" id="phoneBtnG" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+      <button class="hbtn" onclick="openGS()" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="pin-banner" id="pinBanner">
+    <span>📌</span>
+    <span class="pin-text" id="pinText"></span>
+    <span class="pin-cls" id="pinCls">×</span>
+  </div>
+
+  <div class="cs" id="cs"></div>
+
+  <div class="ibc">
+    <div class="ibar" id="ibar">
+      <div class="imrow">
+        <button class="pbtn" id="pbtn" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <form class="tform" id="tform">
+          <input type="text" id="mi" placeholder="メッセージを入力" autocomplete="off">
+          <button type="submit" class="sbtn" id="sbtn">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </form>
+      </div>
+      <div class="mopts">
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>写真を送る</span><input type="file" id="imgI" accept="image/*" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span>動画を送る</span><input type="file" id="vidI" accept="video/*" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>ファイルを送信</span><input type="file" id="fileI" hidden></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="mov" id="mov"></div>
+  <div class="ctx" id="ctx">
+    <button class="ctxbtn c-react" id="reactBtn">😊 リアクション</button>
+    <div class="cdiv"></div>
+    <button class="ctxbtn c-edit" id="editBtn">✏️ 編集する</button>
+    <div class="cdiv"></div>
+    <button class="ctxbtn c-pin" id="pinBtnCtx">📌 ピン留め</button>
+    <div class="cdiv"></div>
+    <button class="ctxbtn c-del" id="delBtn">🗑️ 送信取り消し</button>
+  </div>
+
+  <div class="rpicker" id="rpicker"></div>
+
+  <div class="conf-ov" id="confOv">
+    <div class="conf-box">
+      <div class="conf-title" id="confTitle">確認</div>
+      <div class="conf-msg" id="confMsg"></div>
+      <div class="conf-btns">
+        <button class="cbtn no" id="confNo">キャンセル</button>
+        <button class="cbtn yes" id="confYes">削除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 既読モーダル -->
+  <div class="sheet-ov" id="readOv">
+    <div class="sheet">
+      <div class="sh-title">既読メンバー</div>
+      <div id="readList"></div>
+      <button class="sh-close" onclick="document.getElementById('readOv').classList.remove('show')">閉じる</button>
+    </div>
+  </div>
+
+  <!-- メンバーモーダル -->
+  <div class="sheet-ov" id="memOv">
+    <div class="sheet">
+      <div class="sh-title">メンバー</div>
+      <div id="memList"></div>
+      <div class="inv-row">
+        <input class="inv-input" id="invInput" placeholder="招待するユーザー名を入力">
+        <button class="inv-btn" id="invBtn">招待</button>
+      </div>
+      <button class="sh-close" onclick="document.getElementById('memOv').classList.remove('show')">閉じる</button>
+    </div>
+  </div>
+
+  <!-- グループ設定モーダル -->
+  <div class="sheet-ov" id="gsOv">
+    <div class="sheet">
+      <div class="sh-title">グループ設定</div>
+      <div class="srow">
+        <span class="slabel">グループアイコン</span>
+        <div class="crop-wrap">
+          <div class="crop-prev" id="gCropPrev">💬</div>
+          <input type="file" class="crop-file" id="gImgFile" accept="image/*">
+        </div>
+      </div>
+      <div class="cropbox" id="gCropBox">
+        <img class="cropimg" id="gCropImg" src="" alt="" draggable="false">
+        <div class="cropmask"></div>
+      </div>
+      <input type="range" class="croprange" id="gCropRange" min="0.1" max="3" step="0.01" value="1">
+      <div class="srow" style="margin-top:12px">
+        <span class="slabel">絵文字アイコン</span>
+        <div class="emojirow" id="emojiRow"></div>
+      </div>
+      <div class="srow">
+        <span class="slabel">グループ名</span>
+        <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
+      </div>
+      <button class="sh-save" id="gSaveBtn">保存する</button>
+      <button class="sh-close" onclick="document.getElementById('gsOv').classList.remove('show')">キャンセル</button>
+    </div>
+  </div>
+
+  <div class="mm-ov" id="mmOv">
+    <div class="mm-inner" id="mmIn"></div>
+    <button class="mm-cls" id="mmCls" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+const REACTIONS=['❤️','😂','👍','😮','😢','🔥','👏','🎉'];
+const EMOJIS=['💬','🔥','🌊','🎮','🎵','🍕','✨','🌸','⚡','🦋'];
+const COLORS=['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
+
+function nameColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))&0xffffffff;return COLORS[Math.abs(h)%COLORS.length]}
+
+const params=new URLSearchParams(location.search);
+const myName=localStorage.getItem('myName')||'自分';
+const myAvatar=localStorage.getItem('myAvatar')||'';
+const myColor='#3b82f6';
+
+function getGI(){
+  const r=localStorage.getItem('groupInfo');
+  if(r){const g=JSON.parse(r);if(!g.members)g.members=getDefaultMembers();return g;}
+  return{name:params.get('name')||'グループ',emoji:'💬',avatarImg:'',members:getDefaultMembers()};
+}
+function getDefaultMembers(){
+  return[
+    {id:'me',name:myName,color:myColor,initials:myName.charAt(0),avatarImg:myAvatar},
+    {id:'u1',name:'みなみ',color:'#ec4899',initials:'み',avatarImg:''},
+    {id:'u2',name:'たくや',color:'#8b5cf6',initials:'た',avatarImg:''},
+    {id:'u3',name:'ゆうき',color:'#f59e0b',initials:'ゆ',avatarImg:''},
+    {id:'u4',name:'あおい',color:'#10b981',initials:'あ',avatarImg:''},
+  ];
+}
+function saveGI(g){localStorage.setItem('groupInfo',JSON.stringify(g));}
+
+let gi=getGI();
+// meを最新プロフィールで更新
+gi.members=gi.members.map(m=>m.id==='me'?{...m,name:myName,initials:myName.charAt(0),avatarImg:myAvatar}:m);
+
+let activeMsg=null,activeBubble=null,activeWrap=null,isOwn=false;
+let isEditing=false,editNode=null,editMeta=null;
+let reactTarget=null;
+let confCB=null;
+let cropX=0,cropY=0,cropS=1,cropDrag=false,cropSX=0,cropSY=0;
+let selEmoji='';
+
+const pp=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+function refreshHdr(){
+  document.getElementById('gnameEl').textContent=gi.name;
+  document.getElementById('mcntEl').textContent=`メンバー ${gi.members.length}人`;
+  const av=document.getElementById('gavEl');
+  if(gi.avatarImg){av.style.backgroundImage=`url(${gi.avatarImg})`;av.textContent='';}
+  else{av.style.backgroundImage='';av.textContent=gi.emoji||'💬';}
+}
+refreshHdr();
+
+// リアクションピッカー生成
+const rp=document.getElementById('rpicker');
+REACTIONS.forEach(e=>{
+  const b=document.createElement('button');b.className='rpbtn';b.textContent=e;
+  b.onclick=()=>{if(reactTarget)addReact(reactTarget,e);rp.classList.remove('show');};
+  rp.appendChild(b);
+});
+
+// 絵文字選択
+const er=document.getElementById('emojiRow');
+EMOJIS.forEach(e=>{
+  const b=document.createElement('button');b.className='epbtn';b.textContent=e;
+  if(e===gi.emoji)b.classList.add('sel');
+  b.onclick=()=>{document.querySelectorAll('.epbtn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');selEmoji=e;};
+  er.appendChild(b);
+});
+
+function addReact(wrap,emoji){
+  let bar=wrap.querySelector('.rbar');
+  if(!bar){bar=document.createElement('div');bar.className='rbar';wrap.appendChild(bar);}
+  let badge=[...bar.children].find(b=>b.dataset.e===emoji);
+  if(badge){
+    const c=parseInt(badge.dataset.c||1);
+    if(badge.classList.contains('active')){
+      const nc=c-1;if(nc<=0)badge.remove();
+      else{badge.dataset.c=nc;badge.textContent=`${emoji} ${nc}`;badge.classList.remove('active');}
+    }else{badge.dataset.c=c+1;badge.textContent=`${emoji} ${c+1}`;badge.classList.add('active');}
+  }else{
+    badge=document.createElement('button');badge.className='rbadge active';badge.dataset.e=emoji;badge.dataset.c=1;badge.textContent=`${emoji} 1`;
+    badge.onclick=()=>{const c=parseInt(badge.dataset.c||1)-1;if(c<=0)badge.remove();else{badge.dataset.c=c;badge.textContent=`${emoji} ${c}`;badge.classList.remove('active');}};
+    bar.appendChild(badge);
+  }
+}
+
+document.getElementById('pbtn').onclick=()=>document.getElementById('ibar').classList.toggle('open');
+document.getElementById('imgI').onchange=e=>{handleMedia(e.target.files[0],'image');};
+document.getElementById('vidI').onchange=e=>{handleMedia(e.target.files[0],'video');};
+document.getElementById('fileI').onchange=e=>{handleMedia(e.target.files[0],'file');};
+function handleMedia(f,t){if(!f)return;createMsg(null,f,t);document.getElementById('ibar').classList.remove('open');}
+
+document.getElementById('tform').onsubmit=e=>{
+  e.preventDefault();
+  const txt=document.getElementById('mi').value.trim();if(!txt)return;
+  if(isEditing){
+    editNode.textContent=txt;
+    const ts=editMeta.querySelector('.time');if(ts&&!ts.textContent.includes('(編集済)'))ts.textContent+=' (編集済)';
+    isEditing=false;editNode=null;editMeta=null;
+    document.getElementById('sbtn').innerHTML=pp;
+  }else{createMsg(txt,null,null);}
+  document.getElementById('mi').value='';
+  document.getElementById('ibar').classList.remove('open');
+};
+
+function createMsg(text,file,ftype,incoming,member){
+  const cs=document.getElementById('cs');
+  const msgDiv=document.createElement('div');
+  const isInc=!!incoming;
+  msgDiv.classList.add('msg',isInc?'inc':'out');
+
+  const wrap=document.createElement('div');wrap.classList.add('mwrap');
+
+  if(isInc&&member){
+    const sa=document.createElement('div');sa.className='sav';
+    sa.style.background=member.color||'#64748b';
+    if(member.avatarImg)sa.style.backgroundImage=`url(${member.avatarImg})`;
+    else sa.textContent=member.initials||member.name?.charAt(0)||'?';
+    msgDiv.appendChild(sa);
+    const sn=document.createElement('div');sn.className='sname';sn.textContent=member.name;
+    wrap.appendChild(sn);
+  }
+
+  const bub=document.createElement('div');bub.classList.add('bub');
+  let mediaEl=null;
+
+  if(file&&ftype==='image'){
+    bub.classList.add('mbub');const url=URL.createObjectURL(file);
+    mediaEl=document.createElement('img');mediaEl.src=url;bub.appendChild(mediaEl);
+  }else if(file&&ftype==='video'){
+    bub.classList.add('mbub');const url=URL.createObjectURL(file);
+    mediaEl=document.createElement('video');mediaEl.src=url;mediaEl.controls=true;bub.appendChild(mediaEl);
+  }else if(file&&ftype==='file'){
+    const url=URL.createObjectURL(file);
+    const ext=file.name.split('.').pop().toLowerCase();
+    const icon=ext==='pdf'?'📕':ext==='zip'?'🗜️':'📄';
+    const sz=file.size>1048576?`${(file.size/1048576).toFixed(1)} MB`:`${(file.size/1024).toFixed(0)} KB`;
+    const fi=document.createElement('div');fi.className='fi';
+    fi.innerHTML=`<span class="ficon">${icon}</span><div class="finfo"><div class="fname">${file.name}</div><div class="fsz">${sz}</div></div>`;
+    const dl=document.createElement('a');dl.className='dlbtn';dl.href=url;dl.download=file.name;
+    dl.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ダウンロード`;
+    fi.appendChild(dl);bub.appendChild(fi);
+  }else if(text){
+    const sp=document.createElement('span');sp.className='msg-text';sp.textContent=text;bub.appendChild(sp);
+  }
+
+  const now=new Date();
+  const t=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const meta=document.createElement('div');meta.className='mmeta';
+
+  if(!isInc){
+    // 送信メッセージ: チェック1個 + 既読アバター
+    meta.innerHTML=`<span class="time">${t}</span><svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4.5 10 12 1" class="chk"/></svg>`;
+    const rd=document.createElement('div');rd.className='rdrow';meta.appendChild(rd);
+    bub.appendChild(meta);
+    wrap.appendChild(bub);
+    // 既読シミュレーション
+    setTimeout(()=>{
+      const others=gi.members.filter(m=>m.id!=='me');
+      const readers=others.slice(0,Math.ceil(Math.random()*others.length));
+      renderRD(rd,readers,t);
+      const chk=bub.querySelector('.chk');if(chk)chk.classList.add('lit');
+    },1500);
+  }else{
+    meta.innerHTML=`<span class="time">${t}</span>`;
+    bub.appendChild(meta);
+    wrap.appendChild(bub);
+  }
+
+  msgDiv.appendChild(wrap);
+  cs.appendChild(msgDiv);
+  cs.scrollTop=99999;
+
+  // 長押しイベント: 自分のメッセージのみ編集/取り消し
+  attachPress(msgDiv,wrap,bub,!isInc);
+
+  if(mediaEl&&(ftype==='image'||ftype==='video')){
+    mediaEl.addEventListener('click',()=>openMM(mediaEl,ftype));
+  }
+
+  ['imgI','vidI','fileI'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+}
+
+function renderRD(rdDiv,readers,t){
+  rdDiv.innerHTML='';
+  const MAX=5;const shown=readers.slice(0,MAX);const extra=readers.length-MAX;
+  shown.forEach(m=>{
+    const av=document.createElement('div');av.className='rav';av.style.background=m.color||'#64748b';
+    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    av.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(av);
+  });
+  if(extra>0){const ex=document.createElement('span');ex.className='rext';ex.textContent=`+${extra}`;ex.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(ex);}
+}
+
+function attachPress(msgDiv,wrap,bub,own){
+  let timer;let lp=false;
+  const start=ev=>{
+    lp=false;
+    const cx=ev.touches?ev.touches[0].clientX:ev.clientX;
+    const cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+    timer=setTimeout(()=>{lp=true;showMenu(msgDiv,wrap,bub,cx,cy,own);},400);
+  };
+  const cancel=()=>clearTimeout(timer);
+  bub.addEventListener('contextmenu',ev=>{ev.preventDefault();showMenu(msgDiv,wrap,bub,ev.clientX,ev.clientY,own);});
+  bub.addEventListener('mousedown',start);
+  bub.addEventListener('touchstart',start,{passive:true});
+  bub.addEventListener('mouseup',cancel);
+  bub.addEventListener('mouseleave',cancel);
+  bub.addEventListener('touchend',cancel);
+}
+
+function showMenu(msgDiv,wrap,bub,x,y,own){
+  activeMsg=msgDiv;activeBubble=bub;activeWrap=wrap;isOwn=own;reactTarget=wrap;
+  const hasText=bub.querySelector('.msg-text');
+  document.getElementById('editBtn').style.display=own&&hasText?'flex':'none';
+  document.getElementById('delBtn').style.display=own?'flex':'none';
+  const ctx=document.getElementById('ctx');
+  ctx.style.left=`${Math.max(10,Math.min(x-95,innerWidth-210))}px`;
+  ctx.style.top=`${Math.max(10,Math.min(y-70,innerHeight-240))}px`;
+  document.getElementById('mov').classList.add('show');
+  ctx.classList.add('show');
+}
+
+function hideMenu(){
+  document.getElementById('ctx').classList.remove('show');
+  document.getElementById('mov').classList.remove('show');
+  rp.classList.remove('show');
+}
+
+document.getElementById('mov').onclick=hideMenu;
+
+document.getElementById('reactBtn').onclick=()=>{
+  const ctx=document.getElementById('ctx');const rect=ctx.getBoundingClientRect();
+  rp.style.left=`${Math.max(10,Math.min(rect.left,innerWidth-340))}px`;
+  rp.style.top=`${Math.max(10,rect.top-60)}px`;
+  ctx.classList.remove('show');
+  rp.classList.add('show');
+};
+
+document.getElementById('editBtn').onclick=()=>{
+  if(!activeBubble)return;const sp=activeBubble.querySelector('.msg-text');const meta=activeBubble.querySelector('.mmeta');
+  if(!sp)return;hideMenu();
+  isEditing=true;editNode=sp;editMeta=meta;
+  document.getElementById('mi').value=sp.textContent;
+  document.getElementById('mi').focus();
+  document.getElementById('sbtn').innerHTML=ck;
+};
+
+document.getElementById('pinBtnCtx').onclick=()=>{
+  if(!activeBubble)return;const sp=activeBubble.querySelector('.msg-text,.fname');
+  const txt=sp?sp.textContent:'📎 メディア';
+  document.getElementById('pinText').textContent=txt;
+  document.getElementById('pinBanner').classList.add('show');
+  hideMenu();
+};
+document.getElementById('pinCls').onclick=()=>document.getElementById('pinBanner').classList.remove('show');
+
+document.getElementById('delBtn').onclick=()=>{
+  if(!activeMsg)return;const target=activeMsg;const sname=myName;
+  hideMenu();
+  showConf('送信取り消し',`このメッセージを取り消しますか？`,'取り消す',()=>{
+    const notice=document.createElement('div');
+    notice.className='cancel-notice';
+    notice.textContent=`${sname}がメッセージの送信を取り消しました`;
+    target.parentNode.replaceChild(notice,target);
+    if(isEditing&&editNode){isEditing=false;editNode=null;editMeta=null;document.getElementById('mi').value='';document.getElementById('sbtn').innerHTML=pp;}
+  });
+};
+
+function showConf(title,msg,okLabel,cb){
+  confCB=cb;document.getElementById('confTitle').textContent=title;document.getElementById('confMsg').textContent=msg;document.getElementById('confYes').textContent=okLabel;
+  document.getElementById('confOv').classList.add('show');
+}
+document.getElementById('confYes').onclick=()=>{document.getElementById('confOv').classList.remove('show');if(confCB){confCB();confCB=null;}};
+document.getElementById('confNo').onclick=()=>{document.getElementById('confOv').classList.remove('show');confCB=null;};
+
+// 既読モーダル
+function openReadModal(readers,t){
+  const list=document.getElementById('readList');list.innerHTML='';
+  readers.forEach(m=>{
+    const d=document.createElement('div');d.className='litem';
+    const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
+    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    d.appendChild(av);
+    const n=document.createElement('span');n.className='lname';n.textContent=m.name;d.appendChild(n);
+    const ti=document.createElement('span');ti.style.cssText='font-size:12px;color:#64748b';ti.textContent=t;d.appendChild(ti);
+    list.appendChild(d);
+  });
+  document.getElementById('readOv').classList.add('show');
+}
+document.getElementById('readOv').onclick=e=>{if(e.target===document.getElementById('readOv'))document.getElementById('readOv').classList.remove('show');};
+
+// メンバーモーダル
+function openMemModal(){
+  const list=document.getElementById('memList');list.innerHTML='';
+  gi.members.forEach(m=>{
+    const isMe=m.id==='me';
+    const d=document.createElement('div');d.className='litem';
+    const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
+    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    d.appendChild(av);
+    const n=document.createElement('span');n.className='lname';n.textContent=m.name;d.appendChild(n);
+    const r=document.createElement('span');r.className='lrole';r.textContent=isMe?'管理者':'メンバー';d.appendChild(r);
+    if(!isMe){
+      const rb=document.createElement('button');rb.className='rmvbtn';rb.textContent='削除';
+      rb.onclick=()=>{
+        document.getElementById('memOv').classList.remove('show');
+        showConf('メンバー削除',`${m.name}をグループから削除しますか？`,'削除',()=>{
+          gi.members=gi.members.filter(x=>x.id!==m.id);saveGI(gi);refreshHdr();
+        });
+      };
+      d.appendChild(rb);
+    }
+    list.appendChild(d);
+  });
+  document.getElementById('memOv').classList.add('show');
+}
+document.getElementById('hinfoEl').onclick=openMemModal;
+document.getElementById('memOv').onclick=e=>{if(e.target===document.getElementById('memOv'))document.getElementById('memOv').classList.remove('show');};
+
+// 招待
+document.getElementById('invBtn').onclick=()=>{
+  const name=document.getElementById('invInput').value.trim();if(!name)return;
+  const newM={id:`u${Date.now()}`,name,color:nameColor(name),initials:name.charAt(0),avatarImg:''};
+  gi.members.push(newM);saveGI(gi);refreshHdr();
+  document.getElementById('invInput').value='';
+  openMemModal();
+};
+
+// グループ設定
+function openGS(){
+  document.getElementById('gNameIn').value=gi.name;
+  const prev=document.getElementById('gCropPrev');
+  if(gi.avatarImg){prev.style.backgroundImage=`url(${gi.avatarImg})`;prev.textContent='';}
+  else{prev.style.backgroundImage='';prev.textContent=gi.emoji||'💬';}
+  document.querySelectorAll('.epbtn').forEach(b=>b.classList.toggle('sel',b.textContent===gi.emoji));
+  document.getElementById('gsOv').classList.add('show');
+}
+document.getElementById('gsOv').onclick=e=>{if(e.target===document.getElementById('gsOv'))document.getElementById('gsOv').classList.remove('show');};
+
+// 画像アップロード+クロップ
+let gImgSrc='';
+document.getElementById('gImgFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    gImgSrc=ev.target.result;
+    const img=document.getElementById('gCropImg');img.src=gImgSrc;
+    document.getElementById('gCropBox').style.display='block';
+    document.getElementById('gCropRange').style.display='block';
+    img.onload=()=>{cropX=(200-img.offsetWidth)/2;cropY=(200-img.offsetHeight)/2;cropS=1;document.getElementById('gCropRange').value=1;updCrop();};
+  };reader.readAsDataURL(f);
+};
+function updCrop(){document.getElementById('gCropImg').style.transform=`translate(${cropX}px,${cropY}px) scale(${cropS})`;}
+const cb=document.getElementById('gCropBox');
+cb.addEventListener('mousedown',e=>{cropDrag=true;cropSX=e.clientX-cropX;cropSY=e.clientY-cropY;});
+cb.addEventListener('touchstart',e=>{if(e.touches.length===1){cropDrag=true;cropSX=e.touches[0].clientX-cropX;cropSY=e.touches[0].clientY-cropY;}});
+window.addEventListener('mousemove',e=>{if(!cropDrag)return;cropX=e.clientX-cropSX;cropY=e.clientY-cropSY;updCrop();});
+window.addEventListener('touchmove',e=>{if(!cropDrag||e.touches.length!==1)return;cropX=e.touches[0].clientX-cropSX;cropY=e.touches[0].clientY-cropSY;updCrop();});
+window.addEventListener('mouseup',()=>cropDrag=false);
+window.addEventListener('touchend',()=>cropDrag=false);
+document.getElementById('gCropRange').oninput=e=>{cropS=parseFloat(e.target.value);updCrop();};
+
+document.getElementById('gSaveBtn').onclick=()=>{
+  const name=document.getElementById('gNameIn').value.trim();if(name)gi.name=name;
+  const selEm=document.querySelector('.epbtn.sel');
+  if(gImgSrc&&document.getElementById('gCropBox').style.display!=='none'){
+    // キャンバスでクロップ
+    const box=document.getElementById('gCropBox');
+    const canvas=document.createElement('canvas');canvas.width=130;canvas.height=130;
+    const ctx=canvas.getContext('2d');
+    const img=document.getElementById('gCropImg');
+    const bx=box.offsetWidth/2,by=box.offsetHeight/2;
+    const sx=(bx-cropX)/cropS,sy=(by-cropY)/cropS;
+    const cw=130/cropS,ch=130/cropS;
+    ctx.drawImage(img,sx-cw/2,sy-ch/2,cw,ch,0,0,130,130);
+    gi.avatarImg=canvas.toDataURL();
+  }else if(selEm){gi.emoji=selEm.textContent;gi.avatarImg='';}
+  saveGI(gi);refreshHdr();
+  document.getElementById('gsOv').classList.remove('show');
+  document.getElementById('gCropBox').style.display='none';
+  document.getElementById('gCropRange').style.display='none';
+  gImgSrc='';
+};
+
+// メディアモーダル
+let sc=1,px=0,py=0,dr=false,sx=0,sy=0,tm='',ip=0,is=1;
+function openMM(el,type){
+  const clone=el.cloneNode(true);if(type==='video'){clone.controls=true;clone.autoplay=true;}
+  sc=1;px=0;py=0;clone.style.transformOrigin='center';
+  const inner=document.getElementById('mmIn');inner.innerHTML='';inner.appendChild(clone);
+  document.getElementById('mmOv').classList.add('show');
+}
+function updMM(){const e=document.getElementById('mmIn').firstElementChild;if(e)e.style.transform=`translate(${px}px,${py}px) scale(${sc})`;}
+const gd=(a,b)=>Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
+document.getElementById('mmOv').addEventListener('wheel',e=>{e.preventDefault();const o=sc;sc=e.deltaY<0?Math.min(sc+.15,5):Math.max(sc-.15,.7);if(sc!==o){px*=sc/o;py*=sc/o;}updMM();},{passive:false});
+document.getElementById('mmOv').addEventListener('mousedown',e=>{if(e.target.closest('#mmCls')||!document.getElementById('mmIn').firstElementChild)return;dr=true;tm='pan';sx=e.clientX-(px/sc);sy=e.clientY-(py/sc);});
+document.getElementById('mmOv').addEventListener('touchstart',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(t.length===2){tm='zoom';ip=gd(t[0],t[1]);is=sc;}else if(t.length===1){tm='pan';dr=true;sx=t[0].clientX-(px/sc);sy=t[0].clientY-(py/sc);}},{passive:true});
+window.addEventListener('mousemove',e=>{if(!dr||tm!=='pan')return;px=(e.clientX-sx)*sc;py=(e.clientY-sy)*sc;updMM();});
+window.addEventListener('touchmove',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(tm==='zoom'&&t.length===2){e.preventDefault();const o=sc;sc=Math.max(.7,Math.min(is*(gd(t[0],t[1])/ip),5));if(sc!==o){px*=sc/o;py*=sc/o;}updMM();}else if(tm==='pan'&&dr&&t.length===1){e.preventDefault();px=(t[0].clientX-sx)*sc;py=(t[0].clientY-sy)*sc;updMM();}},{passive:false});
+window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener('touchend',()=>{dr=false;tm='';});
+document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
+document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
+
+// デモ受信メッセージ
+setTimeout(()=>{
+  const demos=[
+    {m:gi.members.find(x=>x.id==='u1'),t:'みんなこんにちは！'},
+    {m:gi.members.find(x=>x.id==='u2'),t:'よろしく〜'},
+  ];
+  demos.forEach((d,i)=>{if(d.m)setTimeout(()=>createMsg(d.t,null,null,true,d.m),i*900);});
+},600);
+</script>
+</body>
+</html>

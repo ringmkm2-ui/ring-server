@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>トーク</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.phone-container{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
+.bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.75;mix-blend-mode:multiply}
+.orb-1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%;animation:lw 18s infinite alternate ease-in-out}
+.orb-2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%;animation:lw 22s infinite alternate ease-in-out;animation-delay:-4s}
+.orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%;animation:lw 16s infinite alternate ease-in-out;animation-delay:-8s}
+.phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.6;animation:lw 20s infinite alternate ease-in-out;animation-delay:-12s}
+@keyframes lw{0%{transform:translate(0,0) scale(1) rotate(0deg);border-radius:40% 60% 70% 30%/40% 50% 60% 50%}33%{transform:translate(4vw,4vh) scale(1.05) rotate(40deg);border-radius:60% 40% 50% 50%/50% 60% 40% 60%}66%{transform:translate(-3vw,6vh) scale(.95) rotate(-20deg);border-radius:50% 50% 40% 60%/40% 40% 60% 50%}100%{transform:translate(2vw,-2vh) scale(1.02) rotate(15deg);border-radius:45% 55% 60% 40%/50% 45% 55% 50%}}
+.app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
+.app-header-container{padding:14px 16px}
+.app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
+.back-link{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
+.partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
+.name{font-weight:700;font-size:15px;color:#1e293b}
+.status{font-size:12px;font-weight:600;color:#059669}
+.phone-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:38px;height:38px}
+.pin-banner{position:relative;z-index:10;margin:0 16px 6px;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(-6px);transition:all .3s ease;pointer-events:none}
+.pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pin-close{font-size:14px;color:#64748b;cursor:pointer;padding:0 2px}
+.chat-screen{flex:1;padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.message{display:flex;width:100%;align-items:flex-end;gap:8px}
+.outgoing{justify-content:flex-end}
+.incoming{justify-content:flex-start}
+.msg-wrap{display:flex;flex-direction:column;max-width:72%}
+.outgoing .msg-wrap{align-items:flex-end}
+.incoming .msg-wrap{align-items:flex-start}
+.bubble{padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
+.outgoing .bubble{border-radius:20px 20px 4px 20px}
+.incoming .bubble{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
+.bubble.media-bub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
+.bubble.media-bub img,.bubble.media-bub video{display:block;width:100%;max-height:280px;object-fit:cover;cursor:pointer}
+.file-inner{display:flex;align-items:center;gap:10px}
+.file-icon{font-size:28px;flex-shrink:0}
+.file-info{flex:1;min-width:0}
+.file-name{font-size:13px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-sz{font-size:11px;color:#64748b}
+.dl-btn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
+.msg-meta{align-self:flex-end;margin-top:5px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
+.check-marks{display:flex;align-items:center;margin-left:2px}
+.check-1,.check-2{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
+.check-1.lit,.check-2.lit{stroke:#059669}
+.cancel-notice{text-align:center;font-size:12px;color:#94a3b8;padding:6px 20px;font-weight:500;width:100%}
+.reaction-bar{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.rbadge{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:999px;padding:3px 8px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .15s ease}
+.rbadge.active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3)}
+.input-bar-container{padding:10px 16px 14px;width:100%}
+.input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(35px) saturate(200%);-webkit-backdrop-filter:blur(35px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
+.input-floating-bar.media-open{max-height:230px;border-radius:22px}
+.input-main-row{display:flex;align-items:center;width:100%;height:34px}
+.plus-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
+.input-floating-bar.media-open .plus-btn{transform:rotate(45deg)}
+.txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px}
+.txt-form input{flex:1;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
+.txt-form input::placeholder{color:rgba(15,23,42,.4)}
+.send-btn{background:none;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.media-opts{display:flex;flex-direction:column;gap:4px;padding-top:10px;margin-top:8px;border-top:1px solid rgba(255,255,255,.4);opacity:0;transform:translateY(-8px);transition:all .4s ease}
+.input-floating-bar.media-open .media-opts{opacity:1;transform:translateY(0)}
+.mopt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;border:none;background:none;width:100%;text-align:left}
+.mopt:hover{background:rgba(255,255,255,.5)}
+.mopt span{font-size:14px;font-weight:600;color:#1e293b}
+.menu-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.08);opacity:0;pointer-events:none;transition:all .3s ease;z-index:150}
+.menu-overlay.show{opacity:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
+.ctx-menu{position:absolute;background:rgba(255,255,255,.6);backdrop-filter:blur(40px) saturate(200%);-webkit-backdrop-filter:blur(40px) saturate(200%);border:1px solid rgba(255,255,255,.7);border-top:1px solid rgba(255,255,255,1);border-left:1px solid rgba(255,255,255,1);box-shadow:0 20px 50px rgba(0,0,0,.12);min-width:190px;z-index:200;pointer-events:none;border-radius:24px;transform:scale(.4) translateY(30px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .2s ease;overflow:hidden}
+.ctx-menu.show{pointer-events:auto;transform:scale(1) translateY(0);opacity:1}
+.ctx-btn{background:none;border:none;padding:14px 18px;width:100%;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+.ctx-btn:hover{background:rgba(255,255,255,.5)}
+.ctx-edit{color:#007aff}.ctx-pin{color:#8b5cf6}.ctx-del{color:#ff3b30}.ctx-react{color:#f59e0b}
+.ctx-div{height:1px;background:rgba(0,0,0,.05);margin:0 12px}
+.react-picker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.34,1.56,.64,1);transform:scale(.8) translateY(10px)}
+.react-picker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
+.rp-btn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
+.rp-btn:hover{transform:scale(1.3)}
+.media-modal{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
+.media-modal.show{opacity:1;pointer-events:auto}
+.mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
+.mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
+.mm-close{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
+.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(238,242,249,.4);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .4s ease}
+.call-overlay.show{opacity:1;pointer-events:auto}
+.call-card{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.5);padding:40px 60px;border-radius:32px;box-shadow:0 20px 50px rgba(0,0,0,.06);text-align:center}
+.call-av{width:90px;height:90px;border-radius:50%;margin-bottom:20px;box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;color:#fff;background-size:cover;background-position:center}
+.call-name{font-size:22px;font-weight:700;color:#1e293b;margin-bottom:8px}
+.call-status{font-size:15px;font-weight:600;color:#64748b;margin-bottom:40px}
+.end-btn{background:#ff3b30;border:none;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(255,59,48,.4);transform:rotate(135deg)}
+</style>
+</head>
+<body>
+<div class="phone-container">
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
+  <div class="app-header-container">
+    <div class="app-header-bar">
+      <a href="talklist.html" class="back-link">←</a>
+      <div class="partner-avatar" id="partnerAv"></div>
+      <div style="flex:1;min-width:0">
+        <div class="name" id="partnerName">ユーザー名</div>
+        <div class="status">オンライン</div>
+      </div>
+      <button class="phone-btn" id="phoneBtn" type="button">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="pin-banner" id="pinBanner">
+    <span>📌</span>
+    <span class="pin-text" id="pinText"></span>
+    <span class="pin-close" id="pinClose">×</span>
+  </div>
+
+  <div class="chat-screen" id="chatScreen"></div>
+
+  <div class="input-bar-container">
+    <div class="input-floating-bar" id="inputBar">
+      <div class="input-main-row">
+        <button class="plus-btn" id="plusBtn" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <form class="txt-form" id="chatForm">
+          <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
+          <button type="submit" class="send-btn" id="sendBtn">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </form>
+      </div>
+      <div class="media-opts">
+        <label class="mopt">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span>写真を送る</span><input type="file" id="imgInput" accept="image/*" hidden>
+        </label>
+        <label class="mopt">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <span>動画を送る</span><input type="file" id="vidInput" accept="video/*" hidden>
+        </label>
+        <label class="mopt">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>ファイルを送信</span><input type="file" id="fileInput" hidden>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-overlay" id="menuOv"></div>
+  <div class="ctx-menu" id="ctxMenu">
+    <button class="ctx-btn ctx-react" id="reactBtn">😊 リアクション</button>
+    <div class="ctx-div"></div>
+    <button class="ctx-btn ctx-edit" id="editBtn">✏️ 編集する</button>
+    <div class="ctx-div"></div>
+    <button class="ctx-btn ctx-pin" id="pinBtn">📌 ピン留め</button>
+    <div class="ctx-div"></div>
+    <button class="ctx-btn ctx-del" id="delBtn">🗑️ 送信取り消し</button>
+  </div>
+
+  <div class="react-picker" id="reactPicker"></div>
+
+  <div class="media-modal" id="mediaMod">
+    <div class="mm-inner" id="mmInner"></div>
+    <button class="mm-close" id="mmClose" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="call-overlay" id="callOv">
+    <div class="call-card">
+      <div class="call-av" id="callAv"></div>
+      <div class="call-name" id="callName">ユーザー名</div>
+      <div class="call-status" id="callStatus">呼び出し中...</div>
+      <button class="end-btn" id="endBtn" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+<script>
+const REACTIONS = ['❤️','😂','👍','😮','😢','🔥','👏','🎉'];
+const COLORS = ['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
+
+function nameColor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+  return COLORS[Math.abs(h) % COLORS.length];
+}
+
+const params = new URLSearchParams(location.search);
+const partnerName = params.get('name') || 'ユーザー名';
+const myName = localStorage.getItem('myName') || '自分';
+const myAvatar = localStorage.getItem('myAvatar') || '';
+
+// パートナーアバター（ヘッダー）
+const pAv = document.getElementById('partnerAv');
+pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+pAv.textContent = partnerName.charAt(0);
+document.getElementById('partnerName').textContent = partnerName;
+
+// 通話オーバーレイ → パートナーを表示（自分じゃない）
+const callAv = document.getElementById('callAv');
+callAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+callAv.textContent = partnerName.charAt(0);
+document.getElementById('callName').textContent = partnerName;
+
+let activeMsg = null, activeBubble = null, isOwn = false;
+let isEditing = false, editNode = null, editMeta = null;
+let reactTarget = null;
+
+const paperPlane = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const checkSvg = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+// リアクションピッカー生成
+const rp = document.getElementById('reactPicker');
+REACTIONS.forEach(e => {
+  const b = document.createElement('button');
+  b.className = 'rp-btn'; b.textContent = e;
+  b.onclick = () => {
+    if (reactTarget) addReaction(reactTarget, e);
+    rp.classList.remove('show');
+  };
+  rp.appendChild(b);
+});
+
+function addReaction(wrap, emoji) {
+  let bar = wrap.querySelector('.reaction-bar');
+  if (!bar) { bar = document.createElement('div'); bar.className = 'reaction-bar'; wrap.appendChild(bar); }
+  let badge = [...bar.children].find(b => b.dataset.emoji === emoji);
+  if (badge) {
+    const cnt = parseInt(badge.dataset.cnt || 1);
+    if (badge.classList.contains('active')) {
+      const nc = cnt - 1;
+      if (nc <= 0) badge.remove();
+      else { badge.dataset.cnt = nc; badge.textContent = `${emoji} ${nc}`; badge.classList.remove('active'); }
+    } else {
+      badge.dataset.cnt = cnt + 1; badge.textContent = `${emoji} ${cnt + 1}`; badge.classList.add('active');
+    }
+  } else {
+    badge = document.createElement('button');
+    badge.className = 'rbadge active'; badge.dataset.emoji = emoji; badge.dataset.cnt = 1;
+    badge.textContent = `${emoji} 1`;
+    badge.onclick = () => {
+      const c = parseInt(badge.dataset.cnt || 1) - 1;
+      if (c <= 0) badge.remove();
+      else { badge.dataset.cnt = c; badge.textContent = `${emoji} ${c}`; badge.classList.remove('active'); }
+    };
+    bar.appendChild(badge);
+  }
+}
+
+// プラスボタン
+document.getElementById('plusBtn').onclick = () => document.getElementById('inputBar').classList.toggle('media-open');
+
+document.getElementById('imgInput').onchange = e => { handleMedia(e.target.files[0], 'image'); };
+document.getElementById('vidInput').onchange = e => { handleMedia(e.target.files[0], 'video'); };
+document.getElementById('fileInput').onchange = e => { handleMedia(e.target.files[0], 'file'); };
+
+function handleMedia(f, t) {
+  if (!f) return;
+  createMsg(null, f, t);
+  document.getElementById('inputBar').classList.remove('media-open');
+}
+
+document.getElementById('chatForm').onsubmit = e => {
+  e.preventDefault();
+  const txt = document.getElementById('msgInput').value.trim();
+  if (!txt) return;
+  if (isEditing) {
+    editNode.textContent = txt;
+    const ts = editMeta.querySelector('.time');
+    if (ts && !ts.textContent.includes('(編集済)')) ts.textContent += ' (編集済)';
+    isEditing = false; editNode = null; editMeta = null;
+    document.getElementById('sendBtn').innerHTML = paperPlane;
+  } else {
+    createMsg(txt, null, null);
+  }
+  document.getElementById('msgInput').value = '';
+  document.getElementById('inputBar').classList.remove('media-open');
+};
+
+function createMsg(text, file, ftype) {
+  const cs = document.getElementById('chatScreen');
+  const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'outgoing');
+  const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
+  const bubble = document.createElement('div'); bubble.classList.add('bubble');
+  let mediaEl = null;
+
+  if (file && ftype === 'image') {
+    bubble.classList.add('media-bub');
+    const url = URL.createObjectURL(file);
+    mediaEl = document.createElement('img'); mediaEl.src = url;
+    bubble.appendChild(mediaEl);
+  } else if (file && ftype === 'video') {
+    bubble.classList.add('media-bub');
+    const url = URL.createObjectURL(file);
+    mediaEl = document.createElement('video'); mediaEl.src = url; mediaEl.controls = true;
+    bubble.appendChild(mediaEl);
+  } else if (file && ftype === 'file') {
+    const url = URL.createObjectURL(file);
+    const ext = file.name.split('.').pop().toLowerCase();
+    const icon = ext === 'pdf' ? '📕' : ext === 'zip' ? '🗜️' : '📄';
+    const sz = file.size > 1048576 ? `${(file.size/1048576).toFixed(1)} MB` : `${(file.size/1024).toFixed(0)} KB`;
+    const inner = document.createElement('div'); inner.className = 'file-inner';
+    inner.innerHTML = `<span class="file-icon">${icon}</span><div class="file-info"><div class="file-name">${file.name}</div><div class="file-sz">${sz}</div></div>`;
+    const dl = document.createElement('a'); dl.className = 'dl-btn'; dl.href = url; dl.download = file.name;
+    dl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ダウンロード`;
+    inner.appendChild(dl); bubble.appendChild(inner);
+  } else if (text) {
+    const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = text;
+    bubble.appendChild(sp);
+  }
+
+  const now = new Date();
+  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const meta = document.createElement('div'); meta.className = 'msg-meta';
+  meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2"/></svg></div>`;
+  bubble.appendChild(meta);
+  wrap.appendChild(bubble);
+  msgDiv.appendChild(wrap);
+  cs.appendChild(msgDiv);
+  cs.scrollTop = 99999;
+
+  const c1 = bubble.querySelector('.check-1');
+  if (c1) setTimeout(() => c1.classList.add('lit'), 200);
+
+  attachPress(msgDiv, wrap, bubble, true);
+
+  if (mediaEl && (ftype === 'image' || ftype === 'video')) {
+    let lp = false;
+    const t1 = setTimeout(() => { lp = true; }, 400);
+    mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, ftype); });
+  }
+  ['imgInput','vidInput','fileInput'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+}
+
+function attachPress(msgDiv, wrap, bubble, own) {
+  let timer; let lp = false;
+  const start = ev => {
+    lp = false;
+    const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    timer = setTimeout(() => { lp = true; showMenu(msgDiv, wrap, bubble, cx, cy, own); }, 400);
+  };
+  const cancel = () => clearTimeout(timer);
+  bubble.addEventListener('contextmenu', ev => { ev.preventDefault(); showMenu(msgDiv, wrap, bubble, ev.clientX, ev.clientY, own); });
+  bubble.addEventListener('mousedown', start);
+  bubble.addEventListener('touchstart', start, { passive: true });
+  bubble.addEventListener('mouseup', cancel);
+  bubble.addEventListener('mouseleave', cancel);
+  bubble.addEventListener('touchend', cancel);
+}
+
+function showMenu(msgDiv, wrap, bubble, x, y, own) {
+  activeMsg = msgDiv; activeBubble = bubble; isOwn = own; reactTarget = wrap;
+  const hasText = bubble.querySelector('.msg-text');
+  document.getElementById('editBtn').style.display = own && hasText ? 'flex' : 'none';
+  document.getElementById('delBtn').style.display = own ? 'flex' : 'none';
+  const ctx = document.getElementById('ctxMenu');
+  ctx.style.left = `${Math.max(10, Math.min(x-95, innerWidth-210))}px`;
+  ctx.style.top  = `${Math.max(10, Math.min(y-70, innerHeight-220))}px`;
+  document.getElementById('menuOv').classList.add('show');
+  ctx.classList.add('show');
+}
+
+function hideMenu() {
+  document.getElementById('ctxMenu').classList.remove('show');
+  document.getElementById('menuOv').classList.remove('show');
+  rp.classList.remove('show');
+}
+
+document.getElementById('menuOv').onclick = hideMenu;
+
+document.getElementById('reactBtn').onclick = () => {
+  const ctx = document.getElementById('ctxMenu');
+  const rect = ctx.getBoundingClientRect();
+  rp.style.left = `${Math.max(10, Math.min(rect.left, innerWidth - 340))}px`;
+  rp.style.top  = `${Math.max(10, rect.top - 60)}px`;
+  document.getElementById('ctxMenu').classList.remove('show');
+  rp.classList.add('show');
+};
+
+document.getElementById('editBtn').onclick = () => {
+  if (!activeBubble) return;
+  const sp = activeBubble.querySelector('.msg-text');
+  const meta = activeBubble.querySelector('.msg-meta');
+  if (!sp) return;
+  hideMenu();
+  isEditing = true; editNode = sp; editMeta = meta;
+  document.getElementById('msgInput').value = sp.textContent;
+  document.getElementById('msgInput').focus();
+  document.getElementById('sendBtn').innerHTML = checkSvg;
+};
+
+document.getElementById('pinBtn').onclick = () => {
+  if (!activeBubble) return;
+  const sp = activeBubble.querySelector('.msg-text, .file-name');
+  const txt = sp ? sp.textContent : '📎 メディア';
+  document.getElementById('pinText').textContent = txt;
+  document.getElementById('pinBanner').classList.add('show');
+  hideMenu();
+};
+document.getElementById('pinClose').onclick = () => document.getElementById('pinBanner').classList.remove('show');
+
+document.getElementById('delBtn').onclick = () => {
+  if (!activeMsg) return;
+  const target = activeMsg;
+  hideMenu();
+  // 「送信を取り消しました」通知に置き換え
+  const notice = document.createElement('div');
+  notice.className = 'cancel-notice';
+  notice.textContent = `${myName}がメッセージの送信を取り消しました`;
+  target.parentNode.replaceChild(notice, target);
+  if (isEditing && editNode) {
+    isEditing = false; editNode = null; editMeta = null;
+    document.getElementById('msgInput').value = '';
+    document.getElementById('sendBtn').innerHTML = paperPlane;
+  }
+};
+
+// メディアモーダル
+let scale=1,panX=0,panY=0,dragging=false,sx=0,sy=0,tmode='',ipd=0,iscale=1;
+function openMedia(el, type) {
+  const clone = el.cloneNode(true);
+  if (type==='video') { clone.controls=true; clone.autoplay=true; }
+  scale=1; panX=0; panY=0;
+  clone.style.transformOrigin='center';
+  const inner = document.getElementById('mmInner');
+  inner.innerHTML=''; inner.appendChild(clone);
+  document.getElementById('mediaMod').classList.add('show');
+}
+function updMM() { const e=document.getElementById('mmInner').firstElementChild; if(e) e.style.transform=`translate(${panX}px,${panY}px) scale(${scale})`; }
+const gd = (a,b) => Math.hypot(b.clientX-a.clientX, b.clientY-a.clientY);
+document.getElementById('mediaMod').addEventListener('wheel', e => { e.preventDefault(); const o=scale; scale=e.deltaY<0?Math.min(scale+.15,5):Math.max(scale-.15,.7); if(scale!==o){panX*=scale/o;panY*=scale/o;} updMM(); }, {passive:false});
+document.getElementById('mediaMod').addEventListener('mousedown', e => { if(e.target.closest('#mmClose')||!document.getElementById('mmInner').firstElementChild) return; dragging=true; tmode='pan'; sx=e.clientX-(panX/scale); sy=e.clientY-(panY/scale); });
+document.getElementById('mediaMod').addEventListener('touchstart', e => {
+  const t=e.touches; if(!document.getElementById('mmInner').firstElementChild) return;
+  if(t.length===2){tmode='zoom';ipd=gd(t[0],t[1]);iscale=scale;}
+  else if(t.length===1){tmode='pan';dragging=true;sx=t[0].clientX-(panX/scale);sy=t[0].clientY-(panY/scale);}
+}, {passive:true});
+window.addEventListener('mousemove', e => { if(!dragging||tmode!=='pan') return; panX=(e.clientX-sx)*scale; panY=(e.clientY-sy)*scale; updMM(); });
+window.addEventListener('touchmove', e => {
+  const t=e.touches; if(!document.getElementById('mmInner').firstElementChild) return;
+  if(tmode==='zoom'&&t.length===2){e.preventDefault();const o=scale;scale=Math.max(.7,Math.min(iscale*(gd(t[0],t[1])/ipd),5));if(scale!==o){panX*=scale/o;panY*=scale/o;}updMM();}
+  else if(tmode==='pan'&&dragging&&t.length===1){e.preventDefault();panX=(t[0].clientX-sx)*scale;panY=(t[0].clientY-sy)*scale;updMM();}
+}, {passive:false});
+window.addEventListener('mouseup', () => { dragging=false; tmode=''; });
+window.addEventListener('touchend', () => { dragging=false; tmode=''; });
+document.getElementById('mmClose').onclick = () => { document.getElementById('mediaMod').classList.remove('show'); setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300); };
+document.getElementById('mediaMod').onclick = e => { if(e.target===document.getElementById('mediaMod')){document.getElementById('mediaMod').classList.remove('show');setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300);} };
+
+// 通話
+let callTimer = null;
+document.getElementById('phoneBtn').onclick = () => {
+  document.getElementById('callOv').classList.add('show');
+  document.getElementById('callStatus').textContent = '呼び出し中...';
+  let sec = 0; clearTimeout(callTimer);
+  callTimer = setTimeout(function tick() {
+    sec++;
+    const m=String(Math.floor(sec/60)).padStart(2,'0'), s=String(sec%60).padStart(2,'0');
+    document.getElementById('callStatus').textContent = `${m}:${s}`;
+    callTimer = setTimeout(tick, 1000);
+  }, 3000);
+};
+document.getElementById('endBtn').onclick = () => { clearTimeout(callTimer); document.getElementById('callOv').classList.remove('show'); };
+</script>
+</body>
+</html>

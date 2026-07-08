@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>トーク一覧</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;min-height:100vh}
+.pc{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:#e0f2fe;background-size:cover;background-position:center;overflow:hidden;z-index:9999;display:flex;flex-direction:column}
+.bgo{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:1}
+.tp{position:relative;z-index:2;height:100%;display:flex;flex-direction:column}
+.ahdr{display:flex;justify-content:center;align-items:center;padding:20px 0 10px}
+.sc{position:relative;display:inline-flex;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);padding:4px;border-radius:999px;box-shadow:0 4px 15px rgba(0,0,0,.03)}
+.sslider{position:absolute;top:4px;left:4px;width:90px;height:calc(100% - 8px);background:rgba(255,255,255,.85);border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.05);transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
+.sbtn{position:relative;z-index:2;background:none;border:none;outline:none;width:90px;padding:8px 0;font-size:14px;font-weight:700;color:rgba(15,23,42,.4);cursor:pointer;text-align:center;transition:color .3s ease}
+.sbtn.active{color:#0f172a}
+.tc{flex:1;padding:0 16px 16px;overflow-y:auto}
+.card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
+.search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
+.ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
+.ti:last-child{border-bottom:none}
+.tav{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center}
+.tbody{flex:1;min-width:0}
+.ttr{display:flex;justify-content:space-between;margin-bottom:4px}
+.tname{font-weight:700;color:#0f172a;font-size:14px}
+.ttime{font-size:11px;color:#64748b}
+.tmsg{font-size:13px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slabel{font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.05em}
+.ngbtn{display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;border:none;background:none;width:100%;border-bottom:1px solid rgba(15,23,42,.05)}
+.ngicon{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.nglabel{font-weight:700;color:#3b82f6;font-size:14px}
+.hha{display:flex;justify-content:space-between;align-items:center;width:100%}
+.mypro{display:flex;align-items:center;gap:14px}
+.myav{width:55px;height:55px;border-radius:50%;background:#cbd5e1;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1);flex-shrink:0}
+.myn{font-size:18px;font-weight:800;color:#0f172a}
+.sibtn{background:none;border:none;padding:0;cursor:pointer;outline:none;transition:transform .2s ease}
+.sibtn:hover{transform:rotate(30deg)}
+.siico{width:36px;height:36px;display:block;border-radius:9px;box-shadow:0 3px 8px rgba(0,0,0,.15)}
+.mov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10000;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .3s ease}
+.mov.open{opacity:1;pointer-events:auto}
+.mc{width:100%;max-width:500px;max-height:90vh;overflow-y:auto;background:rgba(255,255,255,.9);border-radius:32px 32px 0 0;padding:24px;box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.15);transform:translateY(100%);transition:transform .3s cubic-bezier(.25,1,.5,1)}
+.mov.open .mc{transform:translateY(0)}
+.mtitle{font-size:18px;font-weight:800;color:#0f172a;text-align:center;margin:0 0 20px 0}
+.sg{margin-bottom:20px}
+.sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
+.sg input[type=text]{width:100%;padding:12px 16px;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:15px;font-weight:600}
+.fiw{position:relative;margin-bottom:10px}
+.fiw input[type=file]{position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.cfb{display:block;text-align:center;padding:12px;background:#fff;border:1px dashed #94a3b8;border-radius:14px;color:#475569;font-size:14px;font-weight:600}
+.cropcon{position:relative;width:100%;height:220px;background:#0f172a;border-radius:16px;overflow:hidden;display:none;margin-top:10px;touch-action:none}
+.cropim{position:absolute;top:0;left:0;cursor:move;user-select:none;transform-origin:top left}
+.cropmk{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle 70px at center,transparent 99%,rgba(0,0,0,.6) 100%);pointer-events:none;border:1px solid rgba(255,255,255,.2);border-radius:16px;box-sizing:border-box}
+.ranger{width:100%;margin-top:10px;display:none}
+.savebtn{width:100%;padding:14px;background:#0f172a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
+.cancelbtn{width:100%;padding:14px;background:rgba(15,23,42,.06);color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="pc" id="pc">
+  <div class="bgo"></div>
+  <div class="tp">
+    <header class="ahdr">
+      <div class="sc">
+        <div class="sslider" id="slider"></div>
+        <button class="sbtn active" id="btnTalk" type="button">トーク</button>
+        <button class="sbtn" id="btnHome" type="button">ホーム</button>
+      </div>
+    </header>
+    <main class="tc">
+      <section id="pageTalk">
+        <div class="card">
+          <div class="search"><input type="text" placeholder="トークを検索..."></div>
+          <div>
+            <a href="admin.html?name=みなみ&id=1" class="ti">
+              <div class="tav" style="background:linear-gradient(135deg,#a855f7,#ec4899)">み</div>
+              <div class="tbody"><div class="ttr"><div class="tname">みなみ</div><div class="ttime">08:12</div></div><div class="tmsg">今夜の予定、どうする？</div></div>
+            </a>
+            <a href="admin.html?name=たくや&id=2" class="ti">
+              <div class="tav" style="background:linear-gradient(135deg,#8b5cf6,#c084fc)">た</div>
+              <div class="tbody"><div class="ttr"><div class="tname">たくや</div><div class="ttime">昨日</div></div><div class="tmsg">資料送ったよ。確認してね。</div></div>
+            </a>
+          </div>
+        </div>
+        <div class="card">
+          <div class="slabel">グループ</div>
+          <div>
+            <button class="ngbtn" id="ngBtn" type="button">
+              <div class="ngicon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+              <span class="nglabel">新しいグループを作成</span>
+            </button>
+            <div id="groupList">
+              <a href="groupchat.html?name=Ringグループ" class="ti">
+                <div class="tav" style="background:linear-gradient(135deg,#f59e0b,#ef4444);font-size:20px">💬</div>
+                <div class="tbody"><div class="ttr"><div class="tname">Ring グループ</div><div class="ttime">19:20</div></div><div class="tmsg">みなみ: みんなこんにちは！</div></div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="pageHome" style="display:none">
+        <div class="card">
+          <div class="hha">
+            <div class="mypro">
+              <div class="myav" id="dispAv"></div>
+              <div class="myn" id="dispName">マイネーム</div>
+            </div>
+            <button class="sibtn" id="openSettings" type="button">
+              <svg class="siico" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs><linearGradient id="g1" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#afafb3"/><stop offset="100%" stop-color="#8e8e93"/></linearGradient></defs>
+                <rect width="100" height="100" rx="22" fill="url(#g1)"/>
+                <circle cx="50" cy="50" r="28" fill="none" stroke="#fff" stroke-width="5"/>
+                <g fill="#fff" transform="translate(50,50)">
+                  <rect x="-4" y="-33" width="8" height="7" rx="1"/><rect x="-4" y="26" width="8" height="7" rx="1"/><rect x="-33" y="-4" width="7" height="8" rx="1"/><rect x="26" y="-4" width="7" height="8" rx="1"/>
+                  <g transform="rotate(45)"><rect x="-4" y="-33" width="8" height="7" rx="1"/><rect x="-4" y="26" width="8" height="7" rx="1"/><rect x="-33" y="-4" width="7" height="8" rx="1"/><rect x="26" y="-4" width="7" height="8" rx="1"/></g>
+                </g>
+                <circle cx="50" cy="50" r="16" fill="url(#g1)"/>
+                <circle cx="50" cy="50" r="5" fill="url(#g1)"/><circle cx="50" cy="50" r="2.5" fill="#fff"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- プロフィール設定モーダル -->
+<div class="mov" id="settingsMov">
+  <div class="mc">
+    <h3 class="mtitle">プロフィールの編集</h3>
+    <div class="sg"><label>表示名</label><input type="text" id="inName" value="マイネーム"></div>
+    <div class="sg">
+      <label>プロフィール画像</label>
+      <div class="fiw"><span class="cfb">画像を選択する</span><input type="file" id="inAvFile" accept="image/*"></div>
+      <div class="cropcon" id="cropBox"><img class="cropim" id="cropImg" src="" alt="" draggable="false"><div class="cropmk"></div></div>
+      <input type="range" class="ranger" id="cropZoom" min="0.1" max="3" step="0.01" value="1">
+    </div>
+    <div class="sg">
+      <label>全体の背景画像</label>
+      <div class="fiw"><span class="cfb">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
+    </div>
+    <button class="savebtn" id="saveSettings" type="button">変更を適用して閉じる</button>
+  </div>
+</div>
+
+<!-- グループ作成モーダル -->
+<div class="mov" id="ngMov">
+  <div class="mc">
+    <h3 class="mtitle">新しいグループ</h3>
+    <div class="sg"><label>グループ名</label><input type="text" id="ngName" placeholder="グループ名を入力"></div>
+    <button class="savebtn" id="ngCreate" type="button">作成する</button>
+    <button class="cancelbtn" id="ngCancel" type="button">キャンセル</button>
+  </div>
+</div>
+
+<script>
+// タブ切り替え
+const slider=document.getElementById('slider');
+const pageTalk=document.getElementById('pageTalk');
+const pageHome=document.getElementById('pageHome');
+const pc=document.getElementById('pc');
+
+document.getElementById('btnTalk').onclick=()=>{
+  document.getElementById('btnTalk').classList.add('active');
+  document.getElementById('btnHome').classList.remove('active');
+  slider.style.transform='translateX(0)';
+  pageTalk.style.display='block';pageHome.style.display='none';
+  // トークタブでは背景クリア
+  pc.style.backgroundImage='none';
+  pc.style.background='#e0f2fe';
+};
+
+document.getElementById('btnHome').onclick=()=>{
+  document.getElementById('btnHome').classList.add('active');
+  document.getElementById('btnTalk').classList.remove('active');
+  slider.style.transform='translateX(90px)';
+  pageTalk.style.display='none';pageHome.style.display='block';
+  // ホームタブでは背景画像表示
+  const bg=localStorage.getItem('myBgImage');
+  if(bg){pc.style.background='';pc.style.backgroundImage=`url(${bg})`;pc.style.backgroundSize='cover';pc.style.backgroundPosition='center';}
+};
+
+// プロフィール読み込み
+function loadProfile(){
+  const name=localStorage.getItem('myName')||'マイネーム';
+  const av=localStorage.getItem('myAvatar')||'';
+  document.getElementById('dispName').textContent=name;
+  document.getElementById('inName').value=name;
+  const dav=document.getElementById('dispAv');
+  if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';} 
+  else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+}
+loadProfile();
+
+// 設定モーダル
+const settingsMov=document.getElementById('settingsMov');
+document.getElementById('openSettings').onclick=()=>settingsMov.classList.add('open');
+settingsMov.onclick=e=>{if(e.target===settingsMov)settingsMov.classList.remove('open');};
+
+// クロップ
+let cx=0,cy=0,cs=1,cd=false,csx=0,csy=0;
+const cropBox=document.getElementById('cropBox');
+const cropImg=document.getElementById('cropImg');
+const cropZoom=document.getElementById('cropZoom');
+let croppedUrl=localStorage.getItem('myAvatar')||'';
+let bgUrl=localStorage.getItem('myBgImage')||'';
+
+document.getElementById('inAvFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    cropImg.src=ev.target.result;
+    cropBox.style.display='block';cropZoom.style.display='block';
+    cropImg.onload=()=>{cx=(cropBox.offsetWidth-cropImg.offsetWidth)/2;cy=(cropBox.offsetHeight-cropImg.offsetHeight)/2;cs=1;cropZoom.value=1;updC();};
+  };r.readAsDataURL(f);
+};
+function updC(){cropImg.style.transform=`translate(${cx}px,${cy}px) scale(${cs})`;}
+cropBox.addEventListener('mousedown',e=>{cd=true;csx=e.clientX-cx;csy=e.clientY-cy;});
+cropBox.addEventListener('touchstart',e=>{if(e.touches.length===1){cd=true;csx=e.touches[0].clientX-cx;csy=e.touches[0].clientY-cy;}});
+window.addEventListener('mousemove',e=>{if(!cd)return;cx=e.clientX-csx;cy=e.clientY-csy;updC();});
+window.addEventListener('touchmove',e=>{if(!cd||e.touches.length!==1)return;cx=e.touches[0].clientX-csx;cy=e.touches[0].clientY-csy;updC();});
+window.addEventListener('mouseup',()=>cd=false);window.addEventListener('touchend',()=>cd=false);
+cropZoom.oninput=e=>{cs=parseFloat(e.target.value);updC();};
+
+document.getElementById('inBgFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>{bgUrl=ev.target.result;};r.readAsDataURL(f);
+};
+
+document.getElementById('saveSettings').onclick=()=>{
+  const name=document.getElementById('inName').value.trim();
+  if(name){localStorage.setItem('myName',name);document.getElementById('dispName').textContent=name;}
+  if(bgUrl){localStorage.setItem('myBgImage',bgUrl);}
+  if(cropImg.src&&cropImg.complete&&cropImg.src!==location.href){
+    const canvas=document.createElement('canvas');canvas.width=140;canvas.height=140;
+    const ctx=canvas.getContext('2d');
+    const bx=cropBox.offsetWidth/2,by=cropBox.offsetHeight/2;
+    const sx=(bx-cx)/cs,sy=(by-cy)/cs;
+    const cw=140/cs,ch=140/cs;
+    ctx.drawImage(cropImg,sx-cw/2,sy-ch/2,cw,ch,0,0,140,140);
+    croppedUrl=canvas.toDataURL();
+    localStorage.setItem('myAvatar',croppedUrl);
+    const dav=document.getElementById('dispAv');
+    dav.style.backgroundImage=`url(${croppedUrl})`;
+  }
+  settingsMov.classList.remove('open');
+};
+
+// グループ作成
+const ngMov=document.getElementById('ngMov');
+document.getElementById('ngBtn').onclick=()=>ngMov.classList.add('open');
+document.getElementById('ngCancel').onclick=()=>ngMov.classList.remove('open');
+ngMov.onclick=e=>{if(e.target===ngMov)ngMov.classList.remove('open');};
+
+document.getElementById('ngCreate').onclick=()=>{
+  const name=document.getElementById('ngName').value.trim();if(!name)return;
+  // localStorageのgroupInfoをリセットして新グループ
+  const newGroup={name,emoji:'💬',avatarImg:'',members:[
+    {id:'me',name:localStorage.getItem('myName')||'自分',color:'#3b82f6',initials:(localStorage.getItem('myName')||'自').charAt(0),avatarImg:localStorage.getItem('myAvatar')||''},
+  ]};
+  localStorage.setItem('groupInfo',JSON.stringify(newGroup));
+  // リストに追加
+  const list=document.getElementById('groupList');
+  const a=document.createElement('a');
+  a.href=`groupchat.html?name=${encodeURIComponent(name)}`;
+  a.className='ti';
+  a.innerHTML=`<div class="tav" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);font-size:20px">💬</div><div class="tbody"><div class="ttr"><div class="tname">${name}</div><div class="ttime">今</div></div><div class="tmsg">グループを作成しました</div></div>`;
+  list.appendChild(a);
+  document.getElementById('ngName').value='';
+  ngMov.classList.remove('open');
+};
+</script>
+</body>
+</html>
