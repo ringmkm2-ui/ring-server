@@ -3,7 +3,6 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const path = require('path');
-const path = require('path');
 
 const db = require('./db/db');
 const { router: authRouter } = require('./routes/auth');
