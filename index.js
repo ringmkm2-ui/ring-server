@@ -26,8 +26,8 @@ async function main() {
   // 静的ファイル（クライアント側の HTML/JS）
   app.use(express.static('public'));
   
-  // 起動時のウェルカム画面（初回起動時のエントリーポイント）
-  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'welcome.html')));
+  // 起動時のスプラッシュ画面（Powered by画面 → 黒円拡大 → Welcome画面）
+  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'splash.html')));
 
   app.use('/api/auth', authRouter);
   app.use('/api/prekeys', prekeysRouter);

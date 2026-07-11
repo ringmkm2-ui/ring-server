@@ -176,6 +176,46 @@
       color: rgba(255, 255, 255, 0.5);
       font-weight: 500;
     }
+
+    /* 黒画面から白円が広がる遷移オーバーレイ */
+    .transition-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000000;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .transition-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .expand-circle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      background: #ffffff;
+      border-radius: 50%;
+      transform: translate3d(-50%, -50%, 0) scale(0);
+      will-change: transform;
+    }
+
+    .expand-circle.expanding {
+      animation: expandCircle 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    }
+
+    @keyframes expandCircle {
+      to {
+        transform: translate3d(-50%, -50%, 0) scale(150);
+      }
+    }
   </style>
 </head>
 <body>
@@ -203,6 +243,10 @@
     <div class="brands">Bro Chat</div>
   </div>
 
+  <div class="transition-overlay" id="transitionOverlay">
+    <div class="expand-circle" id="expandCircle"></div>
+  </div>
+
   <script>
     // ログイン状態を確認して自動遷移
     (function() {
@@ -211,14 +255,33 @@
 
       function navigate() {
         const token = localStorage.getItem('ring_token');
-        const destination = token ? '/talklist.html' : '/auth.html';
-        
+        // ログイン済みなら talklist へ直行、未ログインなら welcome 画面へ
+        const destination = token ? '/talklist.html' : '/welcome.html';
+
         const elapsed = Date.now() - startTime;
         const remaining = Math.max(0, MIN_SPLASH_TIME - elapsed);
 
         setTimeout(() => {
-          window.location.href = destination;
+          playTransitionAndGo(destination);
         }, remaining);
+      }
+
+      function playTransitionAndGo(destination) {
+        const overlay = document.getElementById('transitionOverlay');
+        const circle = document.getElementById('expandCircle');
+
+        overlay.classList.add('active');
+
+        // 次のフレームでアニメーション開始（reflow確定後）
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            circle.classList.add('expanding');
+          });
+        });
+
+        circle.addEventListener('animationend', () => {
+          window.location.href = destination;
+        }, { once: true });
       }
 
       // requestIdleCallback があれば使う、なければ即実行
