@@ -26,11 +26,8 @@ async function main() {
   // 静的ファイル（クライアント側の HTML/JS）
   app.use(express.static('public'));
   
-  // ログイン画面
-  app.get('/auth', (req, res) => res.sendFile(path.join(__dirname, 'public', 'authform.html')));
-  
-  // ホーム（トークリスト）- ログイン必須
-  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'talklist.html')));
+  // 起動時のスプラッシュ画面（ログイン状態はJS側でチェック）
+  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'splash.html')));
 
   app.use('/api/auth', authRouter);
   app.use('/api/prekeys', prekeysRouter);

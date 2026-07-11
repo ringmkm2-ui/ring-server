@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Bro Chat</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #0a0a0f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* 背景のグラデーションアニメーション（GPU支援） */
+    .bg-glow {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 30% 30%, rgba(102, 126, 234, 0.25) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 70%, rgba(118, 75, 162, 0.25) 0%, transparent 50%);
+      will-change: transform;
+      animation: drift 8s ease-in-out infinite;
+      transform: translateZ(0);
+    }
+
+    @keyframes drift {
+      0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(-2%, 2%, 0) scale(1.05);
+      }
+    }
+
+    .splash-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      opacity: 0;
+      animation: fadeInUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+      will-change: transform, opacity;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 24px, 0);
+      }
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+      }
+    }
+
+    .logo-icon {
+      width: 88px;
+      height: 88px;
+      margin: 0 auto 28px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
+      will-change: transform;
+      animation: popIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0s forwards;
+      transform: scale(0);
+    }
+
+    @keyframes popIn {
+      0% {
+        transform: scale(0) rotate(-10deg);
+      }
+      100% {
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    .logo-icon svg {
+      width: 46px;
+      height: 46px;
+    }
+
+    h1 {
+      font-size: 34px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .tagline {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 400;
+      margin-bottom: 60px;
+    }
+
+    /* ローディングインジケーター */
+    .loading-dots {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      opacity: 0;
+      animation: fadeIn 0.5s ease 0.6s forwards;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.6);
+      will-change: transform, opacity;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.15s; }
+    .dot:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(0.6) translateZ(0);
+        opacity: 0.3;
+      }
+      50% {
+        transform: scale(1) translateZ(0);
+        opacity: 1;
+      }
+    }
+
+    .powered-by {
+      position: absolute;
+      bottom: 48px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      opacity: 0;
+      animation: fadeIn 0.6s ease 0.8s forwards;
+    }
+
+    .powered-by p {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.3);
+      margin-bottom: 8px;
+    }
+
+    .powered-by .brands {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.5);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <div class="splash-content">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="white" fill-opacity="0.95"/>
+        <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>Bro Chat</h1>
+    <p class="tagline">安全につながろう</p>
+
+    <div class="loading-dots">
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+  </div>
+
+  <div class="powered-by">
+    <div class="brands">Bro Chat</div>
+  </div>
+
+  <script>
+    // ログイン状態を確認して自動遷移
+    (function() {
+      const MIN_SPLASH_TIME = 1200; // 最低表示時間(ms) - 一瞬でチラつくのを防ぐ
+      const startTime = Date.now();
+
+      function navigate() {
+        const token = localStorage.getItem('ring_token');
+        const destination = token ? '/talklist.html' : '/auth.html';
+        
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, MIN_SPLASH_TIME - elapsed);
+
+        setTimeout(() => {
+          window.location.href = destination;
+        }, remaining);
+      }
+
+      // requestIdleCallback があれば使う、なければ即実行
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(navigate, { timeout: 500 });
+      } else {
+        navigate();
+      }
+    })();
+  </script>
+</body>
+</html>
