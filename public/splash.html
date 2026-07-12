@@ -250,19 +250,23 @@
   <script>
     // ログイン状態を確認して自動遷移
     (function() {
+      const token = localStorage.getItem('ring_token');
+
+      // ログイン済みなら演出を一切スキップして直接トークリストへ
+      if (token) {
+        window.location.href = '/talklist.html';
+        return;
+      }
+
       const MIN_SPLASH_TIME = 1200; // 最低表示時間(ms) - 一瞬でチラつくのを防ぐ
       const startTime = Date.now();
 
       function navigate() {
-        const token = localStorage.getItem('ring_token');
-        // ログイン済みなら talklist へ直行、未ログインなら welcome 画面へ
-        const destination = token ? '/talklist.html' : '/welcome.html';
-
         const elapsed = Date.now() - startTime;
         const remaining = Math.max(0, MIN_SPLASH_TIME - elapsed);
 
         setTimeout(() => {
-          playTransitionAndGo(destination);
+          playTransitionAndGo('/welcome.html');
         }, remaining);
       }
 
