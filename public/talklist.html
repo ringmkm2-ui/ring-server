@@ -193,6 +193,7 @@ async function loadProfile(){
     localStorage.setItem('myName', name);
     localStorage.setItem('myUserId', data.userId);
     localStorage.setItem('ring_userId', data.userId);
+    localStorage.setItem('ring_userIdCode', idCode);
     document.getElementById('dispName').textContent = name;
     document.getElementById('inName').value = name;
     document.getElementById('myIdCode').textContent = 'ID: ' + idCode;
@@ -202,8 +203,10 @@ async function loadProfile(){
     else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
   } catch(e) {
     const name=localStorage.getItem('myName')||'マイネーム';
+    const idCode=localStorage.getItem('ring_userIdCode')||'';
     document.getElementById('dispName').textContent=name;
     document.getElementById('inName').value=name;
+    document.getElementById('myIdCode').textContent = idCode ? 'ID: ' + idCode : 'ID: 取得中...';
     const av=localStorage.getItem('myAvatar')||'';
     const dav=document.getElementById('dispAv');
     if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';}
