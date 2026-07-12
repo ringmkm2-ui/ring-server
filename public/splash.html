@@ -27,7 +27,6 @@
       position: relative;
     }
 
-    /* 背景のグラデーションアニメーション（GPU支援） */
     .bg-glow {
       position: absolute;
       top: 0;
@@ -42,12 +41,8 @@
     }
 
     @keyframes drift {
-      0%, 100% {
-        transform: translate3d(0, 0, 0) scale(1);
-      }
-      50% {
-        transform: translate3d(-2%, 2%, 0) scale(1.05);
-      }
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(-2%, 2%, 0) scale(1.05); }
     }
 
     .splash-content {
@@ -60,25 +55,16 @@
     }
 
     @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translate3d(0, 24px, 0);
-      }
-      to {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-      }
+      from { opacity: 0; transform: translate3d(0, 24px, 0); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
     }
 
     .logo-icon {
-      width: 88px;
-      height: 88px;
+      width: 96px;
+      height: 96px;
       margin: 0 auto 28px;
       border-radius: 24px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow: hidden;
       box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
       will-change: transform;
       animation: popIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0s forwards;
@@ -86,17 +72,15 @@
     }
 
     @keyframes popIn {
-      0% {
-        transform: scale(0) rotate(-10deg);
-      }
-      100% {
-        transform: scale(1) rotate(0deg);
-      }
+      0% { transform: scale(0) rotate(-10deg); }
+      100% { transform: scale(1) rotate(0deg); }
     }
 
-    .logo-icon svg {
-      width: 46px;
-      height: 46px;
+    .logo-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     h1 {
@@ -114,7 +98,6 @@
       margin-bottom: 60px;
     }
 
-    /* ローディングインジケーター */
     .loading-dots {
       display: flex;
       gap: 8px;
@@ -123,9 +106,7 @@
       animation: fadeIn 0.5s ease 0.6s forwards;
     }
 
-    @keyframes fadeIn {
-      to { opacity: 1; }
-    }
+    @keyframes fadeIn { to { opacity: 1; } }
 
     .dot {
       width: 8px;
@@ -141,14 +122,8 @@
     .dot:nth-child(3) { animation-delay: 0.3s; }
 
     @keyframes pulse {
-      0%, 100% {
-        transform: scale(0.6) translateZ(0);
-        opacity: 0.3;
-      }
-      50% {
-        transform: scale(1) translateZ(0);
-        opacity: 1;
-      }
+      0%, 100% { transform: scale(0.6) translateZ(0); opacity: 0.3; }
+      50% { transform: scale(1) translateZ(0); opacity: 1; }
     }
 
     .powered-by {
@@ -161,33 +136,24 @@
       animation: fadeIn 0.6s ease 0.8s forwards;
     }
 
-    .powered-by p {
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.3);
-      margin-bottom: 8px;
-    }
-
     .powered-by .brands {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
       font-size: 13px;
       color: rgba(255, 255, 255, 0.5);
       font-weight: 500;
     }
 
-    /* 黒画面から白円が広がる遷移オーバーレイ */
     .transition-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: #000000;
       z-index: 100;
       opacity: 0;
       pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .transition-overlay.active {
@@ -195,25 +161,23 @@
       pointer-events: all;
     }
 
-    .expand-circle {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 20px;
-      height: 20px;
+    .scale-panel {
+      width: 40px;
+      height: 40px;
       background: #ffffff;
       border-radius: 50%;
-      transform: translate3d(-50%, -50%, 0) scale(0);
-      will-change: transform;
+      will-change: transform, border-radius, width, height;
     }
 
-    .expand-circle.expanding {
-      animation: expandCircle 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    .scale-panel.expanding {
+      animation: panelExpand 0.7s cubic-bezier(0.65, 0, 0.35, 1) forwards;
     }
 
-    @keyframes expandCircle {
+    @keyframes panelExpand {
       to {
-        transform: translate3d(-50%, -50%, 0) scale(150);
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
       }
     }
   </style>
@@ -223,11 +187,7 @@
 
   <div class="splash-content">
     <div class="logo-icon">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="white" fill-opacity="0.95"/>
-        <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+      <img src="/images/logo.jpg" alt="Bro Chat">
     </div>
     <h1>Bro Chat</h1>
     <p class="tagline">安全につながろう</p>
@@ -244,21 +204,19 @@
   </div>
 
   <div class="transition-overlay" id="transitionOverlay">
-    <div class="expand-circle" id="expandCircle"></div>
+    <div class="scale-panel" id="scalePanel"></div>
   </div>
 
   <script>
-    // ログイン状態を確認して自動遷移
     (function() {
       const token = localStorage.getItem('ring_token');
 
-      // ログイン済みなら演出を一切スキップして直接トークリストへ
       if (token) {
         window.location.href = '/talklist.html';
         return;
       }
 
-      const MIN_SPLASH_TIME = 1200; // 最低表示時間(ms) - 一瞬でチラつくのを防ぐ
+      const MIN_SPLASH_TIME = 2000;
       const startTime = Date.now();
 
       function navigate() {
@@ -272,23 +230,21 @@
 
       function playTransitionAndGo(destination) {
         const overlay = document.getElementById('transitionOverlay');
-        const circle = document.getElementById('expandCircle');
+        const panel = document.getElementById('scalePanel');
 
         overlay.classList.add('active');
 
-        // 次のフレームでアニメーション開始（reflow確定後）
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            circle.classList.add('expanding');
+            panel.classList.add('expanding');
           });
         });
 
-        circle.addEventListener('animationend', () => {
+        panel.addEventListener('animationend', () => {
           window.location.href = destination;
         }, { once: true });
       }
 
-      // requestIdleCallback があれば使う、なければ即実行
       if ('requestIdleCallback' in window) {
         requestIdleCallback(navigate, { timeout: 500 });
       } else {

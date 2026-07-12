@@ -24,97 +24,22 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: space-between;
-      position: relative;
-      padding: 60px 24px 48px;
-    }
-
-    /* 波紋アニメーション背景（中心から広がるドットパターン） */
-    .ripple-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
       justify-content: center;
-      overflow: hidden;
-      pointer-events: none;
-    }
-
-    .ripple-canvas {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      will-change: transform;
-    }
-
-    /* CSSのみで波紋を表現：複数の同心円が透明度と大きさをアニメーション */
-    .ripple-ring {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      border-radius: 50%;
-      background-image: radial-gradient(circle, rgba(100, 180, 255, 0.5) 1.5px, transparent 1.5px);
-      background-size: 14px 14px;
-      will-change: transform, opacity;
-      transform: translate3d(-50%, -50%, 0) scale(0);
+      position: relative;
+      padding: 60px 24px 64px;
       opacity: 0;
-      animation: rippleExpand 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+      animation: fadeIn 0.35s ease forwards;
     }
 
-    .ripple-ring:nth-child(1) {
-      width: 200px;
-      height: 200px;
-      animation-delay: 0s;
-    }
-    .ripple-ring:nth-child(2) {
-      width: 200px;
-      height: 200px;
-      animation-delay: 1.2s;
-    }
-    .ripple-ring:nth-child(3) {
-      width: 200px;
-      height: 200px;
-      animation-delay: 2.4s;
-    }
+    @keyframes fadeIn { to { opacity: 1; } }
 
-    @keyframes rippleExpand {
-      0% {
-        transform: translate3d(-50%, -50%, 0) scale(0.2);
-        opacity: 0;
-      }
-      15% {
-        opacity: 0.8;
-      }
-      70% {
-        opacity: 0.3;
-      }
-      100% {
-        transform: translate3d(-50%, -50%, 0) scale(3.2);
-        opacity: 0;
-      }
-    }
-
-    /* コンテンツ */
-    .top-spacer {
-      flex: 1;
-    }
+    .top-spacer { flex: 1; }
 
     .welcome-text {
       font-size: 34px;
       font-weight: 400;
       color: #1a1a1a;
       letter-spacing: -0.3px;
-      position: relative;
-      z-index: 2;
-      opacity: 0;
-      animation: fadeIn 0.6s ease 0.2s forwards;
-    }
-
-    @keyframes fadeIn {
-      to { opacity: 1; }
     }
 
     .bottom-section {
@@ -124,100 +49,71 @@
       flex-direction: column;
       align-items: center;
       gap: 20px;
-      position: relative;
-      z-index: 2;
-      opacity: 0;
-      animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
-    }
-
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translate3d(0, 16px, 0);
-      }
-      to {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-      }
-    }
-
-    .lang-selector {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 15px;
-      color: #444;
-      padding: 8px 16px;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-    }
-
-    .lang-selector:active {
-      background-color: rgba(0, 0, 0, 0.05);
-    }
-
-    .lang-selector svg {
-      width: 14px;
-      height: 14px;
+      position: absolute;
+      bottom: 64px;
+      left: 50%;
+      transform: translateX(-50%);
     }
 
     .start-btn {
       width: 100%;
       padding: 16px;
-      background: linear-gradient(135deg, #4a9eff 0%, #667eea 100%);
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       border: none;
       border-radius: 28px;
       font-size: 17px;
       font-weight: 600;
       cursor: pointer;
-      box-shadow: 0 4px 16px rgba(74, 158, 255, 0.35);
+      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.35);
       transition: transform 0.15s ease, box-shadow 0.15s ease;
       will-change: transform;
     }
 
     .start-btn:active {
       transform: scale(0.97) translateZ(0);
-      box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
     }
 
-    .footer-links {
-      display: flex;
-      gap: 28px;
-      margin-top: 8px;
+    /* 遷移用オーバーレイ */
+    .page-transition {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      will-change: opacity;
     }
 
-    .footer-links a {
-      font-size: 14px;
-      color: #666;
-      text-decoration: none;
-      padding: 4px;
+    .page-transition.active {
+      opacity: 1;
+      pointer-events: all;
+      transition: opacity 0.3s ease;
     }
   </style>
 </head>
 <body>
-  <div class="ripple-container">
-    <div class="ripple-canvas">
-      <div class="ripple-ring"></div>
-      <div class="ripple-ring"></div>
-      <div class="ripple-ring"></div>
-    </div>
-  </div>
-
   <div class="top-spacer"></div>
-
   <div class="welcome-text">Welcome!</div>
-
   <div class="top-spacer"></div>
 
   <div class="bottom-section">
-    <button class="start-btn" onclick="startApp()">Start</button>
+    <button class="start-btn" onclick="goToAuth()">Start</button>
   </div>
 
+  <div class="page-transition" id="pageTransition"></div>
+
   <script>
-    function startApp() {
-      window.location.href = '/auth.html';
+    function goToAuth() {
+      const overlay = document.getElementById('pageTransition');
+      overlay.classList.add('active');
+      setTimeout(() => {
+        window.location.href = '/auth.html';
+      }, 300);
     }
   </script>
 </body>
