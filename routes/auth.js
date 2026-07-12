@@ -28,16 +28,18 @@ router.post('/register', async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const userId = uuidv4();
+  const userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase(); // User ID like U3K7F9
 
   await db.run(
-    'INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)',
-    [userId, username, passwordHash, displayName || username]
+    'INSERT INTO users (id, user_id, username, password_hash, display_name) VALUES (?, ?, ?, ?, ?)',
+    [userId, userIdCode, username, passwordHash, displayName || username]
   );
 
   const token = jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
   res.json({
     userId,
+    userIdCode,
     username,
     displayName: displayName || username,
     token,
@@ -66,6 +68,7 @@ router.post('/login', async (req, res) => {
 
   res.json({
     userId: user.id,
+    userIdCode: user.user_id,
     username: user.username,
     displayName: user.display_name,
     token,

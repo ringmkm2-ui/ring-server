@@ -9,6 +9,7 @@ const { router: authRouter } = require('./routes/auth');
 const prekeysRouter = require('./routes/prekeys');
 const mediaRouter = require('./routes/media');
 const groupsRouter = require('./routes/groups');
+const friendsRouter = require('./routes/friends');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 
@@ -33,6 +34,7 @@ async function main() {
   app.use('/api/prekeys', prekeysRouter);
   app.use('/api/media', mediaRouter);
   app.use('/api/groups', groupsRouter);
+  app.use('/api/friends', friendsRouter);
 
   const server = http.createServer(app);
   initWebSocketServer(server);

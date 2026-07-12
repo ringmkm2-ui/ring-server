@@ -7,10 +7,25 @@
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  user_id TEXT UNIQUE NOT NULL,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   display_name TEXT,
+  profile_pic TEXT,
+  bio TEXT,
   created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+  id TEXT PRIMARY KEY,
+  user_a_id TEXT NOT NULL REFERENCES users(id),
+  user_b_id TEXT NOT NULL REFERENCES users(id),
+  status TEXT DEFAULT 'pending',
+  requested_by TEXT NOT NULL,
+  requested_at TIMESTAMP DEFAULT now(),
+  accepted_at TIMESTAMP,
+  UNIQUE(user_a_id, user_b_id),
+  CHECK (user_a_id < user_b_id)
 );
 
 CREATE TABLE IF NOT EXISTS identity_keys (

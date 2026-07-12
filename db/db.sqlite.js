@@ -31,10 +31,26 @@ async function initDB() {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       display_name TEXT,
+      profile_pic TEXT,
+      bio TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS friendships (
+      id TEXT PRIMARY KEY,
+      user_a_id TEXT NOT NULL,
+      user_b_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      requested_by TEXT NOT NULL,
+      requested_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      accepted_at TEXT,
+      UNIQUE(user_a_id, user_b_id),
+      FOREIGN KEY (user_a_id) REFERENCES users(id),
+      FOREIGN KEY (user_b_id) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS identity_keys (
