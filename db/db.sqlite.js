@@ -28,6 +28,17 @@ async function initDB() {
     db = new SQL.Database();
   }
 
+  // スキーマバージョンチェック - 既存の users テーブルに user_id がなければ再作成
+  const tableInfo = db.exec('PRAGMA table_info(users)');
+  const hasUserId = tableInfo.length > 0 && tableInfo[0].values.some(row => row[1] === 'user_id');
+
+  if (!hasUserId && tableInfo.length > 0) {
+    // 既存テーブルを削除して再作成（マイグレーション）
+    console.log('Migrating users table - adding user_id field');
+    db.run('DROP TABLE IF EXISTS friendships');
+    db.run('DROP TABLE IF EXISTS users');
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
