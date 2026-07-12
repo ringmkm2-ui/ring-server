@@ -110,6 +110,18 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      msg_type TEXT DEFAULT 'text',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      read_at TEXT,
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (recipient_id) REFERENCES users(id)
+    );
+
     -- テキストメッセージは中継のみ: オフライン時の一時保管用キュー
     -- (配送完了したらすぐ削除する = サーバーに永続保存しない設計)
     CREATE TABLE IF NOT EXISTS offline_queue (

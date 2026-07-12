@@ -391,9 +391,11 @@
 
         // ローカルストレージに保存
         localStorage.setItem('ring_token', data.token);
+        localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
         localStorage.setItem('ring_username', data.username);
         localStorage.setItem('ring_display_name', data.displayName);
+        localStorage.setItem('myName', data.displayName || data.username);
 
         showSuccess('ログイン成功！');
         setTimeout(() => {
@@ -424,9 +426,11 @@
         }
 
         localStorage.setItem('ring_token', data.token);
+        localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
         localStorage.setItem('ring_username', data.username);
         localStorage.setItem('ring_display_name', data.displayName);
+        localStorage.setItem('myName', data.displayName || data.username);
 
         showSuccess('登録成功！ログイン中...');
         setTimeout(() => {

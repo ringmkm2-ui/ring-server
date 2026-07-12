@@ -70,17 +70,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
     <main class="tc">
       <section id="pageTalk">
         <div class="card">
-          <div class="search"><input type="text" placeholder="トークを検索..."></div>
-          <div>
-            <a href="admin.html?name=みなみ&id=1" class="ti">
-              <div class="tav" style="background:linear-gradient(135deg,#a855f7,#ec4899)">み</div>
-              <div class="tbody"><div class="ttr"><div class="tname">みなみ</div><div class="ttime">08:12</div></div><div class="tmsg">今夜の予定、どうする？</div></div>
-            </a>
-            <a href="admin.html?name=たくや&id=2" class="ti">
-              <div class="tav" style="background:linear-gradient(135deg,#8b5cf6,#c084fc)">た</div>
-              <div class="tbody"><div class="ttr"><div class="tname">たくや</div><div class="ttime">昨日</div></div><div class="tmsg">資料送ったよ。確認してね。</div></div>
-            </a>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <input type="text" placeholder="トークを検索..." style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;">
+            <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
           </div>
+          <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
           <div class="slabel">グループ</div>
@@ -89,12 +83,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
               <div class="ngicon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
               <span class="nglabel">新しいグループを作成</span>
             </button>
-            <div id="groupList">
-              <a href="groupchat.html?name=Ringグループ" class="ti">
-                <div class="tav" style="background:linear-gradient(135deg,#f59e0b,#ef4444);font-size:20px">💬</div>
-                <div class="tbody"><div class="ttr"><div class="tname">Ring グループ</div><div class="ttime">19:20</div></div><div class="tmsg">みなみ: みんなこんにちは！</div></div>
-              </a>
-            </div>
+            <div id="groupList"></div>
           </div>
         </div>
       </section>
@@ -161,14 +150,18 @@ const pageTalk=document.getElementById('pageTalk');
 const pageHome=document.getElementById('pageHome');
 const pc=document.getElementById('pc');
 
+const token = localStorage.getItem('ring_token');
+const myUserId = localStorage.getItem('ring_userId');
+if (!token) location.href = '/auth.html';
+
 document.getElementById('btnTalk').onclick=()=>{
   document.getElementById('btnTalk').classList.add('active');
   document.getElementById('btnHome').classList.remove('active');
   slider.style.transform='translateX(0)';
   pageTalk.style.display='block';pageHome.style.display='none';
-  // トークタブでは背景クリア
   pc.style.backgroundImage='none';
   pc.style.background='#e0f2fe';
+  loadTalks();
 };
 
 document.getElementById('btnHome').onclick=()=>{
@@ -176,22 +169,171 @@ document.getElementById('btnHome').onclick=()=>{
   document.getElementById('btnTalk').classList.remove('active');
   slider.style.transform='translateX(90px)';
   pageTalk.style.display='none';pageHome.style.display='block';
-  // ホームタブでは背景画像表示
   const bg=localStorage.getItem('myBgImage');
   if(bg){pc.style.background='';pc.style.backgroundImage=`url(${bg})`;pc.style.backgroundSize='cover';pc.style.backgroundPosition='center';}
 };
 
-// プロフィール読み込み
-function loadProfile(){
-  const name=localStorage.getItem('myName')||'マイネーム';
-  const av=localStorage.getItem('myAvatar')||'';
-  document.getElementById('dispName').textContent=name;
-  document.getElementById('inName').value=name;
-  const dav=document.getElementById('dispAv');
-  if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';} 
-  else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+async function api(path, opts={}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  });
+  return res.json();
+}
+
+// プロフィール読み込み（サーバーから）
+async function loadProfile(){
+  try {
+    const data = await api('/api/friends/me');
+    const name = data.displayName || data.username || 'マイネーム';
+    const idCode = data.userIdCode || '';
+    localStorage.setItem('myName', name);
+    localStorage.setItem('myUserId', data.userId);
+    localStorage.setItem('ring_userId', data.userId);
+    document.getElementById('dispName').textContent = name;
+    document.getElementById('inName').value = name;
+    // IDを表示（ホーム画面に追加）
+    let idEl = document.getElementById('myIdCode');
+    if (!idEl) {
+      const proDiv = document.querySelector('.mypro');
+      if (proDiv) {
+        const span = document.createElement('div');
+        span.id = 'myIdCode';
+        span.style.cssText = 'font-size:11px;color:#64748b;margin-top:2px;';
+        span.textContent = 'ID: ' + idCode;
+        proDiv.querySelector('.myn').after(span);
+      }
+    } else {
+      idEl.textContent = 'ID: ' + idCode;
+    }
+    const av=data.profilePic||localStorage.getItem('myAvatar')||'';
+    const dav=document.getElementById('dispAv');
+    if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';}
+    else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+  } catch(e) {
+    const name=localStorage.getItem('myName')||'マイネーム';
+    document.getElementById('dispName').textContent=name;
+    document.getElementById('inName').value=name;
+    const av=localStorage.getItem('myAvatar')||'';
+    const dav=document.getElementById('dispAv');
+    if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';}
+    else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+  }
 }
 loadProfile();
+
+// トークリスト読み込み
+async function loadTalks() {
+  try {
+    const talks = await api('/api/messages/talks');
+    const list = document.getElementById('talkList');
+    if (!Array.isArray(talks) || talks.length === 0) {
+      list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">まだトークがありません<br>友達を追加してメッセージしよう！</div>';
+      return;
+    }
+    list.innerHTML = talks.map(t => {
+      const initial = (t.displayName||'?')[0];
+      const pic = t.profilePic ? `background-image:url(${t.profilePic})` : '';
+      const time = t.lastTime ? formatTime(t.lastTime) : '';
+      return `<div class="ti" onclick="openChat('${t.userId}','${escHtml(t.displayName)}','${t.profilePic||''}')">
+        <div class="tav" style="${pic}">${pic?'':initial}</div>
+        <div class="tbody">
+          <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
+          <div class="tmsg">${escHtml(t.lastMessage||'')}</div>
+        </div>
+        ${t.unreadCount>0?`<div style="background:#667eea;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${t.unreadCount}</div>`:''}
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadTalks:', e); }
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  }
+  return (d.getMonth()+1) + '/' + d.getDate();
+}
+
+function escHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function openChat(userId, name, pic) {
+  location.href = `/chat.html?userId=${userId}&name=${encodeURIComponent(name)}&pic=${encodeURIComponent(pic||'')}`;
+}
+
+// 友達追加モーダル
+let addFriendMov = null;
+function openAddFriend() {
+  if (!addFriendMov) {
+    addFriendMov = document.createElement('div');
+    addFriendMov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.5);z-index:20000;display:flex;align-items:flex-end;justify-content:center;';
+    addFriendMov.innerHTML = `
+      <div style="width:100%;max-width:500px;background:#fff;border-radius:28px 28px 0 0;padding:24px;box-sizing:border-box;">
+        <h3 style="font-size:18px;font-weight:800;text-align:center;margin-bottom:20px;color:#0f172a">友達を追加</h3>
+        <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px">相手のID（例: U3K7F9）</label>
+        <input id="addFriendInput" type="text" placeholder="IDを入力..." style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;">
+        <div id="searchResult" style="margin-top:12px;"></div>
+        <button onclick="searchFriend()" style="width:100%;padding:14px;background:#667eea;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;">検索</button>
+        <button onclick="closeAddFriend()" style="width:100%;padding:14px;background:#f1f5f9;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">キャンセル</button>
+      </div>
+    `;
+    addFriendMov.onclick = e => { if (e.target === addFriendMov) closeAddFriend(); };
+    document.body.appendChild(addFriendMov);
+  } else {
+    addFriendMov.style.display = 'flex';
+  }
+}
+
+function closeAddFriend() {
+  if (addFriendMov) addFriendMov.style.display = 'none';
+}
+
+async function searchFriend() {
+  const q = document.getElementById('addFriendInput').value.trim();
+  if (!q) return;
+  const result = document.getElementById('searchResult');
+  result.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:8px">検索中...</div>';
+  try {
+    const data = await api('/api/friends/search?q=' + encodeURIComponent(q));
+    if (!data.length) {
+      result.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:8px">見つかりませんでした</div>';
+      return;
+    }
+    result.innerHTML = data.map(u => `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;">${(u.displayName||'?')[0]}</div>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(u.displayName)}</div>
+          <div style="font-size:12px;color:#64748b">ID: ${u.userIdCode}</div>
+        </div>
+        <button onclick="sendFriendRequest('${u.userIdCode}',this)" style="padding:8px 16px;background:#667eea;color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;">追加</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    result.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:14px;padding:8px">エラーが発生しました</div>';
+  }
+}
+
+async function sendFriendRequest(targetId, btn) {
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+  try {
+    const data = await api('/api/friends/request', { method:'POST', body: JSON.stringify({ targetUserIdCode: targetId }) });
+    if (data.ok) {
+      btn.textContent = '送信済み ✓';
+      btn.style.background = '#10b981';
+    } else {
+      btn.textContent = data.error || 'エラー';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = 'エラー';
+    btn.disabled = false;
+  }
+}
 
 // 設定モーダル
 const settingsMov=document.getElementById('settingsMov');
@@ -228,9 +370,13 @@ document.getElementById('inBgFile').onchange=e=>{
   const r=new FileReader();r.onload=ev=>{bgUrl=ev.target.result;};r.readAsDataURL(f);
 };
 
-document.getElementById('saveSettings').onclick=()=>{
+document.getElementById('saveSettings').onclick=async ()=>{
   const name=document.getElementById('inName').value.trim();
-  if(name){localStorage.setItem('myName',name);document.getElementById('dispName').textContent=name;}
+  if(name){
+    localStorage.setItem('myName',name);
+    document.getElementById('dispName').textContent=name;
+    await api('/api/friends/me', { method:'POST', body: JSON.stringify({ displayName: name }) });
+  }
   if(bgUrl){localStorage.setItem('myBgImage',bgUrl);}
   if(cropImg.src&&cropImg.complete&&cropImg.src!==location.href){
     const canvas=document.createElement('canvas');canvas.width=140;canvas.height=140;
@@ -255,12 +401,10 @@ ngMov.onclick=e=>{if(e.target===ngMov)ngMov.classList.remove('open');};
 
 document.getElementById('ngCreate').onclick=()=>{
   const name=document.getElementById('ngName').value.trim();if(!name)return;
-  // localStorageのgroupInfoをリセットして新グループ
   const newGroup={name,emoji:'💬',avatarImg:'',members:[
     {id:'me',name:localStorage.getItem('myName')||'自分',color:'#3b82f6',initials:(localStorage.getItem('myName')||'自').charAt(0),avatarImg:localStorage.getItem('myAvatar')||''},
   ]};
   localStorage.setItem('groupInfo',JSON.stringify(newGroup));
-  // リストに追加
   const list=document.getElementById('groupList');
   const a=document.createElement('a');
   a.href=`groupchat.html?name=${encodeURIComponent(name)}`;
@@ -270,6 +414,9 @@ document.getElementById('ngCreate').onclick=()=>{
   document.getElementById('ngName').value='';
   ngMov.classList.remove('open');
 };
+
+// 初期読み込み
+loadTalks();
 </script>
 </body>
 </html>
