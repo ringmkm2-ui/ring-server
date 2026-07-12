@@ -133,6 +133,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <div class="fiw"><span class="cfb">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
     </div>
     <button class="savebtn" id="saveSettings" type="button">変更を適用して閉じる</button>
+    <button onclick="logout()" style="width:100%;padding:14px;background:#fee2e2;color:#ef4444;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
   </div>
 </div>
 
@@ -451,6 +452,11 @@ document.getElementById('ngCreate').onclick=()=>{
 
 // 初期読み込み
 loadTalks();
+
+function logout() {
+  localStorage.clear();
+  window.location.href = '/auth.html';
+}
 </script>
 </body>
 </html>
