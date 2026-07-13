@@ -112,7 +112,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
             </button>
           </div>
         </div>
-      </section>
+
+        <!-- 友達リクエストセクション -->
+        <div class="card" id="pendingRequestsCard" style="display:none;">
+          <div class="slabel">友達リクエスト</div>
+          <div id="pendingList"></div>
+        </div>
     </main>
   </div>
 </div>
@@ -175,6 +180,7 @@ document.getElementById('btnHome').onclick=()=>{
   pageTalk.style.display='none';pageHome.style.display='block';
   const bg=localStorage.getItem('myBgImage');
   if(bg){pc.style.background='';pc.style.backgroundImage=`url(${bg})`;pc.style.backgroundSize='cover';pc.style.backgroundPosition='center';}
+  loadPendingRequests();
 };
 
 async function api(path, opts={}) {
@@ -449,6 +455,57 @@ document.getElementById('ngCreate').onclick=()=>{
   document.getElementById('ngName').value='';
   ngMov.classList.remove('open');
 };
+
+// 友達リクエスト読み込み
+async function loadPendingRequests() {
+  try {
+    const pending = await api('/api/friends/pending');
+    const card = document.getElementById('pendingRequestsCard');
+    const list = document.getElementById('pendingList');
+
+    if (!Array.isArray(pending) || pending.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    list.innerHTML = pending.map(p => {
+      const initial = (p.displayName || '?')[0];
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
+          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;">${initial}</div>
+          <div style="flex:1">
+            <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(p.displayName)}</div>
+            <div style="font-size:12px;color:#64748b">${p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み'}</div>
+          </div>
+          ${!p.isSentByMe ? `<button onclick="acceptFriendRequest('${p.friendshipId}',this)" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;">承認</button>` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('loadPendingRequests error:', e);
+  }
+}
+
+async function acceptFriendRequest(friendshipId, btn) {
+  btn.disabled = true;
+  btn.textContent = '承認中...';
+  try {
+    const data = await api('/api/friends/accept', { method: 'POST', body: JSON.stringify({ friendshipId }) });
+    if (data.ok) {
+      btn.textContent = '承認済み ✓';
+      btn.style.background = '#6b7280';
+      loadPendingRequests();
+      loadTalks();
+    } else {
+      btn.textContent = 'エラー';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    btn.textContent = 'エラー';
+    btn.disabled = false;
+  }
+}
 
 // 初期読み込み
 loadTalks();
