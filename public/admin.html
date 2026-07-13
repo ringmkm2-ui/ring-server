@@ -289,7 +289,31 @@ document.getElementById('fileInput').onchange = e => { handleMedia(e.target.file
 
 function handleMedia(f, t) {
   if (!f) return;
-  createMsg(null, f, t);
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result;
+    const caption = prompt(`${t === 'image' ? '📷' : '🎥'} キャプション（オプション）:`, '');
+    createMsg(caption || `[${t === 'image' ? '画像' : '動画'}]`, f, t);
+    
+    // APIで送信（Base64保存）
+    try {
+      const data = await api('/api/messages/send', {
+        method: 'POST',
+        body: JSON.stringify({
+          recipientId: otherId,
+          content: caption || `[${t === 'image' ? '画像' : '動画'}]`,
+          mediaType: t,
+          mediaData: base64,
+        }),
+      });
+      if (data.message) {
+        addRealMessage(data.message);
+      }
+    } catch (err) {
+      console.error('media send error:', err);
+    }
+  };
+  reader.readAsDataURL(f);
   document.getElementById('inputBar').classList.remove('media-open');
 }
 
@@ -359,10 +383,36 @@ function addRealMessage(msg) {
 function renderIncoming(msg) {
   const cs = document.getElementById('chatScreen');
   const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'incoming');
+  if (msg.id) msgDiv.dataset.msgId = msg.id;
   const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
   const bubble = document.createElement('div'); bubble.classList.add('bubble');
-  const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = msg.content;
-  bubble.appendChild(sp);
+
+  // メディア判定（JSONで保存されている場合）
+  let displayText = msg.content;
+  try {
+    const parsed = JSON.parse(msg.content);
+    if (parsed.media && parsed.mediaType) {
+      bubble.classList.add('media-bub');
+      if (parsed.mediaType === 'image') {
+        const img = document.createElement('img');
+        img.src = parsed.media;
+        bubble.appendChild(img);
+      } else if (parsed.mediaType === 'video') {
+        const video = document.createElement('video');
+        video.src = parsed.media;
+        video.controls = true;
+        bubble.appendChild(video);
+      }
+      displayText = parsed.text || '';
+    }
+  } catch (e) {
+    // JSONパースに失敗したらそのまま表示
+  }
+
+  if (displayText) {
+    const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = displayText;
+    bubble.appendChild(sp);
+  }
 
   const d = new Date(msg.createdAt);
   const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -416,6 +466,11 @@ function connectRealWS() {
             renderIncoming(msg);
           }
         }
+      } else if (data.type === 'typing' && data.userId === otherId) {
+        showTypingIndicator();
+      } else if (data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'message_reaction' || data.type === 'message_pinned') {
+        // リアルタイム更新（編集・削除・リアクション・ピン留め）
+        loadRealHistory();
       }
     } catch (err) {}
   };
@@ -424,7 +479,37 @@ function connectRealWS() {
   ws.onerror = () => ws.close();
 }
 
-// 初回読み込み時、最初から会話履歴を全部表示
+// タイピングインジケータ
+let typingTimeoutId = null;
+function showTypingIndicator() {
+  let ti = document.getElementById('typingIndicator');
+  if (!ti) {
+    ti = document.createElement('div');
+    ti.id = 'typingIndicator';
+    ti.style.cssText = 'padding:12px;color:#999;font-size:13px;font-style:italic;';
+    document.getElementById('chatScreen').appendChild(ti);
+  }
+  ti.textContent = '相手が入力中...';
+  ti.style.display = 'block';
+  
+  clearTimeout(typingTimeoutId);
+  typingTimeoutId = setTimeout(() => {
+    ti.style.display = 'none';
+  }, 3000);
+}
+
+// 入力中通知を送信（debounce）
+let typingNotifySent = false;
+let lastTypingTime = 0;
+document.getElementById('msgInput').addEventListener('input', () => {
+  const now = Date.now();
+  if (now - lastTypingTime > 500) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing', recipientId: otherId }));
+    }
+    lastTypingTime = now;
+  }
+});
 async function initialLoadHistory() {
   try {
     const data = await api('/api/messages/history/' + otherId);

@@ -21,19 +21,29 @@ function auth(req, res, next) {
 
 // メッセージ送信
 // POST /api/messages/send
-// body: { recipientId, content }
+// body: { recipientId, content, mediaType?, mediaData? }
+// mediaType: 'image' | 'video' | null（テキスト）
+// mediaData: base64エンコードされたデータ
 router.post('/send', auth, async (req, res) => {
   try {
-    const { recipientId, content } = req.body;
+    const { recipientId, content, mediaType, mediaData } = req.body;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
 
     const msgId = uuidv4();
+    const msgType = mediaType || 'text';
+    let finalContent = content;
+    
+    // 画像・動画の場合、JSONで { text, media, mediaType } を保存
+    if (mediaData) {
+      finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
+    }
+
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content) VALUES (?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, content]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type) VALUES (?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -47,6 +57,7 @@ router.post('/send', auth, async (req, res) => {
         senderId: msg.sender_id,
         recipientId: msg.recipient_id,
         content: msg.content,
+        msgType: msg.msg_type,
         createdAt: msg.created_at,
       }
     };
