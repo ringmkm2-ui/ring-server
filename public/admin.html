@@ -230,7 +230,7 @@ callAv.textContent = partnerName.charAt(0);
 document.getElementById('callName').textContent = partnerName;
 
 let activeMsg = null, activeBubble = null, isOwn = false;
-let isEditing = false, editNode = null, editMeta = null;
+let isEditing = false, editNode = null, editMeta = null, editMsgId = null;
 let reactTarget = null;
 
 const paperPlane = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
@@ -242,7 +242,13 @@ REACTIONS.forEach(e => {
   const b = document.createElement('button');
   b.className = 'rp-btn'; b.textContent = e;
   b.onclick = () => {
-    if (reactTarget) addReaction(reactTarget, e);
+    if (reactTarget) {
+      addReaction(reactTarget, e);
+      const msgId = activeMsg ? activeMsg.dataset.msgId : null;
+      if (msgId) {
+        api('/api/messages/react', { method: 'POST', body: JSON.stringify({ messageId: msgId, emoji: e }) }).catch(err => console.error('react error:', err));
+      }
+    }
     rp.classList.remove('show');
   };
   rp.appendChild(b);
@@ -292,11 +298,15 @@ document.getElementById('chatForm').onsubmit = e => {
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
   if (isEditing) {
+    const msgId = editMsgId;
     editNode.textContent = txt;
     const ts = editMeta.querySelector('.time');
     if (ts && !ts.textContent.includes('(編集済)')) ts.textContent += ' (編集済)';
-    isEditing = false; editNode = null; editMeta = null;
+    isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('sendBtn').innerHTML = paperPlane;
+    if (msgId) {
+      api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: txt }) }).catch(err => console.error('edit error:', err));
+    }
   } else {
     sendRealMessage(txt);
   }
@@ -568,30 +578,43 @@ document.getElementById('reactBtn').onclick = () => {
 };
 
 document.getElementById('editBtn').onclick = () => {
-  if (!activeBubble) return;
+  if (!activeBubble || !activeMsg) return;
   const sp = activeBubble.querySelector('.msg-text');
   const meta = activeBubble.querySelector('.msg-meta');
   if (!sp) return;
   hideMenu();
-  isEditing = true; editNode = sp; editMeta = meta;
+  isEditing = true; editNode = sp; editMeta = meta; editMsgId = activeMsg.dataset.msgId;
   document.getElementById('msgInput').value = sp.textContent;
   document.getElementById('msgInput').focus();
   document.getElementById('sendBtn').innerHTML = checkSvg;
 };
 
 document.getElementById('pinBtn').onclick = () => {
-  if (!activeBubble) return;
+  if (!activeBubble || !activeMsg) return;
   const sp = activeBubble.querySelector('.msg-text, .file-name');
   const txt = sp ? sp.textContent : '📎 メディア';
   document.getElementById('pinText').textContent = txt;
   document.getElementById('pinBanner').classList.add('show');
+  const msgId = activeMsg.dataset.msgId;
   hideMenu();
+  if (msgId) {
+    api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: msgId, pinned: true }) }).catch(err => console.error('pin error:', err));
+    document.getElementById('pinBanner').dataset.msgId = msgId;
+  }
 };
-document.getElementById('pinClose').onclick = () => document.getElementById('pinBanner').classList.remove('show');
+document.getElementById('pinClose').onclick = () => {
+  const banner = document.getElementById('pinBanner');
+  const msgId = banner.dataset.msgId;
+  banner.classList.remove('show');
+  if (msgId) {
+    api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: msgId, pinned: false }) }).catch(err => console.error('unpin error:', err));
+  }
+};
 
 document.getElementById('delBtn').onclick = () => {
   if (!activeMsg) return;
   const target = activeMsg;
+  const msgId = target.dataset.msgId;
   hideMenu();
   // 「送信を取り消しました」通知に置き換え
   const notice = document.createElement('div');
@@ -599,9 +622,12 @@ document.getElementById('delBtn').onclick = () => {
   notice.textContent = `${myName}がメッセージの送信を取り消しました`;
   target.parentNode.replaceChild(notice, target);
   if (isEditing && editNode) {
-    isEditing = false; editNode = null; editMeta = null;
+    isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('msgInput').value = '';
     document.getElementById('sendBtn').innerHTML = paperPlane;
+  }
+  if (msgId) {
+    api('/api/messages/delete', { method: 'POST', body: JSON.stringify({ messageId: msgId }) }).catch(err => console.error('delete error:', err));
   }
 };
 

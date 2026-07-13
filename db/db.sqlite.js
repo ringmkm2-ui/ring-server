@@ -39,6 +39,15 @@ async function initDB() {
     db.run('DROP TABLE IF EXISTS users');
   }
 
+  // messages テーブルのマイグレーションチェック（edited_at等の新カラム）
+  const msgTableInfo = db.exec('PRAGMA table_info(messages)');
+  const hasEditedAt = msgTableInfo.length > 0 && msgTableInfo[0].values.some(row => row[1] === 'edited_at');
+  if (!hasEditedAt && msgTableInfo.length > 0) {
+    console.log('Migrating messages table - adding edited_at/deleted_at/pinned_at');
+    db.run('DROP TABLE IF EXISTS message_reactions');
+    db.run('DROP TABLE IF EXISTS messages');
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -118,8 +127,22 @@ async function initDB() {
       msg_type TEXT DEFAULT 'text',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       read_at TEXT,
+      edited_at TEXT,
+      deleted_at TEXT,
+      pinned_at TEXT,
       FOREIGN KEY (sender_id) REFERENCES users(id),
       FOREIGN KEY (recipient_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(message_id, user_id, emoji),
+      FOREIGN KEY (message_id) REFERENCES messages(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
     -- テキストメッセージは中継のみ: オフライン時の一時保管用キュー

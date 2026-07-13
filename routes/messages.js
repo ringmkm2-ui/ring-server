@@ -90,14 +90,27 @@ router.get('/history/:userId', auth, async (req, res) => {
       [otherId, req.userId]
     );
 
-    res.json(rows.reverse().map(m => ({
-      id: m.id,
-      senderId: m.sender_id,
-      recipientId: m.recipient_id,
-      content: m.content,
-      createdAt: m.created_at,
-      readAt: m.read_at,
-    })));
+    const result = [];
+    for (const m of rows.reverse()) {
+      const reactions = await db.all(
+        'SELECT emoji, COUNT(*) as cnt FROM message_reactions WHERE message_id = ? GROUP BY emoji',
+        [m.id]
+      );
+      result.push({
+        id: m.id,
+        senderId: m.sender_id,
+        recipientId: m.recipient_id,
+        content: m.deleted_at ? '' : m.content,
+        createdAt: m.created_at,
+        readAt: m.read_at,
+        editedAt: m.edited_at,
+        deletedAt: m.deleted_at,
+        pinnedAt: m.pinned_at,
+        reactions: reactions.map(r => ({ emoji: r.emoji, count: r.cnt })),
+      });
+    }
+
+    res.json(result);
   } catch (e) {
     console.error('Error fetching history:', e.message);
     res.status(500).json({ error: e.message });
@@ -173,6 +186,168 @@ router.get('/talks', auth, async (req, res) => {
     res.json(result);
   } catch (e) {
     console.error('Error fetching talks:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// メッセージ編集
+// POST /api/messages/edit
+// body: { messageId, content }
+router.post('/edit', auth, async (req, res) => {
+  try {
+    const { messageId, content } = req.body;
+    if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
+
+    const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
+    if (!msg) return res.status(404).json({ error: 'message not found' });
+    if (msg.sender_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
+    if (msg.deleted_at) return res.status(400).json({ error: 'message deleted' });
+
+    await db.run("UPDATE messages SET content = ?, edited_at = datetime('now') WHERE id = ?", [content, messageId]);
+    const updated = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
+
+    const payload = {
+      type: 'message_edited',
+      message: {
+        id: updated.id,
+        senderId: updated.sender_id,
+        recipientId: updated.recipient_id,
+        content: updated.content,
+        editedAt: updated.edited_at,
+      }
+    };
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(updated.recipient_id, payload);
+    broadcastToUser(updated.sender_id, payload);
+
+    res.json({ ok: true, message: payload.message });
+  } catch (e) {
+    console.error('Error editing message:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// メッセージ削除（送信取り消し）
+// POST /api/messages/delete
+// body: { messageId }
+router.post('/delete', auth, async (req, res) => {
+  try {
+    const { messageId } = req.body;
+    if (!messageId) return res.status(400).json({ error: 'messageId required' });
+
+    const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
+    if (!msg) return res.status(404).json({ error: 'message not found' });
+    if (msg.sender_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
+
+    await db.run("UPDATE messages SET deleted_at = datetime('now'), content = '' WHERE id = ?", [messageId]);
+
+    const payload = {
+      type: 'message_deleted',
+      messageId: messageId,
+      senderId: msg.sender_id,
+      recipientId: msg.recipient_id,
+    };
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(msg.recipient_id, payload);
+    broadcastToUser(msg.sender_id, payload);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error deleting message:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// メッセージピン留め切り替え
+// POST /api/messages/pin
+// body: { messageId, pinned }
+router.post('/pin', auth, async (req, res) => {
+  try {
+    const { messageId, pinned } = req.body;
+    if (!messageId) return res.status(400).json({ error: 'messageId required' });
+
+    const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
+    if (!msg) return res.status(404).json({ error: 'message not found' });
+
+    // 参加者のみピン留め可能
+    if (msg.sender_id !== req.userId && msg.recipient_id !== req.userId) {
+      return res.status(403).json({ error: 'not authorized' });
+    }
+
+    if (pinned) {
+      await db.run("UPDATE messages SET pinned_at = datetime('now') WHERE id = ?", [messageId]);
+    } else {
+      await db.run("UPDATE messages SET pinned_at = NULL WHERE id = ?", [messageId]);
+    }
+
+    const payload = {
+      type: 'message_pinned',
+      messageId: messageId,
+      pinned: !!pinned,
+      senderId: msg.sender_id,
+      recipientId: msg.recipient_id,
+    };
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(msg.recipient_id, payload);
+    broadcastToUser(msg.sender_id, payload);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error pinning message:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// リアクション追加/削除（トグル）
+// POST /api/messages/react
+// body: { messageId, emoji }
+router.post('/react', auth, async (req, res) => {
+  try {
+    const { messageId, emoji } = req.body;
+    if (!messageId || !emoji) return res.status(400).json({ error: 'messageId and emoji required' });
+
+    const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
+    if (!msg) return res.status(404).json({ error: 'message not found' });
+    if (msg.sender_id !== req.userId && msg.recipient_id !== req.userId) {
+      return res.status(403).json({ error: 'not authorized' });
+    }
+
+    const existing = await db.get(
+      'SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?',
+      [messageId, req.userId, emoji]
+    );
+
+    let action;
+    if (existing) {
+      await db.run('DELETE FROM message_reactions WHERE id = ?', [existing.id]);
+      action = 'removed';
+    } else {
+      await db.run(
+        'INSERT INTO message_reactions (id, message_id, user_id, emoji) VALUES (?, ?, ?, ?)',
+        [uuidv4(), messageId, req.userId, emoji]
+      );
+      action = 'added';
+    }
+
+    const reactions = await db.all(
+      'SELECT emoji, COUNT(*) as cnt FROM message_reactions WHERE message_id = ? GROUP BY emoji',
+      [messageId]
+    );
+
+    const payload = {
+      type: 'message_reaction',
+      messageId: messageId,
+      reactions: reactions.map(r => ({ emoji: r.emoji, count: r.cnt })),
+      senderId: msg.sender_id,
+      recipientId: msg.recipient_id,
+    };
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(msg.recipient_id, payload);
+    broadcastToUser(msg.sender_id, payload);
+
+    res.json({ ok: true, action, reactions: payload.reactions });
+  } catch (e) {
+    console.error('Error reacting to message:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
