@@ -194,13 +194,33 @@ function nameColor(name) {
 
 const params = new URLSearchParams(location.search);
 const partnerName = params.get('name') || 'ユーザー名';
+const otherId = params.get('userId') || params.get('id');
+const otherPic = params.get('pic') || '';
 const myName = localStorage.getItem('myName') || '自分';
 const myAvatar = localStorage.getItem('myAvatar') || '';
 
+const token = localStorage.getItem('ring_token');
+const myUserId = localStorage.getItem('ring_userId');
+if (!token) location.href = '/auth.html';
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  return res.json();
+}
+
 // パートナーアバター（ヘッダー）
 const pAv = document.getElementById('partnerAv');
-pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
-pAv.textContent = partnerName.charAt(0);
+if (otherPic) {
+  pAv.style.backgroundImage = `url(${otherPic})`;
+  pAv.style.backgroundSize = 'cover';
+  pAv.style.backgroundPosition = 'center';
+} else {
+  pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+  pAv.textContent = partnerName.charAt(0);
+}
 document.getElementById('partnerName').textContent = partnerName;
 
 // 通話オーバーレイ → パートナーを表示（自分じゃない）
@@ -278,11 +298,127 @@ document.getElementById('chatForm').onsubmit = e => {
     isEditing = false; editNode = null; editMeta = null;
     document.getElementById('sendBtn').innerHTML = paperPlane;
   } else {
-    createMsg(txt, null, null);
+    sendRealMessage(txt);
   }
   document.getElementById('msgInput').value = '';
   document.getElementById('inputBar').classList.remove('media-open');
 };
+
+// 実際のメッセージ送受信管理
+let realMessages = [];
+
+async function sendRealMessage(content) {
+  createMsg(content, null, null); // 楽観的UI表示
+  try {
+    const data = await api('/api/messages/send', {
+      method: 'POST',
+      body: JSON.stringify({ recipientId: otherId, content }),
+    });
+    if (data.message) {
+      addRealMessage(data.message);
+    }
+  } catch (err) {
+    console.error('send error:', err);
+  }
+}
+
+function addRealMessage(msg) {
+  if (realMessages.find(m => m.id === msg.id)) return;
+  realMessages.push(msg);
+}
+
+function renderIncoming(msg) {
+  const cs = document.getElementById('chatScreen');
+  const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'incoming');
+  const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
+  const bubble = document.createElement('div'); bubble.classList.add('bubble');
+  const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = msg.content;
+  bubble.appendChild(sp);
+
+  const d = new Date(msg.createdAt);
+  const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const meta = document.createElement('div'); meta.className = 'msg-meta';
+  meta.innerHTML = `<span class="time">${t}</span>`;
+  bubble.appendChild(meta);
+  wrap.appendChild(bubble);
+  msgDiv.appendChild(wrap);
+  cs.appendChild(msgDiv);
+  cs.scrollTop = 99999;
+
+  attachPress(msgDiv, wrap, bubble, false);
+}
+
+async function loadRealHistory() {
+  try {
+    const data = await api('/api/messages/history/' + otherId);
+    if (!Array.isArray(data)) return;
+
+    const newOnes = data.filter(m => !realMessages.find(rm => rm.id === m.id));
+    newOnes.forEach(msg => {
+      addRealMessage(msg);
+      if (msg.senderId !== myUserId) {
+        renderIncoming(msg);
+      }
+      // 自分の送信メッセージは楽観的UIで既に表示済みなのでスキップ
+    });
+  } catch (err) {
+    console.error('loadRealHistory error:', err);
+  }
+}
+
+// WebSocket接続（リアルタイム受信）
+let ws = null;
+function connectRealWS() {
+  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'auth', token }));
+  };
+
+  ws.onmessage = e => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'new_message') {
+        const msg = data.message;
+        if ((msg.senderId === otherId && msg.recipientId === myUserId)) {
+          if (!realMessages.find(m => m.id === msg.id)) {
+            addRealMessage(msg);
+            renderIncoming(msg);
+          }
+        }
+      }
+    } catch (err) {}
+  };
+
+  ws.onclose = () => setTimeout(connectRealWS, 5000);
+  ws.onerror = () => ws.close();
+}
+
+// 初回読み込み時、最初から会話履歴を全部表示
+async function initialLoadHistory() {
+  try {
+    const data = await api('/api/messages/history/' + otherId);
+    if (!Array.isArray(data)) return;
+
+    data.forEach(msg => {
+      addRealMessage(msg);
+      if (msg.senderId === myUserId) {
+        createMsg(msg.content, null, null);
+      } else {
+        renderIncoming(msg);
+      }
+    });
+  } catch (err) {
+    console.error('initialLoadHistory error:', err);
+  }
+}
+
+if (otherId) {
+  initialLoadHistory();
+  connectRealWS();
+  setInterval(loadRealHistory, 5000);
+}
 
 function createMsg(text, file, ftype) {
   const cs = document.getElementById('chatScreen');

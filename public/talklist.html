@@ -261,7 +261,7 @@ function escHtml(str) {
 }
 
 function openChat(userId, name, pic) {
-  location.href = `/chat.html?userId=${userId}&name=${encodeURIComponent(name)}&pic=${encodeURIComponent(pic||'')}`;
+  location.href = `/admin.html?userId=${userId}&name=${encodeURIComponent(name)}&pic=${encodeURIComponent(pic||'')}`;
 }
 
 // 友達追加モーダル（下から上にスライドアニメーション）
@@ -509,6 +509,15 @@ async function acceptFriendRequest(friendshipId, btn) {
 
 // 初期読み込み
 loadTalks();
+loadPendingRequests();
+
+// 自動更新: トークリストと友達リクエストを定期的に最新化
+setInterval(() => {
+  const talkVisible = document.getElementById('pageTalk').style.display !== 'none';
+  const homeVisible = document.getElementById('pageHome').style.display !== 'none';
+  if (talkVisible) loadTalks();
+  if (homeVisible) loadPendingRequests();
+}, 4000);
 
 function logout() {
   localStorage.clear();
