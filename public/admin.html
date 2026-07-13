@@ -308,7 +308,7 @@ document.getElementById('chatForm').onsubmit = e => {
 let realMessages = [];
 
 async function sendRealMessage(content) {
-  createMsg(content, null, null); // 楽観的UI表示
+  const tempDiv = createMsg(content, null, null); // 楽観的UI表示（1つ目のチェックのみ点灯）
   try {
     const data = await api('/api/messages/send', {
       method: 'POST',
@@ -316,10 +316,29 @@ async function sendRealMessage(content) {
     });
     if (data.message) {
       addRealMessage(data.message);
+      if (tempDiv) tempDiv.dataset.msgId = data.message.id;
     }
   } catch (err) {
     console.error('send error:', err);
   }
+}
+
+// 既読確認: 定期的に自分の送信メッセージの既読状態をチェックしてcheck-2を点灯
+async function checkReadReceipts() {
+  try {
+    const data = await api('/api/messages/history/' + otherId);
+    if (!Array.isArray(data)) return;
+
+    data.forEach(msg => {
+      if (msg.senderId === myUserId && msg.readAt) {
+        const el = document.querySelector(`[data-msg-id="${msg.id}"]`);
+        if (el) {
+          const c2 = el.querySelector('.check-2');
+          if (c2 && !c2.classList.contains('lit')) c2.classList.add('lit');
+        }
+      }
+    });
+  } catch (err) {}
 }
 
 function addRealMessage(msg) {
@@ -404,7 +423,11 @@ async function initialLoadHistory() {
     data.forEach(msg => {
       addRealMessage(msg);
       if (msg.senderId === myUserId) {
-        createMsg(msg.content, null, null);
+        const div = createMsg(msg.content, null, null, msg.id);
+        if (msg.readAt) {
+          const c2 = div.querySelector('.check-2');
+          if (c2) c2.classList.add('lit');
+        }
       } else {
         renderIncoming(msg);
       }
@@ -414,15 +437,37 @@ async function initialLoadHistory() {
   }
 }
 
+// パートナープロフィールの最新化（相手が名前/画像を変更したら反映）
+async function refreshPartnerProfile() {
+  if (!otherId) return;
+  try {
+    const friends = await api('/api/friends/list');
+    const partner = Array.isArray(friends) ? friends.find(f => f.userId === otherId) : null;
+    if (partner) {
+      document.getElementById('partnerName').textContent = partner.displayName || partnerName;
+      if (partner.profilePic) {
+        pAv.style.backgroundImage = `url(${partner.profilePic})`;
+        pAv.style.backgroundSize = 'cover';
+        pAv.style.backgroundPosition = 'center';
+        pAv.textContent = '';
+      }
+    }
+  } catch (err) {}
+}
+
 if (otherId) {
   initialLoadHistory();
   connectRealWS();
   setInterval(loadRealHistory, 5000);
+  setInterval(checkReadReceipts, 3000);
+  refreshPartnerProfile();
+  setInterval(refreshPartnerProfile, 8000);
 }
 
-function createMsg(text, file, ftype) {
+function createMsg(text, file, ftype, msgId) {
   const cs = document.getElementById('chatScreen');
   const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'outgoing');
+  if (msgId) msgDiv.dataset.msgId = msgId;
   const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
   const bubble = document.createElement('div'); bubble.classList.add('bubble');
   let mediaEl = null;
@@ -473,6 +518,7 @@ function createMsg(text, file, ftype) {
     mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, ftype); });
   }
   ['imgInput','vidInput','fileInput'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  return msgDiv;
 }
 
 function attachPress(msgDiv, wrap, bubble, own) {
