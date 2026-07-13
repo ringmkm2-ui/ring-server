@@ -208,11 +208,26 @@
       return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
     }
 
+    function addOrUpdateMessage(msg) {
+      const idx = messages.findIndex(m => m.id === msg.id);
+      if (idx === -1) {
+        messages.push(msg);
+      } else {
+        messages[idx] = msg;
+      }
+      messages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      renderMessages(messages);
+    }
+
     async function loadHistory() {
       try {
         const data = await api('/api/messages/history/' + otherId);
         if (Array.isArray(data)) {
-          messages = data;
+          // マージ: 既存メッセージをID基準で置き換え、重複させない
+          const merged = new Map();
+          messages.forEach(m => merged.set(m.id, m));
+          data.forEach(m => merged.set(m.id, m));
+          messages = Array.from(merged.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
           renderMessages(messages);
         }
       } catch (e) {
@@ -234,8 +249,7 @@
           body: JSON.stringify({ recipientId: otherId, content }),
         });
         if (data.message) {
-          messages.push(data.message);
-          renderMessages(messages);
+          addOrUpdateMessage(data.message);
         }
       } catch (e) {
         console.error('sendMessage error:', e);
@@ -274,11 +288,7 @@
             const msg = data.message;
             if ((msg.senderId === otherId && msg.recipientId === myUserId) ||
                 (msg.senderId === myUserId && msg.recipientId === otherId)) {
-              // 重複チェック
-              if (!messages.find(m => m.id === msg.id)) {
-                messages.push(msg);
-                renderMessages(messages);
-              }
+              addOrUpdateMessage(msg);
             }
           }
         } catch (err) {}
