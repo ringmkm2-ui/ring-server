@@ -104,10 +104,11 @@ router.get('/history/:userId', auth, async (req, res) => {
   }
 });
 
-// トークリスト取得（最新メッセージ付き）
+// トークリスト取得（最新メッセージ付き + メッセージなしの友達も含む）
 // GET /api/messages/talks
 router.get('/talks', auth, async (req, res) => {
   try {
+    // メッセージがある会話
     const rows = await db.all(`
       SELECT
         CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
@@ -122,6 +123,8 @@ router.get('/talks', auth, async (req, res) => {
     `, [req.userId, req.userId, req.userId]);
 
     const result = [];
+    const processedIds = new Set();
+
     for (const row of rows) {
       const user = await db.get('SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ?', [row.other_id]);
       if (user) {
@@ -138,6 +141,32 @@ router.get('/talks', auth, async (req, res) => {
           lastTime: row.last_time,
           unreadCount: unread ? unread.cnt : 0,
         });
+        processedIds.add(user.id);
+      }
+    }
+
+    // メッセージのない友達も含める
+    const friends = await db.all(`
+      SELECT
+        CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as friend_id
+      FROM friendships
+      WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'
+    `, [req.userId, req.userId, req.userId]);
+
+    for (const f of friends) {
+      if (!processedIds.has(f.friend_id)) {
+        const user = await db.get('SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ?', [f.friend_id]);
+        if (user) {
+          result.push({
+            userId: user.id,
+            userIdCode: user.user_id,
+            displayName: user.display_name,
+            profilePic: user.profile_pic,
+            lastMessage: '',
+            lastTime: new Date().toISOString(),
+            unreadCount: 0,
+          });
+        }
       }
     }
 
