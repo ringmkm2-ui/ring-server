@@ -19,6 +19,18 @@ function auth(req, res, next) {
   }
 }
 
+// メッセージ内容をトークリスト用のプレビューテキストに変換
+function toPreviewText(content) {
+  if (!content) return '';
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && parsed.media && parsed.mediaType) {
+      return parsed.mediaType === 'image' ? '📷 画像が送信されました' : '🎥 動画が送信されました';
+    }
+  } catch (e) {}
+  return content;
+}
+
 // メッセージ送信
 // POST /api/messages/send
 // body: { recipientId, content, mediaType?, mediaData? }
@@ -139,6 +151,7 @@ router.get('/talks', auth, async (req, res) => {
         content,
         created_at,
         sender_id,
+        deleted_at,
         MAX(created_at) as last_time
       FROM messages
       WHERE sender_id = ? OR recipient_id = ?
@@ -161,7 +174,7 @@ router.get('/talks', auth, async (req, res) => {
           userIdCode: user.user_id,
           displayName: user.display_name,
           profilePic: user.profile_pic,
-          lastMessage: row.content,
+          lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content),
           lastTime: row.last_time,
           unreadCount: unread ? unread.cnt : 0,
         });

@@ -242,43 +242,24 @@ REACTIONS.forEach(e => {
   const b = document.createElement('button');
   b.className = 'rp-btn'; b.textContent = e;
   b.onclick = () => {
-    if (reactTarget) {
-      addReaction(reactTarget, e);
-      const msgId = activeMsg ? activeMsg.dataset.msgId : null;
-      if (msgId) {
-        api('/api/messages/react', { method: 'POST', body: JSON.stringify({ messageId: msgId, emoji: e }) }).catch(err => console.error('react error:', err));
-      }
+    const msgId = activeMsg ? activeMsg.dataset.msgId : null;
+    if (msgId) {
+      api('/api/messages/react', { method: 'POST', body: JSON.stringify({ messageId: msgId, emoji: e }) })
+        .then(data => {
+          if (data.ok) {
+            const local = realMessages.find(m => m.id === msgId);
+            if (local) {
+              local.reactions = data.reactions;
+              renderMessage(local);
+            }
+          }
+        })
+        .catch(err => console.error('react error:', err));
     }
     rp.classList.remove('show');
   };
   rp.appendChild(b);
 });
-
-function addReaction(wrap, emoji) {
-  let bar = wrap.querySelector('.reaction-bar');
-  if (!bar) { bar = document.createElement('div'); bar.className = 'reaction-bar'; wrap.appendChild(bar); }
-  let badge = [...bar.children].find(b => b.dataset.emoji === emoji);
-  if (badge) {
-    const cnt = parseInt(badge.dataset.cnt || 1);
-    if (badge.classList.contains('active')) {
-      const nc = cnt - 1;
-      if (nc <= 0) badge.remove();
-      else { badge.dataset.cnt = nc; badge.textContent = `${emoji} ${nc}`; badge.classList.remove('active'); }
-    } else {
-      badge.dataset.cnt = cnt + 1; badge.textContent = `${emoji} ${cnt + 1}`; badge.classList.add('active');
-    }
-  } else {
-    badge = document.createElement('button');
-    badge.className = 'rbadge active'; badge.dataset.emoji = emoji; badge.dataset.cnt = 1;
-    badge.textContent = `${emoji} 1`;
-    badge.onclick = () => {
-      const c = parseInt(badge.dataset.cnt || 1) - 1;
-      if (c <= 0) badge.remove();
-      else { badge.dataset.cnt = c; badge.textContent = `${emoji} ${c}`; badge.classList.remove('active'); }
-    };
-    bar.appendChild(badge);
-  }
-}
 
 // プラスボタン
 document.getElementById('plusBtn').onclick = () => document.getElementById('inputBar').classList.toggle('media-open');
@@ -289,60 +270,63 @@ document.getElementById('fileInput').onchange = e => { handleMedia(e.target.file
 
 function handleMedia(f, t) {
   if (!f) return;
+  if (t === 'file') {
+    alert('ファイル送信は現在未対応です。画像・動画をご利用ください。');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = async e => {
     const base64 = e.target.result;
-    const caption = prompt(`${t === 'image' ? '📷' : '🎥'} キャプション（オプション）:`, '');
-    createMsg(caption || `[${t === 'image' ? '画像' : '動画'}]`, f, t);
-    
-    // APIで送信（Base64保存）
+    document.getElementById('inputBar').classList.remove('media-open');
+
+    // APIで送信（Base64保存、劣化なし）
     try {
       const data = await api('/api/messages/send', {
         method: 'POST',
         body: JSON.stringify({
           recipientId: otherId,
-          content: caption || `[${t === 'image' ? '画像' : '動画'}]`,
+          content: `[${t === 'image' ? '画像' : '動画'}]`,
           mediaType: t,
           mediaData: base64,
         }),
       });
       if (data.message) {
         addRealMessage(data.message);
+        renderMessage(data.message);
       }
     } catch (err) {
       console.error('media send error:', err);
+      alert('送信に失敗しました');
     }
   };
   reader.readAsDataURL(f);
-  document.getElementById('inputBar').classList.remove('media-open');
 }
 
 document.getElementById('chatForm').onsubmit = e => {
   e.preventDefault();
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
+  document.getElementById('msgInput').value = '';
+  document.getElementById('inputBar').classList.remove('media-open');
+
   if (isEditing) {
     const msgId = editMsgId;
-    editNode.textContent = txt;
-    const ts = editMeta.querySelector('.time');
-    if (ts && !ts.textContent.includes('(編集済)')) ts.textContent += ' (編集済)';
     isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('sendBtn').innerHTML = paperPlane;
     if (msgId) {
-      api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: txt }) }).catch(err => console.error('edit error:', err));
+      api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: txt }) })
+        .then(data => { if (data.message) { addRealMessage(data.message); renderMessage(data.message); } })
+        .catch(err => console.error('edit error:', err));
     }
   } else {
     sendRealMessage(txt);
   }
-  document.getElementById('msgInput').value = '';
-  document.getElementById('inputBar').classList.remove('media-open');
 };
 
 // 実際のメッセージ送受信管理
 let realMessages = [];
 
 async function sendRealMessage(content) {
-  const tempDiv = createMsg(content, null, null); // 楽観的UI表示（1つ目のチェックのみ点灯）
   try {
     const data = await api('/api/messages/send', {
       method: 'POST',
@@ -350,7 +334,7 @@ async function sendRealMessage(content) {
     });
     if (data.message) {
       addRealMessage(data.message);
-      if (tempDiv) tempDiv.dataset.msgId = data.message.id;
+      renderMessage(data.message);
     }
   } catch (err) {
     console.error('send error:', err);
@@ -376,55 +360,107 @@ async function checkReadReceipts() {
 }
 
 function addRealMessage(msg) {
-  if (realMessages.find(m => m.id === msg.id)) return;
-  realMessages.push(msg);
+  const idx = realMessages.findIndex(m => m.id === msg.id);
+  if (idx === -1) realMessages.push(msg);
+  else realMessages[idx] = msg;
 }
 
-function renderIncoming(msg) {
+// メッセージ内容をパースして { displayText, mediaType, mediaSrc } を返す
+function parseMsgContent(content) {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && parsed.media && parsed.mediaType) {
+      return { displayText: parsed.text || '', mediaType: parsed.mediaType, mediaSrc: parsed.media };
+    }
+  } catch (e) {}
+  return { displayText: content, mediaType: null, mediaSrc: null };
+}
+
+// 統一メッセージレンダリング関数（送信・受信・履歴すべてここを通る）
+function renderMessage(msg) {
+  // 既存要素があれば削除して再描画（編集・削除・リアクション反映のため）
+  const existing = document.querySelector(`[data-msg-id="${msg.id}"]`);
+  if (existing) existing.remove();
+
   const cs = document.getElementById('chatScreen');
-  const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'incoming');
-  if (msg.id) msgDiv.dataset.msgId = msg.id;
+  const isMine = msg.senderId === myUserId;
+  const msgDiv = document.createElement('div');
+  msgDiv.classList.add('message', isMine ? 'outgoing' : 'incoming');
+  msgDiv.dataset.msgId = msg.id;
+
   const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
   const bubble = document.createElement('div'); bubble.classList.add('bubble');
 
-  // メディア判定（JSONで保存されている場合）
-  let displayText = msg.content;
-  try {
-    const parsed = JSON.parse(msg.content);
-    if (parsed.media && parsed.mediaType) {
-      bubble.classList.add('media-bub');
-      if (parsed.mediaType === 'image') {
-        const img = document.createElement('img');
-        img.src = parsed.media;
-        bubble.appendChild(img);
-      } else if (parsed.mediaType === 'video') {
-        const video = document.createElement('video');
-        video.src = parsed.media;
-        video.controls = true;
-        bubble.appendChild(video);
-      }
-      displayText = parsed.text || '';
-    }
-  } catch (e) {
-    // JSONパースに失敗したらそのまま表示
+  // 削除済みメッセージ
+  if (msg.deletedAt) {
+    const notice = document.createElement('div');
+    notice.className = 'cancel-notice';
+    notice.textContent = isMine ? `${myName}がメッセージの送信を取り消しました` : `${partnerName}がメッセージの送信を取り消しました`;
+    cs.appendChild(notice);
+    cs.scrollTop = 99999;
+    return notice;
   }
 
-  if (displayText) {
+  const { displayText, mediaType, mediaSrc } = parseMsgContent(msg.content);
+
+  if (mediaSrc) {
+    bubble.classList.add('media-bub');
+    let mediaEl;
+    if (mediaType === 'image') {
+      mediaEl = document.createElement('img'); mediaEl.src = mediaSrc;
+    } else if (mediaType === 'video') {
+      mediaEl = document.createElement('video'); mediaEl.src = mediaSrc; mediaEl.controls = true;
+    }
+    if (mediaEl) {
+      bubble.appendChild(mediaEl);
+      let lp = false;
+      setTimeout(() => { lp = true; }, 400);
+      mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
+    }
+    // キャプションがある場合のみ表示（"[画像]"などのプレースホルダーは表示しない）
+    if (displayText && displayText !== '[画像]' && displayText !== '[動画]') {
+      const cap = document.createElement('div');
+      cap.className = 'msg-text';
+      cap.style.marginTop = '6px';
+      cap.textContent = displayText;
+      bubble.appendChild(cap);
+    }
+  } else if (displayText) {
     const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = displayText;
     bubble.appendChild(sp);
   }
 
+  // リアクション表示
+  if (msg.reactions && msg.reactions.length > 0) {
+    const rDiv = document.createElement('div');
+    rDiv.className = 'msg-reactions';
+    rDiv.style.cssText = 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+    msg.reactions.forEach(r => {
+      const rb = document.createElement('span');
+      rb.style.cssText = 'background:rgba(0,0,0,.06);border-radius:10px;padding:2px 6px;font-size:12px;';
+      rb.textContent = `${r.emoji} ${r.count > 1 ? r.count : ''}`;
+      rDiv.appendChild(rb);
+    });
+    bubble.appendChild(rDiv);
+  }
+
   const d = new Date(msg.createdAt);
-  const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
   const meta = document.createElement('div'); meta.className = 'msg-meta';
-  meta.innerHTML = `<span class="time">${t}</span>`;
+
+  if (isMine) {
+    meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1${msg.id ? ' lit' : ''}"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
+  } else {
+    meta.innerHTML = `<span class="time">${t}</span>`;
+  }
   bubble.appendChild(meta);
   wrap.appendChild(bubble);
   msgDiv.appendChild(wrap);
   cs.appendChild(msgDiv);
   cs.scrollTop = 99999;
 
-  attachPress(msgDiv, wrap, bubble, false);
+  attachPress(msgDiv, wrap, bubble, isMine);
+  return msgDiv;
 }
 
 async function loadRealHistory() {
@@ -432,13 +468,19 @@ async function loadRealHistory() {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
 
-    const newOnes = data.filter(m => !realMessages.find(rm => rm.id === m.id));
-    newOnes.forEach(msg => {
+    data.forEach(msg => {
+      const existingLocal = realMessages.find(m => m.id === msg.id);
+      const changed = !existingLocal ||
+        existingLocal.content !== msg.content ||
+        existingLocal.deletedAt !== msg.deletedAt ||
+        existingLocal.editedAt !== msg.editedAt ||
+        existingLocal.readAt !== msg.readAt ||
+        JSON.stringify(existingLocal.reactions) !== JSON.stringify(msg.reactions);
+
       addRealMessage(msg);
-      if (msg.senderId !== myUserId) {
-        renderIncoming(msg);
+      if (changed) {
+        renderMessage(msg);
       }
-      // 自分の送信メッセージは楽観的UIで既に表示済みなのでスキップ
     });
   } catch (err) {
     console.error('loadRealHistory error:', err);
@@ -460,16 +502,15 @@ function connectRealWS() {
       const data = JSON.parse(e.data);
       if (data.type === 'new_message') {
         const msg = data.message;
-        if ((msg.senderId === otherId && msg.recipientId === myUserId)) {
-          if (!realMessages.find(m => m.id === msg.id)) {
-            addRealMessage(msg);
-            renderIncoming(msg);
+        if ((msg.senderId === otherId && msg.recipientId === myUserId) || (msg.senderId === myUserId && msg.recipientId === otherId)) {
+          addRealMessage(msg);
+          if (msg.senderId !== myUserId) {
+            renderMessage(msg);
           }
         }
       } else if (data.type === 'typing' && data.userId === otherId) {
         showTypingIndicator();
       } else if (data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'message_reaction' || data.type === 'message_pinned') {
-        // リアルタイム更新（編集・削除・リアクション・ピン留め）
         loadRealHistory();
       }
     } catch (err) {}
@@ -486,12 +527,13 @@ function showTypingIndicator() {
   if (!ti) {
     ti = document.createElement('div');
     ti.id = 'typingIndicator';
-    ti.style.cssText = 'padding:12px;color:#999;font-size:13px;font-style:italic;';
+    ti.style.cssText = 'padding:8px 12px;color:#999;font-size:13px;font-style:italic;';
     document.getElementById('chatScreen').appendChild(ti);
   }
-  ti.textContent = '相手が入力中...';
+  ti.textContent = `${partnerName}が入力中...`;
   ti.style.display = 'block';
-  
+  document.getElementById('chatScreen').scrollTop = 99999;
+
   clearTimeout(typingTimeoutId);
   typingTimeoutId = setTimeout(() => {
     ti.style.display = 'none';
@@ -499,17 +541,17 @@ function showTypingIndicator() {
 }
 
 // 入力中通知を送信（debounce）
-let typingNotifySent = false;
 let lastTypingTime = 0;
 document.getElementById('msgInput').addEventListener('input', () => {
   const now = Date.now();
-  if (now - lastTypingTime > 500) {
+  if (now - lastTypingTime > 1500) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'typing', recipientId: otherId }));
     }
     lastTypingTime = now;
   }
 });
+
 async function initialLoadHistory() {
   try {
     const data = await api('/api/messages/history/' + otherId);
@@ -517,15 +559,7 @@ async function initialLoadHistory() {
 
     data.forEach(msg => {
       addRealMessage(msg);
-      if (msg.senderId === myUserId) {
-        const div = createMsg(msg.content, null, null, msg.id);
-        if (msg.readAt) {
-          const c2 = div.querySelector('.check-2');
-          if (c2) c2.classList.add('lit');
-        }
-      } else {
-        renderIncoming(msg);
-      }
+      renderMessage(msg);
     });
   } catch (err) {
     console.error('initialLoadHistory error:', err);
@@ -545,75 +579,24 @@ async function refreshPartnerProfile() {
         pAv.style.backgroundSize = 'cover';
         pAv.style.backgroundPosition = 'center';
         pAv.textContent = '';
+      } else {
+        pAv.style.backgroundImage = 'none';
+        pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+        pAv.textContent = (partner.displayName || partnerName).charAt(0);
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('refreshPartnerProfile error:', err);
+  }
 }
 
 if (otherId) {
   initialLoadHistory();
   connectRealWS();
-  setInterval(loadRealHistory, 5000);
+  setInterval(loadRealHistory, 4000);
   setInterval(checkReadReceipts, 3000);
   refreshPartnerProfile();
   setInterval(refreshPartnerProfile, 8000);
-}
-
-function createMsg(text, file, ftype, msgId) {
-  const cs = document.getElementById('chatScreen');
-  const msgDiv = document.createElement('div'); msgDiv.classList.add('message', 'outgoing');
-  if (msgId) msgDiv.dataset.msgId = msgId;
-  const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
-  const bubble = document.createElement('div'); bubble.classList.add('bubble');
-  let mediaEl = null;
-
-  if (file && ftype === 'image') {
-    bubble.classList.add('media-bub');
-    const url = URL.createObjectURL(file);
-    mediaEl = document.createElement('img'); mediaEl.src = url;
-    bubble.appendChild(mediaEl);
-  } else if (file && ftype === 'video') {
-    bubble.classList.add('media-bub');
-    const url = URL.createObjectURL(file);
-    mediaEl = document.createElement('video'); mediaEl.src = url; mediaEl.controls = true;
-    bubble.appendChild(mediaEl);
-  } else if (file && ftype === 'file') {
-    const url = URL.createObjectURL(file);
-    const ext = file.name.split('.').pop().toLowerCase();
-    const icon = ext === 'pdf' ? '📕' : ext === 'zip' ? '🗜️' : '📄';
-    const sz = file.size > 1048576 ? `${(file.size/1048576).toFixed(1)} MB` : `${(file.size/1024).toFixed(0)} KB`;
-    const inner = document.createElement('div'); inner.className = 'file-inner';
-    inner.innerHTML = `<span class="file-icon">${icon}</span><div class="file-info"><div class="file-name">${file.name}</div><div class="file-sz">${sz}</div></div>`;
-    const dl = document.createElement('a'); dl.className = 'dl-btn'; dl.href = url; dl.download = file.name;
-    dl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ダウンロード`;
-    inner.appendChild(dl); bubble.appendChild(inner);
-  } else if (text) {
-    const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = text;
-    bubble.appendChild(sp);
-  }
-
-  const now = new Date();
-  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const meta = document.createElement('div'); meta.className = 'msg-meta';
-  meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2"/></svg></div>`;
-  bubble.appendChild(meta);
-  wrap.appendChild(bubble);
-  msgDiv.appendChild(wrap);
-  cs.appendChild(msgDiv);
-  cs.scrollTop = 99999;
-
-  const c1 = bubble.querySelector('.check-1');
-  if (c1) setTimeout(() => c1.classList.add('lit'), 200);
-
-  attachPress(msgDiv, wrap, bubble, true);
-
-  if (mediaEl && (ftype === 'image' || ftype === 'video')) {
-    let lp = false;
-    const t1 = setTimeout(() => { lp = true; }, 400);
-    mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, ftype); });
-  }
-  ['imgInput','vidInput','fileInput'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  return msgDiv;
 }
 
 function attachPress(msgDiv, wrap, bubble, own) {
@@ -698,21 +681,23 @@ document.getElementById('pinClose').onclick = () => {
 
 document.getElementById('delBtn').onclick = () => {
   if (!activeMsg) return;
-  const target = activeMsg;
-  const msgId = target.dataset.msgId;
+  const msgId = activeMsg.dataset.msgId;
   hideMenu();
-  // 「送信を取り消しました」通知に置き換え
-  const notice = document.createElement('div');
-  notice.className = 'cancel-notice';
-  notice.textContent = `${myName}がメッセージの送信を取り消しました`;
-  target.parentNode.replaceChild(notice, target);
-  if (isEditing && editNode) {
+  if (isEditing) {
     isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('msgInput').value = '';
     document.getElementById('sendBtn').innerHTML = paperPlane;
   }
   if (msgId) {
-    api('/api/messages/delete', { method: 'POST', body: JSON.stringify({ messageId: msgId }) }).catch(err => console.error('delete error:', err));
+    api('/api/messages/delete', { method: 'POST', body: JSON.stringify({ messageId: msgId }) })
+      .then(() => {
+        const local = realMessages.find(m => m.id === msgId);
+        if (local) {
+          local.deletedAt = new Date().toISOString();
+          renderMessage(local);
+        }
+      })
+      .catch(err => console.error('delete error:', err));
   }
 };
 
