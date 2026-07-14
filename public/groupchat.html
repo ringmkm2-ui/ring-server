@@ -155,7 +155,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
   </div>
 
   <div class="pin-banner" id="pinBanner">
-    <span>📌</span>
+    <span style="color:#999;">●</span>
     <span class="pin-text" id="pinText"></span>
     <span class="pin-cls" id="pinCls">×</span>
   </div>
@@ -185,13 +185,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 
   <div class="mov" id="mov"></div>
   <div class="ctx" id="ctx">
-    <button class="ctxbtn c-react" id="reactBtn">😊 リアクション</button>
+    <button class="ctxbtn c-react" id="reactBtn">リアクション</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-edit" id="editBtn">✏️ 編集する</button>
+    <button class="ctxbtn c-edit" id="editBtn">編集する</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-pin" id="pinBtnCtx">📌 ピン留め</button>
+    <button class="ctxbtn c-pin" id="pinBtnCtx">ピン留め</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-del" id="delBtn">🗑️ 送信取り消し</button>
+    <button class="ctxbtn c-del" id="delBtn">送信取り消し</button>
   </div>
 
   <div class="rpicker" id="rpicker"></div>
@@ -515,7 +515,7 @@ document.getElementById('editBtn').onclick=()=>{
 
 document.getElementById('pinBtnCtx').onclick=()=>{
   if(!activeBubble)return;const sp=activeBubble.querySelector('.msg-text,.fname');
-  const txt=sp?sp.textContent:'📎 メディア';
+  const txt=sp?sp.textContent:'メディア';
   document.getElementById('pinText').textContent=txt;
   document.getElementById('pinBanner').classList.add('show');
   hideMenu();

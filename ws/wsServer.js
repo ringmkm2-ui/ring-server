@@ -106,6 +106,15 @@ function initWebSocketServer(server) {
         return;
       }
 
+      // --- タイピングインジケータの中継 ---
+      if (data.type === 'typing') {
+        broadcastToUser(data.recipientId, {
+          type: 'typing',
+          userId: userId,
+        });
+        return;
+      }
+
       // --- グループメッセージの中継 (メンバー全員に配送) ---
       if (data.type === 'group_message') {
         const members = await db.all(

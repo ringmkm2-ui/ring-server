@@ -152,13 +152,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 
   <div class="menu-overlay" id="menuOv"></div>
   <div class="ctx-menu" id="ctxMenu">
-    <button type="button" class="ctx-btn ctx-react" id="reactBtn">😊 リアクション</button>
+    <button type="button" class="ctx-btn ctx-react" id="reactBtn">リアクション</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-edit" id="editBtn">✏️ 編集する</button>
+    <button type="button" class="ctx-btn ctx-edit" id="editBtn">編集する</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-pin" id="pinBtn">📌 ピン留め</button>
+    <button type="button" class="ctx-btn ctx-pin" id="pinBtn">ピン留め</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-del" id="delBtn">🗑️ 送信取り消し</button>
+    <button type="button" class="ctx-btn ctx-del" id="delBtn">送信取り消し</button>
   </div>
 
   <div class="react-picker" id="reactPicker"></div>
@@ -543,7 +543,7 @@ function showTypingIndicator() {
   if (!ti) {
     ti = document.createElement('div');
     ti.id = 'typingIndicator';
-    ti.style.cssText = 'padding:8px 12px;color:#999;font-size:13px;font-style:italic;';
+    ti.style.cssText = 'padding:8px 12px;color:#999;font-size:13px;';
     document.getElementById('chatScreen').appendChild(ti);
   }
   ti.textContent = `${partnerName}が入力中...`;
@@ -698,17 +698,17 @@ async function loadPinnedMessages() {
     }
 
     banner.style.display = 'flex';
-    list.innerHTML = pinned.map(p => {
-      const { displayText } = parseMsgContent(p.content);
-      const txt = displayText || '📎 メディア';
-      return `
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
-          <span>📌</span>
-          <span style="flex:1;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${txt.replace(/</g,'&lt;')}</span>
-          <span class="pin-close-btn" data-pin-id="${p.id}" style="cursor:pointer;color:#999;font-size:16px;padding:0 4px;">×</span>
-        </div>
-      `;
-    }).join('');
+        list.innerHTML = pinned.map(p => {
+          const { displayText } = parseMsgContent(p.content);
+          const txt = displayText || 'メディア';
+          return `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+              <span style="color:#999;">●</span>
+              <span style="flex:1;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${txt.replace(/</g,'&lt;')}</span>
+              <span class="pin-close-btn" data-pin-id="${p.id}" style="cursor:pointer;color:#999;font-size:16px;padding:0 4px;">x</span>
+            </div>
+          `;
+        }).join('');
 
     list.querySelectorAll('.pin-close-btn').forEach(btn => {
       btn.onclick = () => {
