@@ -13,6 +13,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .orb-2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%;animation:lw 22s infinite alternate ease-in-out;animation-delay:-4s}
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%;animation:lw 16s infinite alternate ease-in-out;animation-delay:-8s}
 .phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.6;animation:lw 20s infinite alternate ease-in-out;animation-delay:-12s}
+@keyframes spin{to{transform:rotate(360deg)}}
 @keyframes lw{0%{transform:translate(0,0) scale(1) rotate(0deg);border-radius:40% 60% 70% 30%/40% 50% 60% 50%}33%{transform:translate(4vw,4vh) scale(1.05) rotate(40deg);border-radius:60% 40% 50% 50%/50% 60% 40% 60%}66%{transform:translate(-3vw,6vh) scale(.95) rotate(-20deg);border-radius:50% 50% 40% 60%/40% 40% 60% 50%}100%{transform:translate(2vw,-2vh) scale(1.02) rotate(15deg);border-radius:45% 55% 60% 40%/50% 45% 55% 50%}}
 .app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
 .app-header-container{padding:14px 16px}
@@ -113,10 +114,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
     </div>
   </div>
 
-  <div class="pin-banner" id="pinBanner">
-    <span>📌</span>
-    <span class="pin-text" id="pinText"></span>
-    <span class="pin-close" id="pinClose">×</span>
+  <div class="pin-banner" id="pinBanner" style="display:none;flex-direction:column;align-items:stretch;max-height:140px;overflow-y:auto;">
+    <div id="pinnedList"></div>
   </div>
 
   <div class="chat-screen" id="chatScreen"></div>
@@ -153,13 +152,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 
   <div class="menu-overlay" id="menuOv"></div>
   <div class="ctx-menu" id="ctxMenu">
-    <button class="ctx-btn ctx-react" id="reactBtn">😊 リアクション</button>
+    <button type="button" class="ctx-btn ctx-react" id="reactBtn">😊 リアクション</button>
     <div class="ctx-div"></div>
-    <button class="ctx-btn ctx-edit" id="editBtn">✏️ 編集する</button>
+    <button type="button" class="ctx-btn ctx-edit" id="editBtn">✏️ 編集する</button>
     <div class="ctx-div"></div>
-    <button class="ctx-btn ctx-pin" id="pinBtn">📌 ピン留め</button>
+    <button type="button" class="ctx-btn ctx-pin" id="pinBtn">📌 ピン留め</button>
     <div class="ctx-div"></div>
-    <button class="ctx-btn ctx-del" id="delBtn">🗑️ 送信取り消し</button>
+    <button type="button" class="ctx-btn ctx-del" id="delBtn">🗑️ 送信取り消し</button>
   </div>
 
   <div class="react-picker" id="reactPicker"></div>
@@ -240,6 +239,7 @@ const checkSvg = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" st
 const rp = document.getElementById('reactPicker');
 REACTIONS.forEach(e => {
   const b = document.createElement('button');
+  b.type = 'button';
   b.className = 'rp-btn'; b.textContent = e;
   b.onclick = () => {
     const msgId = activeMsg ? activeMsg.dataset.msgId : null;
@@ -274,12 +274,25 @@ function handleMedia(f, t) {
     alert('ファイル送信は現在未対応です。画像・動画をご利用ください。');
     return;
   }
+
+  // サイズ上限チェック（動画は30MB、画像は15MBまで。Base64化で約1.37倍になるため余裕を持たせる）
+  const maxSize = t === 'video' ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+  if (f.size > maxSize) {
+    alert(`${t === 'video' ? '動画' : '画像'}が大きすぎます（上限: ${maxSize / 1024 / 1024}MB）。もう少し短い動画や軽い画像でお試しください。`);
+    document.getElementById('inputBar').classList.remove('media-open');
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = async e => {
     const base64 = e.target.result;
     document.getElementById('inputBar').classList.remove('media-open');
 
-    // APIで送信（Base64保存、劣化なし）
+    // 送信中表示
+    const sendBtn = document.getElementById('sendBtn');
+    const originalIcon = sendBtn.innerHTML;
+    sendBtn.innerHTML = '<div style="width:16px;height:16px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>';
+
     try {
       const data = await api('/api/messages/send', {
         method: 'POST',
@@ -293,11 +306,19 @@ function handleMedia(f, t) {
       if (data.message) {
         addRealMessage(data.message);
         renderMessage(data.message);
+      } else if (data.error) {
+        alert('送信に失敗しました: ' + data.error);
       }
     } catch (err) {
       console.error('media send error:', err);
-      alert('送信に失敗しました');
+      alert('送信に失敗しました。ファイルサイズが大きすぎるか、通信エラーの可能性があります。');
+    } finally {
+      sendBtn.innerHTML = originalIcon;
     }
+  };
+  reader.onerror = () => {
+    alert('ファイルの読み込みに失敗しました');
+    document.getElementById('inputBar').classList.remove('media-open');
   };
   reader.readAsDataURL(f);
 }
@@ -341,24 +362,6 @@ async function sendRealMessage(content) {
   }
 }
 
-// 既読確認: 定期的に自分の送信メッセージの既読状態をチェックしてcheck-2を点灯
-async function checkReadReceipts() {
-  try {
-    const data = await api('/api/messages/history/' + otherId);
-    if (!Array.isArray(data)) return;
-
-    data.forEach(msg => {
-      if (msg.senderId === myUserId && msg.readAt) {
-        const el = document.querySelector(`[data-msg-id="${msg.id}"]`);
-        if (el) {
-          const c2 = el.querySelector('.check-2');
-          if (c2 && !c2.classList.contains('lit')) c2.classList.add('lit');
-        }
-      }
-    });
-  } catch (err) {}
-}
-
 function addRealMessage(msg) {
   const idx = realMessages.findIndex(m => m.id === msg.id);
   if (idx === -1) realMessages.push(msg);
@@ -377,28 +380,33 @@ function parseMsgContent(content) {
 }
 
 // 統一メッセージレンダリング関数（送信・受信・履歴すべてここを通る）
+// 既存要素があれば「その場で」中身だけ更新（DOM再構築・位置移動なし）→ 発熱/重複防止
 function renderMessage(msg) {
-  // 既存要素があれば削除して再描画（編集・削除・リアクション反映のため）
-  const existing = document.querySelector(`[data-msg-id="${msg.id}"]`);
-  if (existing) existing.remove();
-
+  if (!msg || !msg.id) return null;
   const cs = document.getElementById('chatScreen');
   const isMine = msg.senderId === myUserId;
-  const msgDiv = document.createElement('div');
-  msgDiv.classList.add('message', isMine ? 'outgoing' : 'incoming');
-  msgDiv.dataset.msgId = msg.id;
+  let msgDiv = document.querySelector(`[data-msg-id="${msg.id}"]`);
+  const isNew = !msgDiv;
+
+  if (isNew) {
+    msgDiv = document.createElement('div');
+    msgDiv.dataset.msgId = msg.id;
+  }
+  msgDiv.className = 'message ' + (isMine ? 'outgoing' : 'incoming');
+  msgDiv.innerHTML = ''; // 中身だけクリア（要素自体は使い回す）
 
   const wrap = document.createElement('div'); wrap.classList.add('msg-wrap');
   const bubble = document.createElement('div'); bubble.classList.add('bubble');
 
   // 削除済みメッセージ
   if (msg.deletedAt) {
+    msgDiv.className = 'cancel-notice-wrap';
     const notice = document.createElement('div');
     notice.className = 'cancel-notice';
     notice.textContent = isMine ? `${myName}がメッセージの送信を取り消しました` : `${partnerName}がメッセージの送信を取り消しました`;
-    cs.appendChild(notice);
-    cs.scrollTop = 99999;
-    return notice;
+    msgDiv.appendChild(notice);
+    if (isNew) { cs.appendChild(msgDiv); cs.scrollTop = 99999; }
+    return msgDiv;
   }
 
   const { displayText, mediaType, mediaSrc } = parseMsgContent(msg.content);
@@ -407,9 +415,9 @@ function renderMessage(msg) {
     bubble.classList.add('media-bub');
     let mediaEl;
     if (mediaType === 'image') {
-      mediaEl = document.createElement('img'); mediaEl.src = mediaSrc;
+      mediaEl = document.createElement('img'); mediaEl.src = mediaSrc; mediaEl.loading = 'lazy';
     } else if (mediaType === 'video') {
-      mediaEl = document.createElement('video'); mediaEl.src = mediaSrc; mediaEl.controls = true;
+      mediaEl = document.createElement('video'); mediaEl.src = mediaSrc; mediaEl.controls = true; mediaEl.preload = 'metadata';
     }
     if (mediaEl) {
       bubble.appendChild(mediaEl);
@@ -417,7 +425,6 @@ function renderMessage(msg) {
       setTimeout(() => { lp = true; }, 400);
       mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
     }
-    // キャプションがある場合のみ表示（"[画像]"などのプレースホルダーは表示しない）
     if (displayText && displayText !== '[画像]' && displayText !== '[動画]') {
       const cap = document.createElement('div');
       cap.className = 'msg-text';
@@ -430,7 +437,7 @@ function renderMessage(msg) {
     bubble.appendChild(sp);
   }
 
-  // リアクション表示
+  // リアクション表示（複数種類対応、自分がついているかも視覚化）
   if (msg.reactions && msg.reactions.length > 0) {
     const rDiv = document.createElement('div');
     rDiv.className = 'msg-reactions';
@@ -438,7 +445,7 @@ function renderMessage(msg) {
     msg.reactions.forEach(r => {
       const rb = document.createElement('span');
       rb.style.cssText = 'background:rgba(0,0,0,.06);border-radius:10px;padding:2px 6px;font-size:12px;';
-      rb.textContent = `${r.emoji} ${r.count > 1 ? r.count : ''}`;
+      rb.textContent = `${r.emoji}${r.count > 1 ? ' ' + r.count : ''}`;
       rDiv.appendChild(rb);
     });
     bubble.appendChild(rDiv);
@@ -449,21 +456,26 @@ function renderMessage(msg) {
   const meta = document.createElement('div'); meta.className = 'msg-meta';
 
   if (isMine) {
-    meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1${msg.id ? ' lit' : ''}"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
+    meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1 lit"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
   } else {
     meta.innerHTML = `<span class="time">${t}</span>`;
   }
   bubble.appendChild(meta);
   wrap.appendChild(bubble);
   msgDiv.appendChild(wrap);
-  cs.appendChild(msgDiv);
-  cs.scrollTop = 99999;
+
+  if (isNew) {
+    cs.appendChild(msgDiv);
+    cs.scrollTop = 99999;
+  }
 
   attachPress(msgDiv, wrap, bubble, isMine);
   return msgDiv;
 }
 
-async function loadRealHistory() {
+// 統合ポーリング: 新規メッセージ・既読・編集・削除・リアクション・ピン留めを1回のAPI呼び出しでまとめてチェック
+// WebSocketが主軸、これは補助的なフォールバック（間隔を長めにして負荷軽減）
+async function syncMessages() {
   try {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
@@ -482,8 +494,10 @@ async function loadRealHistory() {
         renderMessage(msg);
       }
     });
+
+    updatePinnedBanner();
   } catch (err) {
-    console.error('loadRealHistory error:', err);
+    console.error('syncMessages error:', err);
   }
 }
 
@@ -506,12 +520,14 @@ function connectRealWS() {
           addRealMessage(msg);
           if (msg.senderId !== myUserId) {
             renderMessage(msg);
+            // 相手からのメッセージを受け取ったら既読確認のため軽く同期
+            syncMessages();
           }
         }
       } else if (data.type === 'typing' && data.userId === otherId) {
         showTypingIndicator();
       } else if (data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'message_reaction' || data.type === 'message_pinned') {
-        loadRealHistory();
+        syncMessages();
       }
     } catch (err) {}
   };
@@ -593,10 +609,11 @@ async function refreshPartnerProfile() {
 if (otherId) {
   initialLoadHistory();
   connectRealWS();
-  setInterval(loadRealHistory, 4000);
-  setInterval(checkReadReceipts, 3000);
+  loadPinnedMessages();
+  // ポーリングは1本化・長め間隔（WebSocketが主軸、これはフォールバック/既読確認用）
+  setInterval(syncMessages, 10000);
   refreshPartnerProfile();
-  setInterval(refreshPartnerProfile, 8000);
+  setInterval(refreshPartnerProfile, 20000);
 }
 
 function attachPress(msgDiv, wrap, bubble, own) {
@@ -658,26 +675,57 @@ document.getElementById('editBtn').onclick = () => {
 };
 
 document.getElementById('pinBtn').onclick = () => {
-  if (!activeBubble || !activeMsg) return;
-  const sp = activeBubble.querySelector('.msg-text, .file-name');
-  const txt = sp ? sp.textContent : '📎 メディア';
-  document.getElementById('pinText').textContent = txt;
-  document.getElementById('pinBanner').classList.add('show');
+  if (!activeMsg) return;
   const msgId = activeMsg.dataset.msgId;
   hideMenu();
   if (msgId) {
-    api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: msgId, pinned: true }) }).catch(err => console.error('pin error:', err));
-    document.getElementById('pinBanner').dataset.msgId = msgId;
+    api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: msgId, pinned: true }) })
+      .then(() => loadPinnedMessages())
+      .catch(err => console.error('pin error:', err));
   }
 };
-document.getElementById('pinClose').onclick = () => {
-  const banner = document.getElementById('pinBanner');
-  const msgId = banner.dataset.msgId;
-  banner.classList.remove('show');
-  if (msgId) {
-    api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: msgId, pinned: false }) }).catch(err => console.error('unpin error:', err));
+
+async function loadPinnedMessages() {
+  if (!otherId) return;
+  try {
+    const pinned = await api('/api/messages/pinned/' + otherId);
+    const banner = document.getElementById('pinBanner');
+    const list = document.getElementById('pinnedList');
+
+    if (!Array.isArray(pinned) || pinned.length === 0) {
+      banner.style.display = 'none';
+      return;
+    }
+
+    banner.style.display = 'flex';
+    list.innerHTML = pinned.map(p => {
+      const { displayText } = parseMsgContent(p.content);
+      const txt = displayText || '📎 メディア';
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+          <span>📌</span>
+          <span style="flex:1;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${txt.replace(/</g,'&lt;')}</span>
+          <span class="pin-close-btn" data-pin-id="${p.id}" style="cursor:pointer;color:#999;font-size:16px;padding:0 4px;">×</span>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.pin-close-btn').forEach(btn => {
+      btn.onclick = () => {
+        const pinId = btn.dataset.pinId;
+        api('/api/messages/pin', { method: 'POST', body: JSON.stringify({ messageId: pinId, pinned: false }) })
+          .then(() => loadPinnedMessages())
+          .catch(err => console.error('unpin error:', err));
+      };
+    });
+  } catch (err) {
+    console.error('loadPinnedMessages error:', err);
   }
-};
+}
+
+function updatePinnedBanner() {
+  loadPinnedMessages();
+}
 
 document.getElementById('delBtn').onclick = () => {
   if (!activeMsg) return;

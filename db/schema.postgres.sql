@@ -71,6 +71,28 @@ CREATE TABLE IF NOT EXISTS group_key_distributions (
   created_at TIMESTAMP DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL REFERENCES users(id),
+  recipient_id TEXT NOT NULL REFERENCES users(id),
+  content TEXT NOT NULL,
+  msg_type TEXT DEFAULT 'text',
+  created_at TIMESTAMP DEFAULT now(),
+  read_at TIMESTAMP,
+  edited_at TIMESTAMP,
+  deleted_at TIMESTAMP,
+  pinned_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS message_reactions (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES messages(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  emoji TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  UNIQUE(message_id, user_id, emoji)
+);
+
 CREATE TABLE IF NOT EXISTS offline_queue (
   id TEXT PRIMARY KEY,
   recipient_id TEXT NOT NULL,
@@ -96,3 +118,7 @@ CREATE TABLE IF NOT EXISTS media_files (
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_recipient ON offline_queue(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_messages_pinned ON messages(pinned_at) WHERE pinned_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);

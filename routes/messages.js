@@ -44,6 +44,11 @@ router.post('/send', auth, async (req, res) => {
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
 
+    // メディアサイズチェック（Base64文字列の長さで概算。約25MB相当まで許可）
+    if (mediaData && mediaData.length > 35 * 1024 * 1024) {
+      return res.status(413).json({ error: 'ファイルサイズが大きすぎます' });
+    }
+
     const msgId = uuidv4();
     const msgType = mediaType || 'text';
     let finalContent = content;
@@ -372,6 +377,32 @@ router.post('/react', auth, async (req, res) => {
     res.json({ ok: true, action, reactions: payload.reactions });
   } catch (e) {
     console.error('Error reacting to message:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ピン留めメッセージ一覧取得
+// GET /api/messages/pinned/:userId
+router.get('/pinned/:userId', auth, async (req, res) => {
+  try {
+    const { userId: otherId } = req.params;
+    const rows = await db.all(`
+      SELECT * FROM messages
+      WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+      AND pinned_at IS NOT NULL
+      ORDER BY pinned_at DESC
+    `, [req.userId, otherId, otherId, req.userId]);
+
+    res.json(rows.map(m => ({
+      id: m.id,
+      senderId: m.sender_id,
+      recipientId: m.recipient_id,
+      content: m.deleted_at ? '' : m.content,
+      createdAt: m.created_at,
+      pinnedAt: m.pinned_at,
+    })));
+  } catch (e) {
+    console.error('Error fetching pinned messages:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
