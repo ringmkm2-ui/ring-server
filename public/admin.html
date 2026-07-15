@@ -520,14 +520,42 @@ function connectRealWS() {
           addRealMessage(msg);
           if (msg.senderId !== myUserId) {
             renderMessage(msg);
-            // 相手からのメッセージを受け取ったら既読確認のため軽く同期
-            syncMessages();
+            // 既読確認はポーリング（10秒ごと）に任せる。ここでは即座に全同期しない
           }
         }
       } else if (data.type === 'typing' && data.userId === otherId) {
         showTypingIndicator();
-      } else if (data.type === 'message_edited' || data.type === 'message_deleted' || data.type === 'message_reaction' || data.type === 'message_pinned') {
-        syncMessages();
+      } else if (data.type === 'message_edited') {
+        // 編集されたメッセージのみローカル更新（全体同期ではなく差分更新）
+        const msg = realMessages.find(m => m.id === data.messageId);
+        if (msg) {
+          msg.content = data.content;
+          msg.editedAt = data.editedAt;
+          renderMessage(msg);
+        }
+      } else if (data.type === 'message_deleted') {
+        // 削除されたメッセージのみローカル更新
+        const msg = realMessages.find(m => m.id === data.messageId);
+        if (msg) {
+          msg.deletedAt = new Date().toISOString();
+          msg.content = '';
+          renderMessage(msg);
+        }
+      } else if (data.type === 'message_reaction') {
+        // リアクション更新のみ
+        const msg = realMessages.find(m => m.id === data.messageId);
+        if (msg) {
+          msg.reactions = data.reactions;
+          renderMessage(msg);
+        }
+      } else if (data.type === 'message_pinned') {
+        // ピン留め状態のみ更新
+        const msg = realMessages.find(m => m.id === data.messageId);
+        if (msg) {
+          msg.pinnedAt = data.pinned ? new Date().toISOString() : null;
+          // ピン留めリスト更新
+          loadPinnedMessages();
+        }
       }
     } catch (err) {}
   };

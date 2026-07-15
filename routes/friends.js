@@ -87,7 +87,8 @@ router.post('/accept', auth, async (req, res) => {
     if (friendship.status !== 'pending') return res.status(400).json({ error: 'not pending' });
     if (friendship.requested_by === req.userId) return res.status(403).json({ error: 'not authorized' });
 
-    await db.run("UPDATE friendships SET status = 'accepted', accepted_at = datetime('now') WHERE id = ?", [friendshipId]);
+    const now = new Date().toISOString();
+    await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [now, friendshipId]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -112,10 +112,10 @@ router.get('/history/:userId', auth, async (req, res) => {
 
     const rows = await db.all(sql, params);
 
-    // 未読を既読にする
+    const now = new Date().toISOString();
     await db.run(
-      "UPDATE messages SET read_at = datetime('now') WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
-      [otherId, req.userId]
+      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
+      [now, otherId, req.userId]
     );
 
     const result = [];
@@ -232,18 +232,17 @@ router.post('/edit', auth, async (req, res) => {
     if (msg.sender_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
     if (msg.deleted_at) return res.status(400).json({ error: 'message deleted' });
 
-    await db.run("UPDATE messages SET content = ?, edited_at = datetime('now') WHERE id = ?", [content, messageId]);
+    const now = new Date().toISOString();
+    await db.run("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?", [content, now, messageId]);
     const updated = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
 
     const payload = {
       type: 'message_edited',
-      message: {
-        id: updated.id,
-        senderId: updated.sender_id,
-        recipientId: updated.recipient_id,
-        content: updated.content,
-        editedAt: updated.edited_at,
-      }
+      messageId: updated.id,
+      content: updated.content,
+      editedAt: updated.edited_at,
+      senderId: updated.sender_id,
+      recipientId: updated.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
     broadcastToUser(updated.recipient_id, payload);
@@ -268,7 +267,8 @@ router.post('/delete', auth, async (req, res) => {
     if (!msg) return res.status(404).json({ error: 'message not found' });
     if (msg.sender_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
 
-    await db.run("UPDATE messages SET deleted_at = datetime('now'), content = '' WHERE id = ?", [messageId]);
+    const now = new Date().toISOString();
+    await db.run("UPDATE messages SET deleted_at = ?, content = '' WHERE id = ?", [now, messageId]);
 
     const payload = {
       type: 'message_deleted',
@@ -303,8 +303,9 @@ router.post('/pin', auth, async (req, res) => {
       return res.status(403).json({ error: 'not authorized' });
     }
 
+    const now = new Date().toISOString();
     if (pinned) {
-      await db.run("UPDATE messages SET pinned_at = datetime('now') WHERE id = ?", [messageId]);
+      await db.run("UPDATE messages SET pinned_at = ? WHERE id = ?", [now, messageId]);
     } else {
       await db.run("UPDATE messages SET pinned_at = NULL WHERE id = ?", [messageId]);
     }
@@ -313,6 +314,7 @@ router.post('/pin', auth, async (req, res) => {
       type: 'message_pinned',
       messageId: messageId,
       pinned: !!pinned,
+      pinnedAt: pinned ? now : null,
       senderId: msg.sender_id,
       recipientId: msg.recipient_id,
     };
