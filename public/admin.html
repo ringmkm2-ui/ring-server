@@ -344,6 +344,38 @@ document.getElementById('chatForm').onsubmit = e => {
   }
 };
 
+// 共有IntersectionObserver（複数メッセージで使い回し）
+const lazyLoadObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting && !entry.target.dataset.loaded) {
+      entry.target.dataset.loaded = 'true';
+      const mediaSrc = entry.target.dataset.mediaSrc;
+      const mediaType = entry.target.dataset.mediaType;
+      
+      let mediaEl;
+      if (mediaType === 'image') {
+        mediaEl = document.createElement('img');
+        mediaEl.src = mediaSrc;
+        mediaEl.loading = 'lazy';
+        mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+      } else if (mediaType === 'video') {
+        mediaEl = document.createElement('video');
+        mediaEl.src = mediaSrc;
+        mediaEl.controls = true;
+        mediaEl.preload = 'metadata';
+        mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+      }
+      if (mediaEl) {
+        entry.target.replaceWith(mediaEl);
+        let lp = false;
+        setTimeout(() => { lp = true; }, 400);
+        mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
+      }
+      lazyLoadObserver.unobserve(entry.target);
+    }
+  });
+}, { rootMargin: '50px' });
+
 // 実際のメッセージ送受信管理
 let realMessages = [];
 const msgDOMCache = new Map(); // msgId -> DOM要素（querySelector高速化用）
@@ -468,35 +500,12 @@ function renderMessageImpl(msg) {
     mediaPlaceholder.className = 'media-placeholder';
     mediaPlaceholder.style.cssText = 'background:#f0f0f0;width:200px;height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;';
     mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : '動画読み込み中...';
+    mediaPlaceholder.dataset.mediaSrc = mediaSrc;
+    mediaPlaceholder.dataset.mediaType = mediaType;
     bubble.appendChild(mediaPlaceholder);
     
-    // IntersectionObserverで可視範囲に入ったら実際のメディア要素を作成
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !mediaPlaceholder.dataset.loaded) {
-        mediaPlaceholder.dataset.loaded = 'true';
-        let mediaEl;
-        if (mediaType === 'image') {
-          mediaEl = document.createElement('img');
-          mediaEl.src = mediaSrc;
-          mediaEl.loading = 'lazy';
-          mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
-        } else if (mediaType === 'video') {
-          mediaEl = document.createElement('video');
-          mediaEl.src = mediaSrc;
-          mediaEl.controls = true;
-          mediaEl.preload = 'metadata';
-          mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
-        }
-        if (mediaEl) {
-          mediaPlaceholder.replaceWith(mediaEl);
-          let lp = false;
-          setTimeout(() => { lp = true; }, 400);
-          mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
-        }
-        observer.unobserve(mediaPlaceholder);
-      }
-    }, { rootMargin: '50px' });
-    observer.observe(mediaPlaceholder);
+    // 共有ObserverにObserveさせる
+    lazyLoadObserver.observe(mediaPlaceholder);
     
     if (displayText && displayText !== '[画像]' && displayText !== '[動画]') {
       const cap = document.createElement('div');
@@ -678,22 +687,8 @@ async function initialLoadHistory() {
     // 全メッセージをメモリに保持
     data.forEach(msg => addRealMessage(msg));
 
-    // 最新の20件だけ初期描画（パフォーマンス重視）
-    const toRender = data.slice(Math.max(0, data.length - 20));
-    toRender.forEach(msg => renderMessage(msg));
-    
-    // スクロール時に残りを遅延ロード
-    const cs = document.getElementById('chatScreen');
-    cs.addEventListener('scroll', () => {
-      if (cs.scrollTop === 0 && realMessages.length > 20) {
-        // 上端までスクロールしたら、次の20件を描画
-        const rendered = document.querySelectorAll('[data-msg-id]').length;
-        if (rendered < realMessages.length) {
-          const toAdd = realMessages.slice(Math.max(0, rendered - 20), rendered);
-          toAdd.forEach(msg => renderMessage(msg));
-        }
-      }
-    }, { once: true }); // 初回のみ登録
+    // 全メッセージを描画（ただしメディアは遅延ロード）
+    data.forEach(msg => renderMessage(msg));
   } catch (err) {
     console.error('initialLoadHistory error:', err);
   }
