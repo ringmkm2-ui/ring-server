@@ -23,6 +23,21 @@ async function initDB() {
   const schemaPath = path.join(__dirname, 'schema.postgres.sql');
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   await pool.query(schema);
+
+  // マイグレーション: 既存のusersテーブルにpublic_keyカラムがなければ追加
+  try {
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS public_key TEXT');
+  } catch (e) {
+    console.log('[db] public_key migration skip:', e.message);
+  }
+
+  // マイグレーション: 既存のmessagesテーブルにencryptedカラムがなければ追加
+  try {
+    await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN DEFAULT false');
+  } catch (e) {
+    console.log('[db] encrypted migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました ✅');
 }
 

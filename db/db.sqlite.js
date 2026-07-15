@@ -57,6 +57,7 @@ async function initDB() {
       display_name TEXT,
       profile_pic TEXT,
       bio TEXT,
+      public_key TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -125,6 +126,7 @@ async function initDB() {
       recipient_id TEXT NOT NULL,
       content TEXT NOT NULL,
       msg_type TEXT DEFAULT 'text',
+      encrypted INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       read_at TEXT,
       edited_at TEXT,

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   profile_pic TEXT,
   bio TEXT,
+  public_key TEXT,
   created_at TIMESTAMP DEFAULT now()
 );
 
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS messages (
   recipient_id TEXT NOT NULL REFERENCES users(id),
   content TEXT NOT NULL,
   msg_type TEXT DEFAULT 'text',
+  encrypted BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT now(),
   read_at TIMESTAMP,
   edited_at TIMESTAMP,

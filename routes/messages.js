@@ -20,12 +20,13 @@ function auth(req, res, next) {
 }
 
 // メッセージ内容をトークリスト用のプレビューテキストに変換
-function toPreviewText(content) {
+function toPreviewText(content, encrypted) {
   if (!content) return '';
+  if (encrypted) return '暗号化されたメッセージ';
   try {
     const parsed = JSON.parse(content);
     if (parsed && parsed.media && parsed.mediaType) {
-      return parsed.mediaType === 'image' ? '📷 画像が送信されました' : '🎥 動画が送信されました';
+      return parsed.mediaType === 'image' ? '画像が送信されました' : '動画が送信されました';
     }
   } catch (e) {}
   return content;
@@ -33,12 +34,13 @@ function toPreviewText(content) {
 
 // メッセージ送信
 // POST /api/messages/send
-// body: { recipientId, content, mediaType?, mediaData? }
+// body: { recipientId, content, mediaType?, mediaData?, encrypted? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
+// encrypted: true の場合、content は暗号文（サーバーは復号化しない）
 router.post('/send', auth, async (req, res) => {
   try {
-    const { recipientId, content, mediaType, mediaData } = req.body;
+    const { recipientId, content, mediaType, mediaData, encrypted } = req.body;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
@@ -54,13 +56,14 @@ router.post('/send', auth, async (req, res) => {
     let finalContent = content;
     
     // 画像・動画の場合、JSONで { text, media, mediaType } を保存
+    // 注: メディアは現状暗号化未対応（別途対応予定）
     if (mediaData) {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
     }
 
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type) VALUES (?, ?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, finalContent, msgType]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted) VALUES (?, ?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -75,6 +78,7 @@ router.post('/send', auth, async (req, res) => {
         recipientId: msg.recipient_id,
         content: msg.content,
         msgType: msg.msg_type,
+        encrypted: !!msg.encrypted,
         createdAt: msg.created_at,
       }
     };
@@ -129,6 +133,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         senderId: m.sender_id,
         recipientId: m.recipient_id,
         content: m.deleted_at ? '' : m.content,
+        encrypted: !!m.encrypted,
         createdAt: m.created_at,
         readAt: m.read_at,
         editedAt: m.edited_at,
@@ -224,7 +229,7 @@ router.get('/talks', auth, async (req, res) => {
 // body: { messageId, content }
 router.post('/edit', auth, async (req, res) => {
   try {
-    const { messageId, content } = req.body;
+    const { messageId, content, encrypted } = req.body;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
@@ -233,13 +238,14 @@ router.post('/edit', auth, async (req, res) => {
     if (msg.deleted_at) return res.status(400).json({ error: 'message deleted' });
 
     const now = new Date().toISOString();
-    await db.run("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?", [content, now, messageId]);
+    await db.run("UPDATE messages SET content = ?, encrypted = ?, edited_at = ? WHERE id = ?", [content, !!encrypted, now, messageId]);
     const updated = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
 
     const payload = {
       type: 'message_edited',
       messageId: updated.id,
       content: updated.content,
+      encrypted: !!updated.encrypted,
       editedAt: updated.edited_at,
       senderId: updated.sender_id,
       recipientId: updated.recipient_id,
@@ -248,7 +254,7 @@ router.post('/edit', auth, async (req, res) => {
     broadcastToUser(updated.recipient_id, payload);
     broadcastToUser(updated.sender_id, payload);
 
-    res.json({ ok: true, message: payload.message });
+    res.json({ ok: true, message: payload });
   } catch (e) {
     console.error('Error editing message:', e.message);
     res.status(500).json({ error: e.message });

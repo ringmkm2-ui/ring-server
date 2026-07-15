@@ -93,6 +93,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .call-status{font-size:15px;font-weight:600;color:#64748b;margin-bottom:40px}
 .end-btn{background:#ff3b30;border:none;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(255,59,48,.4);transform:rotate(135deg)}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl.js/1.0.3/nacl.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl.js/1.0.3/nacl-util.min.js"></script>
 </head>
 <body>
 <div class="phone-container">
@@ -210,6 +212,111 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// E2E暗号化用：鍵ペア生成・登録・暗号化・復号化
+let myKeyPair = null;
+const publicKeyCache = new Map(); // userId -> Uint8Array公開鍵（メモリキャッシュ）
+
+// 自分の鍵ペアを取得（なければ生成してサーバーに公開鍵を登録）
+async function getOrCreateMyKeyPair() {
+  if (myKeyPair) return myKeyPair;
+
+  const keyStorageName = `e2e_keypair_${myUserId}`;
+  let keyStr = localStorage.getItem(keyStorageName);
+
+  if (!keyStr) {
+    // 新規鍵ペア生成（Curve25519）
+    myKeyPair = nacl.box.keyPair();
+    keyStr = JSON.stringify({
+      publicKey: Array.from(myKeyPair.publicKey),
+      secretKey: Array.from(myKeyPair.secretKey)
+    });
+    localStorage.setItem(keyStorageName, keyStr);
+
+    // サーバーに公開鍵を登録（初回のみ）
+    try {
+      await api('/api/friends/publickey', {
+        method: 'POST',
+        body: JSON.stringify({ publicKey: nacl.util.encodeBase64(myKeyPair.publicKey) })
+      });
+    } catch (err) {
+      console.error('公開鍵登録エラー:', err);
+    }
+  } else {
+    const keyObj = JSON.parse(keyStr);
+    myKeyPair = {
+      publicKey: new Uint8Array(keyObj.publicKey),
+      secretKey: new Uint8Array(keyObj.secretKey)
+    };
+  }
+  return myKeyPair;
+}
+
+// 相手の公開鍵を取得（キャッシュ優先、なければサーバーから取得）
+async function getRecipientPublicKey(userId) {
+  if (publicKeyCache.has(userId)) {
+    return publicKeyCache.get(userId);
+  }
+
+  try {
+    const data = await api('/api/friends/publickey/' + userId);
+    if (data.publicKey) {
+      const keyBytes = nacl.util.decodeBase64(data.publicKey);
+      publicKeyCache.set(userId, keyBytes);
+      return keyBytes;
+    }
+  } catch (err) {
+    console.error('公開鍵取得エラー:', err);
+  }
+  return null;
+}
+
+// メッセージ内容を暗号化（自分の秘密鍵 + 相手の公開鍵）
+async function encryptMessage(plaintext, recipientId) {
+  const myKeys = await getOrCreateMyKeyPair();
+  const recipientPublicKey = await getRecipientPublicKey(recipientId);
+
+  if (!recipientPublicKey) {
+    // 相手がまだ公開鍵を登録していない場合は平文のまま送る（フォールバック）
+    console.warn('相手の公開鍵が見つかりません。暗号化なしで送信します。');
+    return { encrypted: false, content: plaintext };
+  }
+
+  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  const message = nacl.util.decodeUTF8(plaintext);
+  const encryptedBytes = nacl.box(message, nonce, recipientPublicKey, myKeys.secretKey);
+
+  // nonce + 暗号化データをBase64エンコード
+  const full = new Uint8Array(nonce.length + encryptedBytes.length);
+  full.set(nonce);
+  full.set(encryptedBytes, nonce.length);
+
+  return { encrypted: true, content: nacl.util.encodeBase64(full) };
+}
+
+// メッセージ内容を復号化（自分の秘密鍵 + 送信者の公開鍵）
+async function decryptMessage(encryptedBase64, senderId) {
+  const myKeys = await getOrCreateMyKeyPair();
+  const senderPublicKey = await getRecipientPublicKey(senderId);
+
+  if (!senderPublicKey) {
+    console.warn('送信者の公開鍵が見つかりません');
+    return null;
+  }
+
+  try {
+    const full = nacl.util.decodeBase64(encryptedBase64);
+    const nonce = full.slice(0, nacl.box.nonceLength);
+    const encryptedBytes = full.slice(nacl.box.nonceLength);
+
+    const decrypted = nacl.box.open(encryptedBytes, nonce, senderPublicKey, myKeys.secretKey);
+    if (!decrypted) return null;
+    return nacl.util.encodeUTF8(decrypted);
+  } catch (e) {
+    console.error('復号化エラー:', e);
+    return null;
+  }
+}
+
 // パートナーアバター（ヘッダー）
 const pAv = document.getElementById('partnerAv');
 if (otherPic) {
@@ -323,7 +430,7 @@ function handleMedia(f, t) {
   reader.readAsDataURL(f);
 }
 
-document.getElementById('chatForm').onsubmit = e => {
+document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
@@ -335,8 +442,17 @@ document.getElementById('chatForm').onsubmit = e => {
     isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('sendBtn').innerHTML = paperPlane;
     if (msgId) {
-      api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: txt }) })
-        .then(data => { if (data.message) { addRealMessage(data.message); renderMessage(data.message); } })
+      const { encrypted, content: sendContent } = await encryptMessage(txt, otherId);
+      api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: sendContent, encrypted }) })
+        .then(data => {
+          if (data.message) {
+            // 自分の平文キャッシュも更新
+            cacheOwnPlaintext(msgId, txt);
+            const displayMsg = { ...data.message, content: txt };
+            addRealMessage(displayMsg);
+            renderMessage(displayMsg);
+          }
+        })
         .catch(err => console.error('edit error:', err));
     }
   } else {
@@ -382,16 +498,49 @@ const msgDOMCache = new Map(); // msgId -> DOM要素（querySelector高速化用
 
 async function sendRealMessage(content) {
   try {
+    const { encrypted, content: sendContent } = await encryptMessage(content, otherId);
     const data = await api('/api/messages/send', {
       method: 'POST',
-      body: JSON.stringify({ recipientId: otherId, content }),
+      body: JSON.stringify({ recipientId: otherId, content: sendContent, encrypted }),
     });
     if (data.message) {
-      addRealMessage(data.message);
-      renderMessage(data.message);
+      // 自分が送った平文をローカルにキャッシュ（自分は受信者ではないため復号化できないので、自分用に平文を保存）
+      cacheOwnPlaintext(data.message.id, content);
+      const displayMsg = { ...data.message, content: content };
+      addRealMessage(displayMsg);
+      renderMessage(displayMsg);
     }
   } catch (err) {
     console.error('send error:', err);
+  }
+}
+
+// 自分が送信したメッセージの平文をローカルストレージにキャッシュ
+// （E2E暗号化では送信者も暗号文を復号できないため、自分用の控えとして保存）
+function cacheOwnPlaintext(msgId, plaintext) {
+  try {
+    const cacheKey = `own_plaintext_${myUserId}`;
+    let cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+    cache[msgId] = plaintext;
+    // キャッシュサイズ制限（最新500件のみ保持）
+    const keys = Object.keys(cache);
+    if (keys.length > 500) {
+      const toRemove = keys.slice(0, keys.length - 500);
+      toRemove.forEach(k => delete cache[k]);
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(cache));
+  } catch (e) {
+    console.error('平文キャッシュ保存エラー:', e);
+  }
+}
+
+function getOwnPlaintext(msgId) {
+  try {
+    const cacheKey = `own_plaintext_${myUserId}`;
+    const cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+    return cache[msgId] || null;
+  } catch (e) {
+    return null;
   }
 }
 
@@ -567,20 +716,34 @@ async function syncMessages() {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
 
-    data.forEach(msg => {
+    for (const msg of data) {
       const existingLocal = realMessages.find(m => m.id === msg.id);
+
+      // 暗号化メッセージは復号化してから比較・保存
+      let displayContent = msg.content;
+      if (msg.encrypted && !msg.deletedAt) {
+        if (msg.senderId === myUserId) {
+          const cached = getOwnPlaintext(msg.id);
+          displayContent = cached !== null ? cached : '(このデバイスでは表示できません)';
+        } else {
+          const decrypted = await decryptMessage(msg.content, msg.senderId);
+          displayContent = decrypted !== null ? decrypted : '(復号化に失敗しました)';
+        }
+      }
+
       const changed = !existingLocal ||
-        existingLocal.content !== msg.content ||
+        existingLocal.content !== displayContent ||
         existingLocal.deletedAt !== msg.deletedAt ||
         existingLocal.editedAt !== msg.editedAt ||
         existingLocal.readAt !== msg.readAt ||
         JSON.stringify(existingLocal.reactions) !== JSON.stringify(msg.reactions);
 
-      addRealMessage(msg);
+      const displayMsg = { ...msg, content: displayContent };
+      addRealMessage(displayMsg);
       if (changed) {
-        renderMessage(msg);
+        renderMessage(displayMsg);
       }
-    });
+    }
 
     updatePinnedBanner();
   } catch (err) {
@@ -598,15 +761,23 @@ function connectRealWS() {
     ws.send(JSON.stringify({ type: 'auth', token }));
   };
 
-  ws.onmessage = e => {
+  ws.onmessage = async e => {
     try {
       const data = JSON.parse(e.data);
       if (data.type === 'new_message') {
         const msg = data.message;
         if ((msg.senderId === otherId && msg.recipientId === myUserId) || (msg.senderId === myUserId && msg.recipientId === otherId)) {
-          addRealMessage(msg);
           if (msg.senderId !== myUserId) {
-            renderMessage(msg);
+            // 相手からのメッセージは復号化してから表示
+            let displayContent = msg.content;
+            if (msg.encrypted) {
+              const decrypted = await decryptMessage(msg.content, msg.senderId);
+              if (decrypted !== null) displayContent = decrypted;
+              else displayContent = '(復号化に失敗しました)';
+            }
+            const displayMsg = { ...msg, content: displayContent };
+            addRealMessage(displayMsg);
+            renderMessage(displayMsg);
             // 既読確認はポーリング（10秒ごと）に任せる。ここでは即座に全同期しない
           }
         }
@@ -616,8 +787,14 @@ function connectRealWS() {
         // 編集されたメッセージのみローカル更新（全体同期ではなく差分更新）
         const msg = realMessages.find(m => m.id === data.messageId);
         if (msg) {
-          msg.content = data.content;
+          let newContent = data.content;
+          if (data.encrypted && msg.senderId !== myUserId) {
+            const decrypted = await decryptMessage(data.content, msg.senderId);
+            if (decrypted !== null) newContent = decrypted;
+          }
+          msg.content = newContent;
           msg.editedAt = data.editedAt;
+          msg._parsedCache = null; // キャッシュクリア（再パース）
           renderMessage(msg);
         }
       } else if (data.type === 'message_deleted') {
@@ -719,11 +896,22 @@ async function initialLoadHistory() {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
 
-    // 全メッセージをメモリに保持
-    data.forEach(msg => addRealMessage(msg));
-
-    // 全メッセージを描画（ただしメディアは遅延ロード）
-    data.forEach(msg => renderMessage(msg));
+    // 復号化してから保持・描画（自分が送ったメッセージは復号化不要、相手からのみ復号化）
+    for (const msg of data) {
+      let displayContent = msg.content;
+      if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
+        const decrypted = await decryptMessage(msg.content, msg.senderId);
+        if (decrypted !== null) displayContent = decrypted;
+        else displayContent = '(復号化に失敗しました)';
+      } else if (msg.encrypted && msg.senderId === myUserId) {
+        // 自分が送った暗号化メッセージはローカルキャッシュから復元
+        const cached = getOwnPlaintext(msg.id);
+        displayContent = cached !== null ? cached : '(このデバイスでは表示できません)';
+      }
+      const displayMsg = { ...msg, content: displayContent };
+      addRealMessage(displayMsg);
+      renderMessage(displayMsg);
+    }
   } catch (err) {
     console.error('initialLoadHistory error:', err);
   }
@@ -754,11 +942,13 @@ async function refreshPartnerProfile() {
 }
 
 if (otherId) {
-  initialLoadHistory();
-  connectRealWS();
-  loadPinnedMessages();
-  // ポーリング廃止。WebSocket主軸で、接続直後の初期ロードのみ
-  refreshPartnerProfile();
+  // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
+  getOrCreateMyKeyPair().then(() => {
+    initialLoadHistory();
+    connectRealWS();
+    loadPinnedMessages();
+    refreshPartnerProfile();
+  });
   // 念のためネットワーク遮断時のフォールバック用に低頻度ポーリング（5分ごと）
   setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {

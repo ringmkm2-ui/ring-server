@@ -41,6 +41,29 @@ router.post('/me', auth, async (req, res) => {
   }
 });
 
+// E2E暗号化用の公開鍵を登録（初回ログイン時にクライアントが自動で呼ぶ）
+router.post('/publickey', auth, async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    if (!publicKey) return res.status(400).json({ error: 'publicKey required' });
+    await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 特定ユーザーの公開鍵を取得（メッセージ暗号化のため）
+router.get('/publickey/:userId', auth, async (req, res) => {
+  try {
+    const user = await db.get('SELECT public_key FROM users WHERE id = ?', [req.params.userId]);
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    res.json({ publicKey: user.public_key });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // IDで検索
 router.get('/search', auth, async (req, res) => {
   try {
@@ -105,8 +128,8 @@ router.get('/list', auth, async (req, res) => {
     if (!rows.length) return res.json([]);
     const ids = rows.map(r => r.friend_id);
     const placeholders = ids.map(() => '?').join(',');
-    const friends = await db.all(`SELECT id, user_id, display_name, profile_pic FROM users WHERE id IN (${placeholders})`, ids);
-    res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic })));
+    const friends = await db.all(`SELECT id, user_id, display_name, profile_pic, public_key FROM users WHERE id IN (${placeholders})`, ids);
+    res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, publicKey: u.public_key })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
