@@ -687,7 +687,9 @@ function renderMessageImpl(msg) {
   }
 
   const d = new Date(msg.createdAt);
-  const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
+  // サーバーはUTC保存。ローカルタイムゾーンに変換して表示
+  const localTime = new Date(d.getTime() + new Date().getTimezoneOffset() * -60000);
+  const t = `${String(localTime.getHours()).padStart(2,'0')}:${String(localTime.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
   const meta = document.createElement('div'); meta.className = 'msg-meta';
 
   if (isMine) {
