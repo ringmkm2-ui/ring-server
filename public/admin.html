@@ -403,6 +403,7 @@ function addRealMessage(msg) {
 
 // メッセージ内容をパースして { displayText, mediaType, mediaSrc } を返す
 // パース結果はメッセージオブジェクトにキャッシュして、毎回のパースを避ける
+// ただしmediaSrcはメモリ節約のためキャッシュしない（初回パースのみ）
 function parseMsgContent(content, msg) {
   if (msg && msg._parsedCache) {
     return msg._parsedCache;
@@ -416,8 +417,10 @@ function parseMsgContent(content, msg) {
     }
   } catch (e) {}
   
-  // パース結果をキャッシュ
-  if (msg) {
+  // パース結果をキャッシュ（ただしmediaSrcは除外してメモリ節約）
+  if (msg && result.mediaSrc) {
+    msg._parsedCache = { displayText: result.displayText, mediaType: result.mediaType, mediaSrc: null };
+  } else if (msg) {
     msg._parsedCache = result;
   }
   return result;
@@ -667,6 +670,37 @@ function showTypingIndicator() {
     ti.style.display = 'none';
   }, 3000);
 }
+
+// 画面外のメッセージのBase64データをメモリから削除（メモリ節約用）
+const memoryCleanupObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) {
+      // 画面外に出たメッセージは_parsedCacheをクリア
+      const msgId = entry.target.dataset.msgId;
+      const msg = realMessages.find(m => m.id === msgId);
+      if (msg) {
+        msg._parsedCache = null; // キャッシュクリア（再度スクロール時にJSONパース）
+      }
+    }
+  });
+}, { rootMargin: '500px' }); // 500px手前で削除開始
+
+// すべてのメッセージをobserve
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-msg-id]').forEach(el => {
+    memoryCleanupObserver.observe(el);
+  });
+});
+
+// 新規メッセージ追加時もobserve
+const originalAppendChild = Element.prototype.appendChild;
+Element.prototype.appendChild = function(child) {
+  const result = originalAppendChild.call(this, child);
+  if (child.dataset && child.dataset.msgId) {
+    memoryCleanupObserver.observe(child);
+  }
+  return result;
+};
 
 // 入力中通知を送信（debounce）
 let lastTypingTime = 0;
