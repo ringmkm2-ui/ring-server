@@ -391,9 +391,42 @@ function parseMsgContent(content, msg) {
   return result;
 }
 
-// 統一メッセージレンダリング関数（送信・受信・履歴すべてここを通る）
-// 既存要素があれば「その場で」中身だけ更新（DOM再構築・位置移動なし）→ 発熱/重複防止
+// レンダリングキューとバッチ処理（複数のrenderMessage呼び出しを集約）
+let renderQueue = [];
+let renderScheduled = false;
+
+function queueRender(msg) {
+  renderQueue.push(msg);
+  if (!renderScheduled) {
+    renderScheduled = true;
+    requestAnimationFrame(flushRenderQueue);
+  }
+}
+
+function flushRenderQueue() {
+  if (renderQueue.length === 0) {
+    renderScheduled = false;
+    return;
+  }
+  
+  // キューの全メッセージを処理（1フレーム内で集約）
+  const toRender = renderQueue.splice(0, renderQueue.length);
+  toRender.forEach(msg => {
+    renderMessageImpl(msg);
+  });
+  
+  renderScheduled = false;
+  if (renderQueue.length > 0) {
+    requestAnimationFrame(flushRenderQueue);
+  }
+}
+
+// 実際のレンダリング関数（内部用）
 function renderMessage(msg) {
+  queueRender(msg);
+}
+
+function renderMessageImpl(msg) {
   if (!msg || !msg.id) return null;
   const cs = document.getElementById('chatScreen');
   const isMine = msg.senderId === myUserId;
@@ -429,18 +462,42 @@ function renderMessage(msg) {
 
   if (mediaSrc) {
     bubble.classList.add('media-bub');
-    let mediaEl;
-    if (mediaType === 'image') {
-      mediaEl = document.createElement('img'); mediaEl.src = mediaSrc; mediaEl.loading = 'lazy';
-    } else if (mediaType === 'video') {
-      mediaEl = document.createElement('video'); mediaEl.src = mediaSrc; mediaEl.controls = true; mediaEl.preload = 'metadata';
-    }
-    if (mediaEl) {
-      bubble.appendChild(mediaEl);
-      let lp = false;
-      setTimeout(() => { lp = true; }, 400);
-      mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
-    }
+    
+    // メディアは遅延ロード：プレースホルダーだけ先に表示
+    const mediaPlaceholder = document.createElement('div');
+    mediaPlaceholder.className = 'media-placeholder';
+    mediaPlaceholder.style.cssText = 'background:#f0f0f0;width:200px;height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;';
+    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : '動画読み込み中...';
+    bubble.appendChild(mediaPlaceholder);
+    
+    // IntersectionObserverで可視範囲に入ったら実際のメディア要素を作成
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !mediaPlaceholder.dataset.loaded) {
+        mediaPlaceholder.dataset.loaded = 'true';
+        let mediaEl;
+        if (mediaType === 'image') {
+          mediaEl = document.createElement('img');
+          mediaEl.src = mediaSrc;
+          mediaEl.loading = 'lazy';
+          mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+        } else if (mediaType === 'video') {
+          mediaEl = document.createElement('video');
+          mediaEl.src = mediaSrc;
+          mediaEl.controls = true;
+          mediaEl.preload = 'metadata';
+          mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+        }
+        if (mediaEl) {
+          mediaPlaceholder.replaceWith(mediaEl);
+          let lp = false;
+          setTimeout(() => { lp = true; }, 400);
+          mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
+        }
+        observer.unobserve(mediaPlaceholder);
+      }
+    }, { rootMargin: '50px' });
+    observer.observe(mediaPlaceholder);
+    
     if (displayText && displayText !== '[画像]' && displayText !== '[動画]') {
       const cap = document.createElement('div');
       cap.className = 'msg-text';
@@ -618,10 +675,25 @@ async function initialLoadHistory() {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
 
-    data.forEach(msg => {
-      addRealMessage(msg);
-      renderMessage(msg);
-    });
+    // 全メッセージをメモリに保持
+    data.forEach(msg => addRealMessage(msg));
+
+    // 最新の20件だけ初期描画（パフォーマンス重視）
+    const toRender = data.slice(Math.max(0, data.length - 20));
+    toRender.forEach(msg => renderMessage(msg));
+    
+    // スクロール時に残りを遅延ロード
+    const cs = document.getElementById('chatScreen');
+    cs.addEventListener('scroll', () => {
+      if (cs.scrollTop === 0 && realMessages.length > 20) {
+        // 上端までスクロールしたら、次の20件を描画
+        const rendered = document.querySelectorAll('[data-msg-id]').length;
+        if (rendered < realMessages.length) {
+          const toAdd = realMessages.slice(Math.max(0, rendered - 20), rendered);
+          toAdd.forEach(msg => renderMessage(msg));
+        }
+      }
+    }, { once: true }); // 初回のみ登録
   } catch (err) {
     console.error('initialLoadHistory error:', err);
   }
