@@ -346,6 +346,7 @@ document.getElementById('chatForm').onsubmit = e => {
 
 // 実際のメッセージ送受信管理
 let realMessages = [];
+const msgDOMCache = new Map(); // msgId -> DOM要素（querySelector高速化用）
 
 async function sendRealMessage(content) {
   try {
@@ -369,14 +370,25 @@ function addRealMessage(msg) {
 }
 
 // メッセージ内容をパースして { displayText, mediaType, mediaSrc } を返す
-function parseMsgContent(content) {
+// パース結果はメッセージオブジェクトにキャッシュして、毎回のパースを避ける
+function parseMsgContent(content, msg) {
+  if (msg && msg._parsedCache) {
+    return msg._parsedCache;
+  }
+  
+  let result = { displayText: content, mediaType: null, mediaSrc: null };
   try {
     const parsed = JSON.parse(content);
     if (parsed && parsed.media && parsed.mediaType) {
-      return { displayText: parsed.text || '', mediaType: parsed.mediaType, mediaSrc: parsed.media };
+      result = { displayText: parsed.text || '', mediaType: parsed.mediaType, mediaSrc: parsed.media };
     }
   } catch (e) {}
-  return { displayText: content, mediaType: null, mediaSrc: null };
+  
+  // パース結果をキャッシュ
+  if (msg) {
+    msg._parsedCache = result;
+  }
+  return result;
 }
 
 // 統一メッセージレンダリング関数（送信・受信・履歴すべてここを通る）
@@ -385,7 +397,7 @@ function renderMessage(msg) {
   if (!msg || !msg.id) return null;
   const cs = document.getElementById('chatScreen');
   const isMine = msg.senderId === myUserId;
-  let msgDiv = document.querySelector(`[data-msg-id="${msg.id}"]`);
+  let msgDiv = msgDOMCache.get(msg.id);
   const isNew = !msgDiv;
 
   if (isNew) {
@@ -405,11 +417,15 @@ function renderMessage(msg) {
     notice.className = 'cancel-notice';
     notice.textContent = isMine ? `${myName}がメッセージの送信を取り消しました` : `${partnerName}がメッセージの送信を取り消しました`;
     msgDiv.appendChild(notice);
-    if (isNew) { cs.appendChild(msgDiv); cs.scrollTop = 99999; }
+    if (isNew) {
+      cs.appendChild(msgDiv);
+      msgDOMCache.set(msg.id, msgDiv); // キャッシュに登録
+      cs.scrollTop = 99999;
+    }
     return msgDiv;
   }
 
-  const { displayText, mediaType, mediaSrc } = parseMsgContent(msg.content);
+  const { displayText, mediaType, mediaSrc } = parseMsgContent(msg.content, msg);
 
   if (mediaSrc) {
     bubble.classList.add('media-bub');
@@ -466,6 +482,7 @@ function renderMessage(msg) {
 
   if (isNew) {
     cs.appendChild(msgDiv);
+    msgDOMCache.set(msg.id, msgDiv); // キャッシュに登録
     cs.scrollTop = 99999;
   }
 
@@ -638,10 +655,14 @@ if (otherId) {
   initialLoadHistory();
   connectRealWS();
   loadPinnedMessages();
-  // ポーリングは1本化・長め間隔（WebSocketが主軸、これはフォールバック/既読確認用）
-  setInterval(syncMessages, 10000);
+  // ポーリング廃止。WebSocket主軸で、接続直後の初期ロードのみ
   refreshPartnerProfile();
-  setInterval(refreshPartnerProfile, 20000);
+  // 念のためネットワーク遮断時のフォールバック用に低頻度ポーリング（5分ごと）
+  setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      syncMessages();
+    }
+  }, 300000); // 5分
 }
 
 function attachPress(msgDiv, wrap, bubble, own) {
@@ -727,7 +748,7 @@ async function loadPinnedMessages() {
 
     banner.style.display = 'flex';
         list.innerHTML = pinned.map(p => {
-          const { displayText } = parseMsgContent(p.content);
+          const { displayText } = parseMsgContent(p.content, p);
           const txt = displayText || 'メディア';
           return `
             <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
