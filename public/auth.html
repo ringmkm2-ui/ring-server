@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bro Chat - ログイン</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * {
       margin: 0;
@@ -444,14 +445,38 @@
     }
 
     function loginWithGoogle() {
-      // TODO: Google OAuth フロー実装
-      // 本来は Google OAuth library (google-auth-library) を使用します
-      showError('Google ログインは近日実装予定です');
+      google.accounts.id.initialize({
+        client_id: '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com',
+        callback: async (response) => {
+          try {
+            const result = await fetch('/api/auth/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ idToken: response.credential })
+            });
+            const data = await result.json();
+            if (data.token) {
+              localStorage.setItem('ring_token', data.token);
+              localStorage.setItem('ring_userId', data.userId);
+              localStorage.setItem('ring_username', data.username);
+              setTimeout(() => { window.location.href = '/talklist.html'; }, 300);
+            } else {
+              showError(data.error || 'ログインに失敗しました');
+            }
+          } catch (err) {
+            showError('ネットワークエラー: ' + err.message);
+          }
+        }
+      });
+      google.accounts.id.renderButton(
+        document.querySelector('.btn-google'),
+        { theme: 'outline', size: 'large' }
+      );
     }
 
     function signupWithGoogle() {
-      // TODO: Google OAuth フロー実装
-      showError('Google 登録は近日実装予定です');
+      // ログインと同じフロー（新規ユーザーは自動作成）
+      loginWithGoogle();
     }
 
     // ページロード時にログイン状態をチェック
@@ -460,6 +485,14 @@
       if (token) {
         // 既にログイン済み
         window.location.href = '/talklist.html';
+        return;
+      }
+
+      // Google Sign-In初期化
+      if (typeof google !== 'undefined') {
+        google.accounts.id.initialize({
+          client_id: '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com'
+        });
       }
     });
   </script>
