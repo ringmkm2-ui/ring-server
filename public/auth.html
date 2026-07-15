@@ -281,10 +281,7 @@
     <!-- ログインフォーム -->
     <div id="loginSection" class="form-section active">
       <div class="auth-section">
-        <button class="btn btn-google" onclick="loginWithGoogle()">
-          <span class="google-icon"></span>
-          Google でログイン
-        </button>
+        <div id="googleLoginButton"></div>
       </div>
 
       <div class="divider">
@@ -307,10 +304,7 @@
     <!-- 登録フォーム -->
     <div id="signupSection" class="form-section">
       <div class="auth-section">
-        <button class="btn btn-google" onclick="signupWithGoogle()">
-          <span class="google-icon"></span>
-          Google で登録
-        </button>
+        <div id="googleSignupButton"></div>
       </div>
 
       <div class="divider">
@@ -444,39 +438,37 @@
       }
     }
 
-    function loginWithGoogle() {
-      google.accounts.id.initialize({
-        client_id: '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com',
-        callback: async (response) => {
-          try {
-            const result = await fetch('/api/auth/google', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ idToken: response.credential })
-            });
-            const data = await result.json();
-            if (data.token) {
-              localStorage.setItem('ring_token', data.token);
-              localStorage.setItem('ring_userId', data.userId);
-              localStorage.setItem('ring_username', data.username);
-              setTimeout(() => { window.location.href = '/talklist.html'; }, 300);
-            } else {
-              showError(data.error || 'ログインに失敗しました');
-            }
-          } catch (err) {
-            showError('ネットワークエラー: ' + err.message);
+    function handleGoogleSignIn(response) {
+      try {
+        const idToken = response.credential;
+        fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.token) {
+            localStorage.setItem('ring_token', data.token);
+            localStorage.setItem('ring_userId', data.userId);
+            localStorage.setItem('ring_username', data.username);
+            window.location.href = '/talklist.html';
+          } else {
+            showError(data.error || 'ログインに失敗しました');
           }
-        }
-      });
-      google.accounts.id.renderButton(
-        document.querySelector('.btn-google'),
-        { theme: 'outline', size: 'large' }
-      );
+        })
+        .catch(err => showError('ネットワークエラー: ' + err.message));
+      } catch (e) {
+        showError('認証エラー: ' + e.message);
+      }
+    }
+
+    function loginWithGoogle() {
+      // 不要（SDKが直接処理）
     }
 
     function signupWithGoogle() {
-      // ログインと同じフロー（新規ユーザーは自動作成）
-      loginWithGoogle();
+      // 不要（SDKが直接処理）
     }
 
     // ページロード時にログイン状態をチェック
@@ -491,8 +483,21 @@
       // Google Sign-In初期化
       if (typeof google !== 'undefined') {
         google.accounts.id.initialize({
-          client_id: '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com'
+          client_id: '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com',
+          callback: handleGoogleSignIn
         });
+        
+        // ログイン用ボタン
+        google.accounts.id.renderButton(
+          document.getElementById('googleLoginButton'),
+          { theme: 'outline', size: 'large', width: '100%' }
+        );
+        
+        // 登録用ボタン
+        google.accounts.id.renderButton(
+          document.getElementById('googleSignupButton'),
+          { theme: 'outline', size: 'large', width: '100%' }
+        );
       }
     });
   </script>
