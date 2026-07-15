@@ -441,16 +441,15 @@ function flushRenderQueue() {
     return;
   }
   
-  // 1フレームで最大5件だけ処理（CPU負荷分散）
-  const MAX_PER_FRAME = 5;
-  const toRender = renderQueue.splice(0, Math.min(MAX_PER_FRAME, renderQueue.length));
+  // キューの全メッセージを処理（1フレーム内で集約）
+  const toRender = renderQueue.splice(0, renderQueue.length);
   toRender.forEach(msg => {
     renderMessageImpl(msg);
   });
   
   renderScheduled = false;
   if (renderQueue.length > 0) {
-    requestAnimationFrame(flushRenderQueue); // 次フレームで続行
+    requestAnimationFrame(flushRenderQueue);
   }
 }
 
