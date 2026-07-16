@@ -780,7 +780,10 @@ function connectRealWS() {
             const displayMsg = { ...msg, content: displayContent };
             addRealMessage(displayMsg);
             renderMessage(displayMsg);
-            // 既読確認はポーリング（10秒ごと）に任せる。ここでは即座に全同期しない
+            // 既読通知を即座にWebSocketで送信（10秒待たずに）
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'read_receipt', recipientId: msg.senderId, msgUuid: msg.id }));
+            }
           }
         }
       } else if (data.type === 'typing' && data.userId === otherId) {

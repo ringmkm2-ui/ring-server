@@ -96,8 +96,13 @@ function initWebSocketServer(server) {
         return;
       }
 
-      // --- 既読通知の中継 ---
+      // --- 既読通知の中継・DB更新 ---
       if (data.type === 'read_receipt') {
+        // DBの read_at をすぐに更新
+        await db.run(
+          'UPDATE messages SET read_at = ? WHERE id = ?',
+          [new Date().toISOString(), data.msgUuid]
+        );
         broadcastToUser(data.recipientId, {
           type: 'read_receipt',
           fromUserId: userId,

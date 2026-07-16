@@ -106,15 +106,87 @@ router.get('/:groupId/my-key', verifyToken, async (req, res) => {
   res.json({ keyVersion: row.key_version, encryptedGroupKey: row.encrypted_group_key });
 });
 
-// --- メンバー一覧 ---
-router.get('/:groupId/members', verifyToken, async (req, res) => {
-  const rows = await db.all(
-    `SELECT u.id, u.username, u.display_name FROM group_members gm
-     JOIN users u ON u.id = gm.user_id
-     WHERE gm.group_id = ? AND gm.left_at IS NULL`,
-    [req.params.groupId]
+// --- グループメッセージ送信 ---
+router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
+  const { groupId } = req.params;
+  const { content, encrypted } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+
+  const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+
+  const msgId = uuidv4();
+  await db.run(
+    'INSERT INTO group_messages (id, group_id, sender_id, content, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?)',
+    [msgId, groupId, req.user.userId, content, !!encrypted, group.key_version]
   );
-  res.json({ members: rows });
+
+  const msg = await db.get('SELECT * FROM group_messages WHERE id = ?', [msgId]);
+
+  // グループメンバー全員にWebSocket通知
+  const members = await db.all(
+    'SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL',
+    [groupId]
+  );
+  const { broadcastToUser } = require('../ws/wsServer');
+  members.forEach(m => {
+    broadcastToUser(m.user_id, {
+      type: 'group_message',
+      groupId,
+      message: {
+        id: msg.id,
+        groupId: msg.group_id,
+        senderId: msg.sender_id,
+        content: msg.content,
+        encrypted: !!msg.encrypted,
+        keyVersion: msg.key_version,
+        createdAt: msg.created_at,
+      }
+    });
+  });
+
+  res.json({ ok: true, message: msg });
+});
+
+// --- グループメッセージ履歴取得 ---
+router.get('/:groupId/messages', verifyToken, async (req, res) => {
+  const { groupId } = req.params;
+  const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+
+  const messages = await db.all(
+    `SELECT gm.*, u.display_name FROM group_messages gm
+     LEFT JOIN users u ON u.id = gm.sender_id
+     WHERE gm.group_id = ? AND gm.deleted_at IS NULL
+     ORDER BY gm.created_at DESC LIMIT 100`,
+    [groupId]
+  );
+
+  res.json(messages.reverse());
+});
+
+// --- グループメッセージ削除 ---
+router.post('/:groupId/messages/:msgId/delete', verifyToken, async (req, res) => {
+  const { groupId, msgId } = req.params;
+  const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
+  if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
+  if (msg.sender_id !== req.user.userId) return res.status(403).json({ error: '権限がありません' });
+
+  const now = new Date().toISOString();
+  await db.run('UPDATE group_messages SET deleted_at = ? WHERE id = ?', [now, msgId]);
+
+  // グループメンバーに通知
+  const { broadcastToUser } = require('../ws/wsServer');
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => {
+    broadcastToUser(m.user_id, {
+      type: 'group_message_deleted',
+      groupId,
+      messageId: msgId,
+    });
+  });
+
+  res.json({ ok: true });
 });
 
 module.exports = router;
