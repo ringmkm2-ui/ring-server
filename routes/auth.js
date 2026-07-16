@@ -139,6 +139,63 @@ function parseGoogleIdToken(token) {
   }
 }
 
+// --- Google連絡先同期（Google People API） ---
+router.post('/google-contacts/sync', async (req, res) => {
+  const { accessToken, userId } = req.body;
+  if (!accessToken || !userId) return res.status(400).json({ error: 'accessToken and userId required' });
+
+  try {
+    // Google People API から連絡先取得
+    const fetch = require('node-fetch');
+    const response = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses&pageSize=1000', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await response.json();
+
+    if (!data.connections) return res.json({ ok: true, count: 0 });
+
+    // 連絡先のメールアドレスを抽出
+    const emails = new Set();
+    data.connections.forEach(person => {
+      if (person.emailAddresses) {
+        person.emailAddresses.forEach(e => emails.add(e.value.toLowerCase()));
+      }
+    });
+
+    // Bro Chatユーザーと照合
+    const users = await db.all('SELECT id, username FROM users WHERE LOWER(username) IN (' + Array(emails.size).fill('?').join(',') + ')', Array.from(emails));
+    const foundUserIds = new Set(users.map(u => u.id));
+
+    // 既存の友達を取得
+    const existingFriends = await db.all(
+      'SELECT * FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status IN ("accepted", "pending")',
+      [userId, userId]
+    );
+    const existingIds = new Set();
+    existingFriends.forEach(f => {
+      if (f.user_a_id === userId) existingIds.add(f.user_b_id);
+      else existingIds.add(f.user_a_id);
+    });
+
+    // 新規友達申請（既存除外）
+    let count = 0;
+    for (const newFriendId of foundUserIds) {
+      if (newFriendId !== userId && !existingIds.has(newFriendId)) {
+        await db.run(
+          'INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by, requested_at) VALUES (?, ?, ?, "pending", ?, ?)',
+          [uuidv4(), userId, newFriendId, userId, new Date().toISOString()]
+        );
+        count++;
+      }
+    }
+
+    res.json({ ok: true, count, totalFound: foundUserIds.size });
+  } catch (e) {
+    console.error('Google Contacts sync error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- JWT検証ミドルウェア (他ルート・WebSocketから共有利用) ---
 function verifyToken(req, res, next) {
   const header = req.headers.authorization;
