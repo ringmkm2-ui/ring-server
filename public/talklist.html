@@ -70,11 +70,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
     <main class="tc">
       <section id="pageTalk">
         <div class="card">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-            <input type="text" placeholder="トークを検索..." style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;">
-            <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button onclick="showTalkTab()" id="talkTabBtn" style="flex:1;padding:10px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:500;">トーク</button>
+            <button onclick="showFriendsTab()" id="friendsTabBtn" style="flex:1;padding:10px;background:#e0e0e0;color:#333;border:none;border-radius:6px;cursor:pointer;font-weight:500;">友達</button>
           </div>
+          <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
+          <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;">+</button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
+          <div id="friendsList" style="display:none;"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
           <div class="slabel">グループ</div>
@@ -245,6 +248,47 @@ async function loadTalks() {
       </div>`;
     }).join('');
   } catch(e) { console.error('loadTalks:', e); }
+}
+
+async function loadFriends() {
+  try {
+    const friends = await api('/api/friends/list');
+    const list = document.getElementById('friendsList');
+    if (!Array.isArray(friends) || friends.length === 0) {
+      list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">友達がいません</div>';
+      return;
+    }
+    list.innerHTML = friends.map(f => {
+      const initial = (f.displayName||'?')[0];
+      const pic = f.profilePic ? `background-image:url(${f.profilePic})` : '';
+      return `<div class="ti" onclick="openChat('${f.userId}','${escHtml(f.displayName)}','${f.profilePic||''}')">
+        <div class="tav" style="${pic}">${pic?'':initial}</div>
+        <div class="tbody">
+          <div class="ttr"><div class="tname">${escHtml(f.displayName)}</div></div>
+          <div class="tmsg" style="color:#999;font-size:12px;">ID: ${f.userIdCode}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('loadFriends:', e); }
+}
+
+function showTalkTab() {
+  document.getElementById('talkList').style.display = 'block';
+  document.getElementById('friendsList').style.display = 'none';
+  document.getElementById('talkTabBtn').style.background = '#667eea';
+  document.getElementById('talkTabBtn').style.color = '#fff';
+  document.getElementById('friendsTabBtn').style.background = '#e0e0e0';
+  document.getElementById('friendsTabBtn').style.color = '#333';
+}
+
+function showFriendsTab() {
+  document.getElementById('talkList').style.display = 'none';
+  document.getElementById('friendsList').style.display = 'block';
+  document.getElementById('talkTabBtn').style.background = '#e0e0e0';
+  document.getElementById('talkTabBtn').style.color = '#333';
+  document.getElementById('friendsTabBtn').style.background = '#667eea';
+  document.getElementById('friendsTabBtn').style.color = '#fff';
+  loadFriends();
 }
 
 function formatTime(ts) {
