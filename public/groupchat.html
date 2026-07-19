@@ -357,15 +357,30 @@ document.getElementById('vidI').onchange=e=>{handleMedia(e.target.files[0],'vide
 document.getElementById('fileI').onchange=e=>{handleMedia(e.target.files[0],'file');};
 function handleMedia(f,t){if(!f)return;createMsg(null,f,t);document.getElementById('ibar').classList.remove('open');}
 
-document.getElementById('tform').onsubmit=e=>{
+document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
   const txt=document.getElementById('mi').value.trim();if(!txt)return;
+  const groupId=localStorage.getItem('groupId');
+  if(!groupId)return alert('グループが見つかりません');
+  
   if(isEditing){
-    editNode.textContent=txt;
-    const ts=editMeta.querySelector('.time');if(ts&&!ts.textContent.includes('(編集済)'))ts.textContent+=' (編集済)';
+    // 編集（未実装）
     isEditing=false;editNode=null;editMeta=null;
     document.getElementById('sbtn').innerHTML=pp;
-  }else{createMsg(txt,null,null);}
+  }else{
+    // メッセージ送信
+    try {
+      const result = await fetch('/api/groups/'+groupId+'/messages/send',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token'),'Content-Type':'application/json'},
+        body:JSON.stringify({content:txt})
+      });
+      const data = await result.json();
+      if(data.ok){
+        createMsg(txt,null,null);
+      }
+    }catch(err){console.error('send error:',err);}
+  }
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
 };
@@ -669,14 +684,26 @@ window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener
 document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
 document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
-// デモ受信メッセージ
-setTimeout(()=>{
-  const demos=[
-    {m:gi.members.find(x=>x.id==='u1'),t:'みんなこんにちは！'},
-    {m:gi.members.find(x=>x.id==='u2'),t:'よろしく〜'},
-  ];
-  demos.forEach((d,i)=>{if(d.m)setTimeout(()=>createMsg(d.t,null,null,true,d.m),i*900);});
-},600);
+// グループメッセージ履歴をサーバーから読み込み
+async function loadGroupMessages(){
+  const groupId=localStorage.getItem('groupId');
+  if(!groupId)return;
+  try{
+    const res=await fetch('/api/groups/'+groupId+'/messages',{
+      headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token')}
+    });
+    const msgs=await res.json();
+    if(Array.isArray(msgs)){
+      msgs.forEach(msg=>{
+        const member=gi.members.find(m=>m.id===msg.senderId);
+        createMsg(msg.content,null,null,msg.senderId!==localStorage.getItem('ring_userId'),member);
+      });
+    }
+  }catch(err){console.error('load messages error:',err);}
+}
+
+// ページロード時にメッセージ読み込み
+window.addEventListener('load',loadGroupMessages);
 </script>
 </body>
 </html>
