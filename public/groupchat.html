@@ -99,6 +99,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .sheet{width:100%;max-height:78vh;overflow-y:auto;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border-radius:28px 28px 0 0;padding:20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.25,1,.5,1)}
 .sheet-ov.show .sheet{transform:translateY(0)}
 .sh-title{font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin-bottom:16px}
+.glass-btn{
+  position:relative;width:34px;height:34px;border-radius:50%;border:none;
+  background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
+  box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
+  backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;
+  transition:all .3s cubic-bezier(.25,1,.5,1);padding:0;
+}
+.glass-btn:hover{
+  background:rgba(255,255,255,.15);
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 30px rgba(255,255,255,.5),0 12px 24px rgba(0,0,0,.2);
+  transform:scale(1.08);
+}
+.glass-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
 .litem{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(15,23,42,.05)}
 .litem:last-child{border-bottom:none}
 .lav{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
@@ -170,7 +184,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
         </button>
         <form class="tform" id="tform">
           <input type="text" id="mi" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="sbtn" id="sbtn" style="background:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,0.08);transition:all 0.3s ease;">
+          <button type="submit" class="glass-btn" id="sbtn">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>

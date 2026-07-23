@@ -57,6 +57,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
+.glass-plus-btn{
+  position:absolute;right:20px;top:70px;width:40px;height:40px;border-radius:50%;border:none;
+  background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
+  box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
+  backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);
+  color:#0f172a;font-size:24px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;padding:0;transition:all .3s cubic-bezier(.25,1,.5,1);outline:0;
+}
+.glass-plus-btn:hover{
+  background:rgba(255,255,255,.15);
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 30px rgba(255,255,255,.5),0 12px 24px rgba(0,0,0,.2);
+  transform:scale(1.1);
+}
+.glass-plus-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
 </style>
 </head>
 <body>
@@ -74,7 +88,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <section id="pageTalk">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;padding:0;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s ease;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+          <button onclick="openAddFriend()" class="glass-plus-btn">+</button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
