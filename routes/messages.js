@@ -56,7 +56,7 @@ router.post('/send', auth, async (req, res) => {
     let finalContent = content;
     
     // 画像・動画の場合、JSONで { text, media, mediaType } を保存
-    // 注: メディアは現状暗号化未対応（別途対応予定）
+    // encrypted=true の場合、media は暗号化されたBase64
     if (mediaData) {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
     }

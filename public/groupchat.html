@@ -352,10 +352,41 @@ function addReact(wrap,emoji){
 }
 
 document.getElementById('pbtn').onclick=()=>document.getElementById('ibar').classList.toggle('open');
-document.getElementById('imgI').onchange=e=>{handleMedia(e.target.files[0],'image');};
-document.getElementById('vidI').onchange=e=>{handleMedia(e.target.files[0],'video');};
-document.getElementById('fileI').onchange=e=>{handleMedia(e.target.files[0],'file');};
-function handleMedia(f,t){if(!f)return;createMsg(null,f,t);document.getElementById('ibar').classList.remove('open');}
+document.getElementById('imgI').onchange=e=>{handleMediaGroup(e.target.files[0],'image');};
+document.getElementById('vidI').onchange=e=>{handleMediaGroup(e.target.files[0],'video');};
+document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0],'file');};
+
+async function handleMediaGroup(f,t){
+  if(!f)return;
+  
+  const maxSize = t === 'video' ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+  if(f.size > maxSize){
+    alert('ファイルが大きすぎます');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result;
+    const groupId = localStorage.getItem('groupId');
+    
+    try {
+      const result = await fetch('/api/groups/'+groupId+'/messages/send',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token'),'Content-Type':'application/json'},
+        body:JSON.stringify({content:`[${t==='image'?'画像':'動画'}]`,mediaType:t,mediaData:base64,encrypted:true})
+      });
+      const data = await result.json();
+      if(data.ok){
+        createMsg(`[${t==='image'?'画像':'動画'}]`,null,null);
+      }
+    }catch(err){
+      console.error('media send error:',err);
+    }
+  };
+  reader.readAsDataURL(f);
+  document.getElementById('ibar').classList.remove('open');
+}
 
 document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
