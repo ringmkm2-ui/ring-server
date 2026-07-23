@@ -20,7 +20,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
-.tav{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center}
+.tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .tbody{flex:1;min-width:0}
 .ttr{display:flex;justify-content:space-between;margin-bottom:4px}
 .tname{font-weight:700;color:#0f172a;font-size:14px}
@@ -28,8 +28,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .tmsg{font-size:13px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .slabel{font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.05em}
 .ngbtn{display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;border:none;background:none;width:100%;border-bottom:1px solid rgba(15,23,42,.05)}
-.ngicon{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);box-shadow:0 8px 24px rgba(59,130,246,0.2)}
-.nglabel{font-weight:700;color:#3b82f6;font-size:14px}
+.ngicon{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 8px 24px rgba(0,0,0,.08);color:#0f172a}
+.nglabel{font-weight:700;color:#0f172a;font-size:14px}
 .hha{display:flex;justify-content:space-between;align-items:center;width:100%}
 .mypro{display:flex;align-items:center;gap:14px}
 .myav{width:55px;height:55px;border-radius:50%;background:#cbd5e1;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1);flex-shrink:0}
@@ -74,7 +74,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <section id="pageTalk">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;padding:0;box-shadow:0 4px 12px rgba(102,126,234,0.3);transition:all .2s ease;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+          <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;padding:0;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s ease;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
@@ -274,7 +274,7 @@ async function loadTalks() {
           <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
           <div class="tmsg">${escHtml(t.lastMessage||'')}</div>
         </div>
-        ${t.unreadCount>0?`<div style="background:#667eea;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${t.unreadCount}</div>`:''}
+        ${t.unreadCount>0?`<div style="background:rgba(255,255,255,.3);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">${t.unreadCount}</div>`:''}
       </div>`;
     }).join('');
   } catch(e) { console.error('loadTalks:', e); }
@@ -338,7 +338,7 @@ function openAddFriend() {
     <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px">相手のID（例: U3K7F9）</label>
     <input id="addFriendInput" type="text" placeholder="IDを入力..." style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
     <div id="searchResult" style="margin-top:12px;min-height:0;"></div>
-    <button onclick="searchFriend()" style="width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;">検索</button>
+    <button onclick="searchFriend()" style="width:100%;padding:14px;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;transition:all .3s ease;">検索</button>
     <button onclick="closeAddFriend()" style="width:100%;padding:14px;background:#f1f5f9;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">キャンセル</button>
   `;
 
@@ -390,12 +390,12 @@ async function searchFriend() {
     }
     result.innerHTML = data.map(u => `
       <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
-        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;">${(u.displayName||'?')[0]}</div>
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)">${(u.displayName||'?')[0]}</div>
         <div style="flex:1">
           <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(u.displayName)}</div>
           <div style="font-size:12px;color:#64748b">ID: ${u.userIdCode}</div>
         </div>
-        <button onclick="sendFriendRequest('${u.userIdCode}',this)" style="padding:8px 16px;background:#667eea;color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;">追加</button>
+        <button onclick="sendFriendRequest('${u.userIdCode}',this)" style="padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;">追加</button>
       </div>
     `).join('');
   } catch(e) {
@@ -565,7 +565,7 @@ document.getElementById('ngCreate').onclick = () => {
   const a = document.createElement('a');
   a.href = `groupchat.html?name=${encodeURIComponent(name)}`;
   a.className = 'ti';
-  a.innerHTML = `<div class="tav" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);font-size:20px">💬</div><div class="tbody"><div class="ttr"><div class="tname">${name}</div><div class="ttime">今</div></div><div class="tmsg">メンバー: ${selectedGroupMembers.size + 1}人</div></div>`;
+  a.innerHTML = `<div class="tav" style="font-size:20px">💬</div><div class="tbody"><div class="ttr"><div class="tname">${name}</div><div class="ttime">今</div></div><div class="tmsg">メンバー: ${selectedGroupMembers.size + 1}人</div></div>`;
   list.appendChild(a);
   
   document.getElementById('ngName').value = '';
@@ -591,12 +591,12 @@ async function loadPendingRequests() {
       const initial = (p.displayName || '?')[0];
       return `
         <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
-          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;">${initial}</div>
+          <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)">${initial}</div>
           <div style="flex:1">
             <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(p.displayName)}</div>
             <div style="font-size:12px;color:#64748b">${p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み'}</div>
           </div>
-          ${!p.isSentByMe ? `<button onclick="acceptFriendRequest('${p.friendshipId}',this)" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;">承認</button>` : ''}
+          ${!p.isSentByMe ? `<button onclick="acceptFriendRequest('${p.friendshipId}',this)" style="padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;">承認</button>` : ''}
         </div>
       `;
     }).join('');

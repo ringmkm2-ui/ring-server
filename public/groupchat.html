@@ -18,7 +18,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .hdr-wrap{padding:14px 16px}
 .hdr{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
 .back{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
-.gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1)}
+.gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;background:rgba(255,255,255,.2);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .hinfo{flex:1;min-width:0;cursor:pointer}
 .gname{font-weight:700;font-size:15px;color:#1e293b}
 .mcnt{font-size:12px;color:#64748b;font-weight:500}
@@ -31,7 +31,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .msg{display:flex;width:100%;align-items:flex-end;gap:8px}
 .msg.out{justify-content:flex-end}
 .msg.inc{justify-content:flex-start}
-.sav{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;align-self:flex-end;background-size:cover;background-position:center}
+.sav{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;align-self:flex-end;background-size:cover;background-position:center;background:rgba(255,255,255,.2);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
 .mwrap{display:flex;flex-direction:column;max-width:72%}
 .out .mwrap{align-items:flex-end}
 .inc .mwrap{align-items:flex-start}
@@ -397,7 +397,11 @@ document.getElementById('tform').onsubmit=async e=>{
   const txt=document.getElementById('mi').value.trim();
   if(!txt)return;
   const groupId=localStorage.getItem('groupId');
-  if(!groupId)return alert('グループが見つかりません');
+  console.log('groupId:', groupId, 'txt:', txt);
+  if(!groupId){
+    alert('グループが見つかりません');
+    return;
+  }
   
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
@@ -407,17 +411,20 @@ document.getElementById('tform').onsubmit=async e=>{
     document.getElementById('sbtn').innerHTML=pp;
   }else{
     try {
+      console.log('Sending message to /api/groups/'+groupId+'/messages/send');
       const result = await fetch('/api/groups/'+groupId+'/messages/send',{
         method:'POST',
         headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token'),'Content-Type':'application/json'},
         body:JSON.stringify({content:txt})
       });
+      console.log('Response status:', result.status);
       const data = await result.json();
-      if(data.ok){
-        console.log('Message sent OK, creating UI:', txt);
+      console.log('Response data:', data);
+      if(data && (data.ok || data.messageId)){
+        console.log('Message sent successfully, creating UI:', txt);
         createMsg(txt,null,null);
       }else{
-        console.error('Send response not ok:', data);
+        console.error('Send failed:', data);
       }
     }catch(err){
       console.error('Send error:', err);
@@ -435,7 +442,8 @@ function createMsg(text,file,ftype,incoming,member){
 
   if(isInc&&member){
     const sa=document.createElement('div');sa.className='sav';
-    sa.style.background=member.color||'#64748b';
+    sa.style.background='rgba(255,255,255,.2)';
+    sa.style.backdropFilter='blur(15px)';
     if(member.avatarImg)sa.style.backgroundImage=`url(${member.avatarImg})`;
     else sa.textContent=member.initials||member.name?.charAt(0)||'?';
     msgDiv.appendChild(sa);
