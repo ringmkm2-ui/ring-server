@@ -419,6 +419,9 @@ function handleMedia(f, t) {
         renderMessage(data.message);
       } else if (data.error) {
         alert('送信に失敗しました: ' + data.error);
+      } else {
+        console.error('unexpected response:', data);
+        alert('送信に失敗しました。');
       }
     } catch (err) {
       console.error('media send error:', err);
@@ -784,6 +787,11 @@ function connectRealWS() {
             const displayMsg = { ...msg, content: displayContent };
             addRealMessage(displayMsg);
             renderMessage(displayMsg);
+            // ブラウザ通知を送信
+            sendNotification(`${document.title}`, {
+              body: `新しいメッセージが届きました`,
+              tag: 'new-message'
+            });
             // 既読通知を即座にWebSocketで送信（10秒待たずに）
             if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'read_receipt', recipientId: msg.senderId, msgUuid: msg.id }));
@@ -947,6 +955,20 @@ async function refreshPartnerProfile() {
     }
   } catch (err) {
     console.error('refreshPartnerProfile error:', err);
+  }
+}
+
+// ブラウザ通知リクエスト（初回ロード時）
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+function sendNotification(title, options = {}) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, {
+      icon: '/favicon.ico',
+      ...options
+    });
   }
 }
 
