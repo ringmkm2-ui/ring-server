@@ -54,6 +54,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .ranger{width:100%;margin-top:10px;display:none}
 .savebtn{width:100%;padding:14px;background:#0f172a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
 .cancelbtn{width:100%;padding:14px;background:rgba(15,23,42,.06);color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
+.btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
+.btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
 </style>
 </head>
 <body>
@@ -71,7 +74,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <section id="pageTalk">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;">+</button>
+          <button class="btn-glass" onclick="openAddFriend()" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:absolute;right:20px;top:70px;flex-shrink:0;">+</button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
@@ -135,7 +138,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <label>全体の背景画像</label>
       <div class="fiw"><span class="cfb">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
     </div>
-    <button class="savebtn" id="saveSettings" type="button">変更を適用して閉じる</button>
+    <button class="savebtn btn-glass" id="saveSettings" type="button">変更を適用して閉じる</button>
     <button onclick="logout()" style="width:100%;padding:14px;background:#fee2e2;color:#ef4444;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
   </div>
 </div>
@@ -149,8 +152,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
       <label>メンバー選択</label>
       <div id="ngMemberList" style="margin-top:8px;font-size:12px;color:#999;">読み込み中...</div>
     </div>
-    <button class="savebtn" id="ngCreate" type="button">作成する</button>
-    <button class="cancelbtn" id="ngCancel" type="button">キャンセル</button>
+    <button class="savebtn btn-glass" id="ngCreate" type="button">作成する</button>
+    <button class="cancelbtn btn-glass" id="ngCancel" type="button">キャンセル</button>
   </div>
 </div>
 

@@ -92,6 +92,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .call-name{font-size:22px;font-weight:700;color:#1e293b;margin-bottom:8px}
 .call-status{font-size:15px;font-weight:600;color:#64748b;margin-bottom:40px}
 .end-btn{background:#ff3b30;border:none;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(255,59,48,.4);transform:rotate(135deg)}
+.btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
+.btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
+.btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl.js/1.0.3/nacl.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl.js/1.0.3/nacl-util.min.js"></script>
@@ -130,7 +133,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
         </button>
         <form class="txt-form" id="chatForm">
           <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="send-btn" id="sendBtn">
+          <button type="submit" class="send-btn btn-glass" id="sendBtn">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
