@@ -406,9 +406,14 @@ document.getElementById('tform').onsubmit=async e=>{
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
   
+  // 送信直後に UI を作成（楽観的更新）
+  console.log('Creating message UI immediately');
+  createMsg(txt,null,null);
+  
   if(isEditing){
     isEditing=false;editNode=null;editMeta=null;
-    document.getElementById('sbtn').innerHTML=pp;
+    const sbtn = document.getElementById('sbtn');
+    if(sbtn) sbtn.querySelector('svg').outerHTML = pp;
   }else{
     try {
       console.log('Sending message to /api/groups/'+groupId+'/messages/send');
@@ -421,8 +426,7 @@ document.getElementById('tform').onsubmit=async e=>{
       const data = await result.json();
       console.log('Response data:', data);
       if(data && (data.ok || data.messageId)){
-        console.log('Message sent successfully, creating UI:', txt);
-        createMsg(txt,null,null);
+        console.log('Message sent successfully');
       }else{
         console.error('Send failed:', data);
       }
@@ -573,7 +577,8 @@ document.getElementById('editBtn').onclick=()=>{
   isEditing=true;editNode=sp;editMeta=meta;
   document.getElementById('mi').value=sp.textContent;
   document.getElementById('mi').focus();
-  document.getElementById('sbtn').innerHTML=ck;
+  const sbtn = document.getElementById('sbtn');
+  if(sbtn) sbtn.querySelector('svg').outerHTML = ck;
 };
 
 document.getElementById('pinBtnCtx').onclick=()=>{
@@ -593,7 +598,12 @@ document.getElementById('delBtn').onclick=()=>{
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
     target.parentNode.replaceChild(notice,target);
-    if(isEditing&&editNode){isEditing=false;editNode=null;editMeta=null;document.getElementById('mi').value='';document.getElementById('sbtn').innerHTML=pp;}
+    if(isEditing&&editNode){
+      isEditing=false;editNode=null;editMeta=null;
+      document.getElementById('mi').value='';
+      const sbtn = document.getElementById('sbtn');
+      if(sbtn) sbtn.querySelector('svg').outerHTML = pp;
+    }
   });
 };
 
