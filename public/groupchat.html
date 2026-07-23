@@ -295,6 +295,10 @@ function getDefaultMembers(){
 function saveGI(g){localStorage.setItem('groupInfo',JSON.stringify(g));}
 
 let gi=getGI();
+// groupIdをlocalStorageにセット（groupInfoに含まれている場合）
+if (gi.id) {
+  localStorage.setItem('groupId', gi.id);
+}
 // meを最新プロフィールで更新
 gi.members=gi.members.map(m=>m.id==='me'?{...m,name:myName,initials:myName.charAt(0),avatarImg:myAvatar}:m);
 

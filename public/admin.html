@@ -397,7 +397,6 @@ function handleMedia(f, t) {
 
     // 送信中表示
     const sendBtn = document.getElementById('sendBtn');
-    const originalIcon = sendBtn.innerHTML;
     sendBtn.innerHTML = '<div style="width:16px;height:16px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>';
 
     try {
@@ -415,8 +414,11 @@ function handleMedia(f, t) {
         }),
       });
       if (data.message) {
-        addRealMessage(data.message);
-        renderMessage(data.message);
+        // 自分が送った平文をローカルにキャッシュ
+        cacheOwnPlaintext(data.message.id, `[${t === 'image' ? '画像' : '動画'}]`);
+        const displayMsg = { ...data.message, content: `[${t === 'image' ? '画像' : '動画'}]` };
+        addRealMessage(displayMsg);
+        renderMessage(displayMsg);
       } else if (data.error) {
         alert('送信に失敗しました: ' + data.error);
       } else {
@@ -427,7 +429,7 @@ function handleMedia(f, t) {
       console.error('media send error:', err);
       alert('送信に失敗しました。ファイルサイズが大きすぎるか、通信エラーの可能性があります。');
     } finally {
-      sendBtn.innerHTML = originalIcon;
+      sendBtn.innerHTML = paperPlane;
     }
   };
   reader.onerror = () => {

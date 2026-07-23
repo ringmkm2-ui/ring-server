@@ -481,6 +481,7 @@ const ngMov=document.getElementById('ngMov');
 document.getElementById('ngBtn').onclick = async () => {
   document.getElementById('ngName').value = '';
   selectedGroupMembers.clear();
+  memberNameMap = new Map(); // メンバー情報を保持
   
   // トークリスト（友達含む）から人を取得
   try {
@@ -491,11 +492,17 @@ document.getElementById('ngBtn').onclick = async () => {
     const talkUserIds = new Set(Array.isArray(talks) ? talks.map(t => t.userId) : []);
     const allPeople = [];
     
-    if (Array.isArray(talks)) allPeople.push(...talks);
+    if (Array.isArray(talks)) {
+      talks.forEach(t => {
+        allPeople.push(t);
+        memberNameMap.set(t.userId, t.displayName);
+      });
+    }
     if (Array.isArray(friends)) {
       friends.forEach(f => {
         if (!talkUserIds.has(f.userId)) {
-          allPeople.push({ userId: f.userId, displayName: f.displayName });
+          allPeople.push(f);
+          memberNameMap.set(f.userId, f.displayName);
         }
       });
     }
@@ -522,6 +529,7 @@ document.getElementById('ngCancel').onclick = () => ngMov.classList.remove('open
 ngMov.onclick = e => { if (e.target === ngMov) ngMov.classList.remove('open'); };
 
 let selectedGroupMembers = new Set();
+let memberNameMap = new Map();
 
 document.getElementById('ngCreate').onclick = () => {
   const name = document.getElementById('ngName').value.trim();
@@ -531,16 +539,24 @@ document.getElementById('ngCreate').onclick = () => {
   const myAvatar = localStorage.getItem('myAvatar') || '';
   
   const newGroup = {
+    id: 'group-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
     name,
     emoji: '💬',
     avatarImg: '',
     members: [
-      { id: 'me', name: myName, color: '#3b82f6', initials: myName.charAt(0), avatarImg: myAvatar },
-      ...Array.from(selectedGroupMembers).map(id => ({ id, name: id, color: '#8b5cf6', initials: '?', avatarImg: '' }))
+      { id: localStorage.getItem('ring_userId') || 'me', name: myName, color: '#3b82f6', initials: myName.charAt(0), avatarImg: myAvatar },
+      ...Array.from(selectedGroupMembers).map(id => ({ 
+        id, 
+        name: memberNameMap.get(id) || id, 
+        color: '#8b5cf6', 
+        initials: (memberNameMap.get(id) || '?').charAt(0), 
+        avatarImg: '' 
+      }))
     ]
   };
   
   localStorage.setItem('groupInfo', JSON.stringify(newGroup));
+  localStorage.setItem('groupId', newGroup.id);
   
   const list = document.getElementById('groupList');
   const a = document.createElement('a');
@@ -550,6 +566,8 @@ document.getElementById('ngCreate').onclick = () => {
   list.appendChild(a);
   
   document.getElementById('ngName').value = '';
+  selectedGroupMembers.clear();
+  memberNameMap.clear();
   ngMov.classList.remove('open');
 };
 
