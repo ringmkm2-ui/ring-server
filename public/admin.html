@@ -4,10 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>トーク</title>
+<script src="/js/globalBg.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body.has-custom-bg{background:transparent}
 .phone-container{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
+body.has-custom-bg .phone-container{background:transparent}
 .bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.75;mix-blend-mode:multiply}
 .orb-1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%;animation:lw 18s infinite alternate ease-in-out}
 .orb-2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%;animation:lw 22s infinite alternate ease-in-out;animation-delay:-4s}
@@ -19,7 +22,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .app-header-container{padding:14px 16px}
 .app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
 .back-link{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
-.partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
+.partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
 .name{font-weight:700;font-size:15px;color:#1e293b}
 .status{font-size:12px;font-weight:600;color:#059669}
 .phone-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:38px;height:38px}
@@ -56,13 +59,26 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .input-bar-container{padding:10px 16px 14px;width:100%}
 .input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(35px) saturate(200%);-webkit-backdrop-filter:blur(35px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
 .input-floating-bar.media-open{max-height:230px;border-radius:22px}
-.input-main-row{display:flex;align-items:center;width:100%;height:34px}
+.input-main-row{display:flex;align-items:center;width:100%;height:34px;min-width:0}
 .plus-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
 .input-floating-bar.media-open .plus-btn{transform:rotate(45deg)}
-.txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px}
-.txt-form input{flex:1;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
+.txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
+.txt-form input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
 .txt-form input::placeholder{color:rgba(15,23,42,.4)}
-.send-btn{background:none;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.glass-send-btn{
+  position:relative;width:34px;height:34px;border-radius:50%;border:none;flex-shrink:0;
+  background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
+  box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
+  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;
+  transition:all .3s cubic-bezier(.25,1,.5,1);padding:0;
+}
+.glass-send-btn:hover{
+  background:rgba(255,255,255,.15);
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 30px rgba(255,255,255,.5),0 12px 24px rgba(0,0,0,.2);
+  transform:scale(1.08);
+}
+.glass-send-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
 .media-opts{display:flex;flex-direction:column;gap:4px;padding-top:10px;margin-top:8px;border-top:1px solid rgba(255,255,255,.4);opacity:0;transform:translateY(-8px);transition:all .4s ease}
 .input-floating-bar.media-open .media-opts{opacity:1;transform:translateY(0)}
 .mopt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;border:none;background:none;width:100%;text-align:left}
@@ -100,6 +116,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl.js/1.0.3/nacl-util.min.js"></script>
 </head>
 <body>
+<svg style="position:absolute;width:0;height:0">
+  <defs>
+    <filter id="glassFrost" primitiveUnits="objectBoundingBox" x="-50%" y="-50%" width="200%" height="200%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="noise" seed="4"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.02"/>
+    </filter>
+  </defs>
+</svg>
 <div class="phone-container">
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
@@ -133,7 +157,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
         </button>
         <form class="txt-form" id="chatForm">
           <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="send-btn btn-glass" id="sendBtn">
+          <button type="submit" class="glass-send-btn" id="sendBtn">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
@@ -509,22 +533,40 @@ let realMessages = [];
 const msgDOMCache = new Map(); // msgId -> DOM要素（querySelector高速化用）
 
 async function sendRealMessage(content) {
+  // 楽観的更新: 送信中でも即座に画面へ反映する
+  const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+  const optimisticMsg = { id: tempId, senderId: myUserId, recipientId: otherId, content, createdAt: new Date().toISOString(), isRead: false };
+  addRealMessage(optimisticMsg);
+  renderMessage(optimisticMsg);
+
   try {
     const { encrypted, content: sendContent } = await encryptMessage(content, otherId);
     const data = await api('/api/messages/send', {
       method: 'POST',
       body: JSON.stringify({ recipientId: otherId, content: sendContent, encrypted }),
     });
-    if (data.message) {
+    if (data && data.message) {
       // 自分が送った平文をローカルにキャッシュ（自分は受信者ではないため復号化できないので、自分用に平文を保存）
       cacheOwnPlaintext(data.message.id, content);
+      // 仮メッセージをサーバーの正式なメッセージに差し替え
+      removeMessageById(tempId);
       const displayMsg = { ...data.message, content: content };
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
+    } else {
+      console.error('send response missing message:', data);
     }
   } catch (err) {
     console.error('send error:', err);
   }
+}
+
+// 仮メッセージ（送信中プレースホルダー）を画面とメモリ上のリストから削除
+function removeMessageById(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) el.remove();
+  const idx = realMessages.findIndex(m => m.id === msgId);
+  if (idx !== -1) realMessages.splice(idx, 1);
 }
 
 // 自分が送信したメッセージの平文をローカルストレージにキャッシュ
