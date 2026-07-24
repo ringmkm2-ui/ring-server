@@ -4,9 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>グループチャット</title>
+<script src="/js/globalBg.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body.has-custom-bg{background:transparent}
 .pc{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
 .bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.75;mix-blend-mode:multiply}
 .o1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%;animation:lw 18s infinite alternate ease-in-out}
@@ -64,7 +66,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 .imrow{display:flex;align-items:center;width:100%;height:34px}
 .pbtn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
 .ibar.open .pbtn{transform:rotate(45deg)}
-.tform{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px}
+.tform{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
+#mi{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:15px;color:#0f172a;height:34px}
 .tform input{flex:1;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
 .tform input::placeholder{color:rgba(15,23,42,.4)}
 .sbtn{background:none;border:none;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
@@ -103,9 +106,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
   position:relative;width:34px;height:34px;border-radius:50%;border:none;
   background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
   box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
-  backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);
+  backdrop-filter:blur(20px) saturate(180%) url(#glassFrost);-webkit-backdrop-filter:blur(20px) saturate(180%);
   display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;
-  transition:all .3s cubic-bezier(.25,1,.5,1);padding:0;
+  transition:all .3s cubic-bezier(.25,1,.5,1);padding:0;flex-shrink:0;
 }
 .glass-btn:hover{
   background:rgba(255,255,255,.15);
@@ -146,6 +149,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 </style>
 </head>
 <body>
+<svg style="position:absolute;width:0;height:0">
+  <defs>
+    <filter id="glassFrost" primitiveUnits="objectBoundingBox" x="-50%" y="-50%" width="200%" height="200%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="noise" seed="4"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.02"/>
+    </filter>
+  </defs>
+</svg>
 <div class="pc">
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
