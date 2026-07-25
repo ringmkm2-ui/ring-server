@@ -565,6 +565,7 @@ async function sendRealMessage(content) {
 function removeMessageById(msgId) {
   const el = document.querySelector(`[data-msg-id="${msgId}"]`);
   if (el) el.remove();
+  msgDOMCache.delete(msgId);
   const idx = realMessages.findIndex(m => m.id === msgId);
   if (idx !== -1) realMessages.splice(idx, 1);
 }
