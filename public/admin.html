@@ -12,6 +12,7 @@ body.has-custom-bg{background:transparent}
 .phone-container{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
 body.has-custom-bg .phone-container{background:transparent}
 .bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.75;mix-blend-mode:multiply}
+body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:none}
 .orb-1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%;animation:lw 18s infinite alternate ease-in-out}
 .orb-2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%;animation:lw 22s infinite alternate ease-in-out;animation-delay:-4s}
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%;animation:lw 16s infinite alternate ease-in-out;animation-delay:-8s}

@@ -54,6 +54,9 @@ body.has-custom-bg .pc{background:transparent}
 .cropcon{position:relative;width:100%;height:220px;background:#0f172a;border-radius:16px;overflow:hidden;display:none;margin-top:10px;touch-action:none}
 .cropim{position:absolute;top:0;left:0;cursor:move;user-select:none;transform-origin:top left}
 .cropmk{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle 70px at center,transparent 99%,rgba(0,0,0,.6) 100%);pointer-events:none;border:1px solid rgba(255,255,255,.2);border-radius:16px;box-sizing:border-box}
+.cropmk::before{content:'';position:absolute;top:calc(50% - 70px);left:calc(50% - 70px);width:140px;height:140px;border-radius:50%;border:1px solid rgba(255,255,255,.5);box-sizing:border-box;
+  background-image:linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px);
+  background-size:calc(140px/3) calc(140px/3);}
 .ranger{width:100%;margin-top:10px;display:none}
 .savebtn{width:100%;padding:14px;background:#0f172a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
 .cancelbtn{width:100%;padding:14px;background:rgba(15,23,42,.06);color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
@@ -61,19 +64,21 @@ body.has-custom-bg .pc{background:transparent}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
 .glass-plus-btn{
-  position:absolute;right:20px;top:70px;width:40px;height:40px;border-radius:50%;border:none;
-  background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
-  box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
-  backdrop-filter:blur(20px) saturate(180%) url(#glassFrost);-webkit-backdrop-filter:blur(20px) saturate(180%);
-  color:#0f172a;font-size:24px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;padding:0;transition:all .3s cubic-bezier(.25,1,.5,1);outline:0;
+  position:absolute;right:20px;top:70px;width:40px;height:40px;border-radius:50%;
+  background:rgba(255,255,255,.08);border:none;
+  box-shadow:0 0 0 1px rgba(255,255,255,.5),0 6px 14px rgba(0,0,0,.1);
+  backdrop-filter:url(#plusGlass);-webkit-backdrop-filter:blur(6px);
+  color:transparent;font-size:0;cursor:pointer;display:grid;place-items:center;
+  flex-shrink:0;padding:0;transition:transform .35s cubic-bezier(.25,1,.5,1),box-shadow .35s ease;outline:0;
 }
+.glass-plus-btn::before,.glass-plus-btn::after{content:"";position:absolute;background:#0f172a;border-radius:10px}
+.glass-plus-btn::before{width:40%;height:2px}
+.glass-plus-btn::after{width:2px;height:40%}
 .glass-plus-btn:hover{
-  background:rgba(255,255,255,.15);
-  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 30px rgba(255,255,255,.5),0 12px 24px rgba(0,0,0,.2);
-  transform:scale(1.1);
+  box-shadow:0 0 0 1px rgba(255,255,255,.7),0 10px 20px rgba(0,0,0,.15);
+  transform:scale(1.06);
 }
-.glass-plus-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
+.glass-plus-btn:active{transform:scale(0.94);box-shadow:0 0 0 1px rgba(255,255,255,.4),0 3px 8px rgba(0,0,0,.08);}
 </style>
 </head>
 <body>
@@ -82,6 +87,10 @@ body.has-custom-bg .pc{background:transparent}
     <filter id="glassFrost" primitiveUnits="objectBoundingBox" x="-50%" y="-50%" width="200%" height="200%">
       <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="noise" seed="4"/>
       <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.02"/>
+    </filter>
+    <filter id="plusGlass" primitiveUnits="objectBoundingBox" x="-60%" y="-60%" width="220%" height="220%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008" numOctaves="2" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.06" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
   </defs>
 </svg>
@@ -99,7 +108,7 @@ body.has-custom-bg .pc{background:transparent}
       <section id="pageTalk">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" class="glass-plus-btn">+</button>
+          <button onclick="openAddFriend()" class="glass-plus-btn" aria-label="友達を追加"></button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
@@ -230,7 +239,7 @@ async function loadProfile(){
     document.getElementById('dispName').textContent = name;
     document.getElementById('inName').value = name;
     document.getElementById('myIdCode').textContent = 'ID: ' + idCode;
-    const av=data.profilePic||localStorage.getItem('myAvatar')||'';
+    const av=localStorage.getItem('myAvatar')||data.profilePic||'';
     const dav=document.getElementById('dispAv');
     if(av){dav.style.backgroundImage=`url(${av})`;dav.style.background='';}
     else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
@@ -465,10 +474,28 @@ document.getElementById('inAvFile').onchange=e=>{
   };r.readAsDataURL(f);
 };
 function updC(){cropImg.style.transform=`translate(${cx}px,${cy}px) scale(${cs})`;}
+let pinchStartDist=0,pinchStartScale=1;
+function touchDist(touches){const dx=touches[0].clientX-touches[1].clientX,dy=touches[0].clientY-touches[1].clientY;return Math.hypot(dx,dy);}
 cropBox.addEventListener('mousedown',e=>{cd=true;csx=e.clientX-cx;csy=e.clientY-cy;});
-cropBox.addEventListener('touchstart',e=>{if(e.touches.length===1){cd=true;csx=e.touches[0].clientX-cx;csy=e.touches[0].clientY-cy;}});
+cropBox.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){cd=true;csx=e.touches[0].clientX-cx;csy=e.touches[0].clientY-cy;}
+  else if(e.touches.length===2){cd=false;pinchStartDist=touchDist(e.touches);pinchStartScale=cs;}
+},{passive:true});
 window.addEventListener('mousemove',e=>{if(!cd)return;cx=e.clientX-csx;cy=e.clientY-csy;updC();});
-window.addEventListener('touchmove',e=>{if(!cd||e.touches.length!==1)return;cx=e.touches[0].clientX-csx;cy=e.touches[0].clientY-csy;updC();});
+window.addEventListener('touchmove',e=>{
+  if(cropBox.style.display!=='block')return;
+  if(e.touches.length===2){
+    e.preventDefault();
+    const scale=pinchStartScale*(touchDist(e.touches)/pinchStartDist);
+    cs=Math.min(3,Math.max(0.5,scale));
+    cropZoom.value=cs;
+    updC();
+    return;
+  }
+  if(!cd||e.touches.length!==1)return;
+  e.preventDefault();
+  cx=e.touches[0].clientX-csx;cy=e.touches[0].clientY-csy;updC();
+},{passive:false});
 window.addEventListener('mouseup',()=>cd=false);window.addEventListener('touchend',()=>cd=false);
 cropZoom.oninput=e=>{cs=parseFloat(e.target.value);updC();};
 
@@ -479,19 +506,8 @@ document.getElementById('inBgFile').onchange=e=>{
 
 document.getElementById('saveSettings').onclick=async ()=>{
   const name=document.getElementById('inName').value.trim();
-  if(name){
-    localStorage.setItem('myName',name);
-    document.getElementById('dispName').textContent=name;
-    await api('/api/friends/me', { method:'POST', body: JSON.stringify({ displayName: name }) });
-  }
-  if(bgUrl){
-    localStorage.setItem('myBgImage',bgUrl);
-    document.documentElement.style.backgroundImage=`url(${bgUrl})`;
-    document.documentElement.style.backgroundSize='cover';
-    document.documentElement.style.backgroundPosition='center';
-    document.documentElement.style.backgroundAttachment='fixed';
-    document.body.classList.add('has-custom-bg');
-  }
+  let newAvatarUrl=null;
+
   if(cropImg.src&&cropImg.complete&&cropImg.src!==location.href){
     const canvas=document.createElement('canvas');canvas.width=140;canvas.height=140;
     const ctx=canvas.getContext('2d');
@@ -500,9 +516,33 @@ document.getElementById('saveSettings').onclick=async ()=>{
     const cw=140/cs,ch=140/cs;
     ctx.drawImage(cropImg,sx-cw/2,sy-ch/2,cw,ch,0,0,140,140);
     croppedUrl=canvas.toDataURL();
+    newAvatarUrl=croppedUrl;
     localStorage.setItem('myAvatar',croppedUrl);
     const dav=document.getElementById('dispAv');
     dav.style.backgroundImage=`url(${croppedUrl})`;
+  }
+
+  if(name){
+    localStorage.setItem('myName',name);
+    document.getElementById('dispName').textContent=name;
+  }
+
+  // 名前・画像のどちらか一方でも変更があればサーバーへ反映する
+  if(name||newAvatarUrl!==null){
+    const body={ displayName: name||localStorage.getItem('myName')||'' };
+    if(newAvatarUrl!==null) body.profilePic=newAvatarUrl;
+    try{
+      await api('/api/friends/me', { method:'POST', body: JSON.stringify(body) });
+    }catch(e){console.error('プロフィール保存エラー:',e);}
+  }
+
+  if(bgUrl){
+    localStorage.setItem('myBgImage',bgUrl);
+    document.documentElement.style.backgroundImage=`url(${bgUrl})`;
+    document.documentElement.style.backgroundSize='cover';
+    document.documentElement.style.backgroundPosition='center';
+    document.documentElement.style.backgroundAttachment='fixed';
+    document.body.classList.add('has-custom-bg');
   }
   settingsMov.classList.remove('open');
 };

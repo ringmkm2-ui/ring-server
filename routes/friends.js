@@ -33,8 +33,12 @@ router.get('/me', auth, async (req, res) => {
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
-    const { displayName, bio } = req.body;
-    await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
+    const { displayName, bio, profilePic } = req.body;
+    if (profilePic !== undefined) {
+      await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', profilePic, req.userId]);
+    } else {
+      await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
