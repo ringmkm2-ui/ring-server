@@ -224,7 +224,9 @@ function nameColor(name) {
 const params = new URLSearchParams(location.search);
 const partnerName = params.get('name') || 'ユーザー名';
 const otherId = params.get('userId') || params.get('id');
-const otherPic = params.get('pic') || '';
+// アバター画像はURLに乗せると431エラー(ヘッダ肥大化)の原因になるため、
+// API経由で別途取得する(loadPartnerProfile参照)
+let otherPic = '';
 const myName = localStorage.getItem('myName') || '自分';
 const myAvatar = localStorage.getItem('myAvatar') || '';
 
@@ -346,15 +348,11 @@ async function decryptMessage(encryptedBase64, senderId) {
 }
 
 // パートナーアバター（ヘッダー）
+// 初期描画は名前の頭文字で仮表示し、画像はrefreshPartnerProfile()で取得後に反映する
+// (画像データをURLに乗せると431エラー=ヘッダ肥大化の原因になるため直接は渡さない)
 const pAv = document.getElementById('partnerAv');
-if (otherPic) {
-  pAv.style.backgroundImage = `url(${otherPic})`;
-  pAv.style.backgroundSize = 'cover';
-  pAv.style.backgroundPosition = 'center';
-} else {
-  pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
-  pAv.textContent = partnerName.charAt(0);
-}
+pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+pAv.textContent = partnerName.charAt(0);
 document.getElementById('partnerName').textContent = partnerName;
 
 // 通話オーバーレイ → パートナーを表示（自分じゃない）
@@ -1022,12 +1020,13 @@ function sendNotification(title, options = {}) {
 }
 
 if (otherId) {
+  // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行
+  refreshPartnerProfile();
   // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
   getOrCreateMyKeyPair().then(() => {
     initialLoadHistory();
     connectRealWS();
     loadPinnedMessages();
-    refreshPartnerProfile();
   });
   // 念のためネットワーク遮断時のフォールバック用に低頻度ポーリング（5分ごと）
   setInterval(() => {

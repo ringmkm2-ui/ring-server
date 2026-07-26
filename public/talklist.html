@@ -298,7 +298,7 @@ async function loadTalks() {
       const initial = (t.displayName||'?')[0];
       const pic = t.profilePic ? `background-image:url(${t.profilePic})` : '';
       const time = t.lastTime ? formatTime(t.lastTime) : '';
-      return `<div class="ti" onclick="openChat('${t.userId}','${escHtml(t.displayName)}','${t.profilePic||''}')">
+      return `<div class="ti" onclick="openChat('${t.userId}','${escHtml(t.displayName)}')">
         <div class="tav" style="${pic}">${pic?'':initial}</div>
         <div class="tbody">
           <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
@@ -336,7 +336,9 @@ function escHtml(str) {
 }
 
 function openChat(userId, name, pic) {
-  location.href = `/admin.html?userId=${userId}&name=${encodeURIComponent(name)}&pic=${encodeURIComponent(pic||'')}`;
+  // 注意: picにはBase64画像データが入りうるため、URLに含めるとリクエストヘッダが
+  // 肥大化し431エラーの原因になる。画像はadmin.html側でAPI経由取得する。
+  location.href = `/admin.html?userId=${userId}&name=${encodeURIComponent(name)}`;
 }
 
 // 友達追加モーダル（下から上にスライドアニメーション）
