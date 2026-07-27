@@ -8,6 +8,17 @@ const { broadcastToUser } = require('../ws/wsServer');
 
 const router = express.Router();
 
+// 指定ユーザーがそのグループの現メンバーかどうかを確認する共通ヘルパー。
+// これが無いと、groupIdとmsgIdさえ知っていれば部外者でも
+// メッセージの閲覧・送信・既読・ピン留めができてしまう重大な権限バグになる。
+async function isGroupMember(groupId, userId) {
+  const row = await db.get(
+    'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL',
+    [groupId, userId]
+  );
+  return !!row;
+}
+
 // --- 自分が所属するグループ一覧を取得 ---
 router.get('/list', verifyToken, async (req, res) => {
   const rows = await db.all(
@@ -120,6 +131,19 @@ router.post('/remove-member', verifyToken, async (req, res) => {
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
 
+  // 権限チェック: オーナー本人による削除、または本人による自主脱退のみ許可する。
+  // (このチェックが無いと、メンバーであれば誰でも他人を削除できてしまう
+  //  重大な権限バグになるため必須)
+  const isOwner = group.owner_id === req.user.userId;
+  const isSelfLeaving = removeUserId === req.user.userId;
+  if (!isOwner && !isSelfLeaving) {
+    return res.status(403).json({ error: 'メンバーを削除する権限がありません' });
+  }
+  // オーナー自身の脱退は、グループが空になり誰も管理できなくなるため禁止
+  if (isSelfLeaving && group.owner_id === removeUserId) {
+    return res.status(400).json({ error: 'オーナーはグループから脱退できません。グループを削除するか、オーナー権限を譲渡してください' });
+  }
+
   await db.run(
     'UPDATE group_members SET left_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?',
     [groupId, removeUserId]
@@ -174,6 +198,9 @@ router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
 
   const msgType = mediaType || 'text';
   // 画像・動画の場合、個人チャットと同じ形式でJSONとして保存する
@@ -222,6 +249,9 @@ router.get('/:groupId/messages', verifyToken, async (req, res) => {
   const { groupId } = req.params;
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
 
   const messages = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
@@ -241,6 +271,9 @@ router.post('/:groupId/messages/read', verifyToken, async (req, res) => {
   const { messageIds } = req.body;
   if (!Array.isArray(messageIds) || messageIds.length === 0) {
     return res.status(400).json({ error: 'messageIds required' });
+  }
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
 
   const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
@@ -272,6 +305,9 @@ router.post('/:groupId/messages/read', verifyToken, async (req, res) => {
 
 // --- グループメッセージの既読者一覧取得 ---
 router.get('/:groupId/messages/:msgId/reads', verifyToken, async (req, res) => {
+  if (!(await isGroupMember(req.params.groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
   const reads = await db.all(
     `SELECT gmr.user_id, gmr.read_at, u.display_name FROM group_message_reads gmr
      JOIN users u ON u.id = gmr.user_id
@@ -286,6 +322,9 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, async (req, res) => {
   const { groupId, msgId } = req.params;
   const { content, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
   if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
@@ -313,6 +352,9 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, async (req, res) => {
 router.post('/:groupId/messages/:msgId/pin', verifyToken, async (req, res) => {
   const { groupId, msgId } = req.params;
   const { pinned } = req.body;
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
   if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
@@ -330,6 +372,9 @@ router.post('/:groupId/messages/:msgId/pin', verifyToken, async (req, res) => {
 
 // --- グループのピン留めメッセージ一覧取得 ---
 router.get('/:groupId/pinned', verifyToken, async (req, res) => {
+  if (!(await isGroupMember(req.params.groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
   const rows = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id
@@ -343,6 +388,9 @@ router.get('/:groupId/pinned', verifyToken, async (req, res) => {
 // --- グループメッセージ削除 ---
 router.post('/:groupId/messages/:msgId/delete', verifyToken, async (req, res) => {
   const { groupId, msgId } = req.params;
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
   if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
   if (msg.sender_id !== req.user.userId) return res.status(403).json({ error: '権限がありません' });
