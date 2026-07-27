@@ -159,18 +159,34 @@ router.get('/:groupId/my-key', verifyToken, async (req, res) => {
 });
 
 // --- グループメッセージ送信 ---
+// body: { content, mediaType?, mediaData?, encrypted? }
+// mediaType: 'image' | 'video' | null（テキスト）
+// mediaData: base64エンコードされたデータ
 router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
   const { groupId } = req.params;
-  const { content, encrypted } = req.body;
+  const { content, mediaType, mediaData, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
+
+  // 個人チャットと同様、ファイルサイズの上限チェック
+  if (mediaData && mediaData.length > 35 * 1024 * 1024) {
+    return res.status(413).json({ error: 'ファイルが大きすぎます' });
+  }
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
 
+  const msgType = mediaType || 'text';
+  // 画像・動画の場合、個人チャットと同じ形式でJSONとして保存する
+  // { text, media, mediaType }
+  let finalContent = content;
+  if (mediaData) {
+    finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
+  }
+
   const msgId = uuidv4();
   await db.run(
-    'INSERT INTO group_messages (id, group_id, sender_id, content, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?)',
-    [msgId, groupId, req.user.userId, content, !!encrypted, group.key_version]
+    'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, group.key_version]
   );
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ?', [msgId]);
@@ -190,6 +206,7 @@ router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
         groupId: msg.group_id,
         senderId: msg.sender_id,
         content: msg.content,
+        msgType: msg.msg_type,
         encrypted: !!msg.encrypted,
         keyVersion: msg.key_version,
         createdAt: msg.created_at,

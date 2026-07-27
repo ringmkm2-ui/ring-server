@@ -303,33 +303,61 @@ const params=new URLSearchParams(location.search);
 const myName=localStorage.getItem('myName')||'自分';
 const myAvatar=localStorage.getItem('myAvatar')||'';
 const myColor='#3b82f6';
+const myUserId=localStorage.getItem('ring_userId');
+const token=localStorage.getItem('ring_token');
+if(!token) location.href='/auth.html';
 
-function getGI(){
-  const r=localStorage.getItem('groupInfo');
-  if(r){const g=JSON.parse(r);if(!g.members)g.members=getDefaultMembers();return g;}
-  return{name:params.get('name')||'グループ',emoji:'💬',avatarImg:'',members:getDefaultMembers()};
+// groupIdは必ずURLパラメータから取得する(localStorageのみに依存すると
+// 複数グループを行き来した際に混線するため)
+const groupId=params.get('groupId');
+if(!groupId){
+  alert('グループが見つかりません');
+  location.href='/talklist.html';
 }
-function getDefaultMembers(){
-  return[
-    {id:'me',name:myName,color:myColor,initials:myName.charAt(0),avatarImg:myAvatar},
-    {id:'u1',name:'みなみ',color:'#ec4899',initials:'み',avatarImg:''},
-    {id:'u2',name:'たくや',color:'#8b5cf6',initials:'た',avatarImg:''},
-    {id:'u3',name:'ゆうき',color:'#f59e0b',initials:'ゆ',avatarImg:''},
-    {id:'u4',name:'あおい',color:'#10b981',initials:'あ',avatarImg:''},
-  ];
-}
-function saveGI(g){localStorage.setItem('groupInfo',JSON.stringify(g));}
+localStorage.setItem('groupId', groupId);
 
-let gi=getGI();
-// groupIdをlocalStorageにセット（groupInfoに含まれている場合）
-if (gi.id) {
-  localStorage.setItem('groupId', gi.id);
+async function api(path, opts={}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  });
+  return res.json();
 }
-// meを最新プロフィールで更新
-gi.members=gi.members.map(m=>m.id==='me'?{...m,name:myName,initials:myName.charAt(0),avatarImg:myAvatar}:m);
+
+// gi(グループ情報)はサーバーから取得する。取得完了までは
+// URLパラメータのnameのみで暫定表示し、loadGroupInfo()完了後に更新する。
+let gi = { id: groupId, name: params.get('name') || 'グループ', emoji: '💬', avatarImg: '', members: [], ownerId: null };
+
+async function loadGroupInfo(){
+  try {
+    const data = await api('/api/groups/list');
+    if (data && Array.isArray(data.groups)) {
+      const found = data.groups.find(g => g.groupId === groupId);
+      if (found) {
+        gi.name = found.name;
+        gi.ownerId = found.ownerId;
+        gi.members = found.members.map(m => {
+          const displayName = m.userId === myUserId ? myName : m.displayName;
+          return {
+            id: m.userId,
+            name: displayName,
+            color: nameColor(displayName || '?'),
+            initials: (displayName || '?').charAt(0),
+            avatarImg: m.userId === myUserId ? myAvatar : (m.profilePic || ''),
+            isOwner: m.userId === found.ownerId,
+          };
+        });
+        refreshHdr();
+      }
+    }
+  } catch (err) {
+    console.error('グループ情報取得エラー:', err);
+  }
+}
+function saveGI(g){ /* サーバー保存はプロフィール編集モーダル側のAPI呼び出しで行う。ここでは何もしない */ }
 
 let activeMsg=null,activeBubble=null,activeWrap=null,isOwn=false;
-let isEditing=false,editNode=null,editMeta=null;
+let isEditing=false,editNode=null,editMeta=null,editTargetMsgId=null;
 let reactTarget=null;
 let confCB=null;
 let cropX=0,cropY=0,cropS=1,cropDrag=false,cropSX=0,cropSY=0;
@@ -340,12 +368,15 @@ const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#1
 
 function refreshHdr(){
   document.getElementById('gnameEl').textContent=gi.name;
-  document.getElementById('mcntEl').textContent=`メンバー ${gi.members.length}人`;
+  const cnt=gi.members.length;
+  document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
   const av=document.getElementById('gavEl');
   if(gi.avatarImg){av.style.backgroundImage=`url(${gi.avatarImg})`;av.textContent='';}
   else{av.style.backgroundImage='';av.textContent=gi.emoji||'💬';}
 }
 refreshHdr();
+// loadGroupInfo()の呼び出しはファイル末尾でloadGroupMessages()より先に
+// await完了させる形にまとめてある(メンバー情報が揃ってから履歴を描画するため)
 
 // リアクションピッカー生成
 const rp=document.getElementById('rpicker');
@@ -388,27 +419,36 @@ document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0]
 
 async function handleMediaGroup(f,t){
   if(!f)return;
-  
+  if(t==='file'){
+    alert('現在グループチャットではファイル送信に対応していません(画像・動画のみ)');
+    document.getElementById('ibar').classList.remove('open');
+    return;
+  }
+
   const maxSize = t === 'video' ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
   if(f.size > maxSize){
     alert('ファイルが大きすぎます');
     return;
   }
-  
+
   const reader = new FileReader();
   reader.onload = async e => {
     const base64 = e.target.result;
-    const groupId = localStorage.getItem('groupId');
-    
+    const caption=`[${t==='image'?'画像':'動画'}]`;
+
+    // 楽観的更新: 送信直後に自分の画面へ即座に表示
+    const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
+    const msgDiv=createMsg(caption,{mediaType:t,mediaData:base64},false,null,tempId);
+
     try {
-      const result = await fetch('/api/groups/'+groupId+'/messages/send',{
+      const data = await api('/api/groups/'+groupId+'/messages/send',{
         method:'POST',
-        headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token'),'Content-Type':'application/json'},
-        body:JSON.stringify({content:`[${t==='image'?'画像':'動画'}]`,mediaType:t,mediaData:base64,encrypted:true})
+        body:JSON.stringify({content:caption,mediaType:t,mediaData:base64,encrypted:false})
       });
-      const data = await result.json();
-      if(data.ok){
-        createMsg(`[${t==='image'?'画像':'動画'}]`,null,null);
+      if(data&&data.ok&&data.message){
+        msgDiv.dataset.msgId=data.message.id;
+      }else{
+        console.error('メディア送信に失敗しました:',data);
       }
     }catch(err){
       console.error('media send error:',err);
@@ -422,51 +462,71 @@ document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
   const txt=document.getElementById('mi').value.trim();
   if(!txt)return;
-  const groupId=localStorage.getItem('groupId');
-  console.log('groupId:', groupId, 'txt:', txt);
-  if(!groupId){
-    alert('グループが見つかりません');
-    return;
-  }
-  
+
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
-  
-  // 送信直後に UI を作成（楽観的更新）
-  console.log('Creating message UI immediately');
-  createMsg(txt,null,null);
-  
+
   if(isEditing){
-    isEditing=false;editNode=null;editMeta=null;
-    const sbtn = document.getElementById('sbtn');
-    if(sbtn) sbtn.querySelector('svg').outerHTML = pp;
-  }else{
-    try {
-      console.log('Sending message to /api/groups/'+groupId+'/messages/send');
-      const result = await fetch('/api/groups/'+groupId+'/messages/send',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token'),'Content-Type':'application/json'},
-        body:JSON.stringify({content:txt})
-      });
-      console.log('Response status:', result.status);
-      const data = await result.json();
-      console.log('Response data:', data);
-      if(data && (data.ok || data.messageId)){
-        console.log('Message sent successfully');
-      }else{
-        console.error('Send failed:', data);
-      }
-    }catch(err){
-      console.error('Send error:', err);
+    // 編集モード: 実際にサーバーへ保存し、成功したら該当メッセージのテキストを書き換える
+    const targetMsgId=editTargetMsgId;
+    isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
+    const sbtn=document.getElementById('sbtn');
+    if(sbtn) sbtn.querySelector('svg').outerHTML=pp;
+    if(!targetMsgId){
+      console.error('編集対象のmsgIdが特定できませんでした');
+      return;
     }
+    try{
+      const data=await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/edit',{
+        method:'POST',
+        body:JSON.stringify({content:txt,encrypted:false})
+      });
+      if(data&&data.ok){
+        const el=document.querySelector(`[data-msg-id="${targetMsgId}"] .msg-text`);
+        if(el)el.textContent=txt;
+        const editedLabel=document.querySelector(`[data-msg-id="${targetMsgId}"] .edited-label`);
+        if(!editedLabel){
+          const meta=document.querySelector(`[data-msg-id="${targetMsgId}"] .mmeta .time`);
+          if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
+        }
+      }else{
+        console.error('編集に失敗しました:',data);
+      }
+    }catch(err){console.error('編集エラー:',err);}
+    return;
+  }
+
+  // 新規送信: 楽観的更新で即座に表示し、サーバー応答で正式なmsgIdに差し替える
+  const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
+  const msgDiv=createMsg(txt,null,false,null,tempId);
+
+  try{
+    const data=await api('/api/groups/'+groupId+'/messages/send',{
+      method:'POST',
+      body:JSON.stringify({content:txt})
+    });
+    if(data&&data.ok&&data.message){
+      msgDiv.dataset.msgId=data.message.id;
+    }else{
+      console.error('送信に失敗しました:',data);
+    }
+  }catch(err){
+    console.error('送信エラー:',err);
   }
 };
 
-function createMsg(text,file,ftype,incoming,member){
+// text: 表示テキスト(メディアメッセージの場合はキャプション)
+// media: {mediaType, mediaData} 形式のオブジェクト、または null(テキストのみ)
+// incoming: 相手からのメッセージか
+// member: 送信者情報(incoming時のみ使用)
+// msgId: サーバー側のメッセージID(編集・削除・既読・ピン留めの対象特定に必須)
+// createdAt: サーバーが記録した送信時刻(未指定時は現在時刻)
+function createMsg(text,media,incoming,member,msgId,createdAt){
   const cs=document.getElementById('cs');
   const msgDiv=document.createElement('div');
   const isInc=!!incoming;
   msgDiv.classList.add('msg',isInc?'inc':'out');
+  if(msgId) msgDiv.dataset.msgId=msgId;
 
   const wrap=document.createElement('div');wrap.classList.add('mwrap');
 
@@ -484,43 +544,26 @@ function createMsg(text,file,ftype,incoming,member){
   const bub=document.createElement('div');bub.classList.add('bub');
   let mediaEl=null;
 
-  if(file&&ftype==='image'){
-    bub.classList.add('mbub');const url=URL.createObjectURL(file);
-    mediaEl=document.createElement('img');mediaEl.src=url;bub.appendChild(mediaEl);
-  }else if(file&&ftype==='video'){
-    bub.classList.add('mbub');const url=URL.createObjectURL(file);
-    mediaEl=document.createElement('video');mediaEl.src=url;mediaEl.controls=true;bub.appendChild(mediaEl);
-  }else if(file&&ftype==='file'){
-    const url=URL.createObjectURL(file);
-    const ext=file.name.split('.').pop().toLowerCase();
-    const icon=ext==='pdf'?'📕':ext==='zip'?'🗜️':'📄';
-    const sz=file.size>1048576?`${(file.size/1048576).toFixed(1)} MB`:`${(file.size/1024).toFixed(0)} KB`;
-    const fi=document.createElement('div');fi.className='fi';
-    fi.innerHTML=`<span class="ficon">${icon}</span><div class="finfo"><div class="fname">${file.name}</div><div class="fsz">${sz}</div></div>`;
-    const dl=document.createElement('a');dl.className='dlbtn';dl.href=url;dl.download=file.name;
-    dl.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ダウンロード`;
-    fi.appendChild(dl);bub.appendChild(fi);
+  if(media&&media.mediaType==='image'){
+    bub.classList.add('mbub');
+    mediaEl=document.createElement('img');mediaEl.src=media.mediaData;bub.appendChild(mediaEl);
+  }else if(media&&media.mediaType==='video'){
+    bub.classList.add('mbub');
+    mediaEl=document.createElement('video');mediaEl.src=media.mediaData;mediaEl.controls=true;bub.appendChild(mediaEl);
   }else if(text){
     const sp=document.createElement('span');sp.className='msg-text';sp.textContent=text;bub.appendChild(sp);
   }
 
-  const now=new Date();
-  const t=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const dt=createdAt?new Date(createdAt):new Date();
+  const t=`${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
   const meta=document.createElement('div');meta.className='mmeta';
 
   if(!isInc){
-    // 送信メッセージ: チェック1個 + 既読アバター
+    // 送信メッセージ: チェック1個 + 既読アバター(実際の既読状況はrefreshGroupReadStatus()で反映)
     meta.innerHTML=`<span class="time">${t}</span><svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4.5 10 12 1" class="chk"/></svg>`;
     const rd=document.createElement('div');rd.className='rdrow';meta.appendChild(rd);
     bub.appendChild(meta);
     wrap.appendChild(bub);
-    // 既読シミュレーション
-    setTimeout(()=>{
-      const others=gi.members.filter(m=>m.id!=='me');
-      const readers=others.slice(0,Math.ceil(Math.random()*others.length));
-      renderRD(rd,readers,t);
-      const chk=bub.querySelector('.chk');if(chk)chk.classList.add('lit');
-    },1500);
   }else{
     meta.innerHTML=`<span class="time">${t}</span>`;
     bub.appendChild(meta);
@@ -534,11 +577,40 @@ function createMsg(text,file,ftype,incoming,member){
   // 長押しイベント: 自分のメッセージのみ編集/取り消し
   attachPress(msgDiv,wrap,bub,!isInc);
 
-  if(mediaEl&&(ftype==='image'||ftype==='video')){
-    mediaEl.addEventListener('click',()=>openMM(mediaEl,ftype));
+  if(mediaEl&&media){
+    mediaEl.addEventListener('click',()=>openMM(mediaEl,media.mediaType));
   }
 
   ['imgI','vidI','fileI'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+
+  // 受信メッセージは表示された時点で既読対象としてキューに積む
+  if(isInc&&msgId){
+    queueReadReceipt(msgId);
+  }
+
+  return msgDiv;
+}
+
+// 既読マークをまとめて送るためのキュー(1メッセージごとにAPIを叩くと
+// 大量メッセージ受信時に負荷が高いため、少し間隔を空けてまとめて送る)
+let pendingReadIds=new Set();
+let readFlushTimer=null;
+function queueReadReceipt(msgId){
+  pendingReadIds.add(msgId);
+  if(readFlushTimer)return;
+  readFlushTimer=setTimeout(flushReadReceipts,800);
+}
+async function flushReadReceipts(){
+  readFlushTimer=null;
+  if(pendingReadIds.size===0)return;
+  const ids=Array.from(pendingReadIds);
+  pendingReadIds=new Set();
+  try{
+    await api('/api/groups/'+groupId+'/messages/read',{
+      method:'POST',
+      body:JSON.stringify({messageIds:ids})
+    });
+  }catch(err){console.error('既読送信エラー:',err);}
 }
 
 function renderRD(rdDiv,readers,t){
@@ -598,34 +670,63 @@ document.getElementById('reactBtn').onclick=()=>{
 };
 
 document.getElementById('editBtn').onclick=()=>{
-  if(!activeBubble)return;const sp=activeBubble.querySelector('.msg-text');const meta=activeBubble.querySelector('.mmeta');
+  if(!activeBubble||!activeMsg)return;const sp=activeBubble.querySelector('.msg-text');const meta=activeBubble.querySelector('.mmeta');
   if(!sp)return;hideMenu();
-  isEditing=true;editNode=sp;editMeta=meta;
+  isEditing=true;editNode=sp;editMeta=meta;editTargetMsgId=activeMsg.dataset.msgId||null;
   document.getElementById('mi').value=sp.textContent;
   document.getElementById('mi').focus();
   const sbtn = document.getElementById('sbtn');
   if(sbtn) sbtn.querySelector('svg').outerHTML = ck;
 };
 
-document.getElementById('pinBtnCtx').onclick=()=>{
-  if(!activeBubble)return;const sp=activeBubble.querySelector('.msg-text,.fname');
+document.getElementById('pinBtnCtx').onclick=async ()=>{
+  if(!activeBubble||!activeMsg)return;const sp=activeBubble.querySelector('.msg-text,.fname');
   const txt=sp?sp.textContent:'メディア';
-  document.getElementById('pinText').textContent=txt;
-  document.getElementById('pinBanner').classList.add('show');
+  const targetMsgId=activeMsg.dataset.msgId;
   hideMenu();
+  if(!targetMsgId){console.error('ピン留め対象のmsgIdが特定できませんでした');return;}
+  try{
+    const data=await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/pin',{
+      method:'POST',
+      body:JSON.stringify({pinned:true})
+    });
+    if(data&&data.ok){
+      document.getElementById('pinText').textContent=txt;
+      document.getElementById('pinBanner').classList.add('show');
+      document.getElementById('pinBanner').dataset.msgId=targetMsgId;
+    }
+  }catch(err){console.error('ピン留めエラー:',err);}
 };
-document.getElementById('pinCls').onclick=()=>document.getElementById('pinBanner').classList.remove('show');
+document.getElementById('pinCls').onclick=async ()=>{
+  const banner=document.getElementById('pinBanner');
+  const pinnedMsgId=banner.dataset.msgId;
+  banner.classList.remove('show');
+  if(pinnedMsgId){
+    try{
+      await api('/api/groups/'+groupId+'/messages/'+pinnedMsgId+'/pin',{
+        method:'POST',
+        body:JSON.stringify({pinned:false})
+      });
+    }catch(err){console.error('ピン留め解除エラー:',err);}
+  }
+};
 
 document.getElementById('delBtn').onclick=()=>{
   if(!activeMsg)return;const target=activeMsg;const sname=myName;
+  const targetMsgId=target.dataset.msgId;
   hideMenu();
-  showConf('送信取り消し',`このメッセージを取り消しますか？`,'取り消す',()=>{
+  showConf('送信取り消し',`このメッセージを取り消しますか？`,'取り消す',async ()=>{
+    if(targetMsgId){
+      try{
+        await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/delete',{method:'POST'});
+      }catch(err){console.error('削除エラー:',err);}
+    }
     const notice=document.createElement('div');
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
     target.parentNode.replaceChild(notice,target);
-    if(isEditing&&editNode){
-      isEditing=false;editNode=null;editMeta=null;
+    if(isEditing&&editTargetMsgId===targetMsgId){
+      isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
       document.getElementById('mi').value='';
       const sbtn = document.getElementById('sbtn');
       if(sbtn) sbtn.querySelector('svg').outerHTML = pp;
@@ -660,19 +761,27 @@ document.getElementById('readOv').onclick=e=>{if(e.target===document.getElementB
 function openMemModal(){
   const list=document.getElementById('memList');list.innerHTML='';
   gi.members.forEach(m=>{
-    const isMe=m.id==='me';
+    const isMe=m.id===myUserId;
     const d=document.createElement('div');d.className='litem';
     const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
     if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
     d.appendChild(av);
-    const n=document.createElement('span');n.className='lname';n.textContent=m.name;d.appendChild(n);
-    const r=document.createElement('span');r.className='lrole';r.textContent=isMe?'管理者':'メンバー';d.appendChild(r);
-    if(!isMe){
+    const n=document.createElement('span');n.className='lname';n.textContent=m.name+(isMe?'（自分）':'');d.appendChild(n);
+    const r=document.createElement('span');r.className='lrole';r.textContent=m.isOwner?'管理者':'メンバー';d.appendChild(r);
+    // 削除ボタンは管理者(自分がオーナーの場合)かつ相手が自分自身でない時のみ表示
+    const amOwner=gi.ownerId===myUserId;
+    if(!isMe&&amOwner){
       const rb=document.createElement('button');rb.className='rmvbtn';rb.textContent='削除';
       rb.onclick=()=>{
         document.getElementById('memOv').classList.remove('show');
-        showConf('メンバー削除',`${m.name}をグループから削除しますか？`,'削除',()=>{
-          gi.members=gi.members.filter(x=>x.id!==m.id);saveGI(gi);refreshHdr();
+        showConf('メンバー削除',`${m.name}をグループから削除しますか？`,'削除',async ()=>{
+          try{
+            await api('/api/groups/remove-member',{
+              method:'POST',
+              body:JSON.stringify({groupId,removeUserId:m.id})
+            });
+            gi.members=gi.members.filter(x=>x.id!==m.id);refreshHdr();
+          }catch(err){console.error('メンバー削除エラー:',err);}
         });
       };
       d.appendChild(rb);
@@ -768,26 +877,136 @@ window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener
 document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
 document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
+// サーバーのcontentカラムは、テキストの場合は生の文字列、
+// メディアの場合はJSON.stringify({text, media, mediaType})が入っている。
+// 判別してパースする。
+function parseMsgContent(rawContent){
+  if(typeof rawContent!=='string')return{text:'',media:null};
+  if(rawContent.startsWith('{')){
+    try{
+      const parsed=JSON.parse(rawContent);
+      if(parsed&&parsed.media&&parsed.mediaType){
+        return{text:parsed.text||'',media:{mediaType:parsed.mediaType,mediaData:parsed.media}};
+      }
+    }catch(e){/* JSONでなければ通常テキストとして扱う */}
+  }
+  return{text:rawContent,media:null};
+}
+
 // グループメッセージ履歴をサーバーから読み込み
 async function loadGroupMessages(){
-  const groupId=localStorage.getItem('groupId');
-  if(!groupId)return;
   try{
-    const res=await fetch('/api/groups/'+groupId+'/messages',{
-      headers:{'Authorization':'Bearer '+localStorage.getItem('ring_token')}
-    });
-    const msgs=await res.json();
+    const msgs=await api('/api/groups/'+groupId+'/messages');
     if(Array.isArray(msgs)){
       msgs.forEach(msg=>{
-        const member=gi.members.find(m=>m.id===msg.senderId);
-        createMsg(msg.content,null,null,msg.senderId!==localStorage.getItem('ring_userId'),member);
+        const member=gi.members.find(m=>m.id===msg.sender_id);
+        const{text,media}=parseMsgContent(msg.content);
+        const incoming=msg.sender_id!==myUserId;
+        const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
+        if(msg.edited_at){
+          const meta=msgDiv.querySelector('.mmeta .time');
+          if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
+        }
       });
+    }
+    // ピン留め中のメッセージがあればバナーを表示
+    const pinned=await api('/api/groups/'+groupId+'/pinned');
+    if(Array.isArray(pinned)&&pinned.length>0){
+      const latest=pinned[0];
+      const{text}=parseMsgContent(latest.content);
+      document.getElementById('pinText').textContent=text||'メディア';
+      document.getElementById('pinBanner').classList.add('show');
+      document.getElementById('pinBanner').dataset.msgId=latest.id;
     }
   }catch(err){console.error('load messages error:',err);}
 }
 
-// ページロード時にメッセージ読み込み
-window.addEventListener('load',loadGroupMessages);
+// 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
+// (メンバー名・アバターを正しく紐付けるため)
+(async ()=>{
+  await loadGroupInfo();
+  await loadGroupMessages();
+  connectGroupWS();
+})();
+
+// --- WebSocketでリアルタイム受信 ---
+// (これまで一切実装されておらず、リロードしないと他メンバーの
+// メッセージが表示されなかったため新規追加)
+let groupWs=null;
+// メッセージIDごとの既読者リスト(WebSocketで通知が来るたびに追加していく)
+const msgReaders={};
+function connectGroupWS(){
+  const wsUrl=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+  groupWs=new WebSocket(wsUrl);
+
+  groupWs.onopen=()=>{
+    groupWs.send(JSON.stringify({type:'auth',token}));
+  };
+
+  groupWs.onmessage=e=>{
+    try{
+      const data=JSON.parse(e.data);
+      if(data.type==='group_message'&&data.groupId===groupId){
+        const msg=data.message;
+        if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
+        const member=gi.members.find(m=>m.id===msg.senderId);
+        const{text,media}=parseMsgContent(msg.content);
+        createMsg(text,media,true,member,msg.id,msg.createdAt);
+      }else if(data.type==='group_message_edited'&&data.groupId===groupId){
+        const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text`);
+        if(el)el.textContent=data.content;
+        const editedLabel=document.querySelector(`[data-msg-id="${data.messageId}"] .edited-label`);
+        if(!editedLabel){
+          const meta=document.querySelector(`[data-msg-id="${data.messageId}"] .mmeta .time`);
+          if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
+        }
+      }else if(data.type==='group_message_read'&&data.groupId===groupId){
+        // 自分が送ったメッセージが読まれた場合、既読アバターを反映する
+        const msgDiv=document.querySelector(`[data-msg-id="${data.messageId}"]`);
+        if(msgDiv&&!msgDiv.classList.contains('inc')){
+          const chk=msgDiv.querySelector('.chk');
+          if(chk&&data.readCount>0)chk.classList.add('lit');
+          const rd=msgDiv.querySelector('.rdrow');
+          const reader=gi.members.find(m=>m.id===data.readerUserId);
+          if(rd&&reader){
+            if(!msgReaders[data.messageId])msgReaders[data.messageId]=[];
+            if(!msgReaders[data.messageId].some(m=>m.id===reader.id)){
+              msgReaders[data.messageId].push(reader);
+            }
+            const t=msgDiv.querySelector('.time')?.textContent||'';
+            renderRD(rd,msgReaders[data.messageId],t);
+          }
+        }
+      }else if(data.type==='group_message_pinned'&&data.groupId===groupId){
+        if(data.pinned){
+          const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text,[data-msg-id="${data.messageId}"] .fname`);
+          document.getElementById('pinText').textContent=el?el.textContent:'メディア';
+          document.getElementById('pinBanner').classList.add('show');
+          document.getElementById('pinBanner').dataset.msgId=data.messageId;
+        }else if(document.getElementById('pinBanner').dataset.msgId===data.messageId){
+          document.getElementById('pinBanner').classList.remove('show');
+        }
+      }else if(data.type==='group_message_deleted'&&data.groupId===groupId){
+        const msgDiv=document.querySelector(`[data-msg-id="${data.messageId}"]`);
+        if(msgDiv){
+          const notice=document.createElement('div');
+          notice.className='cancel-notice';
+          notice.textContent='メッセージが取り消されました';
+          msgDiv.parentNode.replaceChild(notice,msgDiv);
+        }
+      }else if(data.type==='added_to_group'){
+        // 自分が新しいグループに追加された通知(トーク一覧側で表示更新が必要になるため、
+        // 現在開いているのが別グループの場合は何もしない)
+      }
+    }catch(err){console.error('WebSocketメッセージ処理エラー:',err);}
+  };
+
+  groupWs.onclose=()=>{
+    // 切断時は5秒後に再接続を試みる
+    setTimeout(connectGroupWS,5000);
+  };
+  groupWs.onerror=err=>{console.error('WebSocketエラー:',err);};
+}
 </script>
 </body>
 </html>
