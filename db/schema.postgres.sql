@@ -72,6 +72,31 @@ CREATE TABLE IF NOT EXISTS group_key_distributions (
   created_at TIMESTAMP DEFAULT now()
 );
 
+-- グループメッセージ本体。個人チャットのmessagesと違い、既読は
+-- 複数メンバー分あるためread_atのような単一カラムでは表現できず、
+-- 既読は別途group_message_readsで管理する。
+CREATE TABLE IF NOT EXISTS group_messages (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(id),
+  sender_id TEXT NOT NULL REFERENCES users(id),
+  content TEXT NOT NULL,
+  msg_type TEXT DEFAULT 'text',
+  encrypted BOOLEAN DEFAULT false,
+  key_version INTEGER DEFAULT 1,
+  created_at TIMESTAMP DEFAULT now(),
+  edited_at TIMESTAMP,
+  deleted_at TIMESTAMP,
+  pinned_at TIMESTAMP
+);
+
+-- グループメッセージの既読状況(メンバーごとに1行)
+CREATE TABLE IF NOT EXISTS group_message_reads (
+  message_id TEXT NOT NULL REFERENCES group_messages(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  read_at TIMESTAMP DEFAULT now(),
+  PRIMARY KEY (message_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   sender_id TEXT NOT NULL REFERENCES users(id),
@@ -124,3 +149,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_messages_pinned ON messages(pinned_at) WHERE pinned_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
+CREATE INDEX IF NOT EXISTS idx_group_messages_group ON group_messages(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_messages_pinned ON group_messages(pinned_at) WHERE pinned_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_group_message_reads_message ON group_message_reads(message_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);

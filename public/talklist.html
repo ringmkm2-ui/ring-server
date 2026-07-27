@@ -24,6 +24,8 @@ body.has-custom-bg .pc{background:transparent}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
 .tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
+.group-default-av{position:relative}
+.group-default-av::before{content:'💬';font-size:20px}
 .tbody{flex:1;min-width:0}
 .ttr{display:flex;justify-content:space-between;margin-bottom:4px}
 .tname{font-weight:700;color:#0f172a;font-size:14px}
@@ -262,6 +264,7 @@ async function loadTalks() {
   try {
     const talks = await api('/api/messages/talks');
     const friends = await api('/api/friends/list');
+    const groupsData = await api('/api/groups/list');
     const list = document.getElementById('talkList');
     
     // トークリストのユーザーIDセット
@@ -271,13 +274,14 @@ async function loadTalks() {
     const merged = [];
     
     if (Array.isArray(talks) && talks.length > 0) {
-      merged.push(...talks);
+      merged.push(...talks.map(t => ({ ...t, kind: 'dm' })));
     }
     
     if (Array.isArray(friends)) {
       friends.forEach(f => {
         if (!talkUserIds.has(f.userId)) {
           merged.push({
+            kind: 'dm',
             userId: f.userId,
             displayName: f.displayName,
             profilePic: f.profilePic,
@@ -288,6 +292,28 @@ async function loadTalks() {
         }
       });
     }
+
+    // グループをリストに統合
+    if (groupsData && Array.isArray(groupsData.groups)) {
+      groupsData.groups.forEach(g => {
+        merged.push({
+          kind: 'group',
+          groupId: g.groupId,
+          displayName: g.name,
+          lastMessage: g.lastMessage ? (g.lastMessage.encrypted ? '(暗号化されたメッセージ)' : g.lastMessage.content) : 'まだメッセージがありません',
+          lastTime: g.lastMessage ? g.lastMessage.createdAt : null,
+          memberCount: g.members.length,
+        });
+      });
+    }
+
+    // 最終メッセージ時刻で降順ソート（メッセージが無いものは末尾）
+    merged.sort((a, b) => {
+      if (!a.lastTime && !b.lastTime) return 0;
+      if (!a.lastTime) return 1;
+      if (!b.lastTime) return -1;
+      return new Date(b.lastTime) - new Date(a.lastTime);
+    });
     
     if (merged.length === 0) {
       list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">トークリストが空です<br>友達を追加してメッセージしよう！</div>';
@@ -295,6 +321,16 @@ async function loadTalks() {
     }
     
     list.innerHTML = merged.map(t => {
+      if (t.kind === 'group') {
+        const time = t.lastTime ? formatTime(t.lastTime) : '';
+        return `<div class="ti" onclick="openGroupChat('${t.groupId}','${escHtml(t.displayName)}')">
+          <div class="tav group-default-av"></div>
+          <div class="tbody">
+            <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
+            <div class="tmsg">${escHtml(t.lastMessage||'')} ・ ${t.memberCount}人</div>
+          </div>
+        </div>`;
+      }
       const initial = (t.displayName||'?')[0];
       const pic = t.profilePic ? `background-image:url(${t.profilePic})` : '';
       const time = t.lastTime ? formatTime(t.lastTime) : '';
@@ -308,6 +344,10 @@ async function loadTalks() {
       </div>`;
     }).join('');
   } catch(e) { console.error('loadTalks:', e); }
+}
+
+function openGroupChat(groupId, name) {
+  location.href = `/groupchat.html?groupId=${encodeURIComponent(groupId)}&name=${encodeURIComponent(name)}`;
 }
 
 async function loadFriends() {
@@ -604,44 +644,32 @@ ngMov.onclick = e => { if (e.target === ngMov) ngMov.classList.remove('open'); }
 let selectedGroupMembers = new Set();
 let memberNameMap = new Map();
 
-document.getElementById('ngCreate').onclick = () => {
+document.getElementById('ngCreate').onclick = async () => {
   const name = document.getElementById('ngName').value.trim();
   if (!name) return alert('グループ名を入力してください');
-  
-  const myName = localStorage.getItem('myName') || '自分';
-  const myAvatar = localStorage.getItem('myAvatar') || '';
-  
-  const newGroup = {
-    id: 'group-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-    name,
-    emoji: '💬',
-    avatarImg: '',
-    members: [
-      { id: localStorage.getItem('ring_userId') || 'me', name: myName, color: '#3b82f6', initials: myName.charAt(0), avatarImg: myAvatar },
-      ...Array.from(selectedGroupMembers).map(id => ({ 
-        id, 
-        name: memberNameMap.get(id) || id, 
-        color: '#8b5cf6', 
-        initials: (memberNameMap.get(id) || '?').charAt(0), 
-        avatarImg: '' 
-      }))
-    ]
-  };
-  
-  localStorage.setItem('groupInfo', JSON.stringify(newGroup));
-  localStorage.setItem('groupId', newGroup.id);
-  
-  const list = document.getElementById('groupList');
-  const a = document.createElement('a');
-  a.href = `groupchat.html?name=${encodeURIComponent(name)}`;
-  a.className = 'ti';
-  a.innerHTML = `<div class="tav" style="font-size:20px">💬</div><div class="tbody"><div class="ttr"><div class="tname">${name}</div><div class="ttime">今</div></div><div class="tmsg">メンバー: ${selectedGroupMembers.size + 1}人</div></div>`;
-  list.appendChild(a);
-  
-  document.getElementById('ngName').value = '';
-  selectedGroupMembers.clear();
-  memberNameMap.clear();
-  ngMov.classList.remove('open');
+
+  const createBtn = document.getElementById('ngCreate');
+  createBtn.disabled = true;
+  createBtn.textContent = '作成中...';
+
+  try {
+    const data = await api('/api/groups/create', {
+      method: 'POST',
+      body: JSON.stringify({ name, memberIds: Array.from(selectedGroupMembers) })
+    });
+    if (!data || !data.groupId) {
+      throw new Error('グループ作成に失敗しました');
+    }
+
+    ngMov.classList.remove('open');
+    location.href = `groupchat.html?groupId=${encodeURIComponent(data.groupId)}&name=${encodeURIComponent(name)}`;
+  } catch (err) {
+    console.error('グループ作成エラー:', err);
+    alert('グループの作成に失敗しました。もう一度お試しください。');
+  } finally {
+    createBtn.disabled = false;
+    createBtn.textContent = '作成する';
+  }
 };
 
 // 友達リクエスト読み込み

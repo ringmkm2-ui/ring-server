@@ -8,16 +8,68 @@ const { broadcastToUser } = require('../ws/wsServer');
 
 const router = express.Router();
 
+// --- 自分が所属するグループ一覧を取得 ---
+router.get('/list', verifyToken, async (req, res) => {
+  const rows = await db.all(
+    `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at
+     FROM groups g
+     JOIN group_members gm ON gm.group_id = g.id
+     WHERE gm.user_id = ? AND gm.left_at IS NULL
+     ORDER BY g.created_at DESC`,
+    [req.user.userId]
+  );
+  const groups = [];
+  for (const g of rows) {
+    const members = await db.all(
+      `SELECT u.id as user_id, u.display_name, u.profile_pic
+       FROM group_members gm JOIN users u ON u.id = gm.user_id
+       WHERE gm.group_id = ? AND gm.left_at IS NULL`,
+      [g.id]
+    );
+    const lastMsg = await db.get(
+      `SELECT content, created_at, encrypted FROM group_messages
+       WHERE group_id = ? AND deleted_at IS NULL
+       ORDER BY created_at DESC LIMIT 1`,
+      [g.id]
+    );
+    groups.push({
+      groupId: g.id,
+      name: g.name,
+      ownerId: g.owner_id,
+      isOwner: g.owner_id === req.user.userId,
+      keyVersion: g.key_version,
+      members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
+      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted } : null,
+    });
+  }
+  res.json({ groups });
+});
+
 // --- グループ作成 ---
+// body: { name, memberIds: [userId, ...] } (memberIdsは作成者以外の初期メンバー)
 router.post('/create', verifyToken, async (req, res) => {
-  const { name } = req.body;
+  const { name, memberIds } = req.body;
   if (!name) return res.status(400).json({ error: 'グループ名が必要です' });
 
   const groupId = uuidv4();
   await db.run('INSERT INTO groups (id, name, owner_id, key_version) VALUES (?, ?, ?, 1)', [groupId, name, req.user.userId]);
   await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, req.user.userId]);
 
-  res.json({ groupId, name, keyVersion: 1 });
+  const addedMembers = [req.user.userId];
+  if (Array.isArray(memberIds)) {
+    for (const uid of memberIds) {
+      if (uid === req.user.userId) continue; // 作成者は既に追加済み
+      const user = await db.get('SELECT id FROM users WHERE id = ?', [uid]);
+      if (!user) continue; // 存在しないユーザーIDは無視
+      const already = await db.get('SELECT * FROM group_members WHERE group_id=? AND user_id=?', [groupId, uid]);
+      if (already) continue;
+      await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, uid]);
+      addedMembers.push(uid);
+      broadcastToUser(uid, { type: 'added_to_group', groupId, name });
+    }
+  }
+
+  res.json({ groupId, name, keyVersion: 1, members: addedMembers });
 });
 
 // --- メンバー招待 ---
@@ -163,6 +215,112 @@ router.get('/:groupId/messages', verifyToken, async (req, res) => {
   );
 
   res.json(messages.reverse());
+});
+
+// --- グループメッセージ既読マーク ---
+// body: { messageIds: [id, ...] } (まとめて既読にする)
+router.post('/:groupId/messages/read', verifyToken, async (req, res) => {
+  const { groupId } = req.params;
+  const { messageIds } = req.body;
+  if (!Array.isArray(messageIds) || messageIds.length === 0) {
+    return res.status(400).json({ error: 'messageIds required' });
+  }
+
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+
+  for (const msgId of messageIds) {
+    const msg = await db.get('SELECT sender_id FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
+    if (!msg) continue;
+    if (msg.sender_id === req.user.userId) continue; // 自分の送信メッセージは既読対象外
+    const already = await db.get('SELECT * FROM group_message_reads WHERE message_id = ? AND user_id = ?', [msgId, req.user.userId]);
+    if (already) continue;
+    await db.run('INSERT INTO group_message_reads (message_id, user_id) VALUES (?, ?)', [msgId, req.user.userId]);
+
+    // 何人が既読したかをメンバー全員に通知(自分のアイコンを表示するのではなく人数ベースで良い)
+    const readCount = await db.get('SELECT COUNT(*) as cnt FROM group_message_reads WHERE message_id = ?', [msgId]);
+    members.forEach(m => {
+      broadcastToUser(m.user_id, {
+        type: 'group_message_read',
+        groupId,
+        messageId: msgId,
+        readerUserId: req.user.userId,
+        readCount: readCount.cnt,
+        totalMembers: members.length,
+      });
+    });
+  }
+
+  res.json({ ok: true });
+});
+
+// --- グループメッセージの既読者一覧取得 ---
+router.get('/:groupId/messages/:msgId/reads', verifyToken, async (req, res) => {
+  const reads = await db.all(
+    `SELECT gmr.user_id, gmr.read_at, u.display_name FROM group_message_reads gmr
+     JOIN users u ON u.id = gmr.user_id
+     WHERE gmr.message_id = ?`,
+    [req.params.msgId]
+  );
+  res.json({ reads: reads.map(r => ({ userId: r.user_id, displayName: r.display_name, readAt: r.read_at })) });
+});
+
+// --- グループメッセージ編集 ---
+router.post('/:groupId/messages/:msgId/edit', verifyToken, async (req, res) => {
+  const { groupId, msgId } = req.params;
+  const { content, encrypted } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+
+  const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
+  if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
+  if (msg.sender_id !== req.user.userId) return res.status(403).json({ error: '権限がありません' });
+
+  const now = new Date().toISOString();
+  await db.run('UPDATE group_messages SET content = ?, encrypted = ?, edited_at = ? WHERE id = ?', [content, !!encrypted, now, msgId]);
+
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => {
+    broadcastToUser(m.user_id, {
+      type: 'group_message_edited',
+      groupId,
+      messageId: msgId,
+      content,
+      encrypted: !!encrypted,
+      editedAt: now,
+    });
+  });
+
+  res.json({ ok: true });
+});
+
+// --- グループメッセージのピン留め切り替え ---
+router.post('/:groupId/messages/:msgId/pin', verifyToken, async (req, res) => {
+  const { groupId, msgId } = req.params;
+  const { pinned } = req.body;
+
+  const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
+  if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
+
+  const now = pinned ? new Date().toISOString() : null;
+  await db.run('UPDATE group_messages SET pinned_at = ? WHERE id = ?', [now, msgId]);
+
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => {
+    broadcastToUser(m.user_id, { type: 'group_message_pinned', groupId, messageId: msgId, pinned: !!pinned });
+  });
+
+  res.json({ ok: true, pinned: !!pinned });
+});
+
+// --- グループのピン留めメッセージ一覧取得 ---
+router.get('/:groupId/pinned', verifyToken, async (req, res) => {
+  const rows = await db.all(
+    `SELECT gm.*, u.display_name FROM group_messages gm
+     LEFT JOIN users u ON u.id = gm.sender_id
+     WHERE gm.group_id = ? AND gm.pinned_at IS NOT NULL AND gm.deleted_at IS NULL
+     ORDER BY gm.pinned_at DESC`,
+    [req.params.groupId]
+  );
+  res.json(rows);
 });
 
 // --- グループメッセージ削除 ---

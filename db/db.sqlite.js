@@ -120,6 +120,31 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS group_messages (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      msg_type TEXT DEFAULT 'text',
+      encrypted INTEGER DEFAULT 0,
+      key_version INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      edited_at TEXT,
+      deleted_at TEXT,
+      pinned_at TEXT,
+      FOREIGN KEY (group_id) REFERENCES groups(id),
+      FOREIGN KEY (sender_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS group_message_reads (
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      read_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (message_id, user_id),
+      FOREIGN KEY (message_id) REFERENCES group_messages(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       sender_id TEXT NOT NULL,
