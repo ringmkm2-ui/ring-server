@@ -79,6 +79,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
   transform:scale(1.08);
 }
 .glass-send-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
+.version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .media-opts{display:flex;flex-direction:column;gap:4px;padding-top:10px;margin-top:8px;border-top:1px solid rgba(255,255,255,.4);opacity:0;transform:translateY(-8px);transition:all .4s ease}
 .input-floating-bar.media-open .media-opts{opacity:1;transform:translateY(0)}
 .mopt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;cursor:pointer;border:none;background:none;width:100%;text-align:left}
@@ -127,6 +129,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
   </defs>
 </svg>
 <div class="phone-container">
+  <div class="version-badge">Bro Chat v0.9 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -742,9 +745,13 @@ function renderMessageImpl(msg) {
   }
 
   const d = new Date(msg.createdAt);
-  // サーバーはUTC保存。ローカルタイムゾーンに変換して表示
-  const localTime = new Date(d.getTime() + new Date().getTimezoneOffset() * -60000);
-  const t = `${String(localTime.getHours()).padStart(2,'0')}:${String(localTime.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
+  // 補足: サーバーはUTCで保存しているが、JavaScriptのDateオブジェクトの
+  // getHours()/getMinutes()は元々呼び出し側のローカルタイムゾーンに
+  // 自動変換した値を返す仕様のため、追加の変換は一切不要。
+  // (過去の実装はここでgetTimezoneOffset()を使ってさらに変換を
+  //  重ねてしまっており、実行環境のタイムゾーン設定によって
+  //  数時間単位で時刻がずれる原因になっていた)
+  const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
   const meta = document.createElement('div'); meta.className = 'msg-meta';
 
   if (isMine) {
