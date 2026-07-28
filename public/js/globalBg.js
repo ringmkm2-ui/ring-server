@@ -1,31 +1,38 @@
-// 全ページ共通の背景設定を適用するスクリプト
-// 各HTMLファイルの<head>直後、または<body>の最初で読み込むこと
+// 全ページ共通の背景設定を適用するスクリプト。
+// <head>内で <script defer src="/js/globalBg.js"></script> として
+// 読み込むこと。defer属性により、このスクリプトはHTML全体の
+// パースが終わった後、DOMContentLoadedの直前に実行されることが
+// 保証される。そのため実行時点でdocument.bodyは必ず存在する。
+//
+// 過去の実装は<head>内で<style>タグより前に同期<script>として
+// 置かれており、HTML解析をその場でブロックした上にdocument.bodyが
+// まだ存在しないタイミングで実行されていた。これが「最初だけ白い
+// 画面が一瞬映ってからコンテンツが現れる」チラつきの直接原因だった。
 (function applyGlobalBackground(){
-  let lastApplied = null; // 同じ背景を何度も再設定して余計な再描画を招かないためのキャッシュ
-  function apply(){
-    const bg = localStorage.getItem('myBgImage');
-    if(!bg)return;
-    if(bg === lastApplied && document.body && document.body.classList.contains('has-custom-bg')){
-      return; // 前回と同じ背景かつ既に適用済みなら何もしない
-    }
-    lastApplied = bg;
+  const bg = localStorage.getItem('myBgImage');
+  if(bg){
     document.documentElement.style.backgroundImage = `url(${bg})`;
     document.documentElement.style.backgroundSize = 'cover';
     document.documentElement.style.backgroundPosition = 'center';
     document.documentElement.style.backgroundAttachment = 'fixed';
     document.documentElement.style.backgroundRepeat = 'no-repeat';
-    if(document.body){
-      document.body.classList.add('has-custom-bg');
-    }
+    document.body.classList.add('has-custom-bg');
   }
-  // head内で同期実行された場合、bodyがまだ存在しないため
-  // DOMContentLoadedとloadの両方で再適用を保証する
-  apply();
-  document.addEventListener('DOMContentLoaded', apply);
-  window.addEventListener('load', apply);
-  // 背景が設定画面で変更された時にリアルタイム反映するため（別タブ用）
+
+  // 設定画面で背景を変更した際、別タブでも即座に反映する
   window.addEventListener('storage', (e)=>{
-    if(e.key==='myBgImage'){lastApplied=null;apply();}
+    if(e.key!=='myBgImage')return;
+    const newBg = e.newValue;
+    if(newBg){
+      document.documentElement.style.backgroundImage = `url(${newBg})`;
+      document.documentElement.style.backgroundSize = 'cover';
+      document.documentElement.style.backgroundPosition = 'center';
+      document.documentElement.style.backgroundAttachment = 'fixed';
+      document.documentElement.style.backgroundRepeat = 'no-repeat';
+      document.body.classList.add('has-custom-bg');
+    }else{
+      document.documentElement.style.backgroundImage = '';
+      document.body.classList.remove('has-custom-bg');
+    }
   });
 })();
-

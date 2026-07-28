@@ -1,13 +1,13 @@
 // 全ページ共通の設定(ダークモード・バッテリーセーバー時のアニメーション無効化)を
-// 適用するスクリプト。globalBg.jsと同様に各HTMLファイルの<head>で読み込むこと。
+// 適用するスクリプト。<head>内で
+// <script defer src="/js/globalSettings.js"></script> として読み込むこと。
+// defer属性により、document.documentElementへのクラス付与は
+// HTML解析をブロックせず、かつDOMContentLoaded直前という
+// 一定のタイミングで実行される。
 (function applyGlobalSettings(){
   function applyDarkMode(){
     const dark = localStorage.getItem('darkMode') === '1';
-    if(dark){
-      document.documentElement.classList.add('dark-mode');
-    }else{
-      document.documentElement.classList.remove('dark-mode');
-    }
+    document.documentElement.classList.toggle('dark-mode', dark);
   }
 
   // バッテリーセーバーの検出について:
@@ -20,26 +20,18 @@
   function applyReducedMotion(){
     const manualBatterySaver = localStorage.getItem('batterySaverAnimations') === '1';
     const osReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if(manualBatterySaver || osReducedMotion){
-      document.documentElement.classList.add('reduce-motion');
-    }else{
-      document.documentElement.classList.remove('reduce-motion');
-    }
+    document.documentElement.classList.toggle('reduce-motion', manualBatterySaver || osReducedMotion);
   }
 
-  function applyAll(){
-    applyDarkMode();
-    applyReducedMotion();
-  }
-
-  applyAll();
-  document.addEventListener('DOMContentLoaded', applyAll);
+  applyDarkMode();
+  applyReducedMotion();
 
   // 設定画面での変更をリアルタイム反映(同一タブ内)
-  window.addEventListener('settings-changed', applyAll);
+  window.addEventListener('settings-changed', () => { applyDarkMode(); applyReducedMotion(); });
   // 別タブでの変更も反映
   window.addEventListener('storage', (e) => {
-    if(e.key === 'darkMode' || e.key === 'batterySaverAnimations') applyAll();
+    if(e.key === 'darkMode') applyDarkMode();
+    if(e.key === 'batterySaverAnimations') applyReducedMotion();
   });
 
   // OS側の「動きを減らす」設定が変化した場合にも追従
@@ -58,7 +50,6 @@
     if(typeof conn.type === 'string'){
       return conn.type === 'cellular';
     }
-    // typeが取れない環境向けのフォールバック: effectiveTypeで代用
     if(typeof conn.effectiveType === 'string'){
       return ['slow-2g','2g','3g'].includes(conn.effectiveType);
     }
@@ -77,7 +68,7 @@
       }
       const img = new Image();
       img.onload = () => {
-        const maxDim = 1024; // 節約モード時の最大辺
+        const maxDim = 1024;
         let { width, height } = img;
         if(width > maxDim || height > maxDim){
           if(width > height){ height = Math.round(height * maxDim / width); width = maxDim; }
@@ -87,10 +78,9 @@
         canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        // JPEG品質0.6で再エンコードしてデータ量を削減
         resolve(canvas.toDataURL('image/jpeg', 0.6));
       };
-      img.onerror = () => resolve(dataUrl); // 失敗時は元データのまま送る
+      img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
     });
   };
