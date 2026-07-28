@@ -444,7 +444,11 @@ async function handleMediaGroup(f,t){
 
   const reader = new FileReader();
   reader.onload = async e => {
-    const base64 = e.target.result;
+    let base64 = e.target.result;
+    // モバイルデータ節約がオンの場合、画像のみ送信前に圧縮する(動画は対象外)
+    if(t==='image' && window.maybeCompressImage){
+      base64 = await window.maybeCompressImage(base64);
+    }
     const caption=`[${t==='image'?'画像':'動画'}]`;
 
     // 楽観的更新: 送信直後に自分の画面へ即座に表示
