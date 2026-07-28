@@ -1,0 +1,71 @@
+/* ダークモード用の共通上書きスタイル。
+   各画面の基調色(#fdfaf6など)やテキスト色(#0f172aなど)を
+   ダークモード時に反転させる。個別画面が持つ細かい色指定を
+   全て網羅するのは現実的ではないため、最も影響が大きい
+   背景色・カード背景・テキスト色・吹き出し色を中心に上書きする。 */
+html.dark-mode{color-scheme:dark}
+html.dark-mode body,
+html.dark-mode html{background:#15181f !important}
+html.dark-mode body.has-custom-bg{background:transparent !important}
+
+html.dark-mode .phone-container,
+html.dark-mode .pc{background:#15181f !important}
+html.dark-mode body.has-custom-bg .phone-container,
+html.dark-mode body.has-custom-bg .pc{background:transparent !important}
+
+/* トーク一覧・設定画面などのカード類 */
+html.dark-mode .sc,
+html.dark-mode .mc,
+html.dark-mode .ti,
+html.dark-mode .litem{
+  background:rgba(30,33,42,.7) !important;
+  color:#e5e7eb !important;
+}
+html.dark-mode .tname,
+html.dark-mode .gnameEl,
+html.dark-mode #gnameEl,
+html.dark-mode .mtitle,
+html.dark-mode .lname{color:#f1f5f9 !important}
+html.dark-mode .tmsg,
+html.dark-mode .ttime,
+html.dark-mode .lrole{color:#94a3b8 !important}
+
+/* メッセージ吹き出し */
+html.dark-mode .bub{
+  background:rgba(45,49,61,.85) !important;
+  color:#e5e7eb !important;
+}
+html.dark-mode .msg.out .bub{
+  background:rgba(59,130,246,.35) !important;
+}
+
+/* 入力欄 */
+html.dark-mode input[type="text"],
+html.dark-mode textarea,
+html.dark-mode #mi{
+  background:rgba(30,33,42,.8) !important;
+  color:#e5e7eb !important;
+  border-color:rgba(255,255,255,.15) !important;
+}
+html.dark-mode input::placeholder{color:#64748b !important}
+
+/* backdrop-filter系のガラス風ボタンは元々半透明なため、
+   ダークモードでも境界線の色味だけ調整する */
+html.dark-mode .btn-glass,
+html.dark-mode .glass-plus-btn,
+html.dark-mode .glass-send-btn{
+  border-color:rgba(255,255,255,.25) !important;
+}
+
+/* バッテリーセーバー時、または OS の「動きを減らす」設定時は
+   全てのCSSアニメーション・トランジションを実質無効化する。
+   duration/delayを極小にすることで、要素の出現・消滅ロジック自体は
+   保ちつつ、視覚的な動きだけを止める。 */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after{
+  animation-duration:0.001ms !important;
+  animation-iteration-count:1 !important;
+  transition-duration:0.001ms !important;
+  scroll-behavior:auto !important;
+}

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>トーク一覧</title>
 <script src="/js/globalBg.js"></script>
+<script src="/js/globalSettings.js"></script>
+<link rel="stylesheet" href="/css/globalTheme.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;min-height:100vh}
@@ -48,6 +50,16 @@ body.has-custom-bg .pc{background:transparent}
 .mov.open .mc{transform:translateY(0)}
 .mtitle{font-size:18px;font-weight:800;color:#0f172a;text-align:center;margin:0 0 20px 0}
 .sg{margin-bottom:20px}
+.sgrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.sgrow-label{display:flex;flex-direction:column;gap:2px}
+.sgrow-label .sgtitle{font-size:14px;font-weight:600;color:#0f172a}
+.sgrow-label .sgdesc{font-size:12px;color:#94a3b8}
+.toggle-switch{position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:rgba(148,163,184,.4);border-radius:999px;transition:background .25s ease}
+.toggle-slider::before{position:absolute;content:"";height:22px;width:22px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .25s ease;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+.toggle-switch input:checked + .toggle-slider{background:#34c759}
+.toggle-switch input:checked + .toggle-slider::before{transform:translateX(20px)}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
 .sg input[type=text]{width:100%;padding:12px 16px;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:15px;font-weight:600}
 .fiw{position:relative;margin-bottom:10px}
@@ -173,6 +185,20 @@ body.has-custom-bg .pc{background:transparent}
     <div class="sg">
       <label>全体の背景画像</label>
       <div class="fiw"><span class="cfb">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
+    </div>
+    <div class="sg">
+      <div class="sgrow">
+        <div class="sgrow-label"><span class="sgtitle">ダークモード</span><span class="sgdesc">画面全体を暗いテーマに切り替えます</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="toggleDarkMode"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="sgrow">
+        <div class="sgrow-label"><span class="sgtitle">モバイルデータ節約</span><span class="sgdesc">モバイル回線利用中は画像の画質を下げて送信します</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="toggleDataSaver"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="sgrow">
+        <div class="sgrow-label"><span class="sgtitle">バッテリーセーバー時のアニメーション軽減</span><span class="sgdesc">オンにすると、装飾アニメーションを常に無効化します</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="toggleBatterySaver"><span class="toggle-slider"></span></label>
+      </div>
     </div>
     <button class="savebtn btn-glass" id="saveSettings" type="button">変更を適用して閉じる</button>
     <button onclick="logout()" style="width:100%;padding:14px;background:#fee2e2;color:#ef4444;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
@@ -495,8 +521,27 @@ async function sendFriendRequest(targetId, btn) {
 
 // 設定モーダル
 const settingsMov=document.getElementById('settingsMov');
-document.getElementById('openSettings').onclick=()=>settingsMov.classList.add('open');
+document.getElementById('openSettings').onclick=()=>{
+  // 現在の設定値をトグルに反映してから開く
+  document.getElementById('toggleDarkMode').checked = localStorage.getItem('darkMode') === '1';
+  document.getElementById('toggleDataSaver').checked = localStorage.getItem('mobileDataSaver') === '1';
+  document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
+  settingsMov.classList.add('open');
+};
 settingsMov.onclick=e=>{if(e.target===settingsMov)settingsMov.classList.remove('open');};
+
+// 各トグルは変更した瞬間に即座に反映する(保存ボタンを待たずに体感できた方が良いため)
+document.getElementById('toggleDarkMode').onchange=e=>{
+  localStorage.setItem('darkMode', e.target.checked ? '1' : '0');
+  window.dispatchEvent(new Event('settings-changed'));
+};
+document.getElementById('toggleDataSaver').onchange=e=>{
+  localStorage.setItem('mobileDataSaver', e.target.checked ? '1' : '0');
+};
+document.getElementById('toggleBatterySaver').onchange=e=>{
+  localStorage.setItem('batterySaverAnimations', e.target.checked ? '1' : '0');
+  window.dispatchEvent(new Event('settings-changed'));
+};
 
 // クロップ
 let cx=0,cy=0,cs=1,cd=false,csx=0,csy=0;
