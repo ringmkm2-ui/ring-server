@@ -727,6 +727,34 @@ async function acceptFriendRequest(friendshipId, btn) {
 loadTalks();
 loadPendingRequests();
 
+// ブラウザ通知の許可リクエスト
+// 個人チャット画面(admin.html)だけでリクエストしていたため、
+// トーク一覧を経由せず直接他ページを開いた場合など、リクエストの
+// タイミングが不安定になっていた。アプリの入口であるここで一度、
+// 確実にリクエストする。
+// 注意: ブラウザによっては「ユーザー操作なしの自動リクエスト」を
+// 無視して許可ダイアログを出さない仕様がある。その場合は
+// requestNotificationPermission()をクリック等のユーザー操作からも
+// 呼べるようにしておく。
+function requestNotificationPermission(){
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+requestNotificationPermission();
+// 最初のユーザー操作(クリック/タップ)でも一度だけ試す
+// (自動リクエストが無視されるブラウザ向けのフォールバック)
+document.addEventListener('click', requestNotificationPermission, { once: true });
+
+function sendNotification(title, options = {}) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, {
+      icon: '/favicon.ico',
+      ...options
+    });
+  }
+}
+
 // 自動更新: トークリストと友達リクエストを定期的に最新化
 setInterval(() => {
   const talkVisible = document.getElementById('pageTalk').style.display !== 'none';

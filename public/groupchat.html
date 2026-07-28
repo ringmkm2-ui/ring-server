@@ -298,6 +298,13 @@ const COLORS=['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6
 
 function nameColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))&0xffffffff;return COLORS[Math.abs(h)%COLORS.length]}
 
+// ブラウザ通知(グループチャットには一切実装されていなかったため新規追加)
+function sendNotification(title, options = {}) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { icon: '/favicon.ico', ...options });
+  }
+}
+
 const params=new URLSearchParams(location.search);
 const myName=localStorage.getItem('myName')||'自分';
 const myAvatar=localStorage.getItem('myAvatar')||'';
@@ -951,6 +958,11 @@ function connectGroupWS(){
         const member=gi.members.find(m=>m.id===msg.senderId);
         const{text,media}=parseMsgContent(msg.content);
         createMsg(text,media,true,member,msg.id,msg.createdAt);
+        // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
+        // (見ている最中に通知を出すのは煩わしいため)
+        if(document.hidden){
+          sendNotification(member?member.name:gi.name, { body: media?`[${media.mediaType==='image'?'画像':'動画'}]`:text, tag: 'group-'+groupId });
+        }
       }else if(data.type==='group_message_edited'&&data.groupId===groupId){
         const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text`);
         if(el)el.textContent=data.content;
