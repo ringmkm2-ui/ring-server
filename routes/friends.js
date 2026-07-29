@@ -22,9 +22,9 @@ function auth(req, res, next) {
 // 自分のプロフィール取得
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await db.get('SELECT id, user_id, username, display_name, profile_pic, bio FROM users WHERE id = ?', [req.userId]);
+    const user = await db.get('SELECT id, user_id, username, display_name, profile_pic, bio, public_key FROM users WHERE id = ?', [req.userId]);
     if (!user) return res.status(404).json({ error: 'user not found' });
-    res.json({ userId: user.id, userIdCode: user.user_id, username: user.username, displayName: user.display_name, profilePic: user.profile_pic, bio: user.bio });
+    res.json({ userId: user.id, userIdCode: user.user_id, username: user.username, displayName: user.display_name, profilePic: user.profile_pic, bio: user.bio, publicKey: user.public_key });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

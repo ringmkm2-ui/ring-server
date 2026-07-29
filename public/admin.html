@@ -265,29 +265,52 @@ async function getOrCreateMyKeyPair() {
       secretKey: Array.from(myKeyPair.secretKey)
     });
     localStorage.setItem(keyStorageName, keyStr);
-
-    // サーバーに公開鍵を登録（初回のみ）
-    try {
-      await api('/api/friends/publickey', {
-        method: 'POST',
-        body: JSON.stringify({ publicKey: nacl.util.encodeBase64(myKeyPair.publicKey) })
-      });
-    } catch (err) {
-      console.error('公開鍵登録エラー:', err);
-    }
+    await registerMyPublicKey(myKeyPair);
   } else {
     const keyObj = JSON.parse(keyStr);
     myKeyPair = {
       publicKey: new Uint8Array(keyObj.publicKey),
       secretKey: new Uint8Array(keyObj.secretKey)
     };
+
+    // 重要: サーバー側に保存されている公開鍵と、ローカルの鍵ペアが
+    // 本当に一致しているかを毎回確認する。
+    // これが無いと、サーバーのDBがリセットされたりユーザーレコードが
+    // 作り直された場合、ローカルには「古い」鍵ペアが残ったまま
+    // サーバー側は「この人の公開鍵を知らない」状態になり、
+    // 以降このユーザーが関わる全ての暗号化メッセージで復号が
+    // 必ず失敗するという致命的な不整合が、ユーザーが気づく手段もなく
+    // 永続してしまう。
+    try {
+      const myLocalPublicKeyB64 = nacl.util.encodeBase64(myKeyPair.publicKey);
+      const me = await api('/api/friends/me');
+      if (!me || me.publicKey !== myLocalPublicKeyB64) {
+        console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
+        await registerMyPublicKey(myKeyPair);
+      }
+    } catch (err) {
+      console.error('公開鍵の整合性チェックに失敗しました:', err);
+    }
   }
   return myKeyPair;
 }
 
+async function registerMyPublicKey(keyPair) {
+  try {
+    await api('/api/friends/publickey', {
+      method: 'POST',
+      body: JSON.stringify({ publicKey: nacl.util.encodeBase64(keyPair.publicKey) })
+    });
+  } catch (err) {
+    console.error('公開鍵登録エラー:', err);
+  }
+}
+
 // 相手の公開鍵を取得（キャッシュ優先、なければサーバーから取得）
-async function getRecipientPublicKey(userId) {
-  if (publicKeyCache.has(userId)) {
+// forceRefresh=trueの場合、メモリキャッシュを無視して必ずサーバーから
+// 最新の公開鍵を取得する(相手が鍵を再登録した直後などに使う)
+async function getRecipientPublicKey(userId, forceRefresh = false) {
+  if (!forceRefresh && publicKeyCache.has(userId)) {
     return publicKeyCache.get(userId);
   }
 
@@ -337,18 +360,32 @@ async function decryptMessage(encryptedBase64, senderId) {
     return null;
   }
 
-  try {
-    const full = nacl.util.decodeBase64(encryptedBase64);
-    const nonce = full.slice(0, nacl.box.nonceLength);
-    const encryptedBytes = full.slice(nacl.box.nonceLength);
+  const tryDecrypt = (pubKey) => {
+    try {
+      const full = nacl.util.decodeBase64(encryptedBase64);
+      const nonce = full.slice(0, nacl.box.nonceLength);
+      const encryptedBytes = full.slice(nacl.box.nonceLength);
+      const decrypted = nacl.box.open(encryptedBytes, nonce, pubKey, myKeys.secretKey);
+      return decrypted ? nacl.util.encodeUTF8(decrypted) : null;
+    } catch (e) {
+      console.error('復号化エラー:', e);
+      return null;
+    }
+  };
 
-    const decrypted = nacl.box.open(encryptedBytes, nonce, senderPublicKey, myKeys.secretKey);
-    if (!decrypted) return null;
-    return nacl.util.encodeUTF8(decrypted);
-  } catch (e) {
-    console.error('復号化エラー:', e);
-    return null;
+  let result = tryDecrypt(senderPublicKey);
+  if (result !== null) return result;
+
+  // 初回の復号に失敗した場合、キャッシュされた送信者の公開鍵が
+  // 古い(相手が鍵を再登録した後だった等)可能性があるため、
+  // キャッシュを無視して強制的にサーバーから最新の公開鍵を取得し
+  // もう一度だけ復号を試みる。
+  console.warn('復号化に失敗しました。送信者の公開鍵を再取得して再試行します。');
+  const freshPublicKey = await getRecipientPublicKey(senderId, true);
+  if (freshPublicKey) {
+    result = tryDecrypt(freshPublicKey);
   }
+  return result;
 }
 
 // パートナーアバター（ヘッダー）
