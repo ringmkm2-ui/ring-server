@@ -103,11 +103,17 @@ function initWebSocketServer(server) {
           'UPDATE messages SET read_at = ? WHERE id = ?',
           [new Date().toISOString(), data.msgUuid]
         );
+        // 送信側（通知される側）に既読通知を送信
         broadcastToUser(data.recipientId, {
           type: 'read_receipt',
           fromUserId: userId,
           msgUuid: data.msgUuid,
         });
+        // 受信側（既読を送った側）にも確認応答を返す
+        ws.send(JSON.stringify({
+          type: 'read_ack',
+          msgUuid: data.msgUuid,
+        }));
         return;
       }
 

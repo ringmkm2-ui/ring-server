@@ -34,13 +34,14 @@ function toPreviewText(content, encrypted) {
 
 // メッセージ送信
 // POST /api/messages/send
-// body: { recipientId, content, mediaType?, mediaData?, encrypted? }
+// body: { recipientId, content, mediaType?, mediaData?, encrypted?, repliedToId? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
 // encrypted: true の場合、content は暗号文（サーバーは復号化しない）
+// repliedToId: リプライ対象のメッセージID
 router.post('/send', auth, async (req, res) => {
   try {
-    const { recipientId, content, mediaType, mediaData, encrypted } = req.body;
+    const { recipientId, content, mediaType, mediaData, encrypted, repliedToId } = req.body;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
@@ -49,6 +50,12 @@ router.post('/send', auth, async (req, res) => {
     // メディアサイズチェック（Base64文字列の長さで概算。約25MB相当まで許可）
     if (mediaData && mediaData.length > 35 * 1024 * 1024) {
       return res.status(413).json({ error: 'ファイルサイズが大きすぎます' });
+    }
+
+    // repliedToId の存在確認（指定されている場合）
+    if (repliedToId) {
+      const replied = await db.get('SELECT id FROM messages WHERE id = ?', [repliedToId]);
+      if (!replied) return res.status(404).json({ error: 'replied message not found' });
     }
 
     const msgId = uuidv4();
@@ -62,8 +69,8 @@ router.post('/send', auth, async (req, res) => {
     }
 
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted) VALUES (?, ?, ?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -79,6 +86,7 @@ router.post('/send', auth, async (req, res) => {
         content: msg.content,
         msgType: msg.msg_type,
         encrypted: !!msg.encrypted,
+        repliedToId: msg.replied_to_id || null,
         createdAt: msg.created_at,
       }
     };
@@ -134,6 +142,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         recipientId: m.recipient_id,
         content: m.deleted_at ? '' : m.content,
         encrypted: !!m.encrypted,
+        repliedToId: m.replied_to_id || null,
         createdAt: m.created_at,
         readAt: m.read_at,
         editedAt: m.edited_at,

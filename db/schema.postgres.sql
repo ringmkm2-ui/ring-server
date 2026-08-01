@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT NOT NULL,
   msg_type TEXT DEFAULT 'text',
   encrypted BOOLEAN DEFAULT false,
+  replied_to_id TEXT REFERENCES messages(id),
   created_at TIMESTAMP DEFAULT now(),
   read_at TIMESTAMP,
   edited_at TIMESTAMP,
