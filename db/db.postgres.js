@@ -38,6 +38,13 @@ async function initDB() {
     console.log('[db] encrypted migration skip:', e.message);
   }
 
+  // マイグレーション: 既存のmessagesテーブルにreplied_to_idカラムがなければ追加（リプライ機能）
+  try {
+    await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS replied_to_id TEXT REFERENCES messages(id)');
+  } catch (e) {
+    console.log('[db] replied_to_id migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました ✅');
 }
 
