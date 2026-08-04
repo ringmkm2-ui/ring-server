@@ -151,6 +151,67 @@ function initWebSocketServer(server) {
         }
         return;
       }
+
+      // --- 音声通話シグナリング (WebRTC) ---
+      // サーバーは映像・音声本体には一切触れず、SDP/ICE候補の中継のみを行う。
+      // callId はクライアント側(発信者)が生成し、通話1本を通して一貫して使う。
+      if (data.type === 'call_offer') {
+        // data: { recipientId, callId, sdp }
+        const delivered = broadcastToUser(data.recipientId, {
+          type: 'call_offer',
+          callId: data.callId,
+          fromUserId: userId,
+          sdp: data.sdp,
+        });
+        // 相手がオフライン/未接続なら、発信者にすぐ「不在」を返す（オフラインキューには積まない = 電話はリアルタイム性が命）
+        if (!delivered) {
+          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId }));
+        }
+        return;
+      }
+
+      if (data.type === 'call_answer') {
+        // data: { recipientId, callId, sdp }
+        broadcastToUser(data.recipientId, {
+          type: 'call_answer',
+          callId: data.callId,
+          fromUserId: userId,
+          sdp: data.sdp,
+        });
+        return;
+      }
+
+      if (data.type === 'call_ice') {
+        // data: { recipientId, callId, candidate }
+        broadcastToUser(data.recipientId, {
+          type: 'call_ice',
+          callId: data.callId,
+          fromUserId: userId,
+          candidate: data.candidate,
+        });
+        return;
+      }
+
+      if (data.type === 'call_reject') {
+        // data: { recipientId, callId, reason? }  reason: 'declined' | 'busy'
+        broadcastToUser(data.recipientId, {
+          type: 'call_reject',
+          callId: data.callId,
+          fromUserId: userId,
+          reason: data.reason || 'declined',
+        });
+        return;
+      }
+
+      if (data.type === 'call_end') {
+        // data: { recipientId, callId }
+        broadcastToUser(data.recipientId, {
+          type: 'call_end',
+          callId: data.callId,
+          fromUserId: userId,
+        });
+        return;
+      }
     });
 
     ws.on('close', () => {

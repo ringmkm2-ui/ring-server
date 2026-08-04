@@ -129,7 +129,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.1.1 beta</div>
+  <div class="version-badge">Bro Chat v1.2 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -216,10 +216,27 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus">呼び出し中...</div>
-      <button class="end-btn" id="endBtn" type="button">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-      </button>
+      <div id="callBtnRow" style="display:flex;gap:20px;align-items:center;margin-top:10px">
+        <button class="call-mute-btn" id="muteBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="muteIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button class="end-btn" id="endBtn" type="button">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+        <button class="call-speaker-btn" id="speakerBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        </button>
+      </div>
+      <div id="incomingBtnRow" style="display:none;gap:28px;align-items:center;margin-top:10px">
+        <button id="declineBtn" type="button" style="width:56px;height:56px;border-radius:50%;background:#ef4444;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(239,68,68,.4)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+        <button id="acceptBtn" type="button" style="width:56px;height:56px;border-radius:50%;background:#22c55e;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(34,197,94,.4)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+      </div>
     </div>
+    <audio id="remoteAudio" autoplay playsinline></audio>
   </div>
 </div>
 <script>
@@ -973,6 +990,18 @@ function connectRealWS() {
           msg.readAt = new Date().toISOString();
           renderMessage(msg);
         }
+      } else if (data.type === 'call_offer') {
+        onCallOffer(data);
+      } else if (data.type === 'call_answer') {
+        onCallAnswer(data);
+      } else if (data.type === 'call_ice') {
+        onCallIce(data);
+      } else if (data.type === 'call_reject') {
+        onCallReject(data);
+      } else if (data.type === 'call_end') {
+        onCallEnd(data);
+      } else if (data.type === 'call_unavailable') {
+        onCallUnavailable(data);
       }
     } catch (err) {}
   };
@@ -1316,20 +1345,329 @@ window.addEventListener('touchend', () => { dragging=false; tmode=''; });
 document.getElementById('mmClose').onclick = () => { document.getElementById('mediaMod').classList.remove('show'); setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300); };
 document.getElementById('mediaMod').onclick = e => { if(e.target===document.getElementById('mediaMod')){document.getElementById('mediaMod').classList.remove('show');setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300);} };
 
-// 通話
-let callTimer = null;
-document.getElementById('phoneBtn').onclick = () => {
+// ==================== 音声通話 (WebRTC) ====================
+// サーバー(ws)はSDP/ICEの中継のみ。メディアはP2Pで直接流れる。
+// Xiaomi HyperOS/MIUI は省電力設定でバックグラウンドWSが切れやすいので、
+// 通話中は画面を極力アクティブに保ち、切断検知したら確実に終話処理する。
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+let pc = null;             // RTCPeerConnection
+let localStream = null;    // マイク音声
+let currentCallId = null;  // 現在の通話ID
+let callRole = null;       // 'caller' | 'callee'
+let callConnectTimer = null;
+let callSeconds = 0;
+let isMuted = false;
+let wakeLock = null;       // 通話中の画面スリープ防止
+let pendingRemoteIce = [];  // remote description 到着前に届いたICE候補の一時保管
+
+const callAvEl = document.getElementById('callAv');
+callAvEl.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
+callAvEl.textContent = partnerName.charAt(0);
+document.getElementById('callName').textContent = partnerName;
+
+function genCallId() {
+  return 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (e) { /* Xiaomi端末など非対応でも通話自体は継続させる */ }
+}
+function releaseWakeLock() {
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+}
+// バックグラウンドから復帰した際にWakeLockを再取得（MIUIはこれが特に必要）
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && pc && !wakeLock) {
+    await acquireWakeLock();
+  }
+});
+
+function setCallStatus(text) {
+  document.getElementById('callStatus').textContent = text;
+}
+
+function showCallOverlay() {
   document.getElementById('callOv').classList.add('show');
-  document.getElementById('callStatus').textContent = '呼び出し中...';
-  let sec = 0; clearTimeout(callTimer);
-  callTimer = setTimeout(function tick() {
-    sec++;
-    const m=String(Math.floor(sec/60)).padStart(2,'0'), s=String(sec%60).padStart(2,'0');
-    document.getElementById('callStatus').textContent = `${m}:${s}`;
-    callTimer = setTimeout(tick, 1000);
-  }, 3000);
-};
-document.getElementById('endBtn').onclick = () => { clearTimeout(callTimer); document.getElementById('callOv').classList.remove('show'); };
+}
+function hideCallOverlay() {
+  document.getElementById('callOv').classList.remove('show');
+  document.getElementById('incomingBtnRow').style.display = 'none';
+  document.getElementById('callBtnRow').style.display = 'flex';
+  document.getElementById('muteBtn').style.display = 'none';
+  document.getElementById('speakerBtn').style.display = 'none';
+}
+
+function startCallTimer() {
+  callSeconds = 0;
+  clearInterval(callConnectTimer);
+  callConnectTimer = setInterval(() => {
+    callSeconds++;
+    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const s = String(callSeconds % 60).padStart(2, '0');
+    setCallStatus(`${m}:${s}`);
+  }, 1000);
+}
+function stopCallTimer() {
+  clearInterval(callConnectTimer);
+  callConnectTimer = null;
+}
+
+function sendSignal(type, extra) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type, recipientId: otherId, callId: currentCallId, ...extra }));
+  }
+}
+
+async function getMic() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+  } catch (err) {
+    console.error('mic error:', err);
+    throw err;
+  }
+}
+
+function createPeerConnection() {
+  const conn = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  conn.onicecandidate = (e) => {
+    if (e.candidate) {
+      sendSignal('call_ice', { candidate: e.candidate });
+    }
+  };
+
+  conn.ontrack = (e) => {
+    const audioEl = document.getElementById('remoteAudio');
+    audioEl.srcObject = e.streams[0];
+  };
+
+  conn.onconnectionstatechange = () => {
+    if (!conn) return;
+    if (conn.connectionState === 'connected') {
+      setCallStatus('00:00');
+      startCallTimer();
+      document.getElementById('muteBtn').style.display = 'flex';
+      document.getElementById('speakerBtn').style.display = 'flex';
+      acquireWakeLock();
+    } else if (['disconnected', 'failed', 'closed'].includes(conn.connectionState)) {
+      // 相手側の回線都合の瞬断は自動再接続の余地があるため、failedのみ即終話とする
+      if (conn.connectionState === 'failed') {
+        endCall();
+      }
+    }
+  };
+
+  return conn;
+}
+
+function cleanupCall() {
+  stopCallTimer();
+  releaseWakeLock();
+  if (pc) {
+    try { pc.close(); } catch (e) {}
+    pc = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  currentCallId = null;
+  callRole = null;
+  isMuted = false;
+  pendingRemoteIce = [];
+  const audioEl = document.getElementById('remoteAudio');
+  audioEl.srcObject = null;
+  hideCallOverlay();
+}
+
+// --- 発信 ---
+async function startOutgoingCall() {
+  if (pc) return; // 既に通話中
+  currentCallId = genCallId();
+  callRole = 'caller';
+  showCallOverlay();
+  setCallStatus('発信中...');
+
+  try {
+    localStream = await getMic();
+  } catch (err) {
+    setCallStatus('マイクにアクセスできません');
+    setTimeout(hideCallOverlay, 1500);
+    return;
+  }
+
+  pc = createPeerConnection();
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  sendSignal('call_offer', { sdp: offer });
+  setCallStatus('呼び出し中...');
+}
+
+// --- 着信 ---
+function onCallOffer(data) {
+  if (pc) {
+    // 既に通話中なら自動的にビジーを返す
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'call_reject', recipientId: data.fromUserId, callId: data.callId, reason: 'busy' }));
+    }
+    return;
+  }
+  currentCallId = data.callId;
+  callRole = 'callee';
+  window.__incomingOffer = data.sdp;
+  showCallOverlay();
+  setCallStatus('着信中...');
+  document.getElementById('callBtnRow').style.display = 'none';
+  document.getElementById('incomingBtnRow').style.display = 'flex';
+
+  // 着信音（バイブ）— Xiaomi含む多くのAndroid Chromeで有効
+  if (navigator.vibrate) {
+    navigator.vibrate([500, 300, 500, 300, 500]);
+  }
+}
+
+async function acceptIncomingCall() {
+  document.getElementById('incomingBtnRow').style.display = 'none';
+  document.getElementById('callBtnRow').style.display = 'flex';
+  setCallStatus('接続中...');
+
+  try {
+    localStream = await getMic();
+  } catch (err) {
+    setCallStatus('マイクにアクセスできません');
+    sendSignal('call_reject', { reason: 'declined' });
+    setTimeout(cleanupCall, 1500);
+    return;
+  }
+
+  pc = createPeerConnection();
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  await pc.setRemoteDescription(new RTCSessionDescription(window.__incomingOffer));
+  for (const c of pendingRemoteIce) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
+  }
+  pendingRemoteIce = [];
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  sendSignal('call_answer', { sdp: answer });
+}
+
+function declineIncomingCall() {
+  sendSignal('call_reject', { reason: 'declined' });
+  cleanupCall();
+}
+
+// --- 相手からの応答受信（発信者側） ---
+async function onCallAnswer(data) {
+  if (!pc || data.callId !== currentCallId) return;
+  await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+  for (const c of pendingRemoteIce) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
+  }
+  pendingRemoteIce = [];
+  setCallStatus('接続中...');
+}
+
+async function onCallIce(data) {
+  if (data.callId !== currentCallId) return;
+  if (pc && pc.remoteDescription) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+  } else {
+    pendingRemoteIce.push(data.candidate);
+  }
+}
+
+function onCallReject(data) {
+  if (data.callId !== currentCallId) return;
+  setCallStatus(data.reason === 'busy' ? '通話中です' : '応答がありませんでした');
+  setTimeout(cleanupCall, 1500);
+}
+
+function onCallEnd(data) {
+  if (data.callId !== currentCallId) return;
+  setCallStatus('通話終了');
+  setTimeout(cleanupCall, 800);
+}
+
+function onCallUnavailable(data) {
+  if (data.callId !== currentCallId) return;
+  setCallStatus('相手はオフラインです');
+  setTimeout(cleanupCall, 1500);
+}
+
+function endCall() {
+  if (currentCallId) {
+    sendSignal('call_end', {});
+  }
+  cleanupCall();
+}
+
+function toggleMute() {
+  if (!localStream) return;
+  isMuted = !isMuted;
+  localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
+  const muteIcon = document.getElementById('muteIcon');
+  const muteBtn = document.getElementById('muteBtn');
+  if (isMuted) {
+    muteBtn.style.background = '#1e293b';
+    muteIcon.setAttribute('stroke', '#fff');
+  } else {
+    muteBtn.style.background = 'rgba(255,255,255,.5)';
+    muteIcon.setAttribute('stroke', '#1e293b');
+  }
+}
+
+// スピーカー切替はブラウザAPIの制約上、対応端末のみ setSinkId が使えるため
+// 非対応時はボタンを押しても現状維持（多くのAndroidは既定でスピーカー優先）
+async function toggleSpeaker() {
+  const audioEl = document.getElementById('remoteAudio');
+  if (typeof audioEl.setSinkId !== 'function') return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const speaker = devices.find(d => d.kind === 'audiooutput' && /speaker/i.test(d.label));
+    const current = audioEl.sinkId;
+    if (speaker && current !== speaker.deviceId) {
+      await audioEl.setSinkId(speaker.deviceId);
+    } else {
+      await audioEl.setSinkId('default');
+    }
+  } catch (e) { /* 非対応端末は無視 */ }
+}
+
+document.getElementById('phoneBtn').onclick = () => { startOutgoingCall(); };
+document.getElementById('endBtn').onclick = () => { endCall(); };
+document.getElementById('acceptBtn').onclick = () => { acceptIncomingCall(); };
+document.getElementById('declineBtn').onclick = () => { declineIncomingCall(); };
+document.getElementById('muteBtn').onclick = () => { toggleMute(); };
+document.getElementById('speakerBtn').onclick = () => { toggleSpeaker(); };
+
+// ページを離れる/リロード時に通話中なら相手へ確実に終話通知（Xiaomi等の強制終了対策）
+window.addEventListener('pagehide', () => {
+  if (currentCallId) {
+    sendSignal('call_end', {});
+  }
+});
+
 </script>
 </body>
 </html>
