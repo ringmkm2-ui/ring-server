@@ -129,7 +129,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.2 beta</div>
+  <div class="version-badge">Bro Chat v1.3 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -903,13 +903,26 @@ async function syncMessages() {
   }
 }
 
-// WebSocket接続（リアルタイム受信）
+// WebSocket接続（リアルタイム受信）+ バックグラウンド対応
 let ws = null;
+let wsReconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = [1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000];
+
+function scheduleWsReconnect() {
+  const delay = RECONNECT_DELAY[Math.min(wsReconnectAttempts, RECONNECT_DELAY.length - 1)];
+  wsReconnectAttempts++;
+  console.log(`[WS] Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+  setTimeout(connectRealWS, delay);
+}
+
 function connectRealWS() {
   const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    console.log('[WS] Connected');
+    wsReconnectAttempts = 0; // リセット
     ws.send(JSON.stringify({ type: 'auth', token }));
   };
 
@@ -1006,8 +1019,15 @@ function connectRealWS() {
     } catch (err) {}
   };
 
-  ws.onclose = () => setTimeout(connectRealWS, 5000);
-  ws.onerror = () => ws.close();
+  ws.onclose = () => {
+    console.log('[WS] Disconnected');
+    scheduleWsReconnect();
+  };
+  
+  ws.onerror = (err) => {
+    console.error('[WS] Error:', err);
+    ws.close();
+  };
 }
 
 // タイピングインジケータ
@@ -1140,6 +1160,60 @@ function sendNotification(title, options = {}) {
     });
   }
 }
+
+// Service Workerからのメッセージ受信：バックグラウンド着信の復帰
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    const { type, callId, callerId, action } = event.data;
+    
+    if (type === 'INCOMING_CALL_RESUMED' || type === 'INCOMING_CALL_DIRECT') {
+      // バックグラウンドから戻ってきた着信をシミュレート
+      console.log(`[BG CALL] Resuming from background: callId=${callId}, callerId=${callerId}, action=${action}`);
+      
+      // WebSocketが接続されるまで待機
+      const waitForWS = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          clearInterval(waitForWS);
+          
+          if (action === 'accept') {
+            // ユーザーが通知で「応答」をタップ → 自動応答
+            // 着信情報をローカルに再作成
+            currentCallId = callId;
+            otherId = callerId;
+            acceptIncomingCall();
+          } else if (action === 'decline') {
+            // ユーザーが通知で「拒否」をタップ
+            currentCallId = callId;
+            otherId = callerId;
+            declineIncomingCall();
+          } else {
+            // 通知をタップしたのみ（応答/拒否は指定されない）
+            // そのまま通話画面を開くだけ
+            currentCallId = callId;
+            otherId = callerId;
+            showCallOverlay();
+            setCallStatus('着信中...');
+          }
+        }
+      }, 100);
+      
+      setTimeout(() => clearInterval(waitForWS), 5000); // 最大5秒待機
+    }
+  });
+}
+
+// Service Worker キープアライブ（バックグラウンド着信を確実に受け取る）
+setInterval(() => {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      const channel = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage(
+        { type: 'KEEPALIVE' },
+        [channel.port2]
+      );
+    } catch (e) { /* 無視 */ }
+  }
+}, 25000); // 25秒ごと（30秒のチェックイン前）
 
 if (otherId) {
   // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行

@@ -171,7 +171,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </div>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.2 beta</div>
+  <div class="version-badge">Bro Chat v1.3 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -815,6 +815,33 @@ function logout() {
   localStorage.clear();
   window.location.href = '/auth.html';
 }
+
+// ========== バックグラウンド着信対応 ==========
+// Service Workerからのメッセージ受信：バックグラウンド着信の復帰
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    const { type, callId, callerId, action } = event.data;
+    
+    if (type === 'INCOMING_CALL_RESUMED' || type === 'INCOMING_CALL_DIRECT') {
+      // バックグラウンドから通話着信を受信したら、admin.htmlを開く
+      console.log(`[BG CALL] Opening admin.html from background: callId=${callId}, callerId=${callerId}`);
+      window.location.href = `/admin.html?callId=${callId}&callerId=${callerId}&action=${action || 'answer'}`;
+    }
+  });
+}
+
+// Service Worker キープアライブ（バックグラウンド着信を確実に受け取る）
+setInterval(() => {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      const channel = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage(
+        { type: 'KEEPALIVE' },
+        [channel.port2]
+      );
+    } catch (e) { /* 無視 */ }
+  }
+}, 25000); // 25秒ごと（30秒のチェックイン前）
 </script>
 </body>
 </html>
