@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyTokenRaw } = require('../routes/auth');
+const { sendPushToUser } = require('../utils/webPush');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -52,7 +53,7 @@ function initWebSocketServer(server) {
 
       // --- 認証 (接続直後に1回だけ) ---
       if (data.type === 'auth') {
-        const payload = verifyTokenRaw(data.token);
+        const payload = await verifyTokenRaw(data.token);
         if (!payload) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'トークンが無効です' }));
           ws.close();
@@ -73,7 +74,20 @@ function initWebSocketServer(server) {
 
       // --- テキスト/暗号化メッセージの中継 ---
       // data: { type:'message', recipientId, payload (暗号化済み本文), msgUuid }
+      // 注意: 実際のメッセージ送信は現在 /api/messages/send (REST) 経由で行われており、
+      // このWS直接中継は現行UIからは使われていない。ただし接続さえ確立すれば
+      // 誰でも呼べる生きた経路のため、REST側と同じ認可基準を適用しておく。
       if (data.type === 'message') {
+        const [msgUserA, msgUserB] = [userId, data.recipientId].sort();
+        const msgFriendship = await db.get(
+          "SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ? AND status = 'accepted'",
+          [msgUserA, msgUserB]
+        );
+        if (!msgFriendship) {
+          ws.send(JSON.stringify({ type: 'error', error: '友達ではないユーザーには送信できません' }));
+          return;
+        }
+
         const msgUuid = data.msgUuid || uuidv4(); // 重複排除用の一意ID
         const delivered = broadcastToUser(data.recipientId, {
           type: 'message',
@@ -156,17 +170,50 @@ function initWebSocketServer(server) {
       // サーバーは映像・音声本体には一切触れず、SDP/ICE候補の中継のみを行う。
       // callId はクライアント側(発信者)が生成し、通話1本を通して一貫して使う。
       if (data.type === 'call_offer') {
-        // data: { recipientId, callId, sdp }
+        // data: { recipientId, callId, sdp, isVideo? }
+
+        // 友達関係チェック: これが無いと、userIdさえ知っていれば友達でない
+        // 相手にも着信(バイブ付きPush通知含む)を送りつけられ、迷惑行為の
+        // 経路になってしまう(REST側の /api/messages/send に加えたのと同じ理由)。
+        const [callUserA, callUserB] = [userId, data.recipientId].sort();
+        const callFriendship = await db.get(
+          "SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ? AND status = 'accepted'",
+          [callUserA, callUserB]
+        );
+        if (!callFriendship) {
+          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'not_friends' }));
+          return;
+        }
+
         const delivered = broadcastToUser(data.recipientId, {
           type: 'call_offer',
           callId: data.callId,
           fromUserId: userId,
           sdp: data.sdp,
+          isVideo: !!data.isVideo,
         });
-        // 相手がオフライン/未接続なら、発信者にすぐ「不在」を返す（オフラインキューには積まない = 電話はリアルタイム性が命）
+
+        // 相手がWS未接続(アプリを閉じている)なら、発信者にすぐ「不在」を返す
+        // （オフラインキューには積まない = 電話はリアルタイム性が命）
         if (!delivered) {
           ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId }));
         }
+
+        // WS配達の成否にかかわらず、Push通知は常に送る
+        // （スリープ中/バックグラウンドタブだとWSが届いても着信音が鳴らないため、OSレベルで叩き起こす）
+        db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [userId])
+          .then(caller => {
+            sendPushToUser(data.recipientId, {
+              type: 'call_incoming',
+              callId: data.callId,
+              callerId: userId,
+              callerName: caller?.display_name || caller?.username || '不明なユーザー',
+              callerPic: caller?.profile_pic || null,
+              isVideo: !!data.isVideo,
+            }).catch(err => console.error('[push] call_offer push failed:', err.message));
+          })
+          .catch(err => console.error('[push] caller lookup failed:', err.message));
+
         return;
       }
 
@@ -200,6 +247,9 @@ function initWebSocketServer(server) {
           fromUserId: userId,
           reason: data.reason || 'declined',
         });
+        // バックグラウンドで表示中の着信通知があれば消す
+        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId })
+          .catch(err => console.error('[push] call_reject cancel push failed:', err.message));
         return;
       }
 
@@ -210,6 +260,9 @@ function initWebSocketServer(server) {
           callId: data.callId,
           fromUserId: userId,
         });
+        // 呼び出し中に発信者が切った場合など、バックグラウンド通知が残っていれば消す
+        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId })
+          .catch(err => console.error('[push] call_end cancel push failed:', err.message));
         return;
       }
     });

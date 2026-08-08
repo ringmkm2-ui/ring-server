@@ -1,23 +1,11 @@
 // routes/messages.js
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const jwt = require('jsonwebtoken');
 const db = require('../db/db');
+const { sendServerError } = require('../utils/errorResponse');
+const { verifyToken: auth } = require('../utils/authMiddleware');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'ring-dev-secret-CHANGE-IN-PRODUCTION';
-
-function auth(req, res, next) {
-  const token = (req.get('Authorization') || '').replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'unauthorized' });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'invalid token' });
-  }
-}
 
 // メッセージ内容をトークリスト用のプレビューテキストに変換
 function toPreviewText(content, encrypted) {
@@ -46,6 +34,19 @@ router.post('/send', auth, async (req, res) => {
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
+
+    // 友達関係チェック: UI(talklist.html)は友達承認後の相手にしかチャット導線を
+    // 出さない設計だが、以前はAPIレベルでこれを強制しておらず、有効なJWTと
+    // recipientIdさえあれば友達申請すらしていない任意のユーザーへメッセージを
+    // 送信できてしまっていた(意図した信頼モデルとサーバー実装の不一致)。
+    const [userA, userB] = [req.userId, recipientId].sort();
+    const friendship = await db.get(
+      "SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ? AND status = 'accepted'",
+      [userA, userB]
+    );
+    if (!friendship) {
+      return res.status(403).json({ error: 'このユーザーとは友達ではありません' });
+    }
 
     // メディアサイズチェック（Base64文字列の長さで概算。約25MB相当まで許可）
     if (mediaData && mediaData.length > 35 * 1024 * 1024) {
@@ -96,7 +97,7 @@ router.post('/send', auth, async (req, res) => {
     res.json({ ok: true, message: payload.message });
   } catch (e) {
     console.error('Error sending message:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -155,7 +156,7 @@ router.get('/history/:userId', auth, async (req, res) => {
     res.json(result);
   } catch (e) {
     console.error('Error fetching history:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -229,7 +230,7 @@ router.get('/talks', auth, async (req, res) => {
     res.json(result);
   } catch (e) {
     console.error('Error fetching talks:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -266,7 +267,7 @@ router.post('/edit', auth, async (req, res) => {
     res.json({ ok: true, message: payload });
   } catch (e) {
     console.error('Error editing message:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -298,7 +299,7 @@ router.post('/delete', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Error deleting message:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -340,7 +341,7 @@ router.post('/pin', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Error pinning message:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -394,7 +395,7 @@ router.post('/react', auth, async (req, res) => {
     res.json({ ok: true, action, reactions: payload.reactions });
   } catch (e) {
     console.error('Error reacting to message:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -420,7 +421,7 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     })));
   } catch (e) {
     console.error('Error fetching pinned messages:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 

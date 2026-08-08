@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   profile_pic TEXT,
   bio TEXT,
   public_key TEXT,
+  token_revoked_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT now()
 );
 
@@ -141,6 +142,15 @@ CREATE TABLE IF NOT EXISTS media_files (
   chunk_received INTEGER DEFAULT 0,
   status TEXT DEFAULT 'uploading',
   expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT now()
 );
 

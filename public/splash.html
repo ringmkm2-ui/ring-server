@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Bro Chat</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1e293b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bro Chat">
+  <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
   <style>
     * {
       margin: 0;
@@ -170,20 +177,17 @@
         navigate();
       }
 
-      // Service Worker登録（オフライン対応とキャッシュ管理）
+      // Service Worker登録（オフライン対応とキャッシュ管理・自動アップデート）
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then(reg => {
           console.log('SW registered');
-          // 新しいSWがインストール完了したら、ユーザーに通知（スキップして続行できる）
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // 新しいバージョン利用可能（ページ再読み込みなし）
-                console.log('New version available (no reload needed)');
-              }
-            });
-          });
+          // アプリを開くたびに明示的に更新チェックを行う。
+          // ブラウザは通常バックグラウンドで自動チェックするが間隔が長いため、
+          // 起動時に毎回チェックすることで「開くだけで最新版になる」を確実にする。
+          reg.update().catch(() => {});
+          // 新しいSWがインストールされ次第、sw.js側のskipWaiting()により
+          // 即activateされ、SW_UPDATEDメッセージが各ページに送られてリロードされる
+          // （pushSubscribe.js参照）。ここでは特に追加の処理は不要。
         }).catch(err => console.log('SW registration failed:', err));
       }
     })();

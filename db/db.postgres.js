@@ -31,6 +31,16 @@ async function initDB() {
     console.log('[db] public_key migration skip:', e.message);
   }
 
+  // マイグレーション: 全端末サインアウト機能用のtoken_revoked_atカラム。
+  // このタイムスタンプより前に発行された(iatが古い)JWTは、たとえ署名が正しくても
+  // 無効として扱う。トークン漏洩が疑われた際に、パスワード変更を待たずして
+  // 即座に既存の全セッションを失効させられるようにするための仕組み。
+  try {
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS token_revoked_at TIMESTAMP');
+  } catch (e) {
+    console.log('[db] token_revoked_at migration skip:', e.message);
+  }
+
   // マイグレーション: 既存のmessagesテーブルにencryptedカラムがなければ追加
   try {
     await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN DEFAULT false');
@@ -45,7 +55,23 @@ async function initDB() {
     console.log('[db] replied_to_id migration skip:', e.message);
   }
 
-  console.log('[db] PostgreSQL に接続・スキーマ初期化しました ✅');
+  // マイグレーション: push_subscriptionsテーブル（CREATE TABLE IF NOT EXISTSでschema.sqlから作成されるが念のため明示）
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
+  } catch (e) {
+    console.log('[db] push_subscriptions migration skip:', e.message);
+  }
+
+  console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 
 async function run(sql, params = []) {

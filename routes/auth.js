@@ -4,21 +4,39 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('../db/db');
+const { JWT_SECRET } = require('../utils/jwtSecret');
+const { loginLimiter, registerLimiter } = require('../utils/rateLimits');
+const { sendServerError } = require('../utils/errorResponse');
+const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'ring-dev-secret-CHANGE-IN-PRODUCTION';
 const JWT_EXPIRES_IN = '30d';
+
+// Google Sign-In (Google Identity Services) のクライアントID。
+// public/auth.html に埋め込まれているものと同じ値でなければ検証が常に失敗する。
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // --- 新規登録 ---
 // body: { username, password, displayName }
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   const { username, password, displayName } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'username と password は必須です' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'パスワードは6文字以上にしてください' });
+  // 6文字は現代の基準では弱すぎる(オフライン総当たりに対して脆弱)ため8文字以上に強化。
+  // 併せて、パスワードとして極端に長い文字列(bcryptはハッシュ化に時間がかかるため
+  // DoS化を防ぐ意味もある)も拒否する。
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'パスワードは8文字以上にしてください' });
+  }
+  if (password.length > 128) {
+    return res.status(400).json({ error: 'パスワードが長すぎます' });
+  }
+  if (username.length > 254) {
+    return res.status(400).json({ error: 'ユーザー名が長すぎます' });
   }
 
   const existing = await db.get('SELECT id FROM users WHERE username = ?', [username]);
@@ -26,7 +44,9 @@ router.post('/register', async (req, res) => {
     return res.status(409).json({ error: 'そのユーザー名は既に使われています' });
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
+  // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
+  const passwordHash = await bcrypt.hash(password, 12);
   const userId = uuidv4();
   const userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase(); // User ID like U3K7F9
 
@@ -48,7 +68,7 @@ router.post('/register', async (req, res) => {
 
 // --- ログイン ---
 // body: { username, password }
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'username と password は必須です' });
@@ -78,15 +98,28 @@ router.post('/login', async (req, res) => {
 // --- Google OAuth ログイン ---
 // POST /api/auth/google
 // body: { idToken } (Google Sign-In から取得したIDトークン)
-router.post('/google', async (req, res) => {
+router.post('/google', loginLimiter, async (req, res) => {
   const { idToken } = req.body;
   if (!idToken) return res.status(400).json({ error: 'idToken required' });
 
   try {
-    // Google IDトークンを検証（署名確認はクライアント側でも可能だが、セキュリティ向上のためサーバー側でも検証推奨）
-    // 簡略版：クライアントが既に検証済みのトークンを送信すると仮定
-    const payload = parseGoogleIdToken(idToken);
-    if (!payload) return res.status(401).json({ error: 'Invalid idToken' });
+    // Google IDトークンの署名・発行者・有効期限・audience(このアプリ向けに
+    // 発行されたものか)をすべてGoogleの公開鍵で検証する。
+    // 以前はペイロードをBase64デコードするだけで署名を一切確認していなかったため、
+    // 誰でも任意のメールアドレスを名乗る偽トークンを作ってなりすませる状態だった。
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(401).json({ error: 'Invalid idToken' });
+    }
+    // メールアドレスがGoogle側で検証済みであることも確認する
+    // (未検証メールアドレスでのなりすまし登録を防ぐ)
+    if (payload.email_verified === false) {
+      return res.status(401).json({ error: 'メールアドレスが未検証です' });
+    }
 
     const { email, name, picture } = payload;
 
@@ -120,29 +153,22 @@ router.post('/google', async (req, res) => {
       token,
     });
   } catch (e) {
-    console.error('Google OAuth error:', e.message);
-    res.status(500).json({ error: e.message });
+    // verifyIdTokenは署名不正・期限切れ・audience不一致などで例外を投げる。
+    // これらは全て「なりすまし試行または壊れたトークン」として一律401にする
+    // (詳細なエラー内容を返すと、攻撃者に検証ロジックの手がかりを与えるため)
+    console.error('Google OAuth verification failed:', e.message);
+    res.status(401).json({ error: 'Google認証に失敗しました' });
   }
 });
 
-// Google IDトークンをBase64デコード・パース（ヘッダー・署名を無視、ペイロードのみ）
-// 本来はGoogleの公開鍵で署名検証すべきだが、ここでは簡略版
-function parseGoogleIdToken(token) {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    const decoded = Buffer.from(payload, 'base64').toString('utf8');
-    return JSON.parse(decoded);
-  } catch (e) {
-    return null;
-  }
-}
-
 // --- Google連絡先同期（Google People API） ---
-router.post('/google-contacts/sync', async (req, res) => {
-  const { accessToken, userId } = req.body;
-  if (!accessToken || !userId) return res.status(400).json({ error: 'accessToken and userId required' });
+// 認証必須: 以前はbody.userIdをクライアントの自己申告のまま信用しており、
+// 誰でも任意のuserIdを指定して他人のアカウントへ大量の友達申請を
+// 送りつけられる状態だった。JWTから取得した本人のuserIdのみを使う。
+router.post('/google-contacts/sync', verifyToken, async (req, res) => {
+  const { accessToken } = req.body;
+  const userId = req.user.userId;
+  if (!accessToken) return res.status(400).json({ error: 'accessToken required' });
 
   try {
     // Google People API から連絡先取得
@@ -161,6 +187,9 @@ router.post('/google-contacts/sync', async (req, res) => {
         person.emailAddresses.forEach(e => emails.add(e.value.toLowerCase()));
       }
     });
+
+    // 連絡先が1件も無い場合、IN()という不正なSQLになるため早期return
+    if (emails.size === 0) return res.json({ ok: true, count: 0, totalFound: 0 });
 
     // Bro Chatユーザーと照合
     const users = await db.all('SELECT id, username FROM users WHERE LOWER(username) IN (' + Array(emails.size).fill('?').join(',') + ')', Array.from(emails));
@@ -191,33 +220,31 @@ router.post('/google-contacts/sync', async (req, res) => {
 
     res.json({ ok: true, count, totalFound: foundUserIds.size });
   } catch (e) {
-    console.error('Google Contacts sync error:', e.message);
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e, 'google-contacts/sync');
   }
 });
 
 // --- JWT検証ミドルウェア (他ルート・WebSocketから共有利用) ---
-function verifyToken(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: '認証トークンがありません' });
-  }
-  const token = header.slice(7);
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'トークンが無効です' });
-  }
+// 実体は utils/authMiddleware.js に一元化されている(トークン失効チェック込み)。
+// 既存コードが `require('./auth')` 経由で verifyToken / verifyTokenRaw を
+// 参照しているため、後方互換のためここから再エクスポートする。
+// verifyTokenRaw は WebSocket認証(ws/wsServer.js)向けに残しているが、
+// DBの失効チェックを含むため非同期関数になっている点に注意
+// (呼び出し側は await する必要がある)。
+async function verifyTokenRaw(token) {
+  return verifyTokenWithRevocation(token);
 }
 
-function verifyTokenRaw(token) {
+// 全端末からサインアウト: 今このリクエストを送っているトークン以外も含め、
+// これまで発行された全てのJWTを即座に無効化する。
+// 端末紛失・トークン漏洩が疑われる場合に、パスワード変更を待たずに使える。
+router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [req.user.userId]);
+    res.json({ ok: true, message: '全端末のセッションを無効化しました。再度ログインしてください。' });
   } catch (e) {
-    return null;
+    sendServerError(res, e, 'revoke-all-sessions');
   }
-}
+});
 
 module.exports = { router, verifyToken, verifyTokenRaw, JWT_SECRET };

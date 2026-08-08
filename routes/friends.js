@@ -1,23 +1,15 @@
 // routes/friends.js
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const jwt = require('jsonwebtoken');
 const db = require('../db/db');
+const { sendServerError } = require('../utils/errorResponse');
+// 以前はここに `function auth(req,res,next){ jwt.verify... }` という
+// 独自実装があり、auth.js/messages.js/push.jsにもほぼ同じものが個別に
+// 存在していた(JWT_SECRETの重複ハードコードと同種の問題)。
+// 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
+const { verifyToken: auth } = require('../utils/authMiddleware');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'ring-dev-secret-CHANGE-IN-PRODUCTION';
-
-function auth(req, res, next) {
-  const token = (req.get('Authorization') || '').replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'unauthorized' });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'invalid token' });
-  }
-}
 
 // 自分のプロフィール取得
 router.get('/me', auth, async (req, res) => {
@@ -26,22 +18,48 @@ router.get('/me', auth, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'user not found' });
     res.json({ userId: user.id, userIdCode: user.user_id, username: user.username, displayName: user.display_name, profilePic: user.profile_pic, bio: user.bio, publicKey: user.public_key });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
+
+// プロフィール画像として許可する形式: data:image/ URI (クライアント側で撮影・選択した画像を
+// Base64化したもの) または https:// URL (Google等の外部プロフィール画像) のみ。
+// 以前はここに検証が一切無く、任意の文字列をそのまま保存できた。
+// クライアント側(talklist.html等)がこの値を `style="background-image:url(${profilePic})"`
+// のようにHTML属性へ直接埋め込んでいる箇所があり、二重引用符(")や山括弧などを
+// 含む文字列を送り込むとHTML/JS注入(XSS)が成立してしまう危険な組み合わせだった。
+// 入り口(ここ)で形式を厳格に制限することで、出口側の描画コードにバグが
+// 残っていても実害が出ないようにする(多層防御)。
+function isValidProfilePic(value) {
+  if (!value) return true; // 未設定/空文字は許可(削除扱い)
+  if (typeof value !== 'string') return false;
+  if (value.length > 3 * 1024 * 1024) return false; // 3MB相当を超えるBase64は拒否
+  return /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(value)
+      || /^https:\/\/[a-zA-Z0-9.\-]+(\/[^\s"'<>]*)?$/.test(value);
+}
 
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
     const { displayName, bio, profilePic } = req.body;
+    // 表示名・自己紹介は無制限だとUIレイアウト崩壊やDB肥大化の原因になるため上限を設ける
+    if (displayName && displayName.length > 50) {
+      return res.status(400).json({ error: '表示名は50文字以内にしてください' });
+    }
+    if (bio && bio.length > 500) {
+      return res.status(400).json({ error: '自己紹介は500文字以内にしてください' });
+    }
     if (profilePic !== undefined) {
+      if (!isValidProfilePic(profilePic)) {
+        return res.status(400).json({ error: 'プロフィール画像の形式が不正です' });
+      }
       await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', profilePic, req.userId]);
     } else {
       await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
     }
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -53,7 +71,7 @@ router.post('/publickey', auth, async (req, res) => {
     await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -64,7 +82,7 @@ router.get('/publickey/:userId', auth, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'user not found' });
     res.json({ publicKey: user.public_key });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -79,7 +97,7 @@ router.get('/search', auth, async (req, res) => {
     );
     res.json(results.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic })));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -101,7 +119,7 @@ router.post('/request', auth, async (req, res) => {
     await db.run('INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by) VALUES (?, ?, ?, ?, ?)', [friendshipId, userA, userB, 'pending', req.userId]);
     res.json({ ok: true, friendshipId });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -112,13 +130,21 @@ router.post('/accept', auth, async (req, res) => {
     const friendship = await db.get('SELECT * FROM friendships WHERE id = ?', [friendshipId]);
     if (!friendship) return res.status(404).json({ error: 'not found' });
     if (friendship.status !== 'pending') return res.status(400).json({ error: 'not pending' });
+    // 当事者チェック: この友達リクエストの送信者・受信者いずれかでなければ拒否する。
+    // 以前はこのチェックが無く、「requested_by !== req.userId」という条件は
+    // 「送信者自身による自己承認」しか防げていなかった。つまりfriendshipIdさえ
+    // 知っていれば、無関係な第三者でも他人同士の友達リクエストを勝手に承認
+    // できてしまう認可漏れがあった。
+    if (friendship.user_a_id !== req.userId && friendship.user_b_id !== req.userId) {
+      return res.status(403).json({ error: 'not authorized' });
+    }
     if (friendship.requested_by === req.userId) return res.status(403).json({ error: 'not authorized' });
 
     const now = new Date().toISOString();
     await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [now, friendshipId]);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -135,7 +161,7 @@ router.get('/list', auth, async (req, res) => {
     const friends = await db.all(`SELECT id, user_id, display_name, profile_pic, public_key FROM users WHERE id IN (${placeholders})`, ids);
     res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, publicKey: u.public_key })));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 
@@ -155,7 +181,7 @@ router.get('/pending', auth, async (req, res) => {
     }
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendServerError(res, e);
   }
 });
 

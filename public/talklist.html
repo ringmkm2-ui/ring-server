@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>トーク一覧</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1e293b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bro Chat">
+<link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -25,7 +32,6 @@ body.has-custom-bg .pc{background:transparent}
 .ti:last-child{border-bottom:none}
 .tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .group-default-av{position:relative}
-.group-default-av::before{content:'💬';font-size:20px}
 .tbody{flex:1;min-width:0}
 .ttr{display:flex;justify-content:space-between;margin-bottom:4px}
 .tname{font-weight:700;color:#0f172a;font-size:14px}
@@ -96,6 +102,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/pushSubscribe.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -171,7 +178,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </div>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.3 beta</div>
+  <div class="version-badge">Bro Chat v1.5 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -345,34 +352,114 @@ async function loadTalks() {
     });
     
     if (merged.length === 0) {
-      list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">トークリストが空です<br>友達を追加してメッセージしよう！</div>';
+      list.textContent = '';
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:24px';
+      empty.innerHTML = 'トークリストが空です<br>友達を追加してメッセージしよう！'; // 固定文言のみ、ユーザー入力なし
+      list.appendChild(empty);
       return;
     }
-    
-    list.innerHTML = merged.map(t => {
-      if (t.kind === 'group') {
-        const time = t.lastTime ? formatTime(t.lastTime) : '';
-        return `<div class="ti" onclick="openGroupChat('${t.groupId}','${escHtml(t.displayName)}')">
-          <div class="tav group-default-av"></div>
-          <div class="tbody">
-            <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
-            <div class="tmsg">${escHtml(t.lastMessage||'')} ・ ${t.memberCount}人</div>
-          </div>
-        </div>`;
-      }
-      const initial = (t.displayName||'?')[0];
-      const pic = t.profilePic ? `background-image:url(${t.profilePic})` : '';
+
+    // セキュリティ上の理由でDOM構築方式を使う(innerHTML文字列組み立てにしない)。
+    // 以前は `onclick="openChat('${userId}','${escHtml(displayName)}')"` のように
+    // ユーザーが自由に設定できる表示名・グループ名をHTML文字列へ直接埋め込んでいた。
+    // escHtml はシングルクォートをエスケープしておらず、しかも仮にエスケープしても
+    // ブラウザはHTML属性値のエンティティを先にデコードしてからonclickの中身をJSとして
+    // 解釈するため、シングルクォート1文字を名前に含めるだけでJS文字列リテラルを
+    // 脱出でき、任意のJavaScriptを実行できてしまっていた(保存型XSS→
+    // localStorageのJWT/暗号鍵窃取→アカウント乗っ取りが可能な重大な脆弱性)。
+    // addEventListenerとtextContentを使うDOM構築方式は、ユーザー文字列が
+    // 一切HTML/JSソースとして再解釈されないため、この種の攻撃が構造的に成立しない。
+    list.textContent = '';
+    merged.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'ti';
+
+      const av = document.createElement('div');
       const time = t.lastTime ? formatTime(t.lastTime) : '';
-      return `<div class="ti" onclick="openChat('${t.userId}','${escHtml(t.displayName)}')">
-        <div class="tav" style="${pic}">${pic?'':initial}</div>
-        <div class="tbody">
-          <div class="ttr"><div class="tname">${escHtml(t.displayName)}</div><div class="ttime">${time}</div></div>
-          <div class="tmsg">${escHtml(t.lastMessage||'')}</div>
-        </div>
-        ${t.unreadCount>0?`<div style="background:rgba(255,255,255,.3);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">${t.unreadCount}</div>`:''}
-      </div>`;
-    }).join('');
+
+      if (t.kind === 'group') {
+        av.className = 'tav group-default-av';
+        setAvatarBackground(av, t.avatarImg, (t.displayName || '?')[0]);
+
+        const body = document.createElement('div');
+        body.className = 'tbody';
+        const row = document.createElement('div');
+        row.className = 'ttr';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'tname';
+        nameEl.textContent = t.displayName;
+        const timeEl = document.createElement('div');
+        timeEl.className = 'ttime';
+        timeEl.textContent = time;
+        row.appendChild(nameEl);
+        row.appendChild(timeEl);
+        const msgEl = document.createElement('div');
+        msgEl.className = 'tmsg';
+        msgEl.textContent = `${t.lastMessage || ''} ・ ${t.memberCount}人`;
+        body.appendChild(row);
+        body.appendChild(msgEl);
+
+        item.appendChild(av);
+        item.appendChild(body);
+        item.addEventListener('click', () => openGroupChat(t.groupId, t.displayName));
+      } else {
+        av.className = 'tav';
+        setAvatarBackground(av, t.profilePic, (t.displayName || '?')[0]);
+
+        const body = document.createElement('div');
+        body.className = 'tbody';
+        const row = document.createElement('div');
+        row.className = 'ttr';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'tname';
+        nameEl.textContent = t.displayName;
+        const timeEl = document.createElement('div');
+        timeEl.className = 'ttime';
+        timeEl.textContent = time;
+        row.appendChild(nameEl);
+        row.appendChild(timeEl);
+        const msgEl = document.createElement('div');
+        msgEl.className = 'tmsg';
+        msgEl.textContent = t.lastMessage || '';
+        body.appendChild(row);
+        body.appendChild(msgEl);
+
+        item.appendChild(av);
+        item.appendChild(body);
+
+        if (t.unreadCount > 0) {
+          const badge = document.createElement('div');
+          badge.style.cssText = 'background:rgba(255,255,255,.3);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
+          badge.textContent = String(t.unreadCount);
+          item.appendChild(badge);
+        }
+
+        item.addEventListener('click', () => openChat(t.userId, t.displayName));
+      }
+
+      list.appendChild(item);
+    });
   } catch(e) { console.error('loadTalks:', e); }
+}
+
+// アバター画像を安全に背景として設定する共通ヘルパー。
+// 生のHTML属性文字列(style="background-image:url(...)")としてではなく、
+// DOM要素のCSSOMプロパティへ直接代入することで、値に " や < のような文字が
+// 含まれていてもHTML/属性コンテキストから脱出できないようにする。
+// さらに、data:image/ または https:// 以外の値は画像として扱わず、
+// 常に頭文字表示にフォールバックすることで、CSS式やjavascript:のような
+// 危険なスキームが url() に紛れ込む余地そのものを塞ぐ。
+function setAvatarBackground(el, picValue, initial) {
+  const isSafeImage = typeof picValue === 'string'
+    && (/^data:image\/(png|jpe?g|gif|webp);base64,/.test(picValue) || /^https:\/\//.test(picValue));
+  if (isSafeImage) {
+    el.style.backgroundImage = `url(${JSON.stringify(picValue)})`;
+    el.textContent = '';
+  } else {
+    el.style.backgroundImage = '';
+    el.textContent = initial;
+  }
 }
 
 function openGroupChat(groupId, name) {
@@ -400,8 +487,14 @@ function formatTime(ts) {
   return (d.getMonth()+1) + '/' + d.getDate();
 }
 
+// 現在このファイル内では直接は使われていない(全てDOM構築+textContentへ置き換え済み)が、
+// 将来innerHTML文字列組み立てで再利用される場合に備え、シングルクォートも含めて
+// 完全にエスケープしておく(多層防御)。ただし、たとえ完全エスケープしても
+// onclick="func('...')"のようなインラインイベント属性へuser文字列を埋め込む設計自体は
+// 構造的に危険(HTML属性値のエンティティはJSソースとして解釈される前にデコードされる)
+// なので、今後もこの用途では使わずaddEventListener方式を用いること。
 function escHtml(str) {
-  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function openChat(userId, name, pic) {
@@ -482,25 +575,56 @@ async function searchFriend() {
   const q = document.getElementById('addFriendInput').value.trim();
   if (!q) return;
   const result = document.getElementById('searchResult');
-  result.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:8px">検索中...</div>';
+  result.textContent = '';
+  const searching = document.createElement('div');
+  searching.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:8px';
+  searching.textContent = '検索中...';
+  result.appendChild(searching);
   try {
     const data = await api('/api/friends/search?q=' + encodeURIComponent(q));
+    result.textContent = '';
     if (!data.length) {
-      result.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:8px">見つかりませんでした</div>';
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:8px';
+      empty.textContent = '見つかりませんでした';
+      result.appendChild(empty);
       return;
     }
-    result.innerHTML = data.map(u => `
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
-        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)">${(u.displayName||'?')[0]}</div>
-        <div style="flex:1">
-          <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(u.displayName)}</div>
-          <div style="font-size:12px;color:#64748b">ID: ${u.userIdCode}</div>
-        </div>
-        <button onclick="sendFriendRequest('${u.userIdCode}',this)" style="padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;">追加</button>
-      </div>
-    `).join('');
+    data.forEach(u => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
+
+      const av = document.createElement('div');
+      av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
+      av.textContent = (u.displayName || '?')[0];
+
+      const info = document.createElement('div');
+      info.style.flex = '1';
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:700;color:#0f172a;font-size:15px';
+      nameEl.textContent = u.displayName;
+      const idEl = document.createElement('div');
+      idEl.style.cssText = 'font-size:12px;color:#64748b';
+      idEl.textContent = `ID: ${u.userIdCode}`;
+      info.appendChild(nameEl);
+      info.appendChild(idEl);
+
+      const btn = document.createElement('button');
+      btn.style.cssText = 'padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;';
+      btn.textContent = '追加';
+      btn.addEventListener('click', () => sendFriendRequest(u.userIdCode, btn));
+
+      row.appendChild(av);
+      row.appendChild(info);
+      row.appendChild(btn);
+      result.appendChild(row);
+    });
   } catch(e) {
-    result.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:14px;padding:8px">エラーが発生しました</div>';
+    result.textContent = '';
+    const errEl = document.createElement('div');
+    errEl.style.cssText = 'text-align:center;color:#ef4444;font-size:14px;padding:8px';
+    errEl.textContent = 'エラーが発生しました';
+    result.appendChild(errEl);
   }
 }
 
@@ -510,7 +634,7 @@ async function sendFriendRequest(targetId, btn) {
   try {
     const data = await api('/api/friends/request', { method:'POST', body: JSON.stringify({ targetUserIdCode: targetId }) });
     if (data.ok) {
-      btn.textContent = '送信済み ✓';
+      btn.textContent = '送信済み';
       btn.style.background = '#10b981';
     } else {
       btn.textContent = data.error || 'エラー';
@@ -669,15 +793,33 @@ document.getElementById('ngBtn').onclick = async () => {
     }
     
     const memberList = document.getElementById('ngMemberList');
+    memberList.textContent = '';
     if (allPeople.length > 0) {
-      memberList.innerHTML = allPeople.map(p => `
-        <label style="display:flex;align-items:center;margin:8px 0;cursor:pointer;">
-          <input type="checkbox" value="${p.userId}" onchange="event.currentTarget.checked ? selectedGroupMembers.add('${p.userId}') : selectedGroupMembers.delete('${p.userId}')" style="margin-right:8px;">
-          ${p.displayName}
-        </label>
-      `).join('');
+      // 以前は ${p.displayName} をエスケープ無しでinnerHTMLへ直接埋め込んでおり、
+      // 表示名に <script> 等を含めるだけで実行される直接的な保存型XSSだった。
+      // DOM構築 + textContent に切り替えることで構造的に無害化する。
+      allPeople.forEach(p => {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;margin:8px 0;cursor:pointer;';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = p.userId;
+        checkbox.style.marginRight = '8px';
+        checkbox.addEventListener('change', (e) => {
+          if (e.currentTarget.checked) selectedGroupMembers.add(p.userId);
+          else selectedGroupMembers.delete(p.userId);
+        });
+
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(p.displayName));
+        memberList.appendChild(label);
+      });
     } else {
-      memberList.innerHTML = '<div style="color:#999;font-size:12px;">トークリストが空です</div>';
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:#999;font-size:12px;';
+      empty.textContent = 'トークリストが空です';
+      memberList.appendChild(empty);
     }
   } catch (err) {
     console.error('load people error:', err);
@@ -733,19 +875,39 @@ async function loadPendingRequests() {
     }
 
     card.style.display = 'block';
-    list.innerHTML = pending.map(p => {
-      const initial = (p.displayName || '?')[0];
-      return `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;">
-          <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)">${initial}</div>
-          <div style="flex:1">
-            <div style="font-weight:700;color:#0f172a;font-size:15px">${escHtml(p.displayName)}</div>
-            <div style="font-size:12px;color:#64748b">${p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み'}</div>
-          </div>
-          ${!p.isSentByMe ? `<button onclick="acceptFriendRequest('${p.friendshipId}',this)" style="padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;">承認</button>` : ''}
-        </div>
-      `;
-    }).join('');
+    list.textContent = '';
+    pending.forEach(p => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
+
+      const av = document.createElement('div');
+      av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
+      av.textContent = (p.displayName || '?')[0];
+
+      const info = document.createElement('div');
+      info.style.flex = '1';
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:700;color:#0f172a;font-size:15px';
+      nameEl.textContent = p.displayName;
+      const statusEl = document.createElement('div');
+      statusEl.style.cssText = 'font-size:12px;color:#64748b';
+      statusEl.textContent = p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み';
+      info.appendChild(nameEl);
+      info.appendChild(statusEl);
+
+      row.appendChild(av);
+      row.appendChild(info);
+
+      if (!p.isSentByMe) {
+        const btn = document.createElement('button');
+        btn.style.cssText = 'padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;';
+        btn.textContent = '承認';
+        btn.addEventListener('click', () => acceptFriendRequest(p.friendshipId, btn));
+        row.appendChild(btn);
+      }
+
+      list.appendChild(row);
+    });
   } catch (e) {
     console.error('loadPendingRequests error:', e);
   }
@@ -757,7 +919,7 @@ async function acceptFriendRequest(friendshipId, btn) {
   try {
     const data = await api('/api/friends/accept', { method: 'POST', body: JSON.stringify({ friendshipId }) });
     if (data.ok) {
-      btn.textContent = '承認済み ✓';
+      btn.textContent = '承認済み';
       btn.style.background = '#6b7280';
       loadPendingRequests();
       loadTalks();
@@ -820,12 +982,12 @@ function logout() {
 // Service Workerからのメッセージ受信：バックグラウンド着信の復帰
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
-    const { type, callId, callerId, action } = event.data;
+    const { type, callId, callerId, isVideo, action } = event.data;
     
     if (type === 'INCOMING_CALL_RESUMED' || type === 'INCOMING_CALL_DIRECT') {
       // バックグラウンドから通話着信を受信したら、admin.htmlを開く
-      console.log(`[BG CALL] Opening admin.html from background: callId=${callId}, callerId=${callerId}`);
-      window.location.href = `/admin.html?callId=${callId}&callerId=${callerId}&action=${action || 'answer'}`;
+      console.log(`[BG CALL] Opening admin.html from background: callId=${callId}, callerId=${callerId}, isVideo=${isVideo}`);
+      window.location.href = `/admin.html?callId=${callId}&callerId=${callerId}&isVideo=${isVideo ? '1' : '0'}&action=${action || 'answer'}`;
     }
   });
 }

@@ -6,13 +6,14 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
-const { verifyToken } = require('./auth');
+const { verifyToken } = require('../utils/authMiddleware');
+const { asyncHandler } = require('../utils/asyncHandler');
 
 const router = express.Router();
 
 // --- 自分の鍵バンドルをサーバーに登録 ---
 // body: { identityPubkey, signedPrekeyPub, signedPrekeySig, registrationId, oneTimePrekeys: [pubkey,...] }
-router.post('/upload', verifyToken, async (req, res) => {
+router.post('/upload', verifyToken, asyncHandler(async (req, res) => {
   const { identityPubkey, signedPrekeyPub, signedPrekeySig, registrationId, oneTimePrekeys } = req.body;
   const userId = req.user.userId;
 
@@ -43,10 +44,10 @@ router.post('/upload', verifyToken, async (req, res) => {
   }
 
   res.json({ ok: true, uploadedOneTimeKeys: (oneTimePrekeys || []).length });
-});
+}));
 
 // --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
-router.get('/bundle/:userId', verifyToken, async (req, res) => {
+router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
   const identity = await db.get('SELECT * FROM identity_keys WHERE user_id = ?', [targetId]);
   if (!identity) {
@@ -69,15 +70,15 @@ router.get('/bundle/:userId', verifyToken, async (req, res) => {
     registrationId: identity.registration_id,
     oneTimePrekey: otk ? { keyId: otk.key_id, pubkey: otk.pubkey } : null,
   });
-});
+}));
 
 // --- 残りの使い捨て鍵の数を確認 (少なくなったらクライアントが補充する) ---
-router.get('/count', verifyToken, async (req, res) => {
+router.get('/count', verifyToken, asyncHandler(async (req, res) => {
   const row = await db.get(
     'SELECT COUNT(*) as cnt FROM one_time_prekeys WHERE user_id = ? AND used = 0',
     [req.user.userId]
   );
   res.json({ remaining: row ? row.cnt : 0 });
-});
+}));
 
 module.exports = router;

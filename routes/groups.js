@@ -3,8 +3,9 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
-const { verifyToken } = require('./auth');
+const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
+const { asyncHandler } = require('../utils/asyncHandler');
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ async function isGroupMember(groupId, userId) {
 }
 
 // --- 自分が所属するグループ一覧を取得 ---
-router.get('/list', verifyToken, async (req, res) => {
+router.get('/list', verifyToken, asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at
      FROM groups g
@@ -54,13 +55,15 @@ router.get('/list', verifyToken, async (req, res) => {
     });
   }
   res.json({ groups });
-});
+}));
 
 // --- グループ作成 ---
 // body: { name, memberIds: [userId, ...] } (memberIdsは作成者以外の初期メンバー)
-router.post('/create', verifyToken, async (req, res) => {
+router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   const { name, memberIds } = req.body;
   if (!name) return res.status(400).json({ error: 'グループ名が必要です' });
+  // 表示崩壊・DB肥大化防止のため上限を設ける(display_nameと同基準)
+  if (name.length > 50) return res.status(400).json({ error: 'グループ名は50文字以内にしてください' });
 
   const groupId = uuidv4();
   await db.run('INSERT INTO groups (id, name, owner_id, key_version) VALUES (?, ?, ?, 1)', [groupId, name, req.user.userId]);
@@ -81,19 +84,27 @@ router.post('/create', verifyToken, async (req, res) => {
   }
 
   res.json({ groupId, name, keyVersion: 1, members: addedMembers });
-});
+}));
 
 // --- メンバー招待 ---
 // クライアント側が新グループ鍵を生成し、暗号化した鍵を全メンバー分アップロードする想定。
 // body: { groupId, targetUsername, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
-router.post('/invite', verifyToken, async (req, res) => {
+router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, targetUsername, encryptedKeysForMembers } = req.body;
-
-  const targetUser = await db.get('SELECT id FROM users WHERE username = ?', [targetUsername]);
-  if (!targetUser) return res.status(404).json({ error: 'そのユーザーは見つかりません' });
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+
+  // 呼び出し元がこのグループの現メンバーかどうかのチェック。
+  // これが無いと、groupIdさえ知っていれば部外者でも勝手に他人をグループへ
+  // 追加でき、しかも鍵ローテーション(key_version更新)まで引き起こせてしまう
+  // 重大な権限バグになる。
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+
+  const targetUser = await db.get('SELECT id FROM users WHERE username = ?', [targetUsername]);
+  if (!targetUser) return res.status(404).json({ error: 'そのユーザーは見つかりません' });
 
   const already = await db.get('SELECT * FROM group_members WHERE group_id=? AND user_id=? AND left_at IS NULL', [groupId, targetUser.id]);
   if (already) return res.status(409).json({ error: 'すでにメンバーです' });
@@ -120,12 +131,12 @@ router.post('/invite', verifyToken, async (req, res) => {
   }
 
   res.json({ ok: true, groupId, keyVersion: newVersion, invitedUserId: targetUser.id });
-});
+}));
 
 // --- メンバー削除・脱退 ---
 // 脱退が確定した瞬間に鍵を更新 (後方秘匿性 - 抜けた人は以後のメッセージを読めない)
 // body: { groupId, removeUserId, encryptedKeysForRemainingMembers: [{userId, encryptedGroupKey}] }
-router.post('/remove-member', verifyToken, async (req, res) => {
+router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, removeUserId, encryptedKeysForRemainingMembers } = req.body;
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
@@ -170,23 +181,23 @@ router.post('/remove-member', verifyToken, async (req, res) => {
   broadcastToUser(removeUserId, { type: 'removed_from_group', groupId });
 
   res.json({ ok: true, groupId, keyVersion: newVersion });
-});
+}));
 
 // --- 自分宛の最新グループ鍵を取得 ---
-router.get('/:groupId/my-key', verifyToken, async (req, res) => {
+router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
   const row = await db.get(
     `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? ORDER BY key_version DESC LIMIT 1`,
     [req.params.groupId, req.user.userId]
   );
   if (!row) return res.status(404).json({ error: '鍵が見つかりません' });
   res.json({ keyVersion: row.key_version, encryptedGroupKey: row.encrypted_group_key });
-});
+}));
 
 // --- グループメッセージ送信 ---
 // body: { content, mediaType?, mediaData?, encrypted? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
-router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
+router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { content, mediaType, mediaData, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
@@ -242,10 +253,10 @@ router.post('/:groupId/messages/send', verifyToken, async (req, res) => {
   });
 
   res.json({ ok: true, message: msg });
-});
+}));
 
 // --- グループメッセージ履歴取得 ---
-router.get('/:groupId/messages', verifyToken, async (req, res) => {
+router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
@@ -262,11 +273,11 @@ router.get('/:groupId/messages', verifyToken, async (req, res) => {
   );
 
   res.json(messages.reverse());
-});
+}));
 
 // --- グループメッセージ既読マーク ---
 // body: { messageIds: [id, ...] } (まとめて既読にする)
-router.post('/:groupId/messages/read', verifyToken, async (req, res) => {
+router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { messageIds } = req.body;
   if (!Array.isArray(messageIds) || messageIds.length === 0) {
@@ -301,10 +312,10 @@ router.post('/:groupId/messages/read', verifyToken, async (req, res) => {
   }
 
   res.json({ ok: true });
-});
+}));
 
 // --- グループメッセージの既読者一覧取得 ---
-router.get('/:groupId/messages/:msgId/reads', verifyToken, async (req, res) => {
+router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (req, res) => {
   if (!(await isGroupMember(req.params.groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
@@ -315,10 +326,10 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, async (req, res) => {
     [req.params.msgId]
   );
   res.json({ reads: reads.map(r => ({ userId: r.user_id, displayName: r.display_name, readAt: r.read_at })) });
-});
+}));
 
 // --- グループメッセージ編集 ---
-router.post('/:groupId/messages/:msgId/edit', verifyToken, async (req, res) => {
+router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   const { content, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
@@ -346,10 +357,10 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, async (req, res) => {
   });
 
   res.json({ ok: true });
-});
+}));
 
 // --- グループメッセージのピン留め切り替え ---
-router.post('/:groupId/messages/:msgId/pin', verifyToken, async (req, res) => {
+router.post('/:groupId/messages/:msgId/pin', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   const { pinned } = req.body;
   if (!(await isGroupMember(groupId, req.user.userId))) {
@@ -368,10 +379,10 @@ router.post('/:groupId/messages/:msgId/pin', verifyToken, async (req, res) => {
   });
 
   res.json({ ok: true, pinned: !!pinned });
-});
+}));
 
 // --- グループのピン留めメッセージ一覧取得 ---
-router.get('/:groupId/pinned', verifyToken, async (req, res) => {
+router.get('/:groupId/pinned', verifyToken, asyncHandler(async (req, res) => {
   if (!(await isGroupMember(req.params.groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
@@ -383,10 +394,10 @@ router.get('/:groupId/pinned', verifyToken, async (req, res) => {
     [req.params.groupId]
   );
   res.json(rows);
-});
+}));
 
 // --- グループメッセージ削除 ---
-router.post('/:groupId/messages/:msgId/delete', verifyToken, async (req, res) => {
+router.post('/:groupId/messages/:msgId/delete', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
@@ -410,6 +421,6 @@ router.post('/:groupId/messages/:msgId/delete', verifyToken, async (req, res) =>
   });
 
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

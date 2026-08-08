@@ -48,6 +48,19 @@ async function initDB() {
     db.run('DROP TABLE IF EXISTS messages');
   }
 
+  // messages テーブルのマイグレーションチェック（replied_to_id: リプライ機能用）。
+  // 以前はこのチェックが無く、PostgreSQL側(db.postgres.js)ではALTER TABLEで
+  // 追加されていたのにSQLite側では追加されておらず、ローカル開発環境で
+  // メッセージ送信のたびに「no such column: replied_to_id」エラーが発生し、
+  // 基本機能であるメッセージ送信自体が完全に壊れていた。
+  const msgTableInfo2 = db.exec('PRAGMA table_info(messages)');
+  const hasRepliedToId = msgTableInfo2.length > 0 && msgTableInfo2[0].values.some(row => row[1] === 'replied_to_id');
+  if (!hasRepliedToId && msgTableInfo2.length > 0) {
+    console.log('Migrating messages table - adding replied_to_id');
+    db.run('DROP TABLE IF EXISTS message_reactions');
+    db.run('DROP TABLE IF EXISTS messages');
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -58,6 +71,7 @@ async function initDB() {
       profile_pic TEXT,
       bio TEXT,
       public_key TEXT,
+      token_revoked_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -157,6 +171,7 @@ async function initDB() {
       edited_at TEXT,
       deleted_at TEXT,
       pinned_at TEXT,
+      replied_to_id TEXT,
       FOREIGN KEY (sender_id) REFERENCES users(id),
       FOREIGN KEY (recipient_id) REFERENCES users(id)
     );
@@ -197,10 +212,20 @@ async function initDB() {
       expires_at TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Web Push購読情報（VAPID）
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   persist();
-  console.log('[db] initialized ✅ (' + DB_FILE + ')');
+  console.log('[db] initialized (' + DB_FILE + ')');
 }
 
 // --- ヘルパー ---

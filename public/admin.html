@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>トーク</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1e293b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bro Chat">
+<link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -116,6 +123,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/pushSubscribe.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3"></script>
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util"></script>
 </head>
@@ -129,7 +137,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.3 beta</div>
+  <div class="version-badge">Bro Chat v1.5 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -142,6 +150,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <div class="name" id="partnerName">ユーザー名</div>
         <div class="status">オンライン</div>
       </div>
+      <button class="phone-btn" id="videoCallBtn" type="button" style="margin-right:6px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      </button>
       <button class="phone-btn" id="phoneBtn" type="button">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
@@ -158,7 +169,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div id="replyPreview" style="background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;padding:8px 12px;margin-bottom:8px;border-radius:6px;display:none;font-size:13px;opacity:0;transition:opacity 0.2s;max-height:60px;overflow-y:auto;">
       <div style="font-weight:600;color:#1e293b;margin-bottom:3px;">リプライ中:</div>
       <div id="replyText" style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-      <button type="button" onclick="cancelReply()" style="background:none;border:none;color:#64748b;cursor:pointer;padding:3px;margin-top:3px;font-size:12px;">✕ キャンセル</button>
+      <button type="button" onclick="cancelReply()" style="background:none;border:none;color:#64748b;cursor:pointer;padding:3px;margin-top:3px;font-size:12px;">キャンセル</button>
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
@@ -212,7 +223,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </div>
 
   <div class="call-overlay" id="callOv">
-    <div class="call-card">
+    <video id="remoteVideo" autoplay playsinline style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0"></video>
+    <video id="localVideo" autoplay playsinline muted style="display:none;position:absolute;top:16px;right:16px;width:100px;height:140px;border-radius:12px;object-fit:cover;background:#000;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.6)"></video>
+    <div class="call-card" id="callCard" style="position:relative;z-index:1">
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus">呼び出し中...</div>
@@ -220,11 +233,17 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <button class="call-mute-btn" id="muteBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="muteIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
+        <button class="call-video-btn" id="toggleVideoBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);align-items:center;justify-content:center;cursor:pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="videoIcon"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        </button>
         <button class="end-btn" id="endBtn" type="button">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
         <button class="call-speaker-btn" id="speakerBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        </button>
+        <button class="call-flip-btn" id="flipCamBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);align-items:center;justify-content:center;cursor:pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
       </div>
       <div id="incomingBtnRow" style="display:none;gap:28px;align-items:center;margin-top:10px">
@@ -251,7 +270,7 @@ function nameColor(name) {
 
 const params = new URLSearchParams(location.search);
 const partnerName = params.get('name') || 'ユーザー名';
-const otherId = params.get('userId') || params.get('id');
+const otherId = params.get('userId') || params.get('id') || params.get('callerId');
 // アバター画像はURLに乗せると431エラー(ヘッダ肥大化)の原因になるため、
 // API経由で別途取得する(loadPartnerProfile参照)
 let otherPic = '';
@@ -261,6 +280,19 @@ const myAvatar = localStorage.getItem('myAvatar') || '';
 const token = localStorage.getItem('ring_token');
 const myUserId = localStorage.getItem('ring_userId');
 if (!token) location.href = '/auth.html';
+
+// SW通知タップ時、まだWS/SDPが届いていない場合にaccept/decline要求を保持する変数
+// (この変数を参照する処理は複数箇所にあるため、ファイル冒頭で先に宣言する)
+let pendingBgCallAction = null;
+
+// talklist.html経由(Service Worker通知タップ)で開かれた場合のURL着信パラメータ
+// 実際のSDPはこの後WS経由のcall_offerイベントで届くので、ここではペンディング登録のみ行う
+const urlCallId = params.get('callId');
+const urlAction = params.get('action');
+const urlIsVideoParam = params.get('isVideo') === '1'; // isVideoCall変数は後方で宣言されるため、ここでは一時変数に保持
+if (urlCallId) {
+  pendingBgCallAction = { callId: urlCallId, action: urlAction === 'answer' ? null : urlAction };
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -412,6 +444,35 @@ async function decryptMessage(encryptedBase64, senderId) {
   return result;
 }
 
+// メッセージのcontentを復号する共通ヘルパー。
+// テキストメッセージ: content自体が暗号化Base64 → そのままdecryptMessageにかける。
+// メディアメッセージ: content は平文JSON `{text, media, mediaType}` で、
+//   暗号化されているのは内側の media フィールドだけ。
+//   content全体を復号にかけると必ず失敗する（テキストは「復号化に失敗しました」、
+//   画像は暗号化バイナリがそのままsrcに渡り表示できない、という形でバグが起きる）。
+// 戻り値: 表示用にそのままrenderできる文字列（テキストは平文、メディアは
+//   {text, media: 復号済みBase64, mediaType} を再JSON化した文字列）。
+async function decryptMessageContent(rawContent, senderId) {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch (e) {
+    // JSONでなければ通常のテキストメッセージ
+  }
+
+  if (parsed && typeof parsed === 'object' && parsed.media && parsed.mediaType) {
+    // メディアメッセージ: media フィールドだけを復号する
+    const decryptedMedia = await decryptMessage(parsed.media, senderId);
+    if (decryptedMedia === null) {
+      return null; // 呼び出し側で「復号化に失敗しました」等のフォールバック表示に使う
+    }
+    return JSON.stringify({ text: parsed.text || '', media: decryptedMedia, mediaType: parsed.mediaType });
+  }
+
+  // 通常のテキストメッセージ
+  return await decryptMessage(rawContent, senderId);
+}
+
 // パートナーアバター（ヘッダー）
 // 初期描画は名前の頭文字で仮表示し、画像はrefreshPartnerProfile()で取得後に反映する
 // (画像データをURLに乗せると431エラー=ヘッダ肥大化の原因になるため直接は渡さない)
@@ -510,9 +571,11 @@ function handleMedia(f, t) {
         }),
       });
       if (data.message) {
-        // 自分が送った平文をローカルにキャッシュ
-        cacheOwnPlaintext(data.message.id, `[${t === 'image' ? '画像' : '動画'}]`);
-        const displayMsg = { ...data.message, content: `[${t === 'image' ? '画像' : '動画'}]` };
+        // 自分が送った平文(実際のメディアデータ込み)をローカルにキャッシュ
+        // （E2E暗号化では送信者も暗号文を復号できないため、自分用の控えとして保存する）
+        const ownPlaintext = JSON.stringify({ text: '', media: base64, mediaType: t });
+        cacheOwnPlaintext(data.message.id, ownPlaintext);
+        const displayMsg = { ...data.message, content: ownPlaintext };
         addRealMessage(displayMsg);
         renderMessage(displayMsg);
       } else if (data.error) {
@@ -650,13 +713,17 @@ function removeMessageById(msgId) {
 }
 
 // 自分が送信したメッセージの平文をローカルストレージにキャッシュ
-// （E2E暗号化では送信者も暗号文を復号できないため、自分用の控えとして保存）
+// （E2E暗号化では送信者も暗号文を復号できないため、自分用の控えとして保存する）
+// 画像・動画は非常に大きい(Base64で数MB)ため、キャッシュ全体でlocalStorageの
+// 容量上限(ブラウザにより5〜10MB)を超えるとQuotaExceededErrorで書き込み自体が
+// 失敗する。失敗した場合は諦めて「復号できません」表示にフォールバックさせる
+// （画像添付メッセージのキャッシュを個別に間引くよりシンプルで安全なため）。
 function cacheOwnPlaintext(msgId, plaintext) {
   try {
     const cacheKey = `own_plaintext_${myUserId}`;
     let cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
     cache[msgId] = plaintext;
-    // キャッシュサイズ制限（最新500件のみ保持）
+    // キャッシュ件数制限（最新500件のみ保持）
     const keys = Object.keys(cache);
     if (keys.length > 500) {
       const toRemove = keys.slice(0, keys.length - 500);
@@ -664,7 +731,20 @@ function cacheOwnPlaintext(msgId, plaintext) {
     }
     localStorage.setItem(cacheKey, JSON.stringify(cache));
   } catch (e) {
-    console.error('平文キャッシュ保存エラー:', e);
+    // QuotaExceededError等: 直近の大きいメディアキャッシュから間引いて1回だけ再試行
+    console.warn('平文キャッシュ保存エラー、古いメディアキャッシュを間引いて再試行します:', e.message);
+    try {
+      const cacheKey = `own_plaintext_${myUserId}`;
+      let cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+      const entries = Object.entries(cache);
+      // メディア(長い文字列)を古い順に間引く
+      const mediaEntries = entries.filter(([, v]) => typeof v === 'string' && v.length > 10000);
+      mediaEntries.slice(0, Math.ceil(mediaEntries.length / 2)).forEach(([k]) => delete cache[k]);
+      cache[msgId] = plaintext;
+      localStorage.setItem(cacheKey, JSON.stringify(cache));
+    } catch (e2) {
+      console.error('平文キャッシュ保存に失敗しました（このメディアはこのデバイスで復元できません）:', e2.message);
+    }
   }
 }
 
@@ -685,10 +765,13 @@ function addRealMessage(msg) {
 }
 
 // メッセージ内容をパースして { displayText, mediaType, mediaSrc } を返す
-// パース結果はメッセージオブジェクトにキャッシュして、毎回のパースを避ける
-// ただしmediaSrcはメモリ節約のためキャッシュしない（初回パースのみ）
+// パース結果はメッセージオブジェクトにキャッシュして、毎回のJSONパースを避ける。
+// 注意: renderMessageImplはメッセージ更新時(既読・リアクション等)に同じmsgへ
+// 何度もDOM再構築(innerHTML='')をかけ直す設計のため、mediaSrcをキャッシュから
+// 除外すると2回目以降の再描画で画像が消えるバグになる。そのため全フィールドを
+// キャッシュする（画像1枚分のBase64を保持するだけなので実用上のメモリ影響は小さい）。
 function parseMsgContent(content, msg) {
-  if (msg && msg._parsedCache) {
+  if (msg && msg._parsedCache && msg._parsedCache._sourceContent === content) {
     return msg._parsedCache;
   }
   
@@ -700,11 +783,8 @@ function parseMsgContent(content, msg) {
     }
   } catch (e) {}
   
-  // パース結果をキャッシュ（ただしmediaSrcは除外してメモリ節約）
-  if (msg && result.mediaSrc) {
-    msg._parsedCache = { displayText: result.displayText, mediaType: result.mediaType, mediaSrc: null };
-  } else if (msg) {
-    msg._parsedCache = result;
+  if (msg) {
+    msg._parsedCache = { ...result, _sourceContent: content };
   }
   return result;
 }
@@ -786,7 +866,11 @@ function renderMessageImpl(msg) {
       const replyQuote = document.createElement('div');
       replyQuote.style.cssText = 'background:rgba(59,130,246,.08);border-left:3px solid #3b82f6;padding:6px 8px;margin-bottom:6px;border-radius:4px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       const senderName = repliedMsg.senderId === myUserId ? 'あなた' : partnerName;
-      replyQuote.textContent = `${senderName}: ${repliedMsg.content.substring(0, 50)}`;
+      const { displayText: repliedText, mediaType: repliedMediaType } = parseMsgContent(repliedMsg.content);
+      const repliedPreview = repliedMediaType === 'image' ? '[画像]'
+        : repliedMediaType === 'video' ? '[動画]'
+        : repliedText.substring(0, 50);
+      replyQuote.textContent = `${senderName}: ${repliedPreview}`;
       bubble.appendChild(replyQuote);
     }
   }
@@ -878,7 +962,7 @@ async function syncMessages() {
           const cached = getOwnPlaintext(msg.id);
           displayContent = cached !== null ? cached : '(このデバイスでは表示できません)';
         } else {
-          const decrypted = await decryptMessage(msg.content, msg.senderId);
+          const decrypted = await decryptMessageContent(msg.content, msg.senderId);
           displayContent = decrypted !== null ? decrypted : '(復号化に失敗しました)';
         }
       }
@@ -936,7 +1020,7 @@ function connectRealWS() {
             // 相手からのメッセージは復号化してから表示
             let displayContent = msg.content;
             if (msg.encrypted) {
-              const decrypted = await decryptMessage(msg.content, msg.senderId);
+              const decrypted = await decryptMessageContent(msg.content, msg.senderId);
               if (decrypted !== null) displayContent = decrypted;
               else displayContent = '(復号化に失敗しました)';
             }
@@ -945,8 +1029,13 @@ function connectRealWS() {
             renderMessage(displayMsg);
             // ブラウザ通知を送信(タブを見ている最中は煩わしいため非表示時のみ)
             if (document.hidden) {
+              // メディアメッセージの場合、通知本文には巨大なBase64ではなく短いラベルを出す
+              const { displayText, mediaType } = parseMsgContent(displayContent);
+              const notifBody = mediaType === 'image' ? '画像を送信しました'
+                : mediaType === 'video' ? '動画を送信しました'
+                : displayContent;
               sendNotification(partnerName, {
-                body: displayContent,
+                body: notifBody,
                 tag: 'dm-' + otherId
               });
             }
@@ -964,7 +1053,7 @@ function connectRealWS() {
         if (msg) {
           let newContent = data.content;
           if (data.encrypted && msg.senderId !== myUserId) {
-            const decrypted = await decryptMessage(data.content, msg.senderId);
+            const decrypted = await decryptMessageContent(data.content, msg.senderId);
             if (decrypted !== null) newContent = decrypted;
           }
           msg.content = newContent;
@@ -1102,7 +1191,7 @@ async function initialLoadHistory() {
     for (const msg of data) {
       let displayContent = msg.content;
       if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
-        const decrypted = await decryptMessage(msg.content, msg.senderId);
+        const decrypted = await decryptMessageContent(msg.content, msg.senderId);
         if (decrypted !== null) displayContent = decrypted;
         else displayContent = '(復号化に失敗しました)';
       } else if (msg.encrypted && msg.senderId === myUserId) {
@@ -1164,40 +1253,34 @@ function sendNotification(title, options = {}) {
 // Service Workerからのメッセージ受信：バックグラウンド着信の復帰
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
-    const { type, callId, callerId, action } = event.data;
+    const { type, callId, callerId, isVideo, action } = event.data;
     
     if (type === 'INCOMING_CALL_RESUMED' || type === 'INCOMING_CALL_DIRECT') {
-      // バックグラウンドから戻ってきた着信をシミュレート
-      console.log(`[BG CALL] Resuming from background: callId=${callId}, callerId=${callerId}, action=${action}`);
+      console.log(`[BG CALL] Resuming from background: callId=${callId}, callerId=${callerId}, isVideo=${isVideo}, action=${action}`);
       
-      // WebSocketが接続されるまで待機
-      const waitForWS = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          clearInterval(waitForWS);
-          
-          if (action === 'accept') {
-            // ユーザーが通知で「応答」をタップ → 自動応答
-            // 着信情報をローカルに再作成
-            currentCallId = callId;
-            otherId = callerId;
-            acceptIncomingCall();
-          } else if (action === 'decline') {
-            // ユーザーが通知で「拒否」をタップ
-            currentCallId = callId;
-            otherId = callerId;
-            declineIncomingCall();
-          } else {
-            // 通知をタップしたのみ（応答/拒否は指定されない）
-            // そのまま通話画面を開くだけ
-            currentCallId = callId;
-            otherId = callerId;
-            showCallOverlay();
-            setCallStatus('着信中...');
-          }
+      // 通話画面だけ先に開いて、ユーザーに「つながっています」感を出す
+      // (otherIdはページ読み込み時のURLパラメータから決まるconstのため、通知側のcallerIdと
+      //  食い違う場合はこのページの相手とは別ユーザーからの着信 → talklist経由で該当ページを開き直す)
+      if (otherId && otherId !== callerId) {
+        window.location.href = `/admin.html?callerId=${callerId}&callId=${callId}&isVideo=${isVideo ? '1' : '0'}&action=${action || 'answer'}`;
+        return;
+      }
+      currentCallId = callId;
+      isVideoCall = !!isVideo;
+      showCallOverlay();
+      setCallStatus(isVideoCall ? 'ビデオ着信中...' : '着信中...');
+      
+      if (action === 'accept' || action === 'decline') {
+        // 実際のSDPはWS経由のcall_offerイベントで届く。まだ届いていなければ待機。
+        if (window.__incomingOffer && window.__incomingOffer_callId === callId) {
+          action === 'accept' ? acceptIncomingCall() : declineIncomingCall();
+        } else {
+          pendingBgCallAction = { callId, action };
         }
-      }, 100);
-      
-      setTimeout(() => clearInterval(waitForWS), 5000); // 最大5秒待機
+      } else {
+        document.getElementById('callBtnRow').style.display = 'none';
+        document.getElementById('incomingBtnRow').style.display = 'flex';
+      }
     }
   });
 }
@@ -1216,6 +1299,18 @@ setInterval(() => {
 }, 25000); // 25秒ごと（30秒のチェックイン前）
 
 if (otherId) {
+  // URL経由(SW通知タップ)の着信であれば、SDP到着を待つ間も画面に「着信中」を出す
+  if (urlCallId) {
+    currentCallId = urlCallId;
+    callRole = 'callee';
+    showCallOverlay();
+    setCallStatus(isVideoCall ? 'ビデオ着信中...' : '着信中...');
+    if (!urlAction) {
+      document.getElementById('callBtnRow').style.display = 'none';
+      document.getElementById('incomingBtnRow').style.display = 'flex';
+    }
+  }
+
   // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行
   refreshPartnerProfile();
   // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
@@ -1276,7 +1371,11 @@ document.getElementById('replyBtn').onclick = () => {
     if (msg) {
       replyingTo = msgId;
       const preview = document.getElementById('replyPreview');
-      document.getElementById('replyText').textContent = msg.content.substring(0, 100);
+      const { displayText: rText, mediaType: rMediaType } = parseMsgContent(msg.content);
+      const rPreview = rMediaType === 'image' ? '[画像]'
+        : rMediaType === 'video' ? '[動画]'
+        : rText.substring(0, 100);
+      document.getElementById('replyText').textContent = rPreview;
       preview.style.display = 'block';
       setTimeout(() => { preview.style.opacity = '1'; }, 0);
       document.getElementById('msgInput').focus();
@@ -1337,17 +1436,35 @@ async function loadPinnedMessages() {
     }
 
     banner.style.display = 'flex';
-        list.innerHTML = pinned.map(p => {
-          const { displayText } = parseMsgContent(p.content, p);
-          const txt = displayText || 'メディア';
-          return `
-            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);">
-              <span style="color:#999;">●</span>
-              <span style="flex:1;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${txt.replace(/</g,'&lt;')}</span>
-              <span class="pin-close-btn" data-pin-id="${p.id}" style="cursor:pointer;color:#999;font-size:16px;padding:0 4px;">x</span>
-            </div>
-          `;
-        }).join('');
+    // 以前は txt.replace(/</g,'&lt;') のみで '&' '>' '"' はエスケープされておらず、
+    // 不完全なエスケープだった。DOM構築+textContentに切り替えて構造的に解消する。
+    list.textContent = '';
+    pinned.forEach(p => {
+      const { displayText } = parseMsgContent(p.content, p);
+      const txt = displayText || 'メディア';
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);';
+
+      const dot = document.createElement('span');
+      dot.style.color = '#999';
+      dot.textContent = '●';
+
+      const textSpan = document.createElement('span');
+      textSpan.style.cssText = 'flex:1;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      textSpan.textContent = txt;
+
+      const closeBtn = document.createElement('span');
+      closeBtn.className = 'pin-close-btn';
+      closeBtn.dataset.pinId = p.id;
+      closeBtn.style.cssText = 'cursor:pointer;color:#999;font-size:16px;padding:0 4px;';
+      closeBtn.textContent = 'x';
+
+      row.appendChild(dot);
+      row.appendChild(textSpan);
+      row.appendChild(closeBtn);
+      list.appendChild(row);
+    });
 
     list.querySelectorAll('.pin-close-btn').forEach(btn => {
       btn.onclick = () => {
@@ -1430,7 +1547,7 @@ const ICE_SERVERS = [
 ];
 
 let pc = null;             // RTCPeerConnection
-let localStream = null;    // マイク音声
+let localStream = null;    // マイク音声(+カメラ映像)
 let currentCallId = null;  // 現在の通話ID
 let callRole = null;       // 'caller' | 'callee'
 let callConnectTimer = null;
@@ -1438,6 +1555,9 @@ let callSeconds = 0;
 let isMuted = false;
 let wakeLock = null;       // 通話中の画面スリープ防止
 let pendingRemoteIce = [];  // remote description 到着前に届いたICE候補の一時保管
+let isVideoCall = urlIsVideoParam;    // 現在の通話がビデオ通話か（SW通知タップ時はURLパラメータで初期化）
+let isVideoEnabled = true;  // 自分のカメラがONか（ビデオ通話中のみ意味を持つ）
+let currentFacingMode = 'user'; // 'user'=インカメ, 'environment'=アウトカメ
 
 const callAvEl = document.getElementById('callAv');
 callAvEl.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
@@ -1501,18 +1621,23 @@ function sendSignal(type, extra) {
   }
 }
 
-async function getMic() {
+async function getMediaStream(isVideo) {
   try {
-    return await navigator.mediaDevices.getUserMedia({
+    const constraints = {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       },
-      video: false,
-    });
+      video: isVideo ? {
+        facingMode: currentFacingMode,
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+      } : false,
+    };
+    return await navigator.mediaDevices.getUserMedia(constraints);
   } catch (err) {
-    console.error('mic error:', err);
+    console.error('media error:', err);
     throw err;
   }
 }
@@ -1527,8 +1652,14 @@ function createPeerConnection() {
   };
 
   conn.ontrack = (e) => {
-    const audioEl = document.getElementById('remoteAudio');
-    audioEl.srcObject = e.streams[0];
+    if (e.track.kind === 'video') {
+      const videoEl = document.getElementById('remoteVideo');
+      videoEl.srcObject = e.streams[0];
+      videoEl.style.display = 'block';
+    } else {
+      const audioEl = document.getElementById('remoteAudio');
+      audioEl.srcObject = e.streams[0];
+    }
   };
 
   conn.onconnectionstatechange = () => {
@@ -1538,6 +1669,10 @@ function createPeerConnection() {
       startCallTimer();
       document.getElementById('muteBtn').style.display = 'flex';
       document.getElementById('speakerBtn').style.display = 'flex';
+      if (isVideoCall) {
+        document.getElementById('toggleVideoBtn').style.display = 'flex';
+        document.getElementById('flipCamBtn').style.display = 'flex';
+      }
       acquireWakeLock();
     } else if (['disconnected', 'failed', 'closed'].includes(conn.connectionState)) {
       // 相手側の回線都合の瞬断は自動再接続の余地があるため、failedのみ即終話とする
@@ -1564,26 +1699,48 @@ function cleanupCall() {
   currentCallId = null;
   callRole = null;
   isMuted = false;
+  isVideoCall = false;
+  isVideoEnabled = true;
+  currentFacingMode = 'user';
   pendingRemoteIce = [];
   const audioEl = document.getElementById('remoteAudio');
   audioEl.srcObject = null;
+  const remoteVideoEl = document.getElementById('remoteVideo');
+  remoteVideoEl.srcObject = null;
+  remoteVideoEl.style.display = 'none';
+  const localVideoEl = document.getElementById('localVideo');
+  localVideoEl.srcObject = null;
+  localVideoEl.style.display = 'none';
+  document.getElementById('toggleVideoBtn').style.display = 'none';
+  document.getElementById('flipCamBtn').style.display = 'none';
+  document.getElementById('callAv').style.display = '';
   hideCallOverlay();
+  // 通話中に保留していたService Worker自動更新のリロードがあれば、ここで反映する
+  if (window.__applyPendingSwReloadIfAny) window.__applyPendingSwReloadIfAny();
 }
 
 // --- 発信 ---
-async function startOutgoingCall() {
+async function startOutgoingCall(isVideo = false) {
   if (pc) return; // 既に通話中
   currentCallId = genCallId();
   callRole = 'caller';
+  isVideoCall = isVideo;
   showCallOverlay();
   setCallStatus('発信中...');
 
   try {
-    localStream = await getMic();
+    localStream = await getMediaStream(isVideo);
   } catch (err) {
-    setCallStatus('マイクにアクセスできません');
+    setCallStatus(isVideo ? 'カメラ/マイクにアクセスできません' : 'マイクにアクセスできません');
     setTimeout(hideCallOverlay, 1500);
     return;
+  }
+
+  if (isVideo) {
+    document.getElementById('callAv').style.display = 'none';
+    const localVideoEl = document.getElementById('localVideo');
+    localVideoEl.srcObject = localStream;
+    localVideoEl.style.display = 'block';
   }
 
   pc = createPeerConnection();
@@ -1591,7 +1748,7 @@ async function startOutgoingCall() {
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  sendSignal('call_offer', { sdp: offer });
+  sendSignal('call_offer', { sdp: offer, isVideo });
   setCallStatus('呼び出し中...');
 }
 
@@ -1606,9 +1763,20 @@ function onCallOffer(data) {
   }
   currentCallId = data.callId;
   callRole = 'callee';
+  isVideoCall = !!data.isVideo;
   window.__incomingOffer = data.sdp;
+  window.__incomingOffer_callId = data.callId;
+
+  // SW通知タップ経由で既にaccept/declineが指定されていれば、即座に実行して待たせない
+  if (pendingBgCallAction && pendingBgCallAction.callId === data.callId) {
+    const action = pendingBgCallAction.action;
+    pendingBgCallAction = null;
+    action === 'accept' ? acceptIncomingCall() : declineIncomingCall();
+    return;
+  }
+
   showCallOverlay();
-  setCallStatus('着信中...');
+  setCallStatus(isVideoCall ? 'ビデオ着信中...' : '着信中...');
   document.getElementById('callBtnRow').style.display = 'none';
   document.getElementById('incomingBtnRow').style.display = 'flex';
 
@@ -1624,12 +1792,19 @@ async function acceptIncomingCall() {
   setCallStatus('接続中...');
 
   try {
-    localStream = await getMic();
+    localStream = await getMediaStream(isVideoCall);
   } catch (err) {
-    setCallStatus('マイクにアクセスできません');
+    setCallStatus(isVideoCall ? 'カメラ/マイクにアクセスできません' : 'マイクにアクセスできません');
     sendSignal('call_reject', { reason: 'declined' });
     setTimeout(cleanupCall, 1500);
     return;
+  }
+
+  if (isVideoCall) {
+    document.getElementById('callAv').style.display = 'none';
+    const localVideoEl = document.getElementById('localVideo');
+    localVideoEl.srcObject = localStream;
+    localVideoEl.style.display = 'block';
   }
 
   pc = createPeerConnection();
@@ -1728,12 +1903,57 @@ async function toggleSpeaker() {
   } catch (e) { /* 非対応端末は無視 */ }
 }
 
-document.getElementById('phoneBtn').onclick = () => { startOutgoingCall(); };
+// 自分のカメラ映像のON/OFF切替（ビデオ通話中のみ）
+function toggleVideo() {
+  if (!localStream || !isVideoCall) return;
+  isVideoEnabled = !isVideoEnabled;
+  localStream.getVideoTracks().forEach(t => { t.enabled = isVideoEnabled; });
+  const localVideoEl = document.getElementById('localVideo');
+  const videoBtn = document.getElementById('toggleVideoBtn');
+  if (isVideoEnabled) {
+    localVideoEl.style.display = 'block';
+    videoBtn.style.background = 'rgba(255,255,255,.5)';
+  } else {
+    localVideoEl.style.display = 'none';
+    videoBtn.style.background = '#1e293b';
+  }
+}
+
+// インカメ/アウトカメ切替（モバイル端末向け）
+async function flipCamera() {
+  if (!localStream || !isVideoCall || !pc) return;
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+    });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+    if (sender) {
+      await sender.replaceTrack(newVideoTrack);
+    }
+    // 旧トラックを止めてlocalStreamを更新
+    localStream.getVideoTracks().forEach(t => t.stop());
+    localStream.removeTrack(localStream.getVideoTracks()[0]);
+    localStream.addTrack(newVideoTrack);
+    document.getElementById('localVideo').srcObject = localStream;
+  } catch (e) {
+    console.error('camera flip error:', e);
+    // 失敗時は元のfacingModeに戻す
+    currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  }
+}
+
+document.getElementById('phoneBtn').onclick = () => { startOutgoingCall(false); };
+document.getElementById('videoCallBtn').onclick = () => { startOutgoingCall(true); };
 document.getElementById('endBtn').onclick = () => { endCall(); };
 document.getElementById('acceptBtn').onclick = () => { acceptIncomingCall(); };
 document.getElementById('declineBtn').onclick = () => { declineIncomingCall(); };
 document.getElementById('muteBtn').onclick = () => { toggleMute(); };
 document.getElementById('speakerBtn').onclick = () => { toggleSpeaker(); };
+document.getElementById('toggleVideoBtn').onclick = () => { toggleVideo(); };
+document.getElementById('flipCamBtn').onclick = () => { flipCamera(); };
 
 // ページを離れる/リロード時に通話中なら相手へ確実に終話通知（Xiaomi等の強制終了対策）
 window.addEventListener('pagehide', () => {

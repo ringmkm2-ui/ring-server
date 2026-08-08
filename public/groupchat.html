@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>グループチャット</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1e293b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bro Chat">
+<link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -136,10 +143,6 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .cropimg{position:absolute;top:0;left:0;cursor:move;user-select:none;transform-origin:top left}
 .cropmask{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle 65px at center,transparent 99%,rgba(0,0,0,.6) 100%);pointer-events:none;border-radius:16px}
 .croprange{width:100%;margin-top:8px;display:none}
-.emojirow{display:flex;flex-wrap:wrap;gap:6px}
-.epbtn{font-size:20px;padding:5px 7px;border:none;background:rgba(255,255,255,.7);border-radius:10px;cursor:pointer;transition:transform .15s}
-.epbtn:hover{transform:scale(1.2)}
-.epbtn.sel{background:rgba(59,130,246,.15);outline:2px solid #3b82f6}
 .inv-row{display:flex;gap:8px;margin-top:10px}
 .inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
 .inv-btn{padding:10px 16px;background:#3b82f6;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
@@ -151,6 +154,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/pushSubscribe.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -162,7 +166,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.3 beta</div>
+  <div class="version-badge">Bro Chat v1.5 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -170,7 +174,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   <div class="hdr-wrap">
     <div class="hdr">
       <a href="talklist.html" class="back">←</a>
-      <div class="gav" id="gavEl" onclick="openGS()">💬</div>
+      <div class="gav" id="gavEl" onclick="openGS()"></div>
       <div class="hinfo" id="hinfoEl">
         <div class="gname" id="gnameEl">グループ</div>
         <div class="mcnt" id="mcntEl">メンバー 0人</div>
@@ -266,7 +270,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
       <div class="srow">
         <span class="slabel">グループアイコン</span>
         <div class="crop-wrap">
-          <div class="crop-prev" id="gCropPrev">💬</div>
+          <div class="crop-prev" id="gCropPrev"></div>
           <input type="file" class="crop-file" id="gImgFile" accept="image/*">
         </div>
       </div>
@@ -275,10 +279,6 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <div class="cropmask"></div>
       </div>
       <input type="range" class="croprange" id="gCropRange" min="0.1" max="3" step="0.01" value="1">
-      <div class="srow" style="margin-top:12px">
-        <span class="slabel">絵文字アイコン</span>
-        <div class="emojirow" id="emojiRow"></div>
-      </div>
       <div class="srow">
         <span class="slabel">グループ名</span>
         <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
@@ -298,7 +298,6 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 
 <script>
 const REACTIONS=['❤️','😂','👍','😮','😢','🔥','👏','🎉'];
-const EMOJIS=['💬','🔥','🌊','🎮','🎵','🍕','✨','🌸','⚡','🦋'];
 const COLORS=['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
 
 function nameColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))&0xffffffff;return COLORS[Math.abs(h)%COLORS.length]}
@@ -337,7 +336,7 @@ async function api(path, opts={}) {
 
 // gi(グループ情報)はサーバーから取得する。取得完了までは
 // URLパラメータのnameのみで暫定表示し、loadGroupInfo()完了後に更新する。
-let gi = { id: groupId, name: params.get('name') || 'グループ', emoji: '💬', avatarImg: '', members: [], ownerId: null };
+let gi = { id: groupId, name: params.get('name') || 'グループ', avatarImg: '', members: [], ownerId: null };
 
 async function loadGroupInfo(){
   try {
@@ -372,7 +371,6 @@ let isEditing=false,editNode=null,editMeta=null,editTargetMsgId=null;
 let reactTarget=null;
 let confCB=null;
 let cropX=0,cropY=0,cropS=1,cropDrag=false,cropSX=0,cropSY=0;
-let selEmoji='';
 
 const pp=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -382,8 +380,15 @@ function refreshHdr(){
   const cnt=gi.members.length;
   document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
   const av=document.getElementById('gavEl');
-  if(gi.avatarImg){av.style.backgroundImage=`url(${gi.avatarImg})`;av.textContent='';}
-  else{av.style.backgroundImage='';av.textContent=gi.emoji||'💬';}
+  if(gi.avatarImg){
+    av.style.backgroundImage=`url(${gi.avatarImg})`;
+    av.style.background='';
+    av.textContent='';
+  }else{
+    av.style.backgroundImage='';
+    av.style.background=nameColor(gi.name||'グループ');
+    av.textContent=(gi.name||'グループ').charAt(0);
+  }
 }
 refreshHdr();
 // loadGroupInfo()の呼び出しはファイル末尾でloadGroupMessages()より先に
@@ -395,15 +400,6 @@ REACTIONS.forEach(e=>{
   const b=document.createElement('button');b.className='rpbtn';b.textContent=e;
   b.onclick=()=>{if(reactTarget)addReact(reactTarget,e);rp.classList.remove('show');};
   rp.appendChild(b);
-});
-
-// 絵文字選択
-const er=document.getElementById('emojiRow');
-EMOJIS.forEach(e=>{
-  const b=document.createElement('button');b.className='epbtn';b.textContent=e;
-  if(e===gi.emoji)b.classList.add('sel');
-  b.onclick=()=>{document.querySelectorAll('.epbtn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');selEmoji=e;};
-  er.appendChild(b);
 });
 
 function addReact(wrap,emoji){
@@ -821,9 +817,16 @@ document.getElementById('invBtn').onclick=()=>{
 function openGS(){
   document.getElementById('gNameIn').value=gi.name;
   const prev=document.getElementById('gCropPrev');
-  if(gi.avatarImg){prev.style.backgroundImage=`url(${gi.avatarImg})`;prev.textContent='';}
-  else{prev.style.backgroundImage='';prev.textContent=gi.emoji||'💬';}
-  document.querySelectorAll('.epbtn').forEach(b=>b.classList.toggle('sel',b.textContent===gi.emoji));
+  if(gi.avatarImg){
+    prev.style.backgroundImage=`url(${gi.avatarImg})`;
+    prev.style.background='';
+    prev.textContent='';
+  }else{
+    prev.style.backgroundImage='';
+    prev.style.background=nameColor(gi.name||'グループ');
+    prev.style.color='#fff';
+    prev.textContent=(gi.name||'グループ').charAt(0);
+  }
   document.getElementById('gsOv').classList.add('show');
 }
 document.getElementById('gsOv').onclick=e=>{if(e.target===document.getElementById('gsOv'))document.getElementById('gsOv').classList.remove('show');};
@@ -853,7 +856,6 @@ document.getElementById('gCropRange').oninput=e=>{cropS=parseFloat(e.target.valu
 
 document.getElementById('gSaveBtn').onclick=()=>{
   const name=document.getElementById('gNameIn').value.trim();if(name)gi.name=name;
-  const selEm=document.querySelector('.epbtn.sel');
   if(gImgSrc&&document.getElementById('gCropBox').style.display!=='none'){
     // キャンバスでクロップ
     const box=document.getElementById('gCropBox');
@@ -865,7 +867,7 @@ document.getElementById('gSaveBtn').onclick=()=>{
     const cw=130/cropS,ch=130/cropS;
     ctx.drawImage(img,sx-cw/2,sy-ch/2,cw,ch,0,0,130,130);
     gi.avatarImg=canvas.toDataURL();
-  }else if(selEm){gi.emoji=selEm.textContent;gi.avatarImg='';}
+  }
   saveGI(gi);refreshHdr();
   document.getElementById('gsOv').classList.remove('show');
   document.getElementById('gCropBox').style.display='none';
