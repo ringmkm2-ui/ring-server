@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Bro Chat">
 <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
+<link rel="stylesheet" href="/css/liquidGlass.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -110,9 +111,11 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
 .mm-close{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
-.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(238,242,249,.4);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .4s ease}
+.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(238,242,249,.4);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
 .call-overlay.show{opacity:1;pointer-events:auto}
-.call-card{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.5);padding:40px 60px;border-radius:32px;box-shadow:0 20px 50px rgba(0,0,0,.06);text-align:center}
+/* call-cardは liquidGlass.css の .glass-regular をベースに使う(JSでクラス付与)。
+   ここではレイアウトのみ定義し、素材の見た目(背景/ぼかし/縁の光沢)はglass-regularに任せる。 */
+.call-card{display:flex;flex-direction:column;align-items:center;padding:40px 60px;border-radius:32px;text-align:center}
 .call-av{width:90px;height:90px;border-radius:50%;margin-bottom:20px;box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;color:#fff;background-size:cover;background-position:center}
 .call-name{font-size:22px;font-weight:700;color:#1e293b;margin-bottom:8px}
 .call-status{font-size:15px;font-weight:600;color:#64748b;margin-bottom:40px}
@@ -123,6 +126,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3"></script>
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util"></script>
@@ -137,7 +141,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.5 beta</div>
+  <div class="version-badge">Bro Chat v1.6 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -225,32 +229,32 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   <div class="call-overlay" id="callOv">
     <video id="remoteVideo" autoplay playsinline style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0"></video>
     <video id="localVideo" autoplay playsinline muted style="display:none;position:absolute;top:16px;right:16px;width:100px;height:140px;border-radius:12px;object-fit:cover;background:#000;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.6)"></video>
-    <div class="call-card" id="callCard" style="position:relative;z-index:1">
+    <div class="call-card glass-regular" id="callCard" style="position:relative;z-index:1">
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus">呼び出し中...</div>
       <div id="callBtnRow" style="display:flex;gap:20px;align-items:center;margin-top:10px">
-        <button class="call-mute-btn" id="muteBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <button class="call-mute-btn glass-clear glass-interactive" id="muteBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="muteIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
-        <button class="call-video-btn" id="toggleVideoBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);align-items:center;justify-content:center;cursor:pointer">
+        <button class="call-video-btn glass-clear glass-interactive" id="toggleVideoBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="videoIcon"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         </button>
-        <button class="end-btn" id="endBtn" type="button">
+        <button class="end-btn glass-interactive" id="endBtn" type="button" data-no-auto-haptic="1">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
-        <button class="call-speaker-btn" id="speakerBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <button class="call-speaker-btn glass-clear glass-interactive" id="speakerBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
         </button>
-        <button class="call-flip-btn" id="flipCamBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);align-items:center;justify-content:center;cursor:pointer">
+        <button class="call-flip-btn glass-clear glass-interactive" id="flipCamBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
       </div>
       <div id="incomingBtnRow" style="display:none;gap:28px;align-items:center;margin-top:10px">
-        <button id="declineBtn" type="button" style="width:56px;height:56px;border-radius:50%;background:#ef4444;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(239,68,68,.4)">
+        <button id="declineBtn" class="glass-interactive" type="button" data-no-auto-haptic="1" style="width:56px;height:56px;border-radius:50%;background:#ef4444;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(239,68,68,.4)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
-        <button id="acceptBtn" type="button" style="width:56px;height:56px;border-radius:50%;background:#22c55e;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(34,197,94,.4)">
+        <button id="acceptBtn" class="glass-interactive" type="button" data-no-auto-haptic="1" style="width:56px;height:56px;border-radius:50%;background:#22c55e;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(34,197,94,.4)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
       </div>
@@ -480,6 +484,11 @@ const pAv = document.getElementById('partnerAv');
 pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
 pAv.textContent = partnerName.charAt(0);
 document.getElementById('partnerName').textContent = partnerName;
+// talklist.htmlのトーク一覧アバターから、このヘッダーアバターへ滑らかにモーフィングする
+// (Cross-Document View Transitions、talklist.html側のglassMorphTag('chat-avatar')と対になる)
+if ('viewTransitionName' in pAv.style) {
+  pAv.style.viewTransitionName = 'chat-avatar';
+}
 
 // 通話オーバーレイ → パートナーを表示（自分じゃない）
 const callAv = document.getElementById('callAv');
@@ -502,6 +511,7 @@ REACTIONS.forEach(e => {
   b.type = 'button';
   b.className = 'rp-btn'; b.textContent = e;
   b.onclick = () => {
+    if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
     const msgId = activeMsg ? activeMsg.dataset.msgId : null;
     if (msgId) {
       api('/api/messages/react', { method: 'POST', body: JSON.stringify({ messageId: msgId, emoji: e }) })
@@ -602,6 +612,7 @@ document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
+  if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   document.getElementById('msgInput').value = '';
   document.getElementById('inputBar').classList.remove('media-open');
 
@@ -792,6 +803,9 @@ function parseMsgContent(content, msg) {
 // レンダリングキューとバッチ処理（複数のrenderMessage呼び出しを集約）
 let renderQueue = [];
 let renderScheduled = false;
+// 履歴の一括読み込み中はtrueにして、メッセージ出現アニメーションを抑制する
+// (initialLoadHistory参照)
+let isBulkHistoryLoad = false;
 
 function queueRender(msg) {
   renderQueue.push(msg);
@@ -939,6 +953,11 @@ function renderMessageImpl(msg) {
     cs.appendChild(msgDiv);
     msgDOMCache.set(msg.id, msgDiv); // キャッシュに登録
     cs.scrollTop = 99999;
+    // 履歴の一括読み込み中でなければ、ガラスが凝縮するように出現させる
+    // (リアルタイム受信・自分の送信直後のみ演出する)
+    if (!isBulkHistoryLoad && window.LiquidGlass) {
+      window.LiquidGlass.materializeIn(msgDiv, true);
+    }
   }
 
   attachPress(msgDiv, wrap, bubble, isMine);
@@ -1183,6 +1202,10 @@ document.getElementById('msgInput').addEventListener('input', () => {
 });
 
 async function initialLoadHistory() {
+  // 履歴の一括読み込み中は、メッセージ1件ごとの出現アニメーション(materialize)を
+  // 抑制する。何十件も同時にアニメーションさせると視覚的にうるさく、
+  // 低スペック端末では描画負荷にもなるため、リアルタイム受信時のみ演出する。
+  isBulkHistoryLoad = true;
   try {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
@@ -1205,6 +1228,8 @@ async function initialLoadHistory() {
     }
   } catch (err) {
     console.error('initialLoadHistory error:', err);
+  } finally {
+    isBulkHistoryLoad = false;
   }
 }
 
@@ -1346,6 +1371,7 @@ function attachPress(msgDiv, wrap, bubble, own) {
 
 function showMenu(msgDiv, wrap, bubble, x, y, own) {
   activeMsg = msgDiv; activeBubble = bubble; isOwn = own; reactTarget = wrap;
+  if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   const hasText = bubble.querySelector('.msg-text');
   document.getElementById('editBtn').style.display = own && hasText ? 'flex' : 'none';
   document.getElementById('delBtn').style.display = own ? 'flex' : 'none';
@@ -1591,6 +1617,11 @@ function setCallStatus(text) {
 
 function showCallOverlay() {
   document.getElementById('callOv').classList.add('show');
+  // 通話カードがガラスとして凝縮しながら現れる演出 + 軽い触感フィードバック
+  if (window.LiquidGlass) {
+    window.LiquidGlass.materializeIn(document.getElementById('callCard'));
+    window.LiquidGlass.haptic('medium');
+  }
 }
 function hideCallOverlay() {
   document.getElementById('callOv').classList.remove('show');
@@ -1667,11 +1698,24 @@ function createPeerConnection() {
     if (conn.connectionState === 'connected') {
       setCallStatus('00:00');
       startCallTimer();
-      document.getElementById('muteBtn').style.display = 'flex';
-      document.getElementById('speakerBtn').style.display = 'flex';
+      if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+      const muteBtn = document.getElementById('muteBtn');
+      const speakerBtn = document.getElementById('speakerBtn');
+      muteBtn.style.display = 'flex';
+      speakerBtn.style.display = 'flex';
+      if (window.LiquidGlass) {
+        window.LiquidGlass.materializeIn(muteBtn, true);
+        window.LiquidGlass.materializeIn(speakerBtn, true);
+      }
       if (isVideoCall) {
-        document.getElementById('toggleVideoBtn').style.display = 'flex';
-        document.getElementById('flipCamBtn').style.display = 'flex';
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const flipCamBtn = document.getElementById('flipCamBtn');
+        toggleVideoBtn.style.display = 'flex';
+        flipCamBtn.style.display = 'flex';
+        if (window.LiquidGlass) {
+          window.LiquidGlass.materializeIn(toggleVideoBtn, true);
+          window.LiquidGlass.materializeIn(flipCamBtn, true);
+        }
       }
       acquireWakeLock();
     } else if (['disconnected', 'failed', 'closed'].includes(conn.connectionState)) {
@@ -1787,6 +1831,7 @@ function onCallOffer(data) {
 }
 
 async function acceptIncomingCall() {
+  if (window.LiquidGlass) window.LiquidGlass.haptic('success');
   document.getElementById('incomingBtnRow').style.display = 'none';
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('接続中...');
@@ -1822,6 +1867,7 @@ async function acceptIncomingCall() {
 }
 
 function declineIncomingCall() {
+  if (window.LiquidGlass) window.LiquidGlass.haptic('error');
   sendSignal('call_reject', { reason: 'declined' });
   cleanupCall();
 }
@@ -1848,6 +1894,7 @@ async function onCallIce(data) {
 
 function onCallReject(data) {
   if (data.callId !== currentCallId) return;
+  if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
   setCallStatus(data.reason === 'busy' ? '通話中です' : '応答がありませんでした');
   setTimeout(cleanupCall, 1500);
 }
@@ -1860,11 +1907,13 @@ function onCallEnd(data) {
 
 function onCallUnavailable(data) {
   if (data.callId !== currentCallId) return;
+  if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
   setCallStatus('相手はオフラインです');
   setTimeout(cleanupCall, 1500);
 }
 
 function endCall() {
+  if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
   if (currentCallId) {
     sendSignal('call_end', {});
   }
@@ -1877,11 +1926,14 @@ function toggleMute() {
   localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
   const muteIcon = document.getElementById('muteIcon');
   const muteBtn = document.getElementById('muteBtn');
+  if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   if (isMuted) {
-    muteBtn.style.background = '#1e293b';
+    muteBtn.classList.remove('glass-clear');
+    muteBtn.classList.add('glass-btn-off');
     muteIcon.setAttribute('stroke', '#fff');
   } else {
-    muteBtn.style.background = 'rgba(255,255,255,.5)';
+    muteBtn.classList.add('glass-clear');
+    muteBtn.classList.remove('glass-btn-off');
     muteIcon.setAttribute('stroke', '#1e293b');
   }
 }
@@ -1910,12 +1962,17 @@ function toggleVideo() {
   localStream.getVideoTracks().forEach(t => { t.enabled = isVideoEnabled; });
   const localVideoEl = document.getElementById('localVideo');
   const videoBtn = document.getElementById('toggleVideoBtn');
+  if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   if (isVideoEnabled) {
     localVideoEl.style.display = 'block';
-    videoBtn.style.background = 'rgba(255,255,255,.5)';
+    videoBtn.classList.add('glass-clear');
+    videoBtn.classList.remove('glass-btn-off');
   } else {
     localVideoEl.style.display = 'none';
-    videoBtn.style.background = '#1e293b';
+    // オフ状態は「無効化」を視覚的に示すため、透明なガラスではなく
+    // 不透明な暗色に切り替える(glass-clearだとOFFに見えづらいため)
+    videoBtn.classList.remove('glass-clear');
+    videoBtn.classList.add('glass-btn-off');
   }
 }
 

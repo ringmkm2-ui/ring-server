@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Bro Chat">
 <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
+<link rel="stylesheet" href="/css/liquidGlass.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;min-height:100vh}
@@ -102,6 +103,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 </head>
 <body>
@@ -178,7 +180,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </div>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.5 beta</div>
+  <div class="version-badge">Bro Chat v1.6 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -402,7 +404,10 @@ async function loadTalks() {
 
         item.appendChild(av);
         item.appendChild(body);
-        item.addEventListener('click', () => openGroupChat(t.groupId, t.displayName));
+        item.addEventListener('click', () => {
+          if (window.LiquidGlass) window.LiquidGlass.glassMorphTag(av, 'chat-avatar');
+          openGroupChat(t.groupId, t.displayName);
+        });
       } else {
         av.className = 'tav';
         setAvatarBackground(av, t.profilePic, (t.displayName || '?')[0]);
@@ -435,7 +440,13 @@ async function loadTalks() {
           item.appendChild(badge);
         }
 
-        item.addEventListener('click', () => openChat(t.userId, t.displayName));
+        // クリックされたアバターにタグを付けてから遷移することで、
+        // チャット画面のヘッダーアバターへ滑らかにモーフィングする
+        // (Cross-Document View Transitions、matchedGeometryEffect相当)。
+        item.addEventListener('click', () => {
+          if (window.LiquidGlass) window.LiquidGlass.glassMorphTag(av, 'chat-avatar');
+          openChat(t.userId, t.displayName);
+        });
       }
 
       list.appendChild(item);

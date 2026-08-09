@@ -1,0 +1,206 @@
+/* ==========================================================================
+   Liquid Glass デザインシステム
+   ==========================================================================
+   Apple の Liquid Glass (WWDC 2025, iOS/iPadOS/macOS 26) をWeb技術で近似する
+   実装。ネイティブの glassEffect() / GlassEffectContainer はSwiftUI専用の
+   レンダリング機能(実時間の光学屈折・鏡面ハイライト)を持つため完全な再現は
+   不可能だが、CSSのbackdrop-filter・View Transitions API・Vibration APIの
+   組み合わせで、同じ設計原則(素材の二層構造・控えめな使用・状態に応じた
+   適応)を踏襲した近似を作る。
+
+   2つのバリアント:
+   - Regular: 背景の濃淡に適応し、可読性を保つバランス型。ほとんどの
+     コントロール(ボタン・ナビゲーション・カード)に使うデフォルト。
+   - Clear: より透過的でフィルタが弱く、背景を活かす。動画通話画面など
+     メディアリッチな背景の上でのみ、小さな要素に限定して使う
+     (Appleのガイドライン通り、多用すると可読性を損なうため乱用しない)。
+   ========================================================================== */
+
+:root {
+  --glass-blur-regular: 24px;
+  --glass-blur-clear: 36px;
+  --glass-saturate: 180%;
+
+  --glass-regular-bg: rgba(255, 255, 255, 0.55);
+  --glass-regular-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-clear-bg: rgba(255, 255, 255, 0.10);
+  --glass-border-regular: rgba(255, 255, 255, 0.6);
+  --glass-border-clear: rgba(255, 255, 255, 0.32);
+
+  --glass-shadow-regular: 0 8px 32px rgba(15, 23, 42, 0.14);
+  --glass-shadow-clear: 0 4px 24px rgba(15, 23, 42, 0.22);
+
+  /* Appleのスプリングアニメーションに寄せたイージング。
+     .interactive() の軽いオーバーシュート感を再現する。 */
+  --glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glass-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- Regular: デフォルトのガラス素材 ---- */
+.glass-regular {
+  background: var(--glass-regular-bg);
+  backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-regular);
+  box-shadow: var(--glass-shadow-regular), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  position: relative;
+  isolation: isolate;
+}
+
+/* 強調用(プロミネントボタン相当): やや不透明度を上げて視認性を強める */
+.glass-regular-strong {
+  background: var(--glass-regular-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-regular);
+  box-shadow: var(--glass-shadow-regular), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+/* ---- Clear: 高透過ガラス素材(メディア上の小さな要素に限定して使う) ---- */
+.glass-clear {
+  background: var(--glass-clear-bg);
+  backdrop-filter: blur(var(--glass-blur-clear)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-clear)) saturate(140%);
+  border: 1px solid var(--glass-border-clear);
+  box-shadow: var(--glass-shadow-clear);
+}
+
+/* トグル系ボタンの「オフ」状態: ガラスの透明感だとOFFが伝わりにくいため、
+   意図的に不透明な暗色へ切り替える(ビデオ/マイクのミュート時など) */
+.glass-btn-off {
+  background: rgba(30, 41, 59, 0.92) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+.glass-btn-off svg { stroke: #fff !important; }
+
+/* 鏡面ハイライト: 上端に薄い光の帯を乗せ、ガラスらしい反射感を出す。
+   mix-blend-modeで下地の色を活かしつつ光沢だけ重ねる。 */
+.glass-regular::before,
+.glass-regular-strong::before,
+.glass-clear::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 45%);
+  opacity: 0.45;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
+}
+.glass-regular > *, .glass-regular-strong > *, .glass-clear > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Interactive: タップへの反応(スケール+シマー) ---- */
+.glass-interactive {
+  transition: transform 0.28s var(--glass-spring), box-shadow 0.28s var(--glass-ease), background 0.2s ease;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.glass-interactive:active {
+  transform: scale(0.94);
+}
+@media (hover: hover) {
+  .glass-interactive:hover {
+    box-shadow: var(--glass-shadow-regular), inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* ---- Materialize: 要素がガラスとして「凝縮」して現れる入場アニメーション ---- */
+@keyframes glass-materialize {
+  from {
+    opacity: 0;
+    transform: scale(0.86) translateY(6px);
+    filter: blur(14px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+.glass-materialize {
+  animation: glass-materialize 0.5s var(--glass-spring) both;
+}
+
+@keyframes glass-dematerialize {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+    filter: blur(10px);
+  }
+}
+.glass-dematerialize {
+  animation: glass-dematerialize 0.28s var(--glass-ease) both;
+}
+
+/* メッセージバブル等、連続して現れる要素向けの軽量版(ブラーを省いて負荷を抑える) */
+@keyframes glass-materialize-light {
+  from { opacity: 0; transform: scale(0.94) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.glass-materialize-light {
+  animation: glass-materialize-light 0.32s var(--glass-spring) both;
+}
+
+/* ---- Fluid Morphing: View Transitions API と組み合わせて使う土台 ----
+   個々の要素に一意な view-transition-name を振ると、
+   document.startViewTransition() でDOM更新を挟んだ際にブラウザが
+   自動で形状・位置を補間してくれる(matchedGeometryEffectに近い体験)。
+   実際の名前指定はJS側(liquidGlass.js の glassMorphTag)で動的に行う。 */
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 0.45s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Cross-Document View Transitions: talklist.html → admin.html/groupchat.html の
+   ような「別ページへの遷移」でも、同一オリジンかつ両ページがこの宣言を
+   持っていればブラウザが自動でモーフィングしてくれる(Chrome 126+)。
+   これにより、トーク一覧のアバターがチャット画面のヘッダーアバターへ
+   滑らかに変形しながら遷移する、SwiftUIのmatchedGeometryEffectに相当する
+   体験をページ遷移をまたいで実現できる。
+   対応ブラウザではJSのglassMorphTag()で振ったview-transition-nameと
+   組み合わせて動作し、非対応ブラウザでは単に即座にページが切り替わるだけ
+   (機能が失われるだけで、エラーにはならない)。 */
+@view-transition {
+  navigation: auto;
+}
+
+/* Reduced Motion: OSの「視差効果を減らす」設定を尊重し、
+   アニメーションを大幅に短縮する(Appleも同様のアクセシビリティ配慮を要求している) */
+@media (prefers-reduced-motion: reduce) {
+  .glass-materialize,
+  .glass-dematerialize,
+  .glass-materialize-light,
+  .glass-interactive {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ダークモード: globalTheme.css の .dark-mode クラスと連動 */
+.dark-mode .glass-regular,
+.dark-mode .glass-regular-strong {
+  background: rgba(30, 41, 59, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.dark-mode .glass-clear {
+  background: rgba(15, 23, 42, 0.18);
+  border-color: rgba(255, 255, 255, 0.14);
+}

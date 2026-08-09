@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Bro Chat">
 <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/globalTheme.css">
+<link rel="stylesheet" href="/css/liquidGlass.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -154,6 +155,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 </head>
 <body>
@@ -166,7 +168,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.5 beta</div>
+  <div class="version-badge">Bro Chat v1.6 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -389,6 +391,11 @@ function refreshHdr(){
     av.style.background=nameColor(gi.name||'グループ');
     av.textContent=(gi.name||'グループ').charAt(0);
   }
+  // talklist.htmlのトーク一覧アバターから、このヘッダーアバターへ滑らかにモーフィングする
+  // (Cross-Document View Transitions、talklist.html側のglassMorphTag('chat-avatar')と対になる)
+  if ('viewTransitionName' in av.style) {
+    av.style.viewTransitionName = 'chat-avatar';
+  }
 }
 refreshHdr();
 // loadGroupInfo()の呼び出しはファイル末尾でloadGroupMessages()より先に
@@ -398,7 +405,7 @@ refreshHdr();
 const rp=document.getElementById('rpicker');
 REACTIONS.forEach(e=>{
   const b=document.createElement('button');b.className='rpbtn';b.textContent=e;
-  b.onclick=()=>{if(reactTarget)addReact(reactTarget,e);rp.classList.remove('show');};
+  b.onclick=()=>{if(window.LiquidGlass)window.LiquidGlass.haptic('selection');if(reactTarget)addReact(reactTarget,e);rp.classList.remove('show');};
   rp.appendChild(b);
 });
 
@@ -449,7 +456,7 @@ async function handleMediaGroup(f,t){
 
     // 楽観的更新: 送信直後に自分の画面へ即座に表示
     const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
-    const msgDiv=createMsg(caption,{mediaType:t,mediaData:base64},false,null,tempId);
+    const msgDiv=createMsg(caption,{mediaType:t,mediaData:base64},false,null,tempId,null,true);
 
     try {
       const data = await api('/api/groups/'+groupId+'/messages/send',{
@@ -473,6 +480,7 @@ document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
   const txt=document.getElementById('mi').value.trim();
   if(!txt)return;
+  if(window.LiquidGlass) window.LiquidGlass.haptic('light');
 
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
@@ -509,7 +517,7 @@ document.getElementById('tform').onsubmit=async e=>{
 
   // 新規送信: 楽観的更新で即座に表示し、サーバー応答で正式なmsgIdに差し替える
   const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
-  const msgDiv=createMsg(txt,null,false,null,tempId);
+  const msgDiv=createMsg(txt,null,false,null,tempId,null,true);
 
   try{
     const data=await api('/api/groups/'+groupId+'/messages/send',{
@@ -532,7 +540,7 @@ document.getElementById('tform').onsubmit=async e=>{
 // member: 送信者情報(incoming時のみ使用)
 // msgId: サーバー側のメッセージID(編集・削除・既読・ピン留めの対象特定に必須)
 // createdAt: サーバーが記録した送信時刻(未指定時は現在時刻)
-function createMsg(text,media,incoming,member,msgId,createdAt){
+function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   const cs=document.getElementById('cs');
   const msgDiv=document.createElement('div');
   const isInc=!!incoming;
@@ -584,6 +592,12 @@ function createMsg(text,media,incoming,member,msgId,createdAt){
   msgDiv.appendChild(wrap);
   cs.appendChild(msgDiv);
   cs.scrollTop=99999;
+  // 履歴の一括読み込みではなく、自分の送信直後・リアルタイム受信の時だけ
+  // ガラスが凝縮するように出現させる(大量の履歴に一斉適用すると
+  // 視覚的にうるさく描画負荷にもなるため)
+  if(isRealtime&&window.LiquidGlass){
+    window.LiquidGlass.materializeIn(msgDiv,true);
+  }
 
   // 長押しイベント: 自分のメッセージのみ編集/取り消し
   attachPress(msgDiv,wrap,bub,!isInc);
@@ -654,6 +668,7 @@ function attachPress(msgDiv,wrap,bub,own){
 
 function showMenu(msgDiv,wrap,bub,x,y,own){
   activeMsg=msgDiv;activeBubble=bub;activeWrap=wrap;isOwn=own;reactTarget=wrap;
+  if(window.LiquidGlass)window.LiquidGlass.haptic('selection');
   const hasText=bub.querySelector('.msg-text');
   document.getElementById('editBtn').style.display=own&&hasText?'flex':'none';
   document.getElementById('delBtn').style.display=own?'flex':'none';
@@ -968,7 +983,7 @@ function connectGroupWS(){
         if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
         const member=gi.members.find(m=>m.id===msg.senderId);
         const{text,media}=parseMsgContent(msg.content);
-        createMsg(text,media,true,member,msg.id,msg.createdAt);
+        createMsg(text,media,true,member,msg.id,msg.createdAt,true);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)
         if(document.hidden){
