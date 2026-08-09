@@ -48,9 +48,17 @@ async function main() {
   // デフォルトのContent-Security-Policyは今回は無効化し個別のヘッダーのみ有効化する。
   // (CSPを厳格にするには全インラインscript/styleの棚卸しが必要で、今回のスコープでは
   //  誤ってアプリを壊すリスクの方が大きいため見送り、まずは他の重要ヘッダーを効かせる)
+  //
+  // crossOriginOpenerPolicy: helmetのデフォルト(same-origin)は、Google Sign-In
+  // (accounts.google.com/gsi/...)のポップアップが親ウィンドウと通信する経路を
+  // 遮断してしまい、「accounts.google.com/gsi/transformで止まる」「ポップアップが
+  // 空白のまま固まる」といったログイン不能の不具合を引き起こす。
+  // Google公式ドキュメントの推奨に従い same-origin-allow-popups を設定する
+  // (完全無効化(unsafe-none)よりもセキュリティを保てるため、こちらを優先する)。
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   }));
 
   app.use(cors({
