@@ -22,8 +22,11 @@ body.has-custom-bg .pc{background:transparent}
 .bgo{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:1}
 .tp{position:relative;z-index:2;height:100%;display:flex;flex-direction:column}
 .ahdr{display:flex;justify-content:center;align-items:center;padding:20px 0 10px}
-.sc{position:relative;display:inline-flex;background:rgba(255,255,255,.2);backdrop-filter:blur(25px) saturate(180%) url(#glassFrost);-webkit-backdrop-filter:blur(25px) saturate(180%);border:1.5px solid rgba(255,255,255,.6);padding:6px;border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.08)}
-.sslider{position:absolute;top:4px;left:4px;width:90px;height:calc(100% - 8px);background:rgba(255,255,255,.5);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);border:1px solid rgba(255,255,255,.7);border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
+/* .sc(セグメントコントロールの外枠)と.sslider(選択中インジケータ)は
+   素材(背景/ぼかし/縁)をliquidGlass.cssの.glass-clearに統一し、
+   ここでは形状・レイアウトのみ定義する。 */
+.sc{position:relative;display:inline-flex;padding:6px;border-radius:999px}
+.sslider{position:absolute;top:4px;left:4px;width:90px;height:calc(100% - 8px);border-radius:999px;transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
 .sbtn{position:relative;z-index:2;background:none;border:none;outline:none;width:90px;padding:8px 0;font-size:14px;font-weight:700;color:rgba(15,23,42,.4);cursor:pointer;text-align:center;transition:color .3s ease}
 .sbtn.active{color:#0f172a}
 .tc{flex:1;padding:0 16px 16px;overflow-y:auto}
@@ -40,7 +43,9 @@ body.has-custom-bg .pc{background:transparent}
 .tmsg{font-size:13px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .slabel{font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.05em}
 .ngbtn{display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;border:none;background:none;width:100%;border-bottom:1px solid rgba(15,23,42,.05)}
-.ngicon{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 8px 24px rgba(0,0,0,.08);color:#0f172a}
+/* ngicon: 「新しいグループを作成」行のプラスアイコン背景。
+   素材はliquidGlass.cssの.glass-clearに統一し、形状のみ定義する。 */
+.ngicon{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#0f172a}
 .nglabel{font-weight:700;color:#0f172a;font-size:14px}
 .hha{display:flex;justify-content:space-between;align-items:center;width:100%}
 .mypro{display:flex;align-items:center;gap:14px}
@@ -79,27 +84,25 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   background-image:linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px);
   background-size:calc(140px/3) calc(140px/3);}
 .ranger{width:100%;margin-top:10px;display:none}
-.savebtn{width:100%;padding:14px;background:#0f172a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
-.cancelbtn{width:100%;padding:14px;background:rgba(15,23,42,.06);color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
-.btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
+/* savebtn/cancelbtn/btn-glass: 主要アクションボタンも含めてClear Glassに統一。
+   素材(背景/ぼかし/縁)はliquidGlass.cssの.glass-clearに任せ、ここでは
+   レイアウト・文字色のみ定義する。主要アクション(保存/作成)は文字を太字化して
+   視認性を保つ。 */
+.savebtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
+.cancelbtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+.btn-glass{position:relative;padding:12px 24px;border-radius:12px;color:#0f172a;font-weight:600;cursor:pointer}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
+/* glass-plus-btn: 友達追加ボタン。素材はliquidGlass.cssの.glass-clearに統一し、
+   ここでは形状と「+」アイコン(::before/::after の十字線)のみ定義する。 */
 .glass-plus-btn{
   position:absolute;right:20px;top:70px;width:40px;height:40px;border-radius:50%;
-  background:rgba(255,255,255,.08);border:none;
-  box-shadow:0 0 0 1px rgba(255,255,255,.5),0 6px 14px rgba(0,0,0,.1);
-  backdrop-filter:url(#plusGlass);-webkit-backdrop-filter:blur(6px);
-  color:transparent;font-size:0;cursor:pointer;display:grid;place-items:center;
-  flex-shrink:0;padding:0;transition:transform .35s cubic-bezier(.25,1,.5,1),box-shadow .35s ease;outline:0;
+  border:none;color:transparent;font-size:0;cursor:pointer;display:grid;place-items:center;
+  flex-shrink:0;padding:0;outline:0;
 }
 .glass-plus-btn::before,.glass-plus-btn::after{content:"";position:absolute;background:#0f172a;border-radius:10px}
 .glass-plus-btn::before{width:40%;height:2px}
 .glass-plus-btn::after{width:2px;height:40%}
-.glass-plus-btn:hover{
-  box-shadow:0 0 0 1px rgba(255,255,255,.7),0 10px 20px rgba(0,0,0,.15);
-  transform:scale(1.06);
-}
-.glass-plus-btn:active{transform:scale(0.94);box-shadow:0 0 0 1px rgba(255,255,255,.4),0 3px 8px rgba(0,0,0,.08);}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
@@ -123,24 +126,24 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   <div class="bgo"></div>
   <div class="tp">
     <header class="ahdr">
-      <div class="sc">
-        <div class="sslider" id="slider"></div>
-        <button class="sbtn active" id="btnTalk" type="button">トーク</button>
-        <button class="sbtn" id="btnHome" type="button">ホーム</button>
+      <div class="sc glass-clear">
+        <div class="sslider glass-clear" id="slider"></div>
+        <button class="sbtn active glass-interactive" id="btnTalk" type="button">トーク</button>
+        <button class="sbtn glass-interactive" id="btnHome" type="button">ホーム</button>
       </div>
     </header>
     <main class="tc">
       <section id="pageTalk">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" class="glass-plus-btn" aria-label="友達を追加"></button>
+          <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
           <div class="slabel">グループ</div>
           <div>
             <button class="ngbtn" id="ngBtn" type="button">
-              <div class="ngicon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+              <div class="ngicon glass-clear"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
               <span class="nglabel">新しいグループを作成</span>
             </button>
             <div id="groupList"></div>
@@ -157,7 +160,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
                 <div id="myIdCode" style="font-size:12px;color:#64748b;margin-top:2px;">ID: 読み込み中...</div>
               </div>
             </div>
-            <button class="sibtn" id="openSettings" type="button">
+            <button class="sibtn glass-interactive" id="openSettings" type="button">
               <svg class="siico" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                 <defs><linearGradient id="g1" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#afafb3"/><stop offset="100%" stop-color="#8e8e93"/></linearGradient></defs>
                 <rect width="100" height="100" rx="22" fill="url(#g1)"/>
@@ -180,7 +183,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </div>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.6 beta</div>
+  <div class="version-badge">Bro Chat v1.7 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -212,8 +215,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <label class="toggle-switch"><input type="checkbox" id="toggleBatterySaver"><span class="toggle-slider"></span></label>
       </div>
     </div>
-    <button class="savebtn btn-glass" id="saveSettings" type="button">変更を適用して閉じる</button>
-    <button onclick="logout()" style="width:100%;padding:14px;background:#fee2e2;color:#ef4444;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
+    <button class="savebtn btn-glass glass-clear glass-interactive" id="saveSettings" type="button">変更を適用して閉じる</button>
+    <button onclick="logout()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
   </div>
 </div>
 
@@ -226,8 +229,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <label>メンバー選択</label>
       <div id="ngMemberList" style="margin-top:8px;font-size:12px;color:#999;">読み込み中...</div>
     </div>
-    <button class="savebtn btn-glass" id="ngCreate" type="button">作成する</button>
-    <button class="cancelbtn btn-glass" id="ngCancel" type="button">キャンセル</button>
+    <button class="savebtn btn-glass glass-clear glass-interactive" id="ngCreate" type="button">作成する</button>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="ngCancel" type="button">キャンセル</button>
   </div>
 </div>
 
@@ -543,8 +546,8 @@ function openAddFriend() {
     <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px">相手のID（例: U3K7F9）</label>
     <input id="addFriendInput" type="text" placeholder="IDを入力..." style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
     <div id="searchResult" style="margin-top:12px;min-height:0;"></div>
-    <button onclick="searchFriend()" style="width:100%;padding:14px;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;transition:all .3s ease;">検索</button>
-    <button onclick="closeAddFriend()" style="width:100%;padding:14px;background:#f1f5f9;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">キャンセル</button>
+    <button onclick="searchFriend()" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;">検索</button>
+    <button onclick="closeAddFriend()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">キャンセル</button>
   `;
 
   mov.appendChild(sheet);
@@ -621,7 +624,8 @@ async function searchFriend() {
       info.appendChild(idEl);
 
       const btn = document.createElement('button');
-      btn.style.cssText = 'padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;';
+      btn.className = 'glass-clear glass-interactive';
+      btn.style.cssText = 'padding:8px 16px;color:#0f172a;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
       btn.textContent = '追加';
       btn.addEventListener('click', () => sendFriendRequest(u.userIdCode, btn));
 
@@ -911,7 +915,8 @@ async function loadPendingRequests() {
 
       if (!p.isSentByMe) {
         const btn = document.createElement('button');
-        btn.style.cssText = 'padding:8px 16px;background:rgba(255,255,255,.25);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease;';
+        btn.className = 'glass-clear glass-interactive';
+        btn.style.cssText = 'padding:8px 16px;color:#0f172a;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
         btn.textContent = '承認';
         btn.addEventListener('click', () => acceptFriendRequest(p.friendshipId, btn));
         row.appendChild(btn);

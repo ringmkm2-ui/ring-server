@@ -33,7 +33,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
 .name{font-weight:700;font-size:15px;color:#1e293b}
 .status{font-size:12px;font-weight:600;color:#059669}
-.phone-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:38px;height:38px}
+/* phone-btn: 発信ボタン。liquidGlass.cssの.glass-clearに背景/ぼかし/縁は任せ、
+   ここでは形状(円形・サイズ)のみ定義する。 */
+.phone-btn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:38px;height:38px}
 .pin-banner{position:relative;z-index:10;margin:0 16px 6px;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(-6px);transition:all .3s ease;pointer-events:none}
 .pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
 .pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -68,25 +70,20 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(35px) saturate(200%);-webkit-backdrop-filter:blur(35px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
 .input-floating-bar.media-open{max-height:230px;border-radius:22px}
 .input-main-row{display:flex;align-items:center;width:100%;height:34px;min-width:0}
-.plus-btn{background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
+/* plus-btn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
+.plus-btn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
 .input-floating-bar.media-open .plus-btn{transform:rotate(45deg)}
 .txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
 .txt-form input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
 .txt-form input::placeholder{color:rgba(15,23,42,.4)}
+/* glass-send-btn: 送信ボタン。素材(背景/ぼかし/縁)はliquidGlass.cssの
+   .glass-clearに統一し、ここでは形状とホバー/タップ時の追加演出のみ定義する。 */
 .glass-send-btn{
   position:relative;width:34px;height:34px;border-radius:50%;border:none;flex-shrink:0;
-  background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.7);
-  box-shadow:0 0 0 1px rgba(255,255,255,.8),inset 0 0 20px rgba(255,255,255,.4),0 8px 16px rgba(0,0,0,.15);
-  backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
-  display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;
-  transition:all .3s cubic-bezier(.25,1,.5,1);padding:0;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;padding:0;
 }
-.glass-send-btn:hover{
-  background:rgba(255,255,255,.15);
-  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 30px rgba(255,255,255,.5),0 12px 24px rgba(0,0,0,.2);
-  transform:scale(1.08);
-}
-.glass-send-btn:active{transform:scale(0.95);box-shadow:0 0 0 1px rgba(255,255,255,.7),inset 0 0 15px rgba(255,255,255,.3),0 4px 8px rgba(0,0,0,.1);}
+.glass-send-btn:hover{transform:scale(1.08);}
+.glass-send-btn:active{transform:scale(0.95);}
 .version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
 html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .media-opts{display:flex;flex-direction:column;gap:4px;padding-top:10px;margin-top:8px;border-top:1px solid rgba(255,255,255,.4);opacity:0;transform:translateY(-8px);transition:all .4s ease}
@@ -111,15 +108,28 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
 .mm-close{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
-.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(238,242,249,.4);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
+/* ネイティブの電話アプリ(発信中/着信中/通話中画面)を参考にしたレイアウト。
+   中央の浮遊カードではなく、画面全体を使い、上部に名前とステータス、
+   中央にアバター(または相手の映像)、下部にドッキングされたコントロール
+   パネルというネイティブの標準的な構成に変更。 */
+.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
 .call-overlay.show{opacity:1;pointer-events:auto}
-/* call-cardは liquidGlass.css の .glass-regular をベースに使う(JSでクラス付与)。
-   ここではレイアウトのみ定義し、素材の見た目(背景/ぼかし/縁の光沢)はglass-regularに任せる。 */
-.call-card{display:flex;flex-direction:column;align-items:center;padding:40px 60px;border-radius:32px;text-align:center}
-.call-av{width:90px;height:90px;border-radius:50%;margin-bottom:20px;box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;color:#fff;background-size:cover;background-position:center}
-.call-name{font-size:22px;font-weight:700;color:#1e293b;margin-bottom:8px}
-.call-status{font-size:15px;font-weight:600;color:#64748b;margin-bottom:40px}
-.end-btn{background:#ff3b30;border:none;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(255,59,48,.4);transform:rotate(135deg)}
+/* call-cardはヘッダー(名前/ステータス)+アバターを縦に並べる領域。
+   ネイティブ風にするため背景・ガラス質感は持たせず(映像の上に直接文字を置く)、
+   テキストには影を付けて可読性を確保する。 */
+.call-card{display:flex;flex-direction:column;align-items:center;padding:12px 20px;text-align:center;z-index:1}
+.call-av{width:128px;height:128px;border-radius:50%;margin:20px auto 4px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:700;color:#fff;background-size:cover;background-position:center}
+.call-name{font-size:26px;font-weight:700;color:#fff;margin-bottom:6px;text-shadow:0 2px 12px rgba(0,0,0,.4)}
+.call-status{font-size:15px;font-weight:600;color:rgba(255,255,255,.82);text-shadow:0 1px 8px rgba(0,0,0,.4)}
+/* 下部のドッキングされたコントロールパネル(glass-regularで質感を出す)。
+   ネイティブの通話アプリのように、丸背景のアイコンボタンをグリッド状に収める。 */
+.call-controls-panel{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;width:calc(100% - 48px);max-width:340px;padding:26px 22px;border-radius:32px;z-index:1;margin-bottom:14px}
+/* 通話終了ボタン: 意味の即時性が重要なため、Clear Glassをベースにしつつ
+   赤みを乗せた「色付きガラス」にする(全面赤ではなく、ガラス質感は保つ)。 */
+.end-btn{background:rgba(239,68,68,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(239,68,68,.4);transform:rotate(135deg)}
+/* 応答/拒否ボタンも同様に色付きClear Glassにする */
+.accept-btn-glass{background:rgba(34,197,94,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35)}
+.decline-btn-glass{background:rgba(239,68,68,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35)}
 .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -141,7 +151,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.6 beta</div>
+  <div class="version-badge">Bro Chat v1.7 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -154,10 +164,10 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <div class="name" id="partnerName">ユーザー名</div>
         <div class="status">オンライン</div>
       </div>
-      <button class="phone-btn" id="videoCallBtn" type="button" style="margin-right:6px">
+      <button class="phone-btn glass-clear glass-interactive" id="videoCallBtn" type="button" style="margin-right:6px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
       </button>
-      <button class="phone-btn" id="phoneBtn" type="button">
+      <button class="phone-btn glass-clear glass-interactive" id="phoneBtn" type="button">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
     </div>
@@ -177,12 +187,12 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
-        <button class="plus-btn" id="plusBtn" type="button">
+        <button class="plus-btn glass-clear glass-interactive" id="plusBtn" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <form class="txt-form" id="chatForm">
           <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="glass-send-btn" id="sendBtn">
+          <button type="submit" class="glass-send-btn glass-clear glass-interactive" id="sendBtn" data-no-auto-haptic="1">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
@@ -229,32 +239,39 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   <div class="call-overlay" id="callOv">
     <video id="remoteVideo" autoplay playsinline style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0"></video>
     <video id="localVideo" autoplay playsinline muted style="display:none;position:absolute;top:16px;right:16px;width:100px;height:140px;border-radius:12px;object-fit:cover;background:#000;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.6)"></video>
-    <div class="call-card glass-regular" id="callCard" style="position:relative;z-index:1">
+
+    <!-- 上部: アバター・名前・ステータス(ネイティブ電話アプリの発信/着信/通話中画面と同じ配置) -->
+    <div class="call-card" id="callCard">
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus">呼び出し中...</div>
-      <div id="callBtnRow" style="display:flex;gap:20px;align-items:center;margin-top:10px">
-        <button class="call-mute-btn glass-clear glass-interactive" id="muteBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="muteIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </div>
+
+    <!-- 下部: ドッキングされたコントロールパネル(glass-regular)。
+         パネル自体はRegular、中のボタンは全てClear Glassで統一する。 -->
+    <div class="call-controls-panel glass-regular" id="callControlsPanel">
+      <div id="callBtnRow" style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:center;width:100%">
+        <button class="call-mute-btn glass-clear glass-interactive" id="muteBtn" type="button" data-no-auto-haptic="1" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="muteIcon"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
-        <button class="call-video-btn glass-clear glass-interactive" id="toggleVideoBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="videoIcon"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <button class="call-video-btn glass-clear glass-interactive" id="toggleVideoBtn" type="button" data-no-auto-haptic="1" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="videoIcon"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        </button>
+        <button class="call-speaker-btn glass-clear glass-interactive" id="speakerBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        </button>
+        <button class="call-flip-btn glass-clear glass-interactive" id="flipCamBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
         <button class="end-btn glass-interactive" id="endBtn" type="button" data-no-auto-haptic="1">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </button>
-        <button class="call-speaker-btn glass-clear glass-interactive" id="speakerBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-        </button>
-        <button class="call-flip-btn glass-clear glass-interactive" id="flipCamBtn" type="button" style="display:none;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
       </div>
-      <div id="incomingBtnRow" style="display:none;gap:28px;align-items:center;margin-top:10px">
-        <button id="declineBtn" class="glass-interactive" type="button" data-no-auto-haptic="1" style="width:56px;height:56px;border-radius:50%;background:#ef4444;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(239,68,68,.4)">
+      <div id="incomingBtnRow" style="display:none;flex-wrap:wrap;gap:28px;align-items:center;justify-content:center;width:100%">
+        <button id="declineBtn" class="glass-interactive decline-btn-glass" type="button" data-no-auto-haptic="1" style="width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(239,68,68,.4)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
-        <button id="acceptBtn" class="glass-interactive" type="button" data-no-auto-haptic="1" style="width:56px;height:56px;border-radius:50%;background:#22c55e;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(34,197,94,.4)">
+        <button id="acceptBtn" class="glass-interactive accept-btn-glass" type="button" data-no-auto-haptic="1" style="width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(34,197,94,.4)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </button>
       </div>
@@ -1074,6 +1091,16 @@ function connectRealWS() {
           if (data.encrypted && msg.senderId !== myUserId) {
             const decrypted = await decryptMessageContent(data.content, msg.senderId);
             if (decrypted !== null) newContent = decrypted;
+          } else if (data.encrypted && msg.senderId === myUserId) {
+            // 自分がした編集のWSブロードキャストが自分自身にも返ってくるケース
+            // (マルチデバイス同期のための正しい挙動)。E2E暗号化では送信者も
+            // 暗号文を復号できないため、以前はここで data.content (暗号文=Base64) を
+            // そのままcontentに代入してしまい、編集直後に自分の画面上で
+            // メッセージが暗号文の文字列(意味不明な文字列)に化けるバグがあった。
+            // 他の受信箇所(syncMessages等)と同様、自分のプレーンテキストの
+            // 控えをローカルキャッシュから取得する。
+            const cached = getOwnPlaintext(data.messageId);
+            if (cached !== null) newContent = cached;
           }
           msg.content = newContent;
           msg.editedAt = data.editedAt;
@@ -1391,7 +1418,11 @@ function hideMenu() {
 document.getElementById('menuOv').onclick = hideMenu;
 
 document.getElementById('replyBtn').onclick = () => {
-  const msgId = msgUnderContext;
+  // 以前は msgUnderContext という未定義の変数を参照しており、常にundefinedのため
+  // リプライが一切機能していなかった。showMenu()が実際に設定するactiveMsg
+  // (長押しされたメッセージのDOM要素、dataset.msgIdにメッセージIDが入っている)
+  // から正しく取得する。
+  const msgId = activeMsg ? activeMsg.dataset.msgId : null;
   if (msgId) {
     const msg = realMessages.find(m => m.id === msgId);
     if (msg) {
@@ -1617,9 +1648,9 @@ function setCallStatus(text) {
 
 function showCallOverlay() {
   document.getElementById('callOv').classList.add('show');
-  // 通話カードがガラスとして凝縮しながら現れる演出 + 軽い触感フィードバック
+  // 下部のコントロールパネルがガラスとして凝縮しながら現れる演出 + 軽い触感フィードバック
   if (window.LiquidGlass) {
-    window.LiquidGlass.materializeIn(document.getElementById('callCard'));
+    window.LiquidGlass.materializeIn(document.getElementById('callControlsPanel'));
     window.LiquidGlass.haptic('medium');
   }
 }
@@ -1924,17 +1955,16 @@ function toggleMute() {
   if (!localStream) return;
   isMuted = !isMuted;
   localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
-  const muteIcon = document.getElementById('muteIcon');
   const muteBtn = document.getElementById('muteBtn');
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+  // アイコンの線色は常に白のまま(ネイティブ風の暗い背景の上に置かれるため)。
+  // オン/オフの区別はボタン背景(glass-clear ⇔ glass-btn-off)だけで表現する。
   if (isMuted) {
     muteBtn.classList.remove('glass-clear');
     muteBtn.classList.add('glass-btn-off');
-    muteIcon.setAttribute('stroke', '#fff');
   } else {
     muteBtn.classList.add('glass-clear');
     muteBtn.classList.remove('glass-btn-off');
-    muteIcon.setAttribute('stroke', '#1e293b');
   }
 }
 

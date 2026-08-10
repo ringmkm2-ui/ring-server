@@ -164,18 +164,15 @@
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Cross-Document View Transitions: talklist.html → admin.html/groupchat.html の
-   ような「別ページへの遷移」でも、同一オリジンかつ両ページがこの宣言を
-   持っていればブラウザが自動でモーフィングしてくれる(Chrome 126+)。
-   これにより、トーク一覧のアバターがチャット画面のヘッダーアバターへ
-   滑らかに変形しながら遷移する、SwiftUIのmatchedGeometryEffectに相当する
-   体験をページ遷移をまたいで実現できる。
-   対応ブラウザではJSのglassMorphTag()で振ったview-transition-nameと
-   組み合わせて動作し、非対応ブラウザでは単に即座にページが切り替わるだけ
-   (機能が失われるだけで、エラーにはならない)。 */
-@view-transition {
-  navigation: auto;
-}
+/* 注意: @view-transition { navigation: auto; } によるページ遷移全体への
+   Cross-Document View Transitions強制適用は、以下の問題により削除した。
+   - <video>要素(通話画面)のスナップショット化に失敗し、グレーの凍結フレームが
+     表示される「チカチカ」現象を引き起こした
+   - Service Worker自動更新によるlocation.reload()等、意図しないタイミングの
+     ページ遷移にも無条件で適用されてしまい、制御できない見た目の崩れを招いた
+   ページをまたぐアバターのモーフィング演出は現時点では見送り、
+   同一ページ内でのglassMorph()呼び出し(matchedGeometryEffectの限定利用)と
+   materializeIn()による出現アニメーションのみで代替する。 */
 
 /* Reduced Motion: OSの「視差効果を減らす」設定を尊重し、
    アニメーションを大幅に短縮する(Appleも同様のアクセシビリティ配慮を要求している) */
