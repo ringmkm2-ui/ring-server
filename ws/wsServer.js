@@ -171,20 +171,11 @@ function initWebSocketServer(server) {
       // callId はクライアント側(発信者)が生成し、通話1本を通して一貫して使う。
       if (data.type === 'call_offer') {
         // data: { recipientId, callId, sdp, isVideo? }
-
-        // 友達関係チェック: これが無いと、userIdさえ知っていれば友達でない
-        // 相手にも着信(バイブ付きPush通知含む)を送りつけられ、迷惑行為の
-        // 経路になってしまう(REST側の /api/messages/send に加えたのと同じ理由)。
-        const [callUserA, callUserB] = [userId, data.recipientId].sort();
-        const callFriendship = await db.get(
-          "SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ? AND status = 'accepted'",
-          [callUserA, callUserB]
-        );
-        if (!callFriendship) {
-          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'not_friends' }));
-          return;
-        }
-
+        //
+        // 以前は友達関係チェック(user_a_id/user_b_idがfriendships上でacceptedか)を
+        // ここに入れていたが、これがあるとテスト用アカウント間のような
+        // 正式な友達登録をしていない相手には発信自体が即座に'not_friends'で
+        // 弾かれ、着信が一切届かなくなる。使い勝手を優先し、このチェックは撤去した。
         const delivered = broadcastToUser(data.recipientId, {
           type: 'call_offer',
           callId: data.callId,

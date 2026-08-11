@@ -103,7 +103,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .react-picker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
 .rp-btn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
 .rp-btn:hover{transform:scale(1.3)}
-.media-modal{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
+.media-modal{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
 .media-modal.show{opacity:1;pointer-events:auto}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
@@ -112,7 +112,15 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
    中央の浮遊カードではなく、画面全体を使い、上部に名前とステータス、
    中央にアバター(または相手の映像)、下部にドッキングされたコントロール
    パネルというネイティブの標準的な構成に変更。 */
-.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
+/* position:absoluteだと、ページがスクロール可能な状態(コンテンツが長い)で
+   通話を開始した場合、「ページの一番上から100vh分」の位置に固定されてしまい、
+   実際のビューポート(今画面に見えている範囲)とズレて、下部のコントロール
+   パネルが画面外にはみ出し操作不能になる不具合があった。
+   position:fixedに変更し、常に「今見えている画面」を基準に配置する。
+   高さも100vh(静的なビューポート高さ)ではなく100dvh(動的ビューポート高さ)を
+   優先させ、モバイルブラウザのアドレスバー表示/非表示による実効高さの変動にも
+   追従できるようにする(100dvh非対応の古いブラウザ向けに100vhもフォールバックとして残す)。 */
+.call-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
 .call-overlay.show{opacity:1;pointer-events:auto}
 /* call-cardはヘッダー(名前/ステータス)+アバターを縦に並べる領域。
    ネイティブ風にするため背景・ガラス質感は持たせず(映像の上に直接文字を置く)、
@@ -151,7 +159,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.8 beta</div>
+  <div class="version-badge">Bro Chat v1.9 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1601,13 +1609,21 @@ document.getElementById('mediaMod').onclick = e => { if(e.target===document.getE
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
   // STUNのみだと、双方が対称型NAT配下(多くのモバイルキャリア回線や
   // 一部のWi-Fiルーター環境で発生)にいる場合、P2P直接接続を確立できず
   // connectionStateが'failed'になり、着信を承認しても「接続中...」の
   // まま自動的に通話が切れてしまう。TURNサーバーはメディアを中継することで
-  // このケースでも接続を成立させる。Open Relay Projectの無料TURN
-  // (本番運用実績あり、UDP/TCPともポート443にも対応しているため
-  // ファイアウォールが厳しい回線でも通りやすい)を使用する。
+  // このケースでも接続を成立させる。
+  // 注意: 無料で使えるTURNサービス(Open Relay Project等)は現在ほぼ全て
+  // 濫用防止のためアカウント登録・APIキー必須の運用に移行しており、
+  // アカウント登録なしで確実に使える無料TURNは事実上存在しない。
+  // 以下はOpen Relay Projectの公開デモ用認証情報で、公式には非推奨だが
+  // 現状まだ部分的に稼働しているためベストエフォートで残す
+  // (StunサーバーのみでもP2P接続の8〜9割はカバーできるとされる)。
+  // 将来的に完全に無効化された場合は、ExpressTURN等でアカウントを作成し
+  // 発行された認証情報に置き換える必要がある。
   { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
@@ -1953,7 +1969,10 @@ function onCallEnd(data) {
 function onCallUnavailable(data) {
   if (data.callId !== currentCallId) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
-  setCallStatus('相手はオフラインです');
+  // reason別にメッセージを出し分ける。以前は理由を問わず「相手はオフラインです」
+  // 固定表示だったため、友達関係が未成立で発信できなかった場合にも
+  // 誤解を招く表示になっていた。
+  setCallStatus(data.reason === 'not_friends' ? '友達ではないため発信できません' : '相手はオフラインです');
   setTimeout(cleanupCall, 1500);
 }
 
