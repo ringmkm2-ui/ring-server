@@ -112,13 +112,13 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
    中央の浮遊カードではなく、画面全体を使い、上部に名前とステータス、
    中央にアバター(または相手の映像)、下部にドッキングされたコントロール
    パネルというネイティブの標準的な構成に変更。 */
-.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
+.call-overlay{position:absolute;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
 .call-overlay.show{opacity:1;pointer-events:auto}
 /* call-cardはヘッダー(名前/ステータス)+アバターを縦に並べる領域。
    ネイティブ風にするため背景・ガラス質感は持たせず(映像の上に直接文字を置く)、
    テキストには影を付けて可読性を確保する。 */
-.call-card{display:flex;flex-direction:column;align-items:center;padding:12px 20px;text-align:center;z-index:1}
-.call-av{width:128px;height:128px;border-radius:50%;margin:20px auto 4px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:700;color:#fff;background-size:cover;background-position:center}
+.call-card{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:auto;max-width:100%;padding:12px 20px;text-align:center;z-index:1;box-sizing:border-box}
+.call-av{width:128px;height:128px;min-width:128px;min-height:128px;max-width:128px;max-height:128px;flex-shrink:0;border-radius:50%;margin:20px auto 4px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:700;color:#fff;background-size:cover;background-position:center}
 .call-name{font-size:26px;font-weight:700;color:#fff;margin-bottom:6px;text-shadow:0 2px 12px rgba(0,0,0,.4)}
 .call-status{font-size:15px;font-weight:600;color:rgba(255,255,255,.82);text-shadow:0 1px 8px rgba(0,0,0,.4)}
 /* 下部のドッキングされたコントロールパネル(glass-regularで質感を出す)。
@@ -151,7 +151,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.7 beta</div>
+  <div class="version-badge">Bro Chat v1.8 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1601,6 +1601,16 @@ document.getElementById('mediaMod').onclick = e => { if(e.target===document.getE
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  // STUNのみだと、双方が対称型NAT配下(多くのモバイルキャリア回線や
+  // 一部のWi-Fiルーター環境で発生)にいる場合、P2P直接接続を確立できず
+  // connectionStateが'failed'になり、着信を承認しても「接続中...」の
+  // まま自動的に通話が切れてしまう。TURNサーバーはメディアを中継することで
+  // このケースでも接続を成立させる。Open Relay Projectの無料TURN
+  // (本番運用実績あり、UDP/TCPともポート443にも対応しているため
+  // ファイアウォールが厳しい回線でも通りやすい)を使用する。
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 let pc = null;             // RTCPeerConnection
@@ -1615,11 +1625,6 @@ let pendingRemoteIce = [];  // remote description 到着前に届いたICE候補
 let isVideoCall = urlIsVideoParam;    // 現在の通話がビデオ通話か（SW通知タップ時はURLパラメータで初期化）
 let isVideoEnabled = true;  // 自分のカメラがONか（ビデオ通話中のみ意味を持つ）
 let currentFacingMode = 'user'; // 'user'=インカメ, 'environment'=アウトカメ
-
-const callAvEl = document.getElementById('callAv');
-callAvEl.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
-callAvEl.textContent = partnerName.charAt(0);
-document.getElementById('callName').textContent = partnerName;
 
 function genCallId() {
   return 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -1752,7 +1757,8 @@ function createPeerConnection() {
     } else if (['disconnected', 'failed', 'closed'].includes(conn.connectionState)) {
       // 相手側の回線都合の瞬断は自動再接続の余地があるため、failedのみ即終話とする
       if (conn.connectionState === 'failed') {
-        endCall();
+        setCallStatus('接続できませんでした');
+        setTimeout(endCall, 1200);
       }
     }
   };
@@ -1835,6 +1841,14 @@ function onCallOffer(data) {
       ws.send(JSON.stringify({ type: 'call_reject', recipientId: data.fromUserId, callId: data.callId, reason: 'busy' }));
     }
     return;
+  }
+  // このページは特定の相手(otherId、URLパラメータ由来)専用のチャット画面という
+  // 設計のため、発信者(data.fromUserId)が画面に表示中の相手と一致しない場合、
+  // 応答(call_answer)がotherId宛に送られてしまい発信者に届かず、
+  // 「接続中のまま切れる」原因になりうる。現状は基本的に一致する設計だが、
+  // 万一の不一致を後から追えるようログだけ残しておく。
+  if (data.fromUserId !== otherId) {
+    console.warn('[call] 発信者IDと表示中の相手IDが一致しません', { fromUserId: data.fromUserId, otherId });
   }
   currentCallId = data.callId;
   callRole = 'callee';

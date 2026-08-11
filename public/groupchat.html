@@ -145,6 +145,11 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .cropimg{position:absolute;top:0;left:0;cursor:move;user-select:none;transform-origin:top left}
 .cropmask{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle 65px at center,transparent 99%,rgba(0,0,0,.6) 100%);pointer-events:none;border-radius:16px}
 .croprange{width:100%;margin-top:8px;display:none}
+.crop-controls{margin-top:8px}
+.crop-zoom-row{display:flex;align-items:center;gap:8px}
+.crop-zoom-row .croprange{display:block;margin-top:0;flex:1;width:auto}
+.crop-zoom-label{font-size:12px;font-weight:700;color:#64748b;min-width:38px;text-align:right}
+.crop-reset-btn{width:100%;margin-top:8px;padding:9px;border-radius:12px;font-size:13px;font-weight:700;color:#0f172a;cursor:pointer;border:none}
 .inv-row{display:flex;gap:8px;margin-top:10px}
 .inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
 .mm-ov{position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
@@ -168,7 +173,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.7 beta</div>
+  <div class="version-badge">Bro Chat v1.8 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -280,7 +285,15 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <img class="cropimg" id="gCropImg" src="" alt="" draggable="false">
         <div class="cropmask"></div>
       </div>
-      <input type="range" class="croprange" id="gCropRange" min="0.1" max="3" step="0.01" value="1">
+      <div class="crop-controls" id="gCropControls" style="display:none">
+        <div class="crop-zoom-row">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          <input type="range" class="croprange" id="gCropRange" min="0.1" max="3" step="0.01" value="1">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          <span class="crop-zoom-label" id="gCropZoomLabel">100%</span>
+        </div>
+        <button type="button" class="crop-reset-btn glass-clear glass-interactive" id="gCropResetBtn">位置とズームをリセット</button>
+      </div>
       <div class="srow">
         <span class="slabel">グループ名</span>
         <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
@@ -848,6 +861,24 @@ document.getElementById('gsOv').onclick=e=>{if(e.target===document.getElementByI
 
 // 画像アップロード+クロップ
 let gImgSrc='';
+const G_CROP_GUIDE_SIZE=130; // ガイド円の直径(px)、保存時の出力サイズと合わせる
+function clampGCropTransform(){
+  const img=document.getElementById('gCropImg');
+  if(!img.naturalWidth||!img.naturalHeight)return;
+  const box=document.getElementById('gCropBox');
+  const bx=box.offsetWidth/2, by=box.offsetHeight/2;
+  const minScale=G_CROP_GUIDE_SIZE/Math.min(img.naturalWidth,img.naturalHeight);
+  if(cropS<minScale){
+    cropS=minScale;
+    document.getElementById('gCropRange').min=minScale.toFixed(3);
+  }
+  const iw2=img.naturalWidth*cropS, ih2=img.naturalHeight*cropS;
+  const halfGuide=G_CROP_GUIDE_SIZE/2;
+  const minCx=bx-halfGuide-(iw2-halfGuide*2), maxCx=bx-halfGuide;
+  const minCy=by-halfGuide-(ih2-halfGuide*2), maxCy=by-halfGuide;
+  cropX=Math.min(maxCx,Math.max(minCx,cropX));
+  cropY=Math.min(maxCy,Math.max(minCy,cropY));
+}
 document.getElementById('gImgFile').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const reader=new FileReader();
@@ -855,11 +886,30 @@ document.getElementById('gImgFile').onchange=e=>{
     gImgSrc=ev.target.result;
     const img=document.getElementById('gCropImg');img.src=gImgSrc;
     document.getElementById('gCropBox').style.display='block';
-    document.getElementById('gCropRange').style.display='block';
-    img.onload=()=>{cropX=(200-img.offsetWidth)/2;cropY=(200-img.offsetHeight)/2;cropS=1;document.getElementById('gCropRange').value=1;updCrop();};
+    document.getElementById('gCropControls').style.display='block';
+    img.onload=()=>{
+      const minScale=G_CROP_GUIDE_SIZE/Math.min(img.naturalWidth,img.naturalHeight);
+      cropS=minScale;
+      const range=document.getElementById('gCropRange');
+      range.min=minScale.toFixed(3);range.max=(minScale*4).toFixed(3);range.value=cropS;
+      cropX=(document.getElementById('gCropBox').offsetWidth-img.naturalWidth*cropS)/2;
+      cropY=(document.getElementById('gCropBox').offsetHeight-img.naturalHeight*cropS)/2;
+      updCrop();
+    };
   };reader.readAsDataURL(f);
 };
-function updCrop(){document.getElementById('gCropImg').style.transform=`translate(${cropX}px,${cropY}px) scale(${cropS})`;}
+function updCrop(){
+  clampGCropTransform();
+  const img=document.getElementById('gCropImg');
+  img.style.transform=`translate(${cropX}px,${cropY}px) scale(${cropS})`;
+  img.style.transformOrigin='0 0';
+  document.getElementById('gCropRange').value=cropS;
+  const label=document.getElementById('gCropZoomLabel');
+  if(label&&img.naturalWidth){
+    const minScale=G_CROP_GUIDE_SIZE/Math.min(img.naturalWidth,img.naturalHeight);
+    label.textContent=Math.round((cropS/minScale)*100)+'%';
+  }
+}
 const cb=document.getElementById('gCropBox');
 cb.addEventListener('mousedown',e=>{cropDrag=true;cropSX=e.clientX-cropX;cropSY=e.clientY-cropY;});
 cb.addEventListener('touchstart',e=>{if(e.touches.length===1){cropDrag=true;cropSX=e.touches[0].clientX-cropX;cropSY=e.touches[0].clientY-cropY;}});
@@ -868,6 +918,18 @@ window.addEventListener('touchmove',e=>{if(!cropDrag||e.touches.length!==1)retur
 window.addEventListener('mouseup',()=>cropDrag=false);
 window.addEventListener('touchend',()=>cropDrag=false);
 document.getElementById('gCropRange').oninput=e=>{cropS=parseFloat(e.target.value);updCrop();};
+
+// リセットボタン: 位置・ズームを画像読み込み直後の状態に戻す
+document.getElementById('gCropResetBtn').onclick=()=>{
+  const img=document.getElementById('gCropImg');
+  if(!img.naturalWidth)return;
+  if(window.LiquidGlass)window.LiquidGlass.haptic('light');
+  const minScale=G_CROP_GUIDE_SIZE/Math.min(img.naturalWidth,img.naturalHeight);
+  cropS=minScale;
+  cropX=(document.getElementById('gCropBox').offsetWidth-img.naturalWidth*cropS)/2;
+  cropY=(document.getElementById('gCropBox').offsetHeight-img.naturalHeight*cropS)/2;
+  updCrop();
+};
 
 document.getElementById('gSaveBtn').onclick=()=>{
   const name=document.getElementById('gNameIn').value.trim();if(name)gi.name=name;
@@ -886,7 +948,7 @@ document.getElementById('gSaveBtn').onclick=()=>{
   saveGI(gi);refreshHdr();
   document.getElementById('gsOv').classList.remove('show');
   document.getElementById('gCropBox').style.display='none';
-  document.getElementById('gCropRange').style.display='none';
+  document.getElementById('gCropControls').style.display='none';
   gImgSrc='';
 };
 

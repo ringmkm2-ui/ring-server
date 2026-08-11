@@ -1,6 +1,6 @@
 {
   "name": "ring-server",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Ring chat app backend - WebSocket relay + auth + prekey store + TTL storage",
   "main": "index.js",
   "type": "commonjs",

@@ -17,18 +17,22 @@
    ========================================================================== */
 
 :root {
-  --glass-blur-regular: 24px;
-  --glass-blur-clear: 36px;
+  --glass-blur-regular: 20px;
+  --glass-blur-clear: 28px;
   --glass-saturate: 180%;
 
-  --glass-regular-bg: rgba(255, 255, 255, 0.55);
-  --glass-regular-bg-strong: rgba(255, 255, 255, 0.72);
-  --glass-clear-bg: rgba(255, 255, 255, 0.10);
-  --glass-border-regular: rgba(255, 255, 255, 0.6);
-  --glass-border-clear: rgba(255, 255, 255, 0.32);
+  /* Apple公式の見た目に近づけるため、以前の値(0.55/0.10)より大幅に透過度を
+     上げた。以前の値は「不透明なグレーの板」に近く見えており、
+     Regular=「背景に適応しつつも向こう側の形・色が透けて見える」という
+     Liquid Glassの本質的な質感になっていなかった。 */
+  --glass-regular-bg: rgba(255, 255, 255, 0.28);
+  --glass-regular-bg-strong: rgba(255, 255, 255, 0.42);
+  --glass-clear-bg: rgba(255, 255, 255, 0.06);
+  --glass-border-regular: rgba(255, 255, 255, 0.55);
+  --glass-border-clear: rgba(255, 255, 255, 0.28);
 
-  --glass-shadow-regular: 0 8px 32px rgba(15, 23, 42, 0.14);
-  --glass-shadow-clear: 0 4px 24px rgba(15, 23, 42, 0.22);
+  --glass-shadow-regular: 0 8px 32px rgba(15, 23, 42, 0.16);
+  --glass-shadow-clear: 0 4px 24px rgba(15, 23, 42, 0.24);
 
   /* Appleのスプリングアニメーションに寄せたイージング。
      .interactive() の軽いオーバーシュート感を再現する。 */
@@ -42,9 +46,9 @@
   backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border-regular);
-  box-shadow: var(--glass-shadow-regular), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  box-shadow: var(--glass-shadow-regular);
   position: relative;
-  isolation: isolate;
 }
 
 /* 強調用(プロミネントボタン相当): やや不透明度を上げて視認性を強める */
@@ -53,7 +57,8 @@
   backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border-regular);
-  box-shadow: var(--glass-shadow-regular), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--glass-shadow-regular);
 }
 
 /* ---- Clear: 高透過ガラス素材(メディア上の小さな要素に限定して使う) ---- */
@@ -62,6 +67,7 @@
   backdrop-filter: blur(var(--glass-blur-clear)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--glass-blur-clear)) saturate(140%);
   border: 1px solid var(--glass-border-clear);
+  border-top-color: rgba(255, 255, 255, 0.65);
   box-shadow: var(--glass-shadow-clear);
 }
 
@@ -75,26 +81,13 @@
 }
 .glass-btn-off svg { stroke: #fff !important; }
 
-/* 鏡面ハイライト: 上端に薄い光の帯を乗せ、ガラスらしい反射感を出す。
-   mix-blend-modeで下地の色を活かしつつ光沢だけ重ねる。 */
-.glass-regular::before,
-.glass-regular-strong::before,
-.glass-clear::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 45%);
-  opacity: 0.45;
-  mix-blend-mode: overlay;
-  pointer-events: none;
-  z-index: 0;
-}
-.glass-regular > *, .glass-regular-strong > *, .glass-clear > * {
-  position: relative;
-  z-index: 1;
-}
-
+/* 鏡面ハイライト: 上端の縁を明るい色にすることで光の反射感を出す。
+   以前は mix-blend-mode: overlay + isolation: isolate の組み合わせで
+   ::before疑似要素を重ねていたが、この組み合わせは一部のAndroid Chrome/
+   GPUドライバの環境でbackdrop-filterのレンダリングを破壊し、
+   本来透けるはずのガラスが不透明なグレーの板として描画される
+   既知の相性問題を引き起こす。border-top-colorのみで光沢感を表現する
+   よりシンプルで互換性の高い手法に切り替えた。 */
 /* ---- Interactive: タップへの反応(スケール+シマー) ---- */
 .glass-interactive {
   transition: transform 0.28s var(--glass-spring), box-shadow 0.28s var(--glass-ease), background 0.2s ease;
@@ -193,11 +186,11 @@
 /* ダークモード: globalTheme.css の .dark-mode クラスと連動 */
 .dark-mode .glass-regular,
 .dark-mode .glass-regular-strong {
-  background: rgba(30, 41, 59, 0.55);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.32);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 .dark-mode .glass-clear {
-  background: rgba(15, 23, 42, 0.18);
+  background: rgba(15, 23, 42, 0.12);
   border-color: rgba(255, 255, 255, 0.14);
 }
