@@ -13,6 +13,7 @@ const groupsRouter = require('./routes/groups');
 const friendsRouter = require('./routes/friends');
 const messagesRouter = require('./routes/messages');
 const pushRouter = require('./routes/push');
+const postsRouter = require('./routes/posts');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 const { apiLimiter } = require('./utils/rateLimits');
@@ -100,6 +101,7 @@ async function main() {
   app.use('/api/friends', friendsRouter);
   app.use('/api/messages', messagesRouter);
   app.use('/api/push', pushRouter);
+  app.use('/api/posts', postsRouter);
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、

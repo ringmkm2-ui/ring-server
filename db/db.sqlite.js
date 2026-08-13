@@ -222,6 +222,34 @@ async function initDB() {
       auth TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- 投稿(タイムライン)機能。友達関係を問わず全ユーザーに公開される。
+    CREATE TABLE IF NOT EXISTS posts (
+      id TEXT PRIMARY KEY,
+      author_id TEXT NOT NULL,
+      text TEXT,
+      media_url TEXT,
+      media_type TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      edited_at TEXT,
+      deleted_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS post_likes (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (post_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS post_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
+    );
   `);
 
   persist();

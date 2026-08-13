@@ -24,13 +24,33 @@ body.has-custom-bg .pc{background:transparent}
 .ahdr{display:flex;justify-content:center;align-items:center;padding:20px 0 10px}
 /* .sc(セグメントコントロールの外枠)と.sslider(選択中インジケータ)は
    素材(背景/ぼかし/縁)をliquidGlass.cssの.glass-clearに統一し、
-   ここでは形状・レイアウトのみ定義する。 */
+   ここでは形状・レイアウトのみ定義する。
+   3タブ(トーク/ホーム/投稿)構成のため、各ボタン幅を80pxに調整。 */
 .sc{position:relative;display:inline-flex;padding:6px;border-radius:999px}
-.sslider{position:absolute;top:4px;left:4px;width:90px;height:calc(100% - 8px);border-radius:999px;transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
-.sbtn{position:relative;z-index:2;background:none;border:none;outline:none;width:90px;padding:8px 0;font-size:14px;font-weight:700;color:rgba(15,23,42,.4);cursor:pointer;text-align:center;transition:color .3s ease}
+.sslider{position:absolute;top:4px;left:4px;width:80px;height:calc(100% - 8px);border-radius:999px;transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
+.sbtn{position:relative;z-index:2;background:none;border:none;outline:none;width:80px;padding:8px 0;font-size:14px;font-weight:700;color:rgba(15,23,42,.4);cursor:pointer;text-align:center;transition:color .3s ease}
 .sbtn.active{color:#0f172a}
 .tc{flex:1;padding:0 16px 16px;overflow-y:auto}
 .card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
+/* 投稿タイムライン */
+.post-card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
+.post-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.post-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
+.post-author{font-weight:700;font-size:14px;color:#0f172a}
+.post-time{font-size:12px;color:#94a3b8}
+.post-text{font-size:14px;color:#0f172a;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+.post-media{width:100%;max-height:340px;object-fit:cover;border-radius:16px;margin-top:10px;display:block}
+.post-actions{display:flex;align-items:center;gap:18px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(15,23,42,.06)}
+.post-action-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#64748b;padding:4px}
+.post-action-btn.liked{color:#ef4444}
+.post-del-btn{margin-left:auto;background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px}
+.post-comments{margin-top:10px;padding-top:10px;border-top:1px solid rgba(15,23,42,.06)}
+.post-comment-row{display:flex;gap:8px;margin-bottom:8px;font-size:13px}
+.post-comment-author{font-weight:700;color:#0f172a}
+.post-comment-text{color:#334155;word-break:break-word}
+.post-comment-form{display:flex;gap:8px;margin-top:8px}
+.post-comment-input{flex:1;padding:8px 12px;background:rgba(255,255,255,.7);border:1px solid rgba(15,23,42,.08);border-radius:999px;font-size:13px;outline:none}
+.post-comment-send{background:none;border:none;color:#3b82f6;font-weight:700;font-size:13px;cursor:pointer;padding:4px 8px}
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
@@ -135,6 +155,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <div class="sslider glass-clear" id="slider"></div>
         <button class="sbtn active glass-interactive" id="btnTalk" type="button">トーク</button>
         <button class="sbtn glass-interactive" id="btnHome" type="button">ホーム</button>
+        <button class="sbtn glass-interactive" id="btnPosts" type="button">投稿</button>
       </div>
     </header>
     <main class="tc">
@@ -186,9 +207,37 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
           <div class="slabel">友達リクエスト</div>
           <div id="pendingList"></div>
         </div>
+      </section>
+
+      <section id="pagePosts" style="display:none">
+        <div class="card">
+          <textarea id="postTextInput" placeholder="今なにしてる？" rows="3" style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:16px;outline:none;font-size:14px;font-family:inherit;resize:none;"></textarea>
+          <div id="postMediaPreview" style="display:none;margin-top:10px;position:relative;">
+            <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
+            <video id="postMediaPreviewVideo" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" controls></video>
+            <button type="button" id="postMediaRemoveBtn" class="glass-clear glass-interactive" style="position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+            <div style="display:flex;gap:8px;">
+              <button type="button" id="postAttachImageBtn" class="glass-clear glass-interactive" style="width:36px;height:36px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </button>
+              <input type="file" id="postImageFile" accept="image/*" style="display:none">
+              <button type="button" id="postAttachVideoBtn" class="glass-clear glass-interactive" style="width:36px;height:36px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              </button>
+              <input type="file" id="postVideoFile" accept="video/*" style="display:none">
+            </div>
+            <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;">投稿する</button>
+          </div>
+        </div>
+        <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
+      </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.9 beta</div>
+  <div class="version-badge">Bro Chat v1.10 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -252,26 +301,41 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 const slider=document.getElementById('slider');
 const pageTalk=document.getElementById('pageTalk');
 const pageHome=document.getElementById('pageHome');
+const pagePosts=document.getElementById('pagePosts');
 const pc=document.getElementById('pc');
 
 const token = localStorage.getItem('ring_token');
 const myUserId = localStorage.getItem('ring_userId');
 if (!token) location.href = '/auth.html';
 
+function switchTab(activeBtnId){
+  const tabs=[
+    {btn:'btnTalk',page:pageTalk,x:0},
+    {btn:'btnHome',page:pageHome,x:80},
+    {btn:'btnPosts',page:pagePosts,x:160},
+  ];
+  tabs.forEach(t=>{
+    const btn=document.getElementById(t.btn);
+    const isActive=t.btn===activeBtnId;
+    btn.classList.toggle('active',isActive);
+    t.page.style.display=isActive?'block':'none';
+    if(isActive)slider.style.transform=`translateX(${t.x}px)`;
+  });
+}
+
 document.getElementById('btnTalk').onclick=()=>{
-  document.getElementById('btnTalk').classList.add('active');
-  document.getElementById('btnHome').classList.remove('active');
-  slider.style.transform='translateX(0)';
-  pageTalk.style.display='block';pageHome.style.display='none';
+  switchTab('btnTalk');
   loadTalks();
 };
 
 document.getElementById('btnHome').onclick=()=>{
-  document.getElementById('btnHome').classList.add('active');
-  document.getElementById('btnTalk').classList.remove('active');
-  slider.style.transform='translateX(90px)';
-  pageTalk.style.display='none';pageHome.style.display='block';
+  switchTab('btnHome');
   loadPendingRequests();
+};
+
+document.getElementById('btnPosts').onclick=()=>{
+  switchTab('btnPosts');
+  loadPosts();
 };
 
 async function api(path, opts={}) {
@@ -1087,6 +1151,329 @@ setInterval(() => {
     } catch (e) { /* 無視 */ }
   }
 }, 25000); // 25秒ごと（30秒のチェックイン前）
+
+// ========== 投稿(タイムライン)機能 ==========
+let pendingPostMedia = null; // { dataUrl, type: 'image'|'video' }
+let postsOldestTimestamp = null; // ページング用(この日時より古い投稿を次回取得)
+let postsLoading = false;
+
+function formatPostTime(ts) {
+  const d = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'たった今';
+  if (diffMin < 60) return `${diffMin}分前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}時間前`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return `${diffDay}日前`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+document.getElementById('postAttachImageBtn').onclick = () => document.getElementById('postImageFile').click();
+document.getElementById('postAttachVideoBtn').onclick = () => document.getElementById('postVideoFile').click();
+
+document.getElementById('postImageFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingPostMedia = { dataUrl: ev.target.result, type: 'image' };
+    const preview = document.getElementById('postMediaPreview');
+    const img = document.getElementById('postMediaPreviewImg');
+    const video = document.getElementById('postMediaPreviewVideo');
+    img.src = ev.target.result; img.style.display = 'block';
+    video.style.display = 'none'; video.src = '';
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(f);
+};
+
+document.getElementById('postVideoFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 20 * 1024 * 1024) {
+    alert('動画は20MB以下にしてください');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingPostMedia = { dataUrl: ev.target.result, type: 'video' };
+    const preview = document.getElementById('postMediaPreview');
+    const img = document.getElementById('postMediaPreviewImg');
+    const video = document.getElementById('postMediaPreviewVideo');
+    video.src = ev.target.result; video.style.display = 'block';
+    img.style.display = 'none'; img.src = '';
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(f);
+};
+
+document.getElementById('postMediaRemoveBtn').onclick = () => {
+  pendingPostMedia = null;
+  document.getElementById('postMediaPreview').style.display = 'none';
+  document.getElementById('postImageFile').value = '';
+  document.getElementById('postVideoFile').value = '';
+};
+
+document.getElementById('postSubmitBtn').onclick = async () => {
+  const textInput = document.getElementById('postTextInput');
+  const text = textInput.value.trim();
+  if (!text && !pendingPostMedia) return;
+  if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
+
+  const submitBtn = document.getElementById('postSubmitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '投稿中...';
+
+  try {
+    const body = { text: text || null };
+    if (pendingPostMedia) {
+      body.mediaUrl = pendingPostMedia.dataUrl;
+      body.mediaType = pendingPostMedia.type;
+    }
+    const data = await api('/api/posts', { method: 'POST', body: JSON.stringify(body) });
+    if (data.ok) {
+      textInput.value = '';
+      pendingPostMedia = null;
+      document.getElementById('postMediaPreview').style.display = 'none';
+      document.getElementById('postImageFile').value = '';
+      document.getElementById('postVideoFile').value = '';
+      postsOldestTimestamp = null;
+      loadPosts();
+    } else {
+      alert(data.error || '投稿に失敗しました');
+    }
+  } catch (e) {
+    alert('投稿に失敗しました');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = '投稿する';
+  }
+};
+
+async function loadPosts() {
+  if (postsLoading) return;
+  postsLoading = true;
+  const list = document.getElementById('postsList');
+  try {
+    const posts = await api('/api/posts');
+    list.textContent = '';
+    if (!Array.isArray(posts) || posts.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:24px';
+      empty.textContent = 'まだ投稿がありません';
+      list.appendChild(empty);
+      postsOldestTimestamp = null;
+      return;
+    }
+    posts.forEach(p => list.appendChild(renderPostCard(p)));
+    postsOldestTimestamp = posts[posts.length - 1].createdAt;
+  } catch (e) {
+    console.error('loadPosts error:', e);
+    list.textContent = '';
+    const err = document.createElement('div');
+    err.style.cssText = 'text-align:center;color:#ef4444;font-size:14px;padding:24px';
+    err.textContent = '読み込みに失敗しました';
+    list.appendChild(err);
+  } finally {
+    postsLoading = false;
+  }
+}
+
+function renderPostCard(p) {
+  const card = document.createElement('div');
+  card.className = 'post-card';
+  card.dataset.postId = p.id;
+
+  const header = document.createElement('div');
+  header.className = 'post-header';
+
+  const av = document.createElement('div');
+  av.className = 'post-av';
+  setAvatarBackground(av, p.authorPic, (p.authorName || '?')[0]);
+
+  const info = document.createElement('div');
+  info.style.flex = '1';
+  const nameEl = document.createElement('div');
+  nameEl.className = 'post-author';
+  nameEl.textContent = p.authorName;
+  const timeEl = document.createElement('div');
+  timeEl.className = 'post-time';
+  timeEl.textContent = formatPostTime(p.createdAt);
+  info.appendChild(nameEl);
+  info.appendChild(timeEl);
+
+  header.appendChild(av);
+  header.appendChild(info);
+
+  if (p.authorId === myUserId) {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'post-del-btn';
+    delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+    delBtn.addEventListener('click', () => deletePost(p.id, card));
+    header.appendChild(delBtn);
+  }
+
+  card.appendChild(header);
+
+  if (p.text) {
+    const textEl = document.createElement('div');
+    textEl.className = 'post-text';
+    textEl.textContent = p.text;
+    card.appendChild(textEl);
+  }
+
+  if (p.mediaUrl) {
+    if (p.mediaType === 'video') {
+      const video = document.createElement('video');
+      video.className = 'post-media';
+      video.src = p.mediaUrl;
+      video.controls = true;
+      card.appendChild(video);
+    } else {
+      const img = document.createElement('img');
+      img.className = 'post-media';
+      img.src = p.mediaUrl;
+      img.alt = '';
+      card.appendChild(img);
+    }
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'post-actions';
+
+  const likeBtn = document.createElement('button');
+  likeBtn.className = 'post-action-btn' + (p.likedByMe ? ' liked' : '');
+  likeBtn.dataset.liked = p.likedByMe ? '1' : '0';
+  const likeCountSpan = document.createElement('span');
+  likeCountSpan.textContent = p.likeCount;
+  likeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="${p.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+  likeBtn.appendChild(likeCountSpan);
+  likeBtn.addEventListener('click', () => toggleLike(p.id, likeBtn, likeCountSpan));
+  actions.appendChild(likeBtn);
+
+  const commentBtn = document.createElement('button');
+  commentBtn.className = 'post-action-btn';
+  commentBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>${p.commentCount}</span>`;
+  const commentsWrap = document.createElement('div');
+  commentsWrap.className = 'post-comments';
+  commentsWrap.style.display = 'none';
+  commentBtn.addEventListener('click', () => toggleComments(p.id, commentsWrap));
+  actions.appendChild(commentBtn);
+
+  card.appendChild(actions);
+  card.appendChild(commentsWrap);
+
+  return card;
+}
+
+async function toggleLike(postId, btn, countSpan) {
+  if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+  try {
+    const data = await api(`/api/posts/${postId}/like`, { method: 'POST' });
+    if (data.ok) {
+      const wasLiked = btn.dataset.liked === '1';
+      btn.dataset.liked = data.liked ? '1' : '0';
+      btn.classList.toggle('liked', data.liked);
+      const svg = btn.querySelector('svg');
+      if (svg) svg.setAttribute('fill', data.liked ? 'currentColor' : 'none');
+      countSpan.textContent = parseInt(countSpan.textContent, 10) + (data.liked ? 1 : -1);
+    }
+  } catch (e) { console.error('toggleLike error:', e); }
+}
+
+let openCommentsPostId = null;
+async function toggleComments(postId, wrap) {
+  if (wrap.style.display === 'block') {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  wrap.textContent = '';
+  const loading = document.createElement('div');
+  loading.style.cssText = 'font-size:12px;color:#94a3b8;padding:4px 0';
+  loading.textContent = '読み込み中...';
+  wrap.appendChild(loading);
+
+  try {
+    const comments = await api(`/api/posts/${postId}/comments`);
+    wrap.textContent = '';
+    comments.forEach(c => wrap.appendChild(renderCommentRow(c)));
+    wrap.appendChild(renderCommentForm(postId, wrap));
+  } catch (e) {
+    wrap.textContent = '';
+    const err = document.createElement('div');
+    err.style.cssText = 'font-size:12px;color:#ef4444';
+    err.textContent = 'コメントの読み込みに失敗しました';
+    wrap.appendChild(err);
+  }
+}
+
+function renderCommentRow(c) {
+  const row = document.createElement('div');
+  row.className = 'post-comment-row';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'post-comment-author';
+  nameEl.textContent = c.authorName + '：';
+  const textEl = document.createElement('span');
+  textEl.className = 'post-comment-text';
+  textEl.textContent = c.text;
+  row.appendChild(nameEl);
+  row.appendChild(textEl);
+  return row;
+}
+
+function renderCommentForm(postId, wrap) {
+  const form = document.createElement('div');
+  form.className = 'post-comment-form';
+  const input = document.createElement('input');
+  input.className = 'post-comment-input';
+  input.placeholder = 'コメントを追加...';
+  const sendBtn = document.createElement('button');
+  sendBtn.className = 'post-comment-send';
+  sendBtn.textContent = '送信';
+  const submit = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    try {
+      const data = await api(`/api/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ text }) });
+      if (data.ok) {
+        input.value = '';
+        const row = renderCommentRow(data.comment);
+        form.parentElement.insertBefore(row, form);
+        // コメント数バッジも更新
+        const card = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+        if (card) {
+          const commentBtn = card.querySelectorAll('.post-action-btn')[1];
+          const span = commentBtn?.querySelector('span');
+          if (span) span.textContent = parseInt(span.textContent, 10) + 1;
+        }
+      }
+    } catch (e) { console.error('comment submit error:', e); }
+    finally { sendBtn.disabled = false; }
+  };
+  sendBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  form.appendChild(input);
+  form.appendChild(sendBtn);
+  return form;
+}
+
+async function deletePost(postId, card) {
+  if (!confirm('この投稿を削除しますか？')) return;
+  try {
+    const data = await api(`/api/posts/${postId}`, { method: 'DELETE' });
+    if (data.ok) {
+      if (window.LiquidGlass) {
+        window.LiquidGlass.dematerialize(card, () => card.remove());
+      } else {
+        card.remove();
+      }
+    }
+  } catch (e) { console.error('deletePost error:', e); }
+}
 </script>
 </body>
 </html>

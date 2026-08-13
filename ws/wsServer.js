@@ -192,18 +192,27 @@ function initWebSocketServer(server) {
 
         // WS配達の成否にかかわらず、Push通知は常に送る
         // （スリープ中/バックグラウンドタブだとWSが届いても着信音が鳴らないため、OSレベルで叩き起こす）
-        db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [userId])
-          .then(caller => {
-            sendPushToUser(data.recipientId, {
-              type: 'call_incoming',
-              callId: data.callId,
-              callerId: userId,
-              callerName: caller?.display_name || caller?.username || '不明なユーザー',
-              callerPic: caller?.profile_pic || null,
-              isVideo: !!data.isVideo,
-            }).catch(err => console.error('[push] call_offer push failed:', err.message));
-          })
-          .catch(err => console.error('[push] caller lookup failed:', err.message));
+        //
+        // 重要: db.get()の戻り値をPromiseチェーン(.then/.catch)で扱っていたが、
+        // db/db.sqlite.js の get() は同期関数(Promiseを返さない)であるため、
+        // ローカル開発環境(SQLite使用時)で "db.get(...).then is not a function"
+        // というTypeErrorが発生し、サーバープロセスそのものがクラッシュしていた。
+        // 本番のPostgreSQL版はasync関数でこそ動いていたが、環境によって
+        // 挙動が異なる書き方自体が危険なため、awaitに統一する
+        // (ws.on('message', async raw => ...) 内なのでawaitが使える)。
+        try {
+          const caller = await db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [userId]);
+          sendPushToUser(data.recipientId, {
+            type: 'call_incoming',
+            callId: data.callId,
+            callerId: userId,
+            callerName: caller?.display_name || caller?.username || '不明なユーザー',
+            callerPic: caller?.profile_pic || null,
+            isVideo: !!data.isVideo,
+          }).catch(err => console.error('[push] call_offer push failed:', err.message));
+        } catch (err) {
+          console.error('[push] caller lookup failed:', err.message);
+        }
 
         return;
       }
