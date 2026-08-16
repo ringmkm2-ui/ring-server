@@ -159,7 +159,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.10 beta</div>
+  <div class="version-badge">Bro Chat v1.11 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1606,28 +1606,37 @@ document.getElementById('mediaMod').onclick = e => { if(e.target===document.getE
 // Xiaomi HyperOS/MIUI は省電力設定でバックグラウンドWSが切れやすいので、
 // 通話中は画面を極力アクティブに保ち、切断検知したら確実に終話処理する。
 
-const ICE_SERVERS = [
+// ICEサーバー(STUN/TURN)は通話開始のたびにサーバー(/api/ice)から取得する。
+// 以前は固定のOpen Relay Project認証情報をハードコードしていたが、
+// これは現在アカウント登録必須の運用に移行しており非推奨(実質使えない)に
+// なっていた。Twilio Network Traversal Serviceに切り替え、サーバー側で
+// 都度発行される一時的な認証情報を使う方式にする。
+// 万一取得に失敗した場合のフォールバックとしてGoogle STUNのみ保持する
+// (TURNが無いと対称型NAT環境では繋がらないことがあるが、
+//  STUNだけでも一定割合のケースはカバーできるため通話機能自体は止めない)。
+let ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  // STUNのみだと、双方が対称型NAT配下(多くのモバイルキャリア回線や
-  // 一部のWi-Fiルーター環境で発生)にいる場合、P2P直接接続を確立できず
-  // connectionStateが'failed'になり、着信を承認しても「接続中...」の
-  // まま自動的に通話が切れてしまう。TURNサーバーはメディアを中継することで
-  // このケースでも接続を成立させる。
-  // 注意: 無料で使えるTURNサービス(Open Relay Project等)は現在ほぼ全て
-  // 濫用防止のためアカウント登録・APIキー必須の運用に移行しており、
-  // アカウント登録なしで確実に使える無料TURNは事実上存在しない。
-  // 以下はOpen Relay Projectの公開デモ用認証情報で、公式には非推奨だが
-  // 現状まだ部分的に稼働しているためベストエフォートで残す
-  // (StunサーバーのみでもP2P接続の8〜9割はカバーできるとされる)。
-  // 将来的に完全に無効化された場合は、ExpressTURN等でアカウントを作成し
-  // 発行された認証情報に置き換える必要がある。
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
+
+async function refreshIceServers() {
+  try {
+    const res = await fetch('/api/ice', {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error('ICE取得APIが失敗: ' + res.status);
+    const data = await res.json();
+    if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+      ICE_SERVERS = data.iceServers;
+      console.log('[ice] TwilioのICEサーバーを取得しました (' + ICE_SERVERS.length + '件)');
+    }
+  } catch (e) {
+    console.warn('[ice] ICEサーバー取得に失敗、フォールバック(STUNのみ)を使用します:', e.message);
+  }
+}
+// ページ読み込み時に一度先読みしておく(通話開始のたびに毎回待たせないため)。
+// 発信/着信のたびにも念のため再取得し、常に有効期限内の最新情報を使う。
+refreshIceServers();
 
 let pc = null;             // RTCPeerConnection
 let localStream = null;    // マイク音声(+カメラ映像)
@@ -1825,6 +1834,10 @@ async function startOutgoingCall(isVideo = false) {
   showCallOverlay();
   setCallStatus('発信中...');
 
+  // 通話開始のたびにTwilioの一時的なICE認証情報を取得し直す
+  // (有効期限があるため、通話ごとに最新のものを使う)
+  await refreshIceServers();
+
   try {
     localStream = await getMediaStream(isVideo);
   } catch (err) {
@@ -1896,6 +1909,9 @@ async function acceptIncomingCall() {
   document.getElementById('incomingBtnRow').style.display = 'none';
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('接続中...');
+
+  // 通話応答のたびにTwilioの一時的なICE認証情報を取得し直す
+  await refreshIceServers();
 
   try {
     localStream = await getMediaStream(isVideoCall);
