@@ -150,20 +150,6 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .crop-zoom-row .croprange{display:block;margin-top:0;flex:1;width:auto}
 .crop-zoom-label{font-size:12px;font-weight:700;color:#64748b;min-width:38px;text-align:right}
 .crop-reset-btn{width:100%;margin-top:8px;padding:9px;border-radius:12px;font-size:13px;font-weight:700;color:#0f172a;cursor:pointer;border:none}
-/* Fluid Slider CSS */
-.fluid-slider-container{position:relative;width:200px;height:40px;display:flex;align-items:center;justify-content:center;flex:1}
-.fluid-slider-track{display:inline-block;position:absolute;width:200px;height:14px;left:0;top:13px;background-color:rgba(15,23,42,.1);border-radius:100px;cursor:pointer;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
-.fluid-slider-track-inner{width:100%;height:100%;overflow:hidden;border-radius:100px}
-.fluid-slider-fill{height:100%;width:33%;border-radius:100px;background:linear-gradient(90deg,#3b82f6,#60a5fa);box-shadow:0 0 8px rgba(59,130,246,.4)}
-.fluid-slider-thumb{position:absolute;width:50px;height:40px;top:0;border-radius:20px;transform:scale(0.6);transform-origin:center center;cursor:pointer;touch-action:none;user-select:none;background-color:rgba(255,255,255,1);box-shadow:0 2px 10px rgba(0,0,0,.2);overflow:hidden;will-change:transform,background-color;z-index:10}
-.fluid-slider-thumb-clone{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden;border-radius:inherit;z-index:1;opacity:0;will-change:opacity}
-.use-fluid-backdrop-filter .fluid-slider-thumb-clone{display:none}
-.fluid-slider-thumb-clone-inner{position:absolute;top:0;left:0;pointer-events:none;background:rgba(255,255,255,.25);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}
-.fluid-slider-thumb-clone-inner::before{content:"";position:absolute;left:var(--track-left,0);top:var(--track-top,0);width:200px;height:14px;border-radius:100px;background-color:rgba(15,23,42,.1);overflow:hidden}
-.fluid-slider-thumb-clone-inner::after{content:"";position:absolute;left:var(--track-left,0);top:var(--track-top,0);width:calc(200px * var(--fill-width,33) / 100);height:14px;border-radius:100px;background:linear-gradient(90deg,#3b82f6,#60a5fa)}
-.fluid-slider-thumb-inner{position:absolute;top:0;left:0;width:100%;height:100%;border-radius:inherit;z-index:3;pointer-events:none}
-.use-fluid-backdrop-filter .fluid-slider-thumb-inner{backdrop-filter:url(#fluidSliderGlassFilter);-webkit-backdrop-filter:url(#fluidSliderGlassFilter)}
-.crop-zoom-row{display:flex;align-items:center;gap:8px}.crop-zoom-row .fluid-slider-container{display:flex;margin:0 2px}
 .inv-row{display:flex;gap:8px;margin-top:10px}
 .inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
 .mm-ov{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
@@ -302,36 +288,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
       <div class="crop-controls" id="gCropControls" style="display:none">
         <div class="crop-zoom-row">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-          <div class="fluid-slider-container" id="fluidSliderDemo">
-            <div class="fluid-slider-track" id="fluidSliderTrack">
-              <div class="fluid-slider-track-inner">
-                <div class="fluid-slider-fill" id="fluidSliderFill"></div>
-              </div>
-            </div>
-            <div class="fluid-slider-thumb" id="fluidSliderThumb">
-              <div class="fluid-slider-thumb-clone" id="fluidSliderThumbClone">
-                <div class="fluid-slider-thumb-clone-inner" id="fluidSliderThumbCloneInner"></div>
-              </div>
-              <div class="fluid-slider-thumb-inner" id="fluidSliderThumbInner"></div>
-              <svg style="width: 0; height: 0; position: absolute;">
-                <defs>
-                  <filter id="fluidSliderGlassFilter" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
-                    <feGaussianBlur id="fluidSliderFilterBlur" in="SourceGraphic" stdDeviation="0" result="blurred_source" />
-                    <feImage id="fluidSliderDisplacementImage" href="" x="0" y="0" width="50" height="40" result="displacement_map" preserveAspectRatio="none" />
-                    <feDisplacementMap id="fluidSliderDisplacementMap" in="blurred_source" in2="displacement_map" scale="20" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-                    <feColorMatrix id="fluidSliderSaturation" in="displaced" type="saturate" values="7" result="displaced_saturated" />
-                    <feImage id="fluidSliderSpecularImage" href="" x="0" y="0" width="50" height="40" result="specular_layer" preserveAspectRatio="none" />
-                    <feComposite in="displaced_saturated" in2="specular_layer" operator="in" result="specular_saturated" />
-                    <feComponentTransfer in="specular_layer" result="specular_faded">
-                      <feFuncA id="fluidSliderSpecularAlpha" type="linear" slope="0.4" />
-                    </feComponentTransfer>
-                    <feBlend in="specular_saturated" in2="displaced" mode="normal" result="withSaturation" />
-                    <feBlend in="specular_faded" in2="withSaturation" mode="normal" />
-                  </filter>
-                </defs>
-              </svg>
-            </div>
-          </div>
+          <input type="range" class="croprange" id="gCropRange" min="0.1" max="3" step="0.01" value="1">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
           <span class="crop-zoom-label" id="gCropZoomLabel">100%</span>
         </div>
@@ -1061,9 +1018,10 @@ async function loadGroupMessages(){
 // 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
 // (メンバー名・アバターを正しく紐付けるため)
 (async ()=>{
-  await loadGroupInfo();
-  await loadGroupMessages();
-  connectGroupWS();
+  // ページ読み込み完了を待たずにすぐ初期化開始
+  Promise.all([loadGroupInfo(), loadGroupMessages()]).then(() => {
+    connectGroupWS();
+  }).catch(err => console.error('初期化エラー:', err));
 })();
 
 // --- WebSocketでリアルタイム受信 ---
@@ -1149,18 +1107,6 @@ function connectGroupWS(){
   };
   groupWs.onerror=err=>{console.error('WebSocketエラー:',err);};
 }
-
-/* Fluid Slider Implementation */
-class Spring{constructor(v,s=300,d=20){this.value=v;this.target=v;this.velocity=0;this.stiffness=s;this.damping=d}setTarget(t){this.target=t}update(dt){const f=(this.target-this.value)*this.stiffness;const df=this.velocity*this.damping;this.velocity+=(f-df)*dt;this.value+=this.velocity*dt;return this.value}isSettled(){return Math.abs(this.target-this.value)<0.001&&Math.abs(this.velocity)<0.001}}
-const SurfaceEquations={convex_squircle:(x)=>Math.pow(1-Math.pow(1-x,4),1/4)};
-function calculateDisplacementMap1D(gt,bw,sf,ri,s=128){const e=1/ri;const r=[];for(let i=0;i<s;i++){const x=i/s;const y=sf(x);const dx=x<1?0.0001:-0.0001;const d=(sf(Math.max(0,Math.min(1,x+dx)))-y)/dx;const m=Math.sqrt(d*d+1);const n=[-d/m,-1/m];const dt=n[1];const k=1-e*e*(1-dt*dt);if(k<0){r.push(0)}else{const rf=[-(e*dt+Math.sqrt(k))*n[0],e-(e*dt+Math.sqrt(k))*n[1]];r.push(rf[0]*((y*bw+gt)/rf[1]))}}return r}
-function calculateDisplacementMap2D(cw,ch,ow,oh,rad,bw,md,pMap){const img=new ImageData(cw,ch);for(let i=0;i<img.data.length;i+=4){img.data[i]=128;img.data[i+1]=128;img.data[i+3]=255}const rSq=rad*rad;const rp1Sq=(rad+1)**2;const rmBwSq=Math.max(0,rad-bw)**2;const wB=ow-rad*2;const hB=oh-rad*2;const oX=(cw-ow)/2;const oY=(ch-oh)/2;for(let y1=0;y1<oh;y1++){for(let x1=0;x1<ow;x1++){const idx=((oY+y1)*cw+oX+x1)*4;const x=x1<rad?x1-rad:x1>=ow-rad?x1-rad-wB:0;const y=y1<rad?y1-rad:y1>=oh-rad?y1-rad-hB:0;const dSq=x*x+y*y;if(dSq<=rp1Sq&&dSq>=rmBwSq){const dist=Math.sqrt(dSq);const op=dSq<rSq?1:1-(dist-rad)/(Math.sqrt(rp1Sq)-rad);const bIdx=Math.floor(Math.max(0,Math.min(1,(rad-dist)/bw))*pMap.length);const dVal=pMap[Math.max(0,Math.min(bIdx,pMap.length-1))]||0;const dX=md>0?(-(dist>0?x/dist:0)*dVal)/md:0;const dY=md>0?(-(dist>0?y/dist:0)*dVal)/md:0;img.data[idx]=Math.max(0,Math.min(255,128+dX*127*op));img.data[idx+1]=Math.max(0,Math.min(255,128+dY*127*op))}}}return img}
-function calculateSpecularHighlight(ow,oh,rad,bw){const img=new ImageData(ow,oh);const sVec=[Math.cos(Math.PI/3),Math.sin(Math.PI/3)];const rSq=rad*rad;const rp1Sq=(rad+1)**2;const rmSSq=Math.max(0,(rad-1.5)**2);for(let y1=0;y1<oh;y1++){for(let x1=0;x1<ow;x1++){const x=x1<rad?x1-rad:x1>=ow-rad?x1-rad-(ow-rad*2):0;const y=y1<rad?y1-rad:y1>=oh-rad?y1-rad-(oh-rad*2):0;const dSq=x*x+y*y;if(dSq<=rp1Sq&&dSq>=rmSSq){const dist=Math.sqrt(dSq);const op=dSq<rSq?1:1-(dist-rad)/(Math.sqrt(rp1Sq)-rad);const dp=Math.abs((dist>0?x/dist:0)*sVec[0]+(dist>0?-y/dist:0)*sVec[1]);const cf=dp*Math.sqrt(1-Math.pow(Math.max(0,Math.min(1,(rad-dist)/1.5)),2));const c=Math.min(255,255*cf);const idx=(y1*ow+x1)*4;img.data[idx]=img.data[idx+1]=img.data[idx+2]=c;img.data[idx+3]=Math.min(255,c*cf*op)}}}return img}
-function imageDataToDataURL(img){const c=document.createElement("canvas");c.width=img.width;c.height=img.height;c.getContext("2d").putImageData(img,0,0);return c.toDataURL()}
-let useFluidBackdropFilter=false;
-function detectFluidFeatures(){const t=document.createElement("div");t.style.backdropFilter="url(#test)";useFluidBackdropFilter=!!window.chrome&&t.style.backdropFilter.includes("url");if(useFluidBackdropFilter)document.body.classList.add("use-fluid-backdrop-filter")}
-function initFluidSlider(){const c={w:50,h:40,r:20,tw:200,th:14,bw:12,gt:60,ri:1.45,sr:0.6,sd:1};const s={val:33,pd:false,md:0};const sp={sc:new Spring(c.sr,2000,80),bo:new Spring(1,2000,80),sr:new Spring(0.4,100,10)};let af=null;const th=document.getElementById("fluidSliderThumb"),tr=document.getElementById("fluidSliderTrack"),fi=document.getElementById("fluidSliderFill"),ci=document.getElementById("fluidSliderThumbCloneInner");const pc=calculateDisplacementMap1D(c.gt,c.bw,SurfaceEquations.convex_squircle,c.ri);s.md=Math.max(...pc.map(Math.abs));document.getElementById("fluidSliderDisplacementImage").setAttribute("href",imageDataToDataURL(calculateDisplacementMap2D(c.w,c.h,c.w,c.h,c.r,c.bw,s.md||1,pc)));document.getElementById("fluidSliderSpecularImage").setAttribute("href",imageDataToDataURL(calculateSpecularHighlight(c.w,c.h,c.r,c.bw)));if(!useFluidBackdropFilter)document.getElementById("fluidSliderThumb").style.filter="url(#fluidSliderGlassFilter)";function upd(){fi.style.width=s.val+"%";const tx=(c.w*c.sr)/2+(s.val/100)*(c.tw-c.w*c.sr)-c.w/2;th.style.left=tx+"px";if(!useFluidBackdropFilter){const aR=document.getElementById("fluidSliderDemo").getBoundingClientRect();const cl=(aR.width-c.tw)/2;const ct=(aR.height-c.h)/2;ci.style.width=aR.width+"px";ci.style.height=aR.height+"px";ci.style.transform=`translate(${-(cl+tx)}px,${-ct}px)`;ci.style.setProperty("--track-left",`${cl}px`);ci.style.setProperty("--track-top",`${ct+(c.h-c.th)/2}px`);ci.style.setProperty("--fill-width",s.val.toString())}}function loop(){const dt=Math.min(0.032,1/60);sp.sc.setTarget(s.pd?c.sd:c.sr);sp.bo.setTarget(s.pd?0.1:1);sp.sr.setTarget(s.pd?0.9:0.4);const sc=sp.sc.update(dt),bo=sp.bo.update(dt);th.style.transform=`scale(${sc})`;th.style.backgroundColor=`rgba(255,255,255,${bo})`;document.getElementById("fluidSliderThumbClone").style.opacity=1-bo;document.getElementById("fluidSliderDisplacementMap").setAttribute("scale",s.md*sp.sr.update(dt));if(!Object.values(sp).every(x=>x.isSettled()))af=requestAnimationFrame(loop);else af=null}th.addEventListener("pointerdown",e=>{e.preventDefault();s.pd=true;if(!af)af=requestAnimationFrame(loop);document.getElementById("gCropRange").value=s.val/100*2.9+0.1});window.addEventListener("pointermove",e=>{if(!s.pd)return;e.preventDefault();const cx=e.touches?e.touches[0].clientX:e.clientX;const wR=c.w*c.sr;const x0=tr.getBoundingClientRect().left+wR/2;const tw=c.tw-wR;s.val=Math.max(0,Math.min(100,((Math.max(x0,Math.min(x0+tw,cx))-x0)/tw)*100));upd();document.getElementById("gCropRange").value=s.val/100*2.9+0.1});window.addEventListener("pointerup",()=>{s.pd=false;if(!af)af=requestAnimationFrame(loop)});window.addEventListener("resize",upd);upd();af=requestAnimationFrame(loop)}
-document.addEventListener('DOMContentLoaded',()=>{detectFluidFeatures();initFluidSlider()})
 </script>
 </body>
 </html>
