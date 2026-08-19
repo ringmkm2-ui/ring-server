@@ -11,6 +11,10 @@ const path = require('path');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 20,
+  statement_timeout: 30000,
 });
 
 // `?` を `$1, $2, ...` に変換 (SQLite版と同じクエリ文字列を使い回すため)
