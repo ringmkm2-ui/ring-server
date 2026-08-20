@@ -454,40 +454,69 @@ async function handleMediaGroup(f,t){
     return;
   }
 
-  const maxSize = t === 'video' ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+  const maxSize = t === 'video' ? 500 * 1024 * 1024 : 100 * 1024 * 1024; // Cloudinary対応で制限アップ
   if(f.size > maxSize){
     alert('ファイルが大きすぎます');
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = async e => {
-    let base64 = e.target.result;
-    // モバイルデータ節約がオンの場合、画像のみ送信前に圧縮する(動画は対象外)
-    if(t==='image' && window.maybeCompressImage){
-      base64 = await window.maybeCompressImage(base64);
-    }
-    const caption=`[${t==='image'?'画像':'動画'}]`;
+  // E2E暗号化用の鍵を取得
+  if(!window.myE2EKey){
+    console.error('E2E鍵が初期化されていません');
+    alert('暗号化の準備ができていません。ページをリロードしてください。');
+    return;
+  }
 
-    // 楽観的更新: 送信直後に自分の画面へ即座に表示
-    const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
-    const msgDiv=createMsg(caption,{mediaType:t,mediaData:base64},false,null,tempId,null,true);
+  // 楽観的更新用のテンポラリID
+  const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+  const caption = `[${t === 'image' ? '画像' : '動画'}]`;
+  
+  // ローディングメッセージを表示
+  const msgDiv = createMsg(caption, { mediaType: t, mediaData: null, uploading: true }, false, null, tempId, null, true);
 
-    try {
-      const data = await api('/api/groups/'+groupId+'/messages/send',{
-        method:'POST',
-        body:JSON.stringify({content:caption,mediaType:t,mediaData:base64,encrypted:false})
-      });
-      if(data&&data.ok&&data.message){
-        msgDiv.dataset.msgId=data.message.id;
-      }else{
-        console.error('メディア送信に失敗しました:',data);
+  try {
+    // Cloudinary E2E アップロード
+    const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
+      f,
+      window.myE2EKey,
+      `brochat/groups/${groupId}`,
+      (progress) => {
+        // 進捗表示（オプション）
+        console.log('[upload] Progress:', progress + '%');
       }
-    }catch(err){
-      console.error('media send error:',err);
+    );
+
+    if (!metadata || !metadata.cloudinaryUrl) {
+      throw new Error('Upload failed');
     }
-  };
-  reader.readAsDataURL(f);
+
+    // グループチャットにメディア送信（メタデータのみ）
+    const data = await api('/api/groups/' + groupId + '/messages/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        content: caption,
+        mediaType: t,
+        mediaUrl: metadata.cloudinaryUrl,
+        mediaPublicId: metadata.cloudinaryPublicId,
+        encryptedMetadata: metadata.encryptedMetadata,
+        chunkCount: metadata.chunkCount,
+        encrypted: true
+      })
+    });
+
+    if (data && data.ok && data.message) {
+      msgDiv.dataset.msgId = data.message.id;
+      msgDiv.classList.remove('uploading');
+    } else {
+      console.error('メディア送信に失敗しました:', data);
+      msgDiv.remove();
+    }
+  } catch (err) {
+    console.error('media send error:', err);
+    msgDiv.remove();
+    alert('ファイルアップロードに失敗しました: ' + err.message);
+  }
+
   document.getElementById('ibar').classList.remove('open');
 }
 
