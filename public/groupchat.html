@@ -1056,6 +1056,17 @@ async function loadGroupMessages(){
     console.error('Cache init error:', e);
   }
   
+  // E2E暗号化用の鍵を初期化
+  try {
+    if (!window.myE2EKey) {
+      const keypair = await getOrCreateMyKeyPair();
+      window.myE2EKey = keypair.secretKey;
+      console.log('[groupchat] E2E key initialized');
+    }
+  } catch (e) {
+    console.error('[groupchat] E2E key init error:', e);
+  }
+  
   // ページ読み込み完了を待たずにすぐ初期化開始
   Promise.all([loadGroupInfo(), loadGroupMessages()]).then(() => {
     connectGroupWS();
