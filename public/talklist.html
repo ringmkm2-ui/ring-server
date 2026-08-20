@@ -607,6 +607,68 @@ async function refreshFromServer() {
   }
 }
 
+function renderFriends(friends) {
+  const list = document.getElementById('talkList');
+  if (!Array.isArray(friends) || friends.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">友達がいません</div>';
+    return;
+  }
+  list.innerHTML = '';
+  friends.forEach(f => {
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.5);margin-bottom:8px;cursor:pointer;transition:background .2s';
+    card.onclick = () => openChat(f.id, f.name, f.profilePic);
+    
+    const avatar = document.createElement('div');
+    avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;background-size:cover;background-position:center';
+    if (f.profilePic && f.profilePic.startsWith('data:image/')) {
+      avatar.style.backgroundImage = `url(${f.profilePic})`;
+    } else {
+      avatar.textContent = f.name.charAt(0);
+      avatar.style.backgroundColor = `hsl(${Math.abs(f.id.charCodeAt(0)) % 360}, 70%, 60%)`;
+    }
+    
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0';
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:700;font-size:14px;color:#0f172a';
+    nameEl.textContent = f.name;
+    info.appendChild(nameEl);
+    
+    card.appendChild(avatar);
+    card.appendChild(info);
+    list.appendChild(card);
+  });
+}
+
+function renderGroups(groups) {
+  const list = document.getElementById('groupList');
+  if (!Array.isArray(groups) || groups.length === 0) {
+    return;
+  }
+  list.innerHTML = '';
+  groups.forEach(g => {
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.5);margin-bottom:8px;cursor:pointer;transition:background .2s';
+    card.onclick = () => location.href = `/groupchat.html?groupId=${g.id}`;
+    
+    const avatar = document.createElement('div');
+    avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;background-size:cover;background-position:center;background-color:hsl(' + Math.abs(g.id.charCodeAt(0)) % 360 + ',70%,60%)';
+    avatar.textContent = g.name.charAt(0);
+    
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0';
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:700;font-size:14px;color:#0f172a';
+    nameEl.textContent = g.name;
+    info.appendChild(nameEl);
+    
+    card.appendChild(avatar);
+    card.appendChild(info);
+    list.appendChild(card);
+  });
+}
+
 async function loadFriends() {
   // 不要になった
 }
@@ -1525,6 +1587,11 @@ async function deletePost(postId, card) {
     }
   } catch (e) { console.error('deletePost error:', e); }
 }
+
+// ページ読み込み完了時にキャッシュから復元開始
+document.addEventListener('DOMContentLoaded', () => {
+  initializeWithCache();
+});
 </script>
 </body>
 </html>

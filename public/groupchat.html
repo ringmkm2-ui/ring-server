@@ -162,6 +162,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
+<script defer src="/js/cacheManager.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -1018,6 +1019,13 @@ async function loadGroupMessages(){
 // 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
 // (メンバー名・アバターを正しく紐付けるため)
 (async ()=>{
+  // キャッシュマネージャーを初期化
+  try {
+    await cacheManager.init();
+  } catch (e) {
+    console.error('Cache init error:', e);
+  }
+  
   // ページ読み込み完了を待たずにすぐ初期化開始
   Promise.all([loadGroupInfo(), loadGroupMessages()]).then(() => {
     connectGroupWS();
