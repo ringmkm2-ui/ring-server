@@ -124,4 +124,59 @@ router.get('/download/:fileId', verifyToken, asyncHandler(async (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 }));
 
+// --- Cloudinary からメディアを削除 ---
+const CLOUDINARY_CLOUD_NAME = 'a6rxinoz';
+const CLOUDINARY_API_KEY = '312198856948918';
+const CLOUDINARY_API_SECRET = '1ZwGejRa5kqG4AfEbEancn1N7Ag';
+
+function generateCloudinarySig(params) {
+  const crypto = require('crypto');
+  const sorted = Object.keys(params)
+    .sort()
+    .map(key => `${key}=${params[key]}`)
+    .join('&');
+  return crypto.createHash('sha256').update(sorted + CLOUDINARY_API_SECRET).digest('hex');
+}
+
+router.post('/delete', verifyToken, asyncHandler(async (req, res) => {
+  const { publicId } = req.body;
+  
+  if (!publicId) {
+    return res.status(400).json({ error: 'publicId is required' });
+  }
+
+  try {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params = {
+      public_id: publicId,
+      api_key: CLOUDINARY_API_KEY,
+      timestamp: timestamp
+    };
+    params.signature = generateCloudinarySig(params);
+
+    const formData = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/resources/image/upload`,
+      {
+        method: 'DELETE',
+        body: formData
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[cloudinary] Delete failed:', response.status);
+      return res.status(500).json({ error: 'Delete failed' });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[cloudinary] Delete error:', e);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+}));
+
 module.exports = router;
