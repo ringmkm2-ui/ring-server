@@ -334,6 +334,7 @@ const myName=localStorage.getItem('myName')||'自分';
 const myAvatar=localStorage.getItem('myAvatar')||'';
 const myColor='#3b82f6';
 const myUserId=localStorage.getItem('ring_userId');
+window.myUserId=myUserId; // e2eKeys.js から参照できるようにグローバル化
 const token=localStorage.getItem('ring_token');
 if(!token) location.href='/auth.html';
 
@@ -465,9 +466,21 @@ async function handleMediaGroup(f,t){
 
   // E2E暗号化用の鍵を取得
   if(!window.myE2EKey){
-    console.error('E2E鍵が初期化されていません');
-    alert('暗号化の準備ができていません。ページをリロードしてください。');
-    return;
+    console.error('E2E鍵が初期化されていません。再試行します...');
+    try {
+      if (typeof window.getOrCreateMyKeyPair === 'function') {
+        const keypair = await window.getOrCreateMyKeyPair();
+        window.myE2EKey = keypair.secretKey;
+        console.log('[handleMediaGroup] E2E key initialized on-demand');
+      } else {
+        alert('暗号化モジュールが読み込まれていません。ページをリロードしてください。');
+        return;
+      }
+    } catch (e) {
+      console.error('E2E鍵の再初期化に失敗:', e);
+      alert('暗号化の準備ができていません。ページをリロードしてください。');
+      return;
+    }
   }
 
   // 楽観的更新用のテンポラリID
@@ -1059,12 +1072,23 @@ async function loadGroupMessages(){
     console.error('Cache init error:', e);
   }
   
-  // E2E暗号化用の鍵を初期化
+  // E2E暗号化用の鍵を初期化（e2eKeys.js の読み込みを待つ）
   try {
-    if (!window.myE2EKey) {
-      const keypair = await getOrCreateMyKeyPair();
-      window.myE2EKey = keypair.secretKey;
-      console.log('[groupchat] E2E key initialized');
+    // getOrCreateMyKeyPair が定義されるまで最大3秒待機
+    let waitCount = 0;
+    while (typeof window.getOrCreateMyKeyPair !== 'function' && waitCount < 30) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      waitCount++;
+    }
+    
+    if (typeof window.getOrCreateMyKeyPair === 'function') {
+      if (!window.myE2EKey) {
+        const keypair = await window.getOrCreateMyKeyPair();
+        window.myE2EKey = keypair.secretKey;
+        console.log('[groupchat] E2E key initialized');
+      }
+    } else {
+      console.error('[groupchat] getOrCreateMyKeyPair not available after waiting');
     }
   } catch (e) {
     console.error('[groupchat] E2E key init error:', e);
