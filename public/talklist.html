@@ -219,7 +219,11 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
           <textarea id="postTextInput" placeholder="今なにしてる？" rows="3" style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:16px;outline:none;font-size:14px;font-family:inherit;resize:none;"></textarea>
           <div id="postMediaPreview" style="display:none;margin-top:10px;position:relative;">
             <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
-            <video id="postMediaPreviewVideo" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" controls></video>
+            <div id="postVideoContainer" style="display:none;position:relative;width:100%;">
+              <video id="postMediaPreviewVideo" style="width:100%;max-height:220px;object-fit:cover;border-radius:14px;" controls></video>
+              <div id="postVideoLoading" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">読み込み中...</div>
+              <div id="postVideoTime" style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;">0:00</div>
+            </div>
             <button type="button" id="postMediaRemoveBtn" class="glass-clear glass-interactive" style="position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -242,7 +246,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.22.2 beta</div>
+  <div class="version-badge">Bro Chat v1.23.0 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1324,10 +1328,28 @@ document.getElementById('postVideoFile').onchange = e => {
     pendingPostMedia = { dataUrl: ev.target.result, type: 'video' };
     const preview = document.getElementById('postMediaPreview');
     const img = document.getElementById('postMediaPreviewImg');
+    const videoContainer = document.getElementById('postVideoContainer');
     const video = document.getElementById('postMediaPreviewVideo');
-    video.src = ev.target.result; video.style.display = 'block';
+    const videoLoading = document.getElementById('postVideoLoading');
+    const videoTime = document.getElementById('postVideoTime');
+    
+    video.src = ev.target.result;
+    videoContainer.style.display = 'block';
+    videoLoading.style.display = 'flex'; // 読み込み中を表示
     img.style.display = 'none'; img.src = '';
     preview.style.display = 'block';
+    
+    // メタデータが読み込まれたら時間を表示
+    const onLoadedMetadata = () => {
+      videoLoading.style.display = 'none'; // 読み込み完了
+      const duration = video.duration;
+      const minutes = Math.floor(duration / 60);
+      const seconds = Math.floor(duration % 60);
+      videoTime.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+    };
+    
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
   };
   reader.readAsDataURL(f);
 };
@@ -1337,6 +1359,10 @@ document.getElementById('postMediaRemoveBtn').onclick = () => {
   document.getElementById('postMediaPreview').style.display = 'none';
   document.getElementById('postImageFile').value = '';
   document.getElementById('postVideoFile').value = '';
+  document.getElementById('postMediaPreviewImg').src = '';
+  document.getElementById('postMediaPreviewVideo').src = '';
+  document.getElementById('postVideoContainer').style.display = 'none';
+  document.getElementById('postVideoLoading').style.display = 'none';
 };
 
 document.getElementById('postSubmitBtn').onclick = async () => {
@@ -1424,6 +1450,10 @@ document.getElementById('postSubmitBtn').onclick = async () => {
       textInput.value = '';
       pendingPostMedia = null;
       document.getElementById('postMediaPreview').style.display = 'none';
+      document.getElementById('postMediaPreviewImg').src = '';
+      document.getElementById('postMediaPreviewVideo').src = '';
+      document.getElementById('postVideoContainer').style.display = 'none';
+      document.getElementById('postVideoLoading').style.display = 'none';
       document.getElementById('postImageFile').value = '';
       document.getElementById('postVideoFile').value = '';
       postsOldestTimestamp = null;
