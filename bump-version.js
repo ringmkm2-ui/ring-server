@@ -43,7 +43,7 @@ const htmlFiles = [
   'public/talklist.html'
 ];
 
-const htmlVersion = `v${newVersion.split('.').slice(0, 2).join('.')} beta`;
+const htmlVersion = `v${newVersion} beta`;
 
 htmlFiles.forEach(file => {
   const filePath = path.join(__dirname, file);
