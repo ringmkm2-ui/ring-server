@@ -242,7 +242,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.22.1 beta</div>
+  <div class="version-badge">Bro Chat v1.22.2 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1386,6 +1386,8 @@ document.getElementById('postSubmitBtn').onclick = async () => {
         const mediaBlob = new Blob([bytes], { type: pendingPostMedia.type === 'video' ? 'video/mp4' : 'image/jpeg' });
 
         // Cloudinary E2E でアップロード
+        console.log('[postSubmit] Starting media upload:', { size: mediaBlob.size, type: pendingPostMedia.type });
+        
         const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
           mediaBlob,
           window.myE2EKey,
@@ -1395,6 +1397,8 @@ document.getElementById('postSubmitBtn').onclick = async () => {
           }
         );
 
+        console.log('[postSubmit] Upload complete:', metadata);
+        
         if (metadata && metadata.cloudinaryUrl) {
           body.mediaUrl = metadata.cloudinaryUrl;
           body.mediaType = pendingPostMedia.type;
@@ -1402,11 +1406,12 @@ document.getElementById('postSubmitBtn').onclick = async () => {
           body.encryptedMetadata = metadata.encryptedMetadata;
           body.chunkCount = metadata.chunkCount;
           body.encrypted = true;
+          console.log('[postSubmit] Media metadata set:', { mediaUrl: metadata.cloudinaryUrl });
         } else {
-          throw new Error('Media upload failed');
+          throw new Error('Media upload returned no URL: ' + JSON.stringify(metadata));
         }
       } catch (e) {
-        console.error('Media upload error:', e);
+        console.error('[postSubmit] Media upload error:', e);
         alert('メディアのアップロードに失敗しました: ' + e.message);
         submitBtn.disabled = false;
         submitBtn.textContent = '投稿する';
