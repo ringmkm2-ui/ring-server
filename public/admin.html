@@ -163,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.23.0 beta</div>
+  <div class="version-badge">Bro Chat v1.24.0 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -341,6 +341,13 @@ const otherId = params.get('userId') || params.get('id') || params.get('callerId
 let otherPic = '';
 const myName = localStorage.getItem('myName') || '自分';
 const myAvatar = localStorage.getItem('myAvatar') || '';
+const myUserIdForCheck = localStorage.getItem('ring_userId');
+
+// 自分自身とのチャットは開けないようにする（データ不整合防止）
+if (otherId && myUserIdForCheck && String(otherId) === String(myUserIdForCheck)) {
+  alert('エラー: 自分自身とのチャットは開けません');
+  location.href = '/talklist.html';
+}
 
 const token = localStorage.getItem('ring_token');
 const myUserId = localStorage.getItem('ring_userId');

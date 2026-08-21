@@ -220,7 +220,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
           <div id="postMediaPreview" style="display:none;margin-top:10px;position:relative;">
             <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
             <div id="postVideoContainer" style="display:none;position:relative;width:100%;">
-              <video id="postMediaPreviewVideo" style="width:100%;max-height:220px;object-fit:cover;border-radius:14px;" controls></video>
+              <video id="postMediaPreviewVideo" style="width:100%;max-height:220px;object-fit:cover;border-radius:14px;background:#000;" controls playsinline preload="metadata"></video>
               <div id="postVideoLoading" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">読み込み中...</div>
               <div id="postVideoTime" style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;">0:00</div>
             </div>
@@ -246,7 +246,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.23.0 beta</div>
+  <div class="version-badge">Bro Chat v1.24.0 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -711,6 +711,12 @@ function escHtml(str) {
 }
 
 function openChat(userId, name, pic) {
+  // 自分自身とのチャットを開こうとした場合はブロック（データ不整合防止）
+  if (String(userId) === String(myUserId)) {
+    console.error('[openChat] Blocked: attempted to open chat with self', userId);
+    alert('エラー: 自分自身とのチャットは開けません');
+    return;
+  }
   // 注意: picにはBase64画像データが入りうるため、URLに含めるとリクエストヘッダが
   // 肥大化し431エラーの原因になる。画像はadmin.html側でAPI経由取得する。
   location.href = `/admin.html?userId=${userId}&name=${encodeURIComponent(name)}`;

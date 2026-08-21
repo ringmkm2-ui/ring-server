@@ -273,6 +273,11 @@
     .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
     .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
   </style>
+  <script>
+    // 言語設定を反映
+    const lang = localStorage.getItem('ring_language') || 'ja';
+    document.documentElement.lang = lang;
+  </script>
 </head>
 <body>
   <div class="container">

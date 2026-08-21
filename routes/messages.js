@@ -164,7 +164,7 @@ router.get('/history/:userId', auth, async (req, res) => {
 // GET /api/messages/talks
 router.get('/talks', auth, async (req, res) => {
   try {
-    // メッセージがある会話
+    // メッセージがある会話（自分自身へのメッセージは除外）
     const rows = await db.all(`
       SELECT
         CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
@@ -174,7 +174,7 @@ router.get('/talks', auth, async (req, res) => {
         deleted_at,
         MAX(created_at) as last_time
       FROM messages
-      WHERE sender_id = ? OR recipient_id = ?
+      WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id
       GROUP BY other_id
       ORDER BY last_time DESC
     `, [req.userId, req.userId, req.userId]);
