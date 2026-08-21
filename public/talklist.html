@@ -135,6 +135,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3"></script>
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl-util"></script>
+<script src="/js/e2eKeys.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -239,7 +242,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.21 beta</div>
+  <div class="version-badge">Bro Chat v1.22 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -308,6 +311,7 @@ const pc=document.getElementById('pc');
 
 const token = localStorage.getItem('ring_token');
 const myUserId = localStorage.getItem('ring_userId');
+window.myUserId = myUserId; // e2eKeys.js から参照できるようにグローバル化
 if (!token) location.href = '/auth.html';
 
 function switchTab(activeBtnId){
@@ -1347,10 +1351,69 @@ document.getElementById('postSubmitBtn').onclick = async () => {
 
   try {
     const body = { text: text || null };
+    
+    // メディアがある場合、Cloudinary E2E で先にアップロード
     if (pendingPostMedia) {
-      body.mediaUrl = pendingPostMedia.dataUrl;
-      body.mediaType = pendingPostMedia.type;
+      // E2E鍵を取得
+      if (!window.myE2EKey) {
+        try {
+          if (typeof window.getOrCreateMyKeyPair === 'function') {
+            const keypair = await window.getOrCreateMyKeyPair();
+            window.myE2EKey = keypair.secretKey;
+          } else {
+            alert('暗号化モジュールが準備できていません');
+            submitBtn.disabled = false;
+            submitBtn.textContent = '投稿する';
+            return;
+          }
+        } catch (e) {
+          console.error('E2E key init error:', e);
+          alert('暗号化の初期化に失敗しました');
+          submitBtn.disabled = false;
+          submitBtn.textContent = '投稿する';
+          return;
+        }
+      }
+
+      try {
+        // Base64 → Blob に変換
+        const base64Data = pendingPostMedia.dataUrl.split(',')[1];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const mediaBlob = new Blob([bytes], { type: pendingPostMedia.type === 'video' ? 'video/mp4' : 'image/jpeg' });
+
+        // Cloudinary E2E でアップロード
+        const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
+          mediaBlob,
+          window.myE2EKey,
+          'brochat/posts',
+          (progress) => {
+            submitBtn.textContent = `投稿中...${progress}%`;
+          }
+        );
+
+        if (metadata && metadata.cloudinaryUrl) {
+          body.mediaUrl = metadata.cloudinaryUrl;
+          body.mediaType = pendingPostMedia.type;
+          body.mediaPublicId = metadata.cloudinaryPublicId;
+          body.encryptedMetadata = metadata.encryptedMetadata;
+          body.chunkCount = metadata.chunkCount;
+          body.encrypted = true;
+        } else {
+          throw new Error('Media upload failed');
+        }
+      } catch (e) {
+        console.error('Media upload error:', e);
+        alert('メディアのアップロードに失敗しました: ' + e.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = '投稿する';
+        return;
+      }
     }
+
     const data = await api('/api/posts', { method: 'POST', body: JSON.stringify(body) });
     if (data.ok) {
       textInput.value = '';
