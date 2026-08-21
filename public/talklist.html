@@ -1290,6 +1290,11 @@ document.getElementById('postAttachVideoBtn').onclick = () => document.getElemen
 
 document.getElementById('postImageFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
+  if (f.size > 100 * 1024 * 1024) { // Cloudinary 対応で 100MB まで対応
+    alert('画像は100MB以下にしてください');
+    e.target.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ev => {
     pendingPostMedia = { dataUrl: ev.target.result, type: 'image' };
@@ -1305,8 +1310,8 @@ document.getElementById('postImageFile').onchange = e => {
 
 document.getElementById('postVideoFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
-  if (f.size > 20 * 1024 * 1024) {
-    alert('動画は20MB以下にしてください');
+  if (f.size > 500 * 1024 * 1024) { // Cloudinary 対応で 500MB まで対応
+    alert('動画は500MB以下にしてください');
     e.target.value = '';
     return;
   }
