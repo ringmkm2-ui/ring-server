@@ -2,7 +2,6 @@
 // ブラウザ → Cloudinary 直接アップロード + E2E暗号化 + チャンク処理
 
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-const CLOUDINARY_UPLOAD_URL = 'https://api.cloudinary.com/v1_1/a6rxinoz/upload';
 const CLOUDINARY_UNSIGNED_PRESET = 'brochat_upload'; // Unsigned Upload Preset (設定必須)
 
 class CloudinaryE2EUploader {
@@ -144,7 +143,11 @@ class CloudinaryE2EUploader {
     formData.append('file', blob);
     formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET);
     formData.append('folder', path);
-    formData.append('resource_type', 'auto');
+    // NOTE: 暗号化済みバイナリ(application/octet-stream)はCloudinary側で
+    // 画像/動画として中身を解析できないため、resource_type:'auto'だと
+    // 「認識できないファイル」として400 Bad Requestになる。
+    // 中身を検査せずそのまま保存する 'raw' を明示的に指定する。
+    formData.append('resource_type', 'raw');
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -158,7 +161,10 @@ class CloudinaryE2EUploader {
 
       xhr.addEventListener('load', () => {
         if (xhr.status < 200 || xhr.status >= 300) {
-          reject(new Error(`Upload failed: ${xhr.status}`));
+          let detail = '';
+          try { detail = JSON.parse(xhr.responseText)?.error?.message || ''; } catch {}
+          console.error('[cloudinaryUpload] status', xhr.status, 'response:', xhr.responseText);
+          reject(new Error(`Upload failed: ${xhr.status}${detail ? ' - ' + detail : ''}`));
           return;
         }
 
@@ -170,7 +176,7 @@ class CloudinaryE2EUploader {
         reject(new Error('Upload failed'));
       });
 
-      xhr.open('POST', CLOUDINARY_UPLOAD_URL);
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/a6rxinoz/raw/upload`);
       xhr.send(formData);
     });
   }
