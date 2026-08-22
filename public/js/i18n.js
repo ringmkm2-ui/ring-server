@@ -78,12 +78,7 @@
     reset_zoom: { ja: "位置とズームをリセット", en: "Reset Position & Zoom", "zh-CN": "重置位置和缩放", ko: "위치 및 확대/축소 재설정" },
     read_by: { ja: "既読メンバー", en: "Read by", "zh-CN": "已读成员", ko: "읽은 멤버" },
 
-    // ---------- chat.html ----------
-    no_messages_yet: { ja: "まだメッセージがありません", en: "No messages yet", "zh-CN": "还没有消息", ko: "아직 메시지가 없습니다" },
-    chat_title: { ja: "チャット", en: "Chat", "zh-CN": "聊天", ko: "채팅" },
-    loading_messages: { ja: "メッセージを読み込み中...", en: "Loading messages...", "zh-CN": "正在加载消息...", ko: "메시지 로딩 중..." },
-
-    // ---------- authform.html ----------
+    // ---------- auth.html (login/signup) ----------
     secure_chat_app: { ja: "安全なチャットアプリ", en: "A secure chat app", "zh-CN": "安全的聊天应用", ko: "안전한 채팅 앱" },
 
     // ---------- Alerts / errors (used via i18n.t()) ----------
