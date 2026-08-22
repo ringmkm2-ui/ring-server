@@ -7,6 +7,18 @@ const { verifyToken: auth } = require('../utils/authMiddleware');
 
 const router = express.Router();
 
+// 相手が今オンラインかどうかを確認する。
+// ws/wsServer.js は起動時に initWebSocketServer() が呼ばれて初めて isUserOnline が
+// 使えるようになるため、循環require回避も兼ねて呼び出し時に require する。
+router.get('/presence/:userId', auth, (req, res) => {
+  try {
+    const { isUserOnline } = require('../ws/wsServer');
+    res.json({ userId: req.params.userId, online: isUserOnline(req.params.userId) });
+  } catch (err) {
+    res.json({ userId: req.params.userId, online: false });
+  }
+});
+
 // メッセージ内容をトークリスト用のプレビューテキストに変換
 function toPreviewText(content, encrypted) {
   if (!content) return '';
@@ -165,19 +177,35 @@ router.get('/history/:userId', auth, async (req, res) => {
 router.get('/talks', auth, async (req, res) => {
   try {
     // メッセージがある会話（自分自身へのメッセージは除外）
-    const rows = await db.all(`
+    // NOTE: PostgreSQLはGROUP BYに含まれない列をSELECTできない(SQLiteは黙って許容する)。
+    // SQLite/PostgreSQL両対応のため、まず相手ごとの最新時刻だけをGROUP BYで取得し、
+    // その後1件ずつ実際のメッセージ内容を引く（トーク数は通常少ないため許容範囲）。
+    const latestTimes = await db.all(`
       SELECT
         CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
-        content,
-        created_at,
-        sender_id,
-        deleted_at,
         MAX(created_at) as last_time
       FROM messages
       WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id
       GROUP BY other_id
       ORDER BY last_time DESC
     `, [req.userId, req.userId, req.userId]);
+
+    const rows = [];
+    for (const lt of latestTimes) {
+      const msg = await db.get(`
+        SELECT
+          CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
+          content, created_at, sender_id, deleted_at
+        FROM messages
+        WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+          AND created_at = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `, [req.userId, req.userId, lt.other_id, lt.other_id, req.userId, lt.last_time]);
+      if (msg) {
+        rows.push({ ...msg, last_time: lt.last_time });
+      }
+    }
 
     const result = [];
     const processedIds = new Set();

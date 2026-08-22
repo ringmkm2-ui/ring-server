@@ -10,6 +10,11 @@ const { sendPushToUser } = require('../utils/webPush');
 
 const connections = new Map(); // userId -> Set<ws>
 
+function isUserOnline(userId) {
+  const set = connections.get(userId);
+  return !!set && set.size > 0;
+}
+
 function broadcastToUser(userId, payload) {
   const set = connections.get(userId);
   if (!set) return false;
@@ -22,6 +27,25 @@ function broadcastToUser(userId, payload) {
     }
   });
   return delivered;
+}
+
+// userIdがオンライン/オフラインになったことを、そのユーザーと1対1チャット中の
+// 相手全員に通知する。誰が「相手」かはDBに問い合わせず、単純にトークしたことの
+// ある全ユーザーへブロードキャストすると重いので、実際に接続中のユーザーのうち
+// 過去にメッセージをやり取りしたことがある相手にだけ送る。
+async function broadcastPresence(userId, online) {
+  try {
+    const rows = await db.all(
+      `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
+       FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
+      [userId, userId, userId]
+    );
+    rows.forEach(row => {
+      broadcastToUser(row.other_id, { type: 'presence_update', userId, online });
+    });
+  } catch (err) {
+    console.error('[ws] presence broadcast error:', err);
+  }
 }
 
 async function flushOfflineQueue(userId) {
@@ -64,6 +88,18 @@ function initWebSocketServer(server) {
         connections.get(userId).add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
         await flushOfflineQueue(userId); // オンラインになった瞬間、溜まっていたメッセージを配送
+        broadcastPresence(userId, true); // 相手に「オンラインになった」ことを通知
+        return;
+      }
+
+      // --- 相手のオンライン状態を問い合わせ ---
+      if (data.type === 'presence_query') {
+        if (!userId) return;
+        ws.send(JSON.stringify({
+          type: 'presence_result',
+          userId: data.targetUserId,
+          online: isUserOnline(data.targetUserId),
+        }));
         return;
       }
 
@@ -270,7 +306,10 @@ function initWebSocketServer(server) {
     ws.on('close', () => {
       if (userId && connections.has(userId)) {
         connections.get(userId).delete(ws);
-        if (connections.get(userId).size === 0) connections.delete(userId);
+        if (connections.get(userId).size === 0) {
+          connections.delete(userId);
+          broadcastPresence(userId, false); // 相手に「オフラインになった」ことを通知
+        }
       }
     });
   });
@@ -279,4 +318,4 @@ function initWebSocketServer(server) {
   return wss;
 }
 
-module.exports = { initWebSocketServer, broadcastToUser };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline };

@@ -58,6 +58,7 @@
 
     // ---------- admin.html (1-on-1 chat) ----------
     online: { ja: "オンライン", en: "Online", "zh-CN": "在线", ko: "온라인" },
+    offline: { ja: "オフライン", en: "Offline", "zh-CN": "离线", ko: "오프라인" },
     pin: { ja: "ピン留め", en: "Pin", "zh-CN": "置顶", ko: "고정" },
     send_file: { ja: "ファイルを送信", en: "Send File", "zh-CN": "发送文件", ko: "파일 전송" },
     send_photo: { ja: "写真を送る", en: "Send Photo", "zh-CN": "发送照片", ko: "사진 보내기" },

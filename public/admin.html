@@ -163,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.25.5 beta</div>
+  <div class="version-badge">Bro Chat v1.26.0 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -337,6 +337,19 @@ let otherPic = '';
 const myName = localStorage.getItem('myName') || '自分';
 const myAvatar = localStorage.getItem('myAvatar') || '';
 const myUserIdForCheck = localStorage.getItem('ring_userId');
+
+// 相手のオンライン/オフライン表示を更新する
+function setPartnerOnlineStatus(online) {
+  const statusEl = document.querySelector('.status');
+  if (!statusEl) return;
+  statusEl.removeAttribute('data-i18n');
+  if (window.i18n) {
+    statusEl.textContent = online ? i18n.t('online') : i18n.t('offline');
+  } else {
+    statusEl.textContent = online ? 'オンライン' : 'オフライン';
+  }
+  statusEl.style.color = online ? '' : '#94a3b8';
+}
 
 // 自分自身とのチャットは開けないようにする（データ不整合防止）
 if (otherId && myUserIdForCheck && String(otherId) === String(myUserIdForCheck)) {
@@ -1095,6 +1108,23 @@ function connectRealWS() {
   ws.onmessage = async e => {
     try {
       const data = JSON.parse(e.data);
+      if (data.type === 'auth_ok') {
+        // 自分の接続がサーバーに登録された直後に、相手の現在のオンライン状態を問い合わせる
+        ws.send(JSON.stringify({ type: 'presence_query', targetUserId: otherId }));
+        return;
+      }
+      if (data.type === 'presence_result') {
+        if (data.userId === otherId) {
+          setPartnerOnlineStatus(data.online);
+        }
+        return;
+      }
+      if (data.type === 'presence_update') {
+        if (data.userId === otherId) {
+          setPartnerOnlineStatus(data.online);
+        }
+        return;
+      }
       if (data.type === 'new_message') {
         const msg = data.message;
         if ((msg.senderId === otherId && msg.recipientId === myUserId) || (msg.senderId === myUserId && msg.recipientId === otherId)) {
