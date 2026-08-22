@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>トーク一覧</title>
+<title data-i18n="talk_list">トーク一覧</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1e293b">
 <meta name="mobile-web-app-capable" content="yes">
@@ -132,6 +132,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eKeys.js"></script>
+<script src="/js/i18n.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
@@ -158,24 +159,24 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <header class="ahdr">
       <div class="sc glass-clear">
         <div class="sslider glass-clear" id="slider"></div>
-        <button class="sbtn active glass-interactive" id="btnTalk" type="button">トーク</button>
-        <button class="sbtn glass-interactive" id="btnHome" type="button">ホーム</button>
-        <button class="sbtn glass-interactive" id="btnPosts" type="button">投稿</button>
+        <button class="sbtn active glass-interactive" id="btnTalk" type="button" data-i18n="talk">トーク</button>
+        <button class="sbtn glass-interactive" id="btnHome" type="button" data-i18n="home">ホーム</button>
+        <button class="sbtn glass-interactive" id="btnPosts" type="button" data-i18n="post">投稿</button>
       </div>
     </header>
     <main class="tc">
       <section id="pageTalk">
         <div class="card">
-          <input type="text" placeholder="トークを検索..." id="talkSearchInput" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
+          <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
           <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
           <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
         </div>
         <div class="card">
-          <div class="slabel">グループ</div>
+          <div class="slabel" data-i18n="group">グループ</div>
           <div>
             <button class="ngbtn" id="ngBtn" type="button">
               <div class="ngicon glass-clear"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
-              <span class="nglabel">新しいグループを作成</span>
+              <span class="nglabel" data-i18n="create_new_group">新しいグループを作成</span>
             </button>
             <div id="groupList"></div>
           </div>
@@ -209,14 +210,14 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 
         <!-- 友達リクエストセクション -->
         <div class="card" id="pendingRequestsCard" style="display:none;">
-          <div class="slabel">友達リクエスト</div>
+          <div class="slabel" data-i18n="friend_requests">友達リクエスト</div>
           <div id="pendingList"></div>
         </div>
       </section>
 
       <section id="pagePosts" style="display:none">
         <div class="card">
-          <textarea id="postTextInput" placeholder="今なにしてる？" rows="3" style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:16px;outline:none;font-size:14px;font-family:inherit;resize:none;"></textarea>
+          <textarea id="postTextInput" placeholder="今なにしてる？" data-i18n-placeholder="post_placeholder" rows="3" style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:16px;outline:none;font-size:14px;font-family:inherit;resize:none;"></textarea>
           <div id="postMediaPreview" style="display:none;margin-top:10px;position:relative;">
             <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
             <div id="postVideoContainer" style="display:none;position:relative;width:100%;">
@@ -239,24 +240,24 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
               </button>
               <input type="file" id="postVideoFile" accept="video/*" style="display:none">
             </div>
-            <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;">投稿する</button>
+            <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;" data-i18n="post_btn">投稿する</button>
           </div>
         </div>
         <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.24.2 beta</div>
+  <div class="version-badge">Bro Chat v1.25.0 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
 <div class="mov" id="settingsMov">
   <div class="mc">
-    <h3 class="mtitle">プロフィールの編集</h3>
-    <div class="sg"><label>表示名</label><input type="text" id="inName" value="マイネーム"></div>
+    <h3 class="mtitle" data-i18n="edit_profile">プロフィールの編集</h3>
+    <div class="sg"><label data-i18n="display_name">表示名</label><input type="text" id="inName" value="マイネーム"></div>
     <div class="sg">
-      <label>プロフィール画像</label>
-      <div class="fiw"><span class="cfb">画像を選択する</span><input type="file" id="inAvFile" accept="image/*"></div>
+      <label data-i18n="profile_image">プロフィール画像</label>
+      <div class="fiw"><span class="cfb" data-i18n="select_image">画像を選択する</span><input type="file" id="inAvFile" accept="image/*"></div>
       <div class="cropcon" id="cropBox"><img class="cropim" id="cropImg" src="" alt="" draggable="false"><div class="cropmk"></div></div>
       <div class="crop-controls" id="cropControls" style="display:none">
         <div class="crop-zoom-row">
@@ -269,39 +270,48 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </div>
     </div>
     <div class="sg">
-      <label>全体の背景画像</label>
-      <div class="fiw"><span class="cfb">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
+      <label data-i18n="global_bg_image">全体の背景画像</label>
+      <div class="fiw"><span class="cfb" data-i18n="select_bg_image">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
     </div>
     <div class="sg">
       <div class="sgrow">
-        <div class="sgrow-label"><span class="sgtitle">ダークモード</span><span class="sgdesc">画面全体を暗いテーマに切り替えます</span></div>
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="dark_mode">ダークモード</span><span class="sgdesc">画面全体を暗いテーマに切り替えます</span></div>
         <label class="toggle-switch"><input type="checkbox" id="toggleDarkMode"><span class="toggle-slider"></span></label>
       </div>
       <div class="sgrow">
-        <div class="sgrow-label"><span class="sgtitle">モバイルデータ節約</span><span class="sgdesc">モバイル回線利用中は画像の画質を下げて送信します</span></div>
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="mobile_data_saver">モバイルデータ節約</span><span class="sgdesc">モバイル回線利用中は画像の画質を下げて送信します</span></div>
         <label class="toggle-switch"><input type="checkbox" id="toggleDataSaver"><span class="toggle-slider"></span></label>
       </div>
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle">バッテリーセーバー時のアニメーション軽減</span><span class="sgdesc">オンにすると、装飾アニメーションを常に無効化します</span></div>
         <label class="toggle-switch"><input type="checkbox" id="toggleBatterySaver"><span class="toggle-slider"></span></label>
       </div>
+      <div class="sgrow">
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="language_settings">言語設定</span></div>
+        <select id="langSelectSettings" style="padding:8px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.12);font-size:14px;background:rgba(255,255,255,.8);">
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+          <option value="zh-CN">中文</option>
+          <option value="ko">한국어</option>
+        </select>
+      </div>
     </div>
-    <button class="savebtn btn-glass glass-clear glass-interactive" id="saveSettings" type="button">変更を適用して閉じる</button>
-    <button onclick="logout()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">ログアウト</button>
+    <button class="savebtn btn-glass glass-clear glass-interactive" id="saveSettings" type="button" data-i18n="apply_and_close">変更を適用して閉じる</button>
+    <button onclick="logout()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="logout">ログアウト</button>
   </div>
 </div>
 
 <!-- グループ作成モーダル -->
 <div class="mov" id="ngMov">
   <div class="mc">
-    <h3 class="mtitle">新しいグループ</h3>
-    <div class="sg"><label>グループ名</label><input type="text" id="ngName" placeholder="グループ名を入力"></div>
+    <h3 class="mtitle" data-i18n="new_group">新しいグループ</h3>
+    <div class="sg"><label data-i18n="group_name">グループ名</label><input type="text" id="ngName" placeholder="グループ名を入力" data-i18n-placeholder="group_name_placeholder"></div>
     <div class="sg" style="max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;padding:8px;">
-      <label>メンバー選択</label>
+      <label data-i18n="member_select">メンバー選択</label>
       <div id="ngMemberList" style="margin-top:8px;font-size:12px;color:#999;">読み込み中...</div>
     </div>
-    <button class="savebtn btn-glass glass-clear glass-interactive" id="ngCreate" type="button">作成する</button>
-    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="ngCancel" type="button">キャンセル</button>
+    <button class="savebtn btn-glass glass-clear glass-interactive" id="ngCreate" type="button" data-i18n="create_btn">作成する</button>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="ngCancel" type="button" data-i18n="cancel">キャンセル</button>
   </div>
 </div>
 
@@ -619,7 +629,7 @@ async function refreshFromServer() {
 function renderFriends(friends) {
   const list = document.getElementById('talkList');
   if (!Array.isArray(friends) || friends.length === 0) {
-    list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">友達がいません</div>';
+    list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">' + i18n.t('no_friends') + '</div>';
     return;
   }
   list.innerHTML = '';
@@ -714,7 +724,7 @@ function openChat(userId, name, pic) {
   // 自分自身とのチャットを開こうとした場合はブロック（データ不整合防止）
   if (String(userId) === String(myUserId)) {
     console.error('[openChat] Blocked: attempted to open chat with self', userId);
-    alert('エラー: 自分自身とのチャットは開けません');
+    alert(i18n.t('err_self_chat'));
     return;
   }
   // 注意: picにはBase64画像データが入りうるため、URLに含めるとリクエストヘッダが
@@ -747,12 +757,12 @@ function openAddFriend() {
   `;
   sheet.innerHTML = `
     <div style="width:40px;height:4px;background:#e2e8f0;border-radius:2px;margin:0 auto 20px;"></div>
-    <h3 style="font-size:18px;font-weight:800;text-align:center;margin-bottom:20px;color:#0f172a">友達を追加</h3>
-    <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px">相手のID（例: U3K7F9）</label>
-    <input id="addFriendInput" type="text" placeholder="IDを入力..." style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
+    <h3 style="font-size:18px;font-weight:800;text-align:center;margin-bottom:20px;color:#0f172a" data-i18n="add_friend">友達を追加</h3>
+    <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px" data-i18n="other_id_placeholder">相手のID（例: U3K7F9）</label>
+    <input id="addFriendInput" type="text" placeholder="IDを入力..." data-i18n-placeholder="id_input_placeholder" style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
     <div id="searchResult" style="margin-top:12px;min-height:0;"></div>
-    <button onclick="searchFriend()" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;">検索</button>
-    <button onclick="closeAddFriend()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;">キャンセル</button>
+    <button onclick="searchFriend()" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;" data-i18n="search">検索</button>
+    <button onclick="closeAddFriend()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="cancel">キャンセル</button>
   `;
 
   mov.appendChild(sheet);
@@ -873,6 +883,7 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('toggleDarkMode').checked = localStorage.getItem('darkMode') === '1';
   document.getElementById('toggleDataSaver').checked = localStorage.getItem('mobileDataSaver') === '1';
   document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
+  document.getElementById('langSelectSettings').value = (window.i18n ? i18n.getLang() : 'ja');
   settingsMov.classList.add('open');
 };
 settingsMov.onclick=e=>{if(e.target===settingsMov)settingsMov.classList.remove('open');};
@@ -884,6 +895,9 @@ document.getElementById('toggleDarkMode').onchange=e=>{
 };
 document.getElementById('toggleDataSaver').onchange=e=>{
   localStorage.setItem('mobileDataSaver', e.target.checked ? '1' : '0');
+};
+document.getElementById('langSelectSettings').onchange=e=>{
+  if (window.i18n) i18n.setLang(e.target.value);
 };
 document.getElementById('toggleBatterySaver').onchange=e=>{
   localStorage.setItem('batterySaverAnimations', e.target.checked ? '1' : '0');
@@ -1110,7 +1124,7 @@ let memberNameMap = new Map();
 
 document.getElementById('ngCreate').onclick = async () => {
   const name = document.getElementById('ngName').value.trim();
-  if (!name) return alert('グループ名を入力してください');
+  if (!name) return alert(i18n.t('err_enter_group_name'));
 
   const createBtn = document.getElementById('ngCreate');
   createBtn.disabled = true;
@@ -1129,7 +1143,7 @@ document.getElementById('ngCreate').onclick = async () => {
     location.href = `groupchat.html?groupId=${encodeURIComponent(data.groupId)}&name=${encodeURIComponent(name)}`;
   } catch (err) {
     console.error('グループ作成エラー:', err);
-    alert('グループの作成に失敗しました。もう一度お試しください。');
+    alert(i18n.t('err_group_create_failed'));
   } finally {
     createBtn.disabled = false;
     createBtn.textContent = '作成する';
@@ -1305,7 +1319,7 @@ document.getElementById('postAttachVideoBtn').onclick = () => document.getElemen
 document.getElementById('postImageFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   if (f.size > 100 * 1024 * 1024) { // Cloudinary 対応で 100MB まで対応
-    alert('画像は100MB以下にしてください');
+    alert(i18n.t('err_image_too_large'));
     e.target.value = '';
     return;
   }
@@ -1325,7 +1339,7 @@ document.getElementById('postImageFile').onchange = e => {
 document.getElementById('postVideoFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   if (f.size > 500 * 1024 * 1024) { // Cloudinary 対応で 500MB まで対応
-    alert('動画は500MB以下にしてください');
+    alert(i18n.t('err_video_too_large'));
     e.target.value = '';
     return;
   }
@@ -1393,14 +1407,14 @@ document.getElementById('postSubmitBtn').onclick = async () => {
             const keypair = await window.getOrCreateMyKeyPair();
             window.myE2EKey = keypair.secretKey;
           } else {
-            alert('暗号化モジュールが準備できていません');
+            alert(i18n.t('err_encryption_module_not_ready'));
             submitBtn.disabled = false;
             submitBtn.textContent = '投稿する';
             return;
           }
         } catch (e) {
           console.error('E2E key init error:', e);
-          alert('暗号化の初期化に失敗しました');
+          alert(i18n.t('err_encryption_init_failed'));
           submitBtn.disabled = false;
           submitBtn.textContent = '投稿する';
           return;
@@ -1444,7 +1458,7 @@ document.getElementById('postSubmitBtn').onclick = async () => {
         }
       } catch (e) {
         console.error('[postSubmit] Media upload error:', e);
-        alert('メディアのアップロードに失敗しました: ' + e.message);
+        alert(i18n.t('err_media_upload_failed') + e.message);
         submitBtn.disabled = false;
         submitBtn.textContent = '投稿する';
         return;
@@ -1468,7 +1482,7 @@ document.getElementById('postSubmitBtn').onclick = async () => {
       alert(data.error || '投稿に失敗しました');
     }
   } catch (e) {
-    alert('投稿に失敗しました');
+    alert(i18n.t('err_post_failed'));
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = '投稿する';

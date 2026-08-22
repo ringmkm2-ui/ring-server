@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>トーク</title>
+<title data-i18n="talk">トーク</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1e293b">
 <meta name="mobile-web-app-capable" content="yes">
@@ -151,6 +151,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/i18n.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -162,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.24.2 beta</div>
+  <div class="version-badge">Bro Chat v1.25.0 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -173,7 +174,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div class="partner-avatar" id="partnerAv"></div>
       <div style="flex:1;min-width:0">
         <div class="name" id="partnerName">ユーザー名</div>
-        <div class="status">オンライン</div>
+        <div class="status" data-i18n="online">オンライン</div>
       </div>
       <button class="phone-btn glass-clear glass-interactive" id="videoCallBtn" type="button" style="margin-right:6px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -192,9 +193,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 
   <div class="input-bar-container">
     <div id="replyPreview" style="background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;padding:8px 12px;margin-bottom:8px;border-radius:6px;display:none;font-size:13px;opacity:0;transition:opacity 0.2s;max-height:60px;overflow-y:auto;">
-      <div style="font-weight:600;color:#1e293b;margin-bottom:3px;">リプライ中:</div>
+      <div style="font-weight:600;color:#1e293b;margin-bottom:3px;" data-i18n="replying_to">リプライ中:</div>
       <div id="replyText" style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-      <button type="button" onclick="cancelReply()" style="background:none;border:none;color:#64748b;cursor:pointer;padding:3px;margin-top:3px;font-size:12px;">キャンセル</button>
+      <button type="button" onclick="cancelReply()" style="background:none;border:none;color:#64748b;cursor:pointer;padding:3px;margin-top:3px;font-size:12px;" data-i18n="cancel">キャンセル</button>
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
@@ -211,15 +212,15 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div class="media-opts">
         <label class="mopt">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-          <span>写真を送る</span><input type="file" id="imgInput" accept="image/*" hidden>
+          <span data-i18n="send_photo">写真を送る</span><input type="file" id="imgInput" accept="image/*" hidden>
         </label>
         <label class="mopt">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-          <span>動画を送る</span><input type="file" id="vidInput" accept="video/*" hidden>
+          <span data-i18n="send_video">動画を送る</span><input type="file" id="vidInput" accept="video/*" hidden>
         </label>
         <label class="mopt">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span>ファイルを送信</span><input type="file" id="fileInput" hidden>
+          <span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileInput" hidden>
         </label>
       </div>
     </div>
@@ -227,15 +228,15 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 
   <div class="menu-overlay" id="menuOv"></div>
   <div class="ctx-menu" id="ctxMenu">
-    <button type="button" class="ctx-btn ctx-react" id="reactBtn">リアクション</button>
+    <button type="button" class="ctx-btn ctx-react" id="reactBtn" data-i18n="reaction">リアクション</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn" style="color:#3b82f6" id="replyBtn">リプライ</button>
+    <button type="button" class="ctx-btn" style="color:#3b82f6" id="replyBtn" data-i18n="reply">リプライ</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-edit" id="editBtn">編集する</button>
+    <button type="button" class="ctx-btn ctx-edit" id="editBtn" data-i18n="edit">編集する</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-pin" id="pinBtn">ピン留め</button>
+    <button type="button" class="ctx-btn ctx-pin" id="pinBtn" data-i18n="pin">ピン留め</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn ctx-del" id="delBtn">送信取り消し</button>
+    <button type="button" class="ctx-btn ctx-del" id="delBtn" data-i18n="unsend">送信取り消し</button>
   </div>
 
   <div class="react-picker" id="reactPicker"></div>
@@ -255,7 +256,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="call-card" id="callCard">
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
-      <div class="call-status" id="callStatus">呼び出し中...</div>
+      <div class="call-status" id="callStatus" data-i18n="calling">呼び出し中...</div>
     </div>
 
     <!-- リアルタイム字幕表示 -->
@@ -339,7 +340,7 @@ const myUserIdForCheck = localStorage.getItem('ring_userId');
 
 // 自分自身とのチャットは開けないようにする（データ不整合防止）
 if (otherId && myUserIdForCheck && String(otherId) === String(myUserIdForCheck)) {
-  alert('エラー: 自分自身とのチャットは開けません');
+  alert(i18n.t('err_self_chat'));
   location.href = '/talklist.html';
 }
 
@@ -603,14 +604,14 @@ document.getElementById('fileInput').onchange = e => { handleMedia(e.target.file
 function handleMedia(f, t) {
   if (!f) return;
   if (t === 'file') {
-    alert('ファイル送信は現在未対応です。画像・動画をご利用ください。');
+    alert(i18n.t('err_file_send_unsupported'));
     return;
   }
 
   // サイズ上限チェック（動画は30MB、画像は15MBまで。Base64化で約1.37倍になるため余裕を持たせる）
   const maxSize = t === 'video' ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
   if (f.size > maxSize) {
-    alert(`${t === 'video' ? '動画' : '画像'}が大きすぎます（上限: ${maxSize / 1024 / 1024}MB）。もう少し短い動画や軽い画像でお試しください。`);
+    alert(i18n.t(t === 'video' ? 'media_type_video' : 'media_type_image') + i18n.t('err_media_too_large_template').replace('{limit}', maxSize / 1024 / 1024));
     document.getElementById('inputBar').classList.remove('media-open');
     return;
   }
@@ -651,20 +652,20 @@ function handleMedia(f, t) {
         addRealMessage(displayMsg);
         renderMessage(displayMsg);
       } else if (data.error) {
-        alert('送信に失敗しました: ' + data.error);
+        alert(i18n.t('err_send_failed') + data.error);
       } else {
         console.error('unexpected response:', data);
-        alert('送信に失敗しました。');
+        alert(i18n.t('err_send_failed_generic'));
       }
     } catch (err) {
       console.error('media send error:', err);
-      alert('送信に失敗しました。ファイルサイズが大きすぎるか、通信エラーの可能性があります。');
+      alert(i18n.t('err_send_failed_size'));
     } finally {
       sendBtn.innerHTML = paperPlane;
     }
   };
   reader.onerror = () => {
-    alert('ファイルの読み込みに失敗しました');
+    alert(i18n.t('err_file_read_failed'));
     document.getElementById('inputBar').classList.remove('media-open');
   };
   reader.readAsDataURL(f);
@@ -1874,7 +1875,7 @@ async function startOutgoingCall(isVideo = false) {
 
   // WebSocket未接続なら発信前に警告して中断（サイレント失敗を防ぐ）
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    alert('サーバーに接続できていません。通信環境を確認してページを再読み込みしてください。');
+    alert(i18n.t('err_server_disconnected'));
     return;
   }
 
@@ -2183,7 +2184,7 @@ if (callAssistBtn) {
         callAssistBtn.textContent = '● 聞き取り中...';
         console.log('[CallAssist] Recording started');
       } else {
-        alert('マイクアクセスが拒否されました');
+        alert(i18n.t('err_mic_denied'));
       }
     } else {
       // Call Assist 停止

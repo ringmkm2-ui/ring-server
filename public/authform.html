@@ -6,6 +6,7 @@
   <title>Bro Chat - ログイン</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#1e293b">
+  <script src="/js/i18n.js"></script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -274,11 +275,11 @@
   <div class="container">
     <div class="logo"><img src="/images/logo.jpg" alt="Bro Chat"></div>
     <h1>Bro Chat</h1>
-    <p class="subtitle">安全なチャットアプリ</p>
+    <p class="subtitle" data-i18n="secure_chat_app">安全なチャットアプリ</p>
 
     <div class="auth-mode-switch">
-      <button class="mode-btn active" onclick="switchMode('login')">ログイン</button>
-      <button class="mode-btn" onclick="switchMode('signup')">新規登録</button>
+      <button class="mode-btn active" onclick="switchMode('login')" data-i18n="login">ログイン</button>
+      <button class="mode-btn" onclick="switchMode('signup')" data-i18n="signup">新規登録</button>
     </div>
 
     <div id="errorMsg" class="error-message"></div>
@@ -295,7 +296,7 @@
 
       <div class="divider">
         <span></span>
-        <p>または</p>
+        <p data-i18n="or">または</p>
         <span></span>
       </div>
 
@@ -306,7 +307,7 @@
         <div class="form-group">
           <input type="password" id="loginPassword" placeholder="パスワード" required>
         </div>
-        <button type="submit" class="btn btn-login">ログイン</button>
+        <button type="submit" class="btn btn-login" data-i18n="login">ログイン</button>
       </form>
     </div>
 
@@ -321,7 +322,7 @@
 
       <div class="divider">
         <span></span>
-        <p>または</p>
+        <p data-i18n="or">または</p>
         <span></span>
       </div>
 
@@ -335,7 +336,7 @@
         <div class="form-group">
           <input type="password" id="signupPassword" placeholder="パスワード（6文字以上）" required minlength="6">
         </div>
-        <button type="submit" class="btn btn-login">登録</button>
+        <button type="submit" class="btn btn-login" data-i18n="register">登録</button>
       </form>
     </div>
   </div>

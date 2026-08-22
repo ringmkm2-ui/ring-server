@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>グループチャット</title>
+<title data-i18n="group_chat">グループチャット</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1e293b">
 <meta name="mobile-web-app-capable" content="yes">
@@ -160,6 +160,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/i18n.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
@@ -178,7 +179,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.24.2 beta</div>
+  <div class="version-badge">Bro Chat v1.25.0 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -188,8 +189,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
       <a href="talklist.html" class="back">←</a>
       <div class="gav" id="gavEl" onclick="openGS()"></div>
       <div class="hinfo" id="hinfoEl">
-        <div class="gname" id="gnameEl">グループ</div>
-        <div class="mcnt" id="mcntEl">メンバー 0人</div>
+        <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
+        <div class="mcnt" id="mcntEl" data-i18n="members_count">メンバー 0人</div>
       </div>
       <button class="hbtn glass-clear glass-interactive" id="phoneBtnG" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
@@ -222,33 +223,33 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         </form>
       </div>
       <div class="mopts">
-        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>写真を送る</span><input type="file" id="imgI" accept="image/*" hidden></label>
-        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span>動画を送る</span><input type="file" id="vidI" accept="video/*" hidden></label>
-        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>ファイルを送信</span><input type="file" id="fileI" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span data-i18n="send_photo">写真を送る</span><input type="file" id="imgI" accept="image/*" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span data-i18n="send_video">動画を送る</span><input type="file" id="vidI" accept="video/*" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileI" hidden></label>
       </div>
     </div>
   </div>
 
   <div class="mov" id="mov"></div>
   <div class="ctx" id="ctx">
-    <button class="ctxbtn c-react" id="reactBtn">リアクション</button>
+    <button class="ctxbtn c-react" id="reactBtn" data-i18n="reaction">リアクション</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-edit" id="editBtn">編集する</button>
+    <button class="ctxbtn c-edit" id="editBtn" data-i18n="edit">編集する</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-pin" id="pinBtnCtx">ピン留め</button>
+    <button class="ctxbtn c-pin" id="pinBtnCtx" data-i18n="pin">ピン留め</button>
     <div class="cdiv"></div>
-    <button class="ctxbtn c-del" id="delBtn">送信取り消し</button>
+    <button class="ctxbtn c-del" id="delBtn" data-i18n="unsend">送信取り消し</button>
   </div>
 
   <div class="rpicker" id="rpicker"></div>
 
   <div class="conf-ov" id="confOv">
     <div class="conf-box">
-      <div class="conf-title" id="confTitle">確認</div>
+      <div class="conf-title" id="confTitle" data-i18n="confirm">確認</div>
       <div class="conf-msg" id="confMsg"></div>
       <div class="conf-btns">
-        <button class="cbtn no glass-clear glass-interactive" id="confNo">キャンセル</button>
-        <button class="cbtn yes glass-clear glass-interactive" id="confYes">削除</button>
+        <button class="cbtn no glass-clear glass-interactive" id="confNo" data-i18n="cancel">キャンセル</button>
+        <button class="cbtn yes glass-clear glass-interactive" id="confYes" data-i18n="delete">削除</button>
       </div>
     </div>
   </div>
@@ -256,31 +257,31 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   <!-- 既読モーダル -->
   <div class="sheet-ov" id="readOv">
     <div class="sheet">
-      <div class="sh-title">既読メンバー</div>
+      <div class="sh-title" data-i18n="read_by">既読メンバー</div>
       <div id="readList"></div>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('readOv').classList.remove('show')">閉じる</button>
+      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('readOv').classList.remove('show')" data-i18n="close">閉じる</button>
     </div>
   </div>
 
   <!-- メンバーモーダル -->
   <div class="sheet-ov" id="memOv">
     <div class="sheet">
-      <div class="sh-title">メンバー</div>
+      <div class="sh-title" data-i18n="members">メンバー</div>
       <div id="memList"></div>
       <div class="inv-row">
         <input class="inv-input" id="invInput" placeholder="招待するユーザー名を入力">
-        <button class="inv-btn glass-clear glass-interactive" id="invBtn">招待</button>
+        <button class="inv-btn glass-clear glass-interactive" id="invBtn" data-i18n="invite">招待</button>
       </div>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('memOv').classList.remove('show')">閉じる</button>
+      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('memOv').classList.remove('show')" data-i18n="close">閉じる</button>
     </div>
   </div>
 
   <!-- グループ設定モーダル -->
   <div class="sheet-ov" id="gsOv">
     <div class="sheet">
-      <div class="sh-title">グループ設定</div>
+      <div class="sh-title" data-i18n="group_settings">グループ設定</div>
       <div class="srow">
-        <span class="slabel">グループアイコン</span>
+        <span class="slabel" data-i18n="group_icon">グループアイコン</span>
         <div class="crop-wrap">
           <div class="crop-prev" id="gCropPrev"></div>
           <input type="file" class="crop-file" id="gImgFile" accept="image/*">
@@ -297,14 +298,14 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
           <span class="crop-zoom-label" id="gCropZoomLabel">100%</span>
         </div>
-        <button type="button" class="crop-reset-btn glass-clear glass-interactive" id="gCropResetBtn">位置とズームをリセット</button>
+        <button type="button" class="crop-reset-btn glass-clear glass-interactive" id="gCropResetBtn" data-i18n="reset_zoom">位置とズームをリセット</button>
       </div>
       <div class="srow">
-        <span class="slabel">グループ名</span>
+        <span class="slabel" data-i18n="group_name">グループ名</span>
         <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
       </div>
-      <button class="sh-save glass-clear glass-interactive" id="gSaveBtn">保存する</button>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('gsOv').classList.remove('show')">キャンセル</button>
+      <button class="sh-save glass-clear glass-interactive" id="gSaveBtn" data-i18n="save">保存する</button>
+      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('gsOv').classList.remove('show')" data-i18n="cancel">キャンセル</button>
     </div>
   </div>
 
@@ -342,7 +343,7 @@ if(!token) location.href='/auth.html';
 // 複数グループを行き来した際に混線するため)
 const groupId=params.get('groupId');
 if(!groupId){
-  alert('グループが見つかりません');
+  alert(i18n.t('err_group_not_found'));
   location.href='/talklist.html';
 }
 localStorage.setItem('groupId', groupId);
@@ -453,14 +454,14 @@ document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0]
 async function handleMediaGroup(f,t){
   if(!f)return;
   if(t==='file'){
-    alert('現在グループチャットではファイル送信に対応していません(画像・動画のみ)');
+    alert(i18n.t('err_group_file_unsupported'));
     document.getElementById('ibar').classList.remove('open');
     return;
   }
 
   const maxSize = t === 'video' ? 500 * 1024 * 1024 : 100 * 1024 * 1024; // Cloudinary対応で制限アップ
   if(f.size > maxSize){
-    alert('ファイルが大きすぎます');
+    alert(i18n.t('err_file_too_large'));
     return;
   }
 
@@ -473,12 +474,12 @@ async function handleMediaGroup(f,t){
         window.myE2EKey = keypair.secretKey;
         console.log('[handleMediaGroup] E2E key initialized on-demand');
       } else {
-        alert('暗号化モジュールが読み込まれていません。ページをリロードしてください。');
+        alert(i18n.t('err_encryption_module_not_loaded'));
         return;
       }
     } catch (e) {
       console.error('E2E鍵の再初期化に失敗:', e);
-      alert('暗号化の準備ができていません。ページをリロードしてください。');
+      alert(i18n.t('err_encryption_not_ready'));
       return;
     }
   }
@@ -530,7 +531,7 @@ async function handleMediaGroup(f,t){
   } catch (err) {
     console.error('media send error:', err);
     msgDiv.remove();
-    alert('ファイルアップロードに失敗しました: ' + err.message);
+    alert(i18n.t('err_file_upload_failed') + err.message);
   }
 
   document.getElementById('ibar').classList.remove('open');
