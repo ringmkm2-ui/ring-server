@@ -31,22 +31,21 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
       position: relative;
-      padding: 60px 24px 64px;
+      padding: 0 24px;
       opacity: 0;
       animation: fadeIn 0.35s ease forwards;
     }
 
     @keyframes fadeIn { to { opacity: 1; } }
 
-    .top-spacer { flex: 1; }
-
     .welcome-text {
-      font-size: 32px;
+      font-size: 34px;
       font-weight: 400;
       color: #1a1a1a;
       letter-spacing: 0px;
+      margin-top: 13vh;
+      text-align: center;
     }
 
     .bottom-section {
@@ -55,11 +54,12 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
+      gap: 16px;
       position: absolute;
-      bottom: 64px;
+      bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
+      padding: 0 24px;
     }
 
     .language-selector {
@@ -127,9 +127,7 @@
   </style>
 </head>
 <body>
-  <div class="top-spacer"></div>
   <div class="welcome-text">Welcome!</div>
-  <div class="top-spacer"></div>
 
   <div class="bottom-section">
     <div class="language-selector">
