@@ -149,9 +149,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/deepgramVoice.js"></script>
 <script defer src="/js/callRecording.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3"></script>
-<script src="https://cdn.jsdelivr.net/npm/tweetnacl-util"></script>
-<script src="/js/e2eKeys.js"></script>
+<script src="/js/nacl.min.js"></script>
+<script src="/js/nacl-util.min.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -163,7 +162,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.24.1 beta</div>
+  <div class="version-badge">Bro Chat v1.24.2 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2148,7 +2147,16 @@ async function flipCamera() {
 
 document.getElementById('phoneBtn').onclick = () => { startOutgoingCall(false); };
 document.getElementById('videoCallBtn').onclick = () => { startOutgoingCall(true); };
-document.getElementById('endBtn').onclick = () => { endCall(); };
+document.getElementById('endBtn').onclick = () => {
+  // 通話終了は最重要操作のため、他の処理で例外が起きていても
+  // 必ず通話状態をクリアしてオーバーレイを閉じられるようにする
+  try {
+    endCall();
+  } catch (e) {
+    console.error('[endBtn] endCall failed, forcing cleanup:', e);
+    try { cleanupCall(); } catch (e2) { console.error('[endBtn] cleanupCall also failed:', e2); }
+  }
+};
 document.getElementById('acceptBtn').onclick = () => { acceptIncomingCall(); };
 document.getElementById('declineBtn').onclick = () => { declineIncomingCall(); };
 document.getElementById('muteBtn').onclick = () => { toggleMute(); };
