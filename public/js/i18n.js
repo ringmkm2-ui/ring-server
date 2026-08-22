@@ -118,8 +118,17 @@
 
   function getLang() {
     const stored = localStorage.getItem("ring_language");
-    if (stored && SUPPORTED.includes(stored)) return stored;
-    // fall back to browser language matching, then ja
+    if (stored) {
+      if (SUPPORTED.includes(stored)) return stored;
+      // welcome.html offers 30 languages; i18n.js only ships 4.
+      // If the stored choice isn't one we translate, fall back to English
+      // (closer to most non-CJK languages) rather than ignoring their choice.
+      if (stored.startsWith("zh")) return "zh-CN";
+      if (stored.startsWith("ko")) return "ko";
+      if (stored.startsWith("ja")) return "ja";
+      return "en";
+    }
+    // nothing stored yet: fall back to browser language matching, then ja
     const nav = (navigator.language || "ja");
     if (nav.startsWith("zh")) return "zh-CN";
     if (nav.startsWith("ko")) return "ko";
