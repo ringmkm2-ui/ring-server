@@ -34,14 +34,19 @@ function toPreviewText(content, encrypted) {
 
 // メッセージ送信
 // POST /api/messages/send
-// body: { recipientId, content, mediaType?, mediaData?, encrypted?, repliedToId? }
+// body: { recipientId, content, mediaType?, mediaData?, mediaUrl?, mediaPublicId?, encryptedMetadata?, chunkCount?, encrypted?, repliedToId? }
 // mediaType: 'image' | 'video' | null（テキスト）
-// mediaData: base64エンコードされたデータ
+// mediaData: base64エンコードされたデータ（旧方式）
+// mediaUrl: Cloudinary上のURL（新方式、暗号化済みバイナリ）
 // encrypted: true の場合、content は暗号文（サーバーは復号化しない）
 // repliedToId: リプライ対象のメッセージID
 router.post('/send', auth, async (req, res) => {
   try {
-    const { recipientId, content, mediaType, mediaData, encrypted, repliedToId } = req.body;
+    const {
+      recipientId, content, mediaType, mediaData,
+      mediaUrl, mediaPublicId, encryptedMetadata, chunkCount,
+      encrypted, repliedToId,
+    } = req.body;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
@@ -60,7 +65,8 @@ router.post('/send', auth, async (req, res) => {
       return res.status(403).json({ error: 'このユーザーとは友達ではありません' });
     }
 
-    // メディアサイズチェック（Base64文字列の長さで概算。約25MB相当まで許可）
+    // メディアサイズチェック（Base64直送り方式のみ対象。約25MB相当まで許可。
+    // Cloudinary方式(mediaUrl)はURLのみ保存するためサイズチェック不要）
     if (mediaData && mediaData.length > 35 * 1024 * 1024) {
       return res.status(413).json({ error: 'ファイルサイズが大きすぎます' });
     }
@@ -74,10 +80,19 @@ router.post('/send', auth, async (req, res) => {
     const msgId = uuidv4();
     const msgType = mediaType || 'text';
     let finalContent = content;
-    
-    // 画像・動画の場合、JSONで { text, media, mediaType } を保存
-    // encrypted=true の場合、media は暗号化されたBase64
-    if (mediaData) {
+
+    // 画像・動画の場合、JSONで保存する。Cloudinary方式(mediaUrl)とBase64直送り方式(mediaData)の
+    // 両方に対応する。
+    if (mediaUrl) {
+      finalContent = JSON.stringify({
+        text: content,
+        mediaType,
+        mediaUrl,
+        mediaPublicId: mediaPublicId || null,
+        encryptedMetadata: encryptedMetadata || null,
+        chunkCount: chunkCount || null,
+      });
+    } else if (mediaData) {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
     }
 

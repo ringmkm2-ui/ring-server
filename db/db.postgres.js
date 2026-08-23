@@ -59,6 +59,15 @@ async function initDB() {
     console.log('[db] replied_to_id migration skip:', e.message);
   }
 
+  // マイグレーション: identity_keysにsigning_pubkey(Ed25519署名検証鍵)を追加。
+  // これが無いとsigned_prekey_sigの検証が一切できず、X3DH鍵交換がMITM攻撃に
+  // 対して無防備になる(なりすましのsigned prekeyを検知できない)。
+  try {
+    await pool.query('ALTER TABLE identity_keys ADD COLUMN IF NOT EXISTS signing_pubkey TEXT');
+  } catch (e) {
+    console.log('[db] signing_pubkey migration skip:', e.message);
+  }
+
   // マイグレーション: push_subscriptionsテーブル（CREATE TABLE IF NOT EXISTSでschema.sqlから作成されるが念のため明示）
   try {
     await pool.query(`

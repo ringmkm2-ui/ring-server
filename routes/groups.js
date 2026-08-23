@@ -60,7 +60,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
 // --- グループ作成 ---
 // body: { name, memberIds: [userId, ...] } (memberIdsは作成者以外の初期メンバー)
 router.post('/create', verifyToken, asyncHandler(async (req, res) => {
-  const { name, memberIds } = req.body;
+  const { name, memberIds, encryptedKeysForMembers } = req.body;
   if (!name) return res.status(400).json({ error: 'グループ名が必要です' });
   // 表示崩壊・DB肥大化防止のため上限を設ける(display_nameと同基準)
   if (name.length > 50) return res.status(400).json({ error: 'グループ名は50文字以内にしてください' });
@@ -80,6 +80,16 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
       await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, uid]);
       addedMembers.push(uid);
       broadcastToUser(uid, { type: 'added_to_group', groupId, name });
+    }
+  }
+
+  // クライアントが生成した初期グループ鍵(全メンバー分、X3DHで個別暗号化済み)を保存
+  if (Array.isArray(encryptedKeysForMembers)) {
+    for (const entry of encryptedKeysForMembers) {
+      await db.run(
+        'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, 1, ?)',
+        [uuidv4(), groupId, entry.userId, entry.encryptedGroupKey]
+      );
     }
   }
 
@@ -199,10 +209,11 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // mediaData: base64エンコードされたデータ
 router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
-  const { content, mediaType, mediaData, encrypted } = req.body;
+  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
 
-  // 個人チャットと同様、ファイルサイズの上限チェック
+  // 個人チャットと同様、ファイルサイズの上限チェック（Base64直送り方式のみ対象。
+  // Cloudinary方式はmediaUrlのみを保存するためサイズチェック不要）
   if (mediaData && mediaData.length > 35 * 1024 * 1024) {
     return res.status(413).json({ error: 'ファイルが大きすぎます' });
   }
@@ -214,10 +225,19 @@ router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res
   }
 
   const msgType = mediaType || 'text';
-  // 画像・動画の場合、個人チャットと同じ形式でJSONとして保存する
-  // { text, media, mediaType }
+  // 画像・動画の場合、個人チャットと同じ形式でJSONとして保存する。
+  // Cloudinary方式(mediaUrl)とBase64直送り方式(mediaData)の両方に対応する。
   let finalContent = content;
-  if (mediaData) {
+  if (mediaUrl) {
+    finalContent = JSON.stringify({
+      text: content,
+      mediaType,
+      mediaUrl,
+      mediaPublicId: mediaPublicId || null,
+      encryptedMetadata: encryptedMetadata || null,
+      chunkCount: chunkCount || null,
+    });
+  } else if (mediaData) {
     finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
   }
 

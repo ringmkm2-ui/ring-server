@@ -28,12 +28,14 @@ class CloudinaryE2EUploader {
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
-        chunkCount: chunks
+        chunkCount: chunks,
+        chunkLengths: [], // 各暗号化チャンクの正確なバイト長(復号時の分割に必要)
       }
     });
 
     try {
       const encryptedChunks = [];
+      const chunkLengths = [];
 
       // ファイルをチャンク単位で読み込んで暗号化
       for (let i = 0; i < chunks; i++) {
@@ -42,7 +44,7 @@ class CloudinaryE2EUploader {
         const chunk = file.slice(start, end);
         const arrayBuffer = await chunk.arrayBuffer();
 
-        // TweetNaCl で暗号化
+        // TweetNaCl で暗号化（戻り値は nonce(24B) + 暗号文 の結合済みバイト列）
         const encrypted = await this.encryptChunk(
           new Uint8Array(arrayBuffer),
           sharedKey,
@@ -51,6 +53,7 @@ class CloudinaryE2EUploader {
         );
 
         encryptedChunks.push(encrypted);
+        chunkLengths.push(encrypted.length);
 
         // 進捗更新
         const progress = Math.round(((i + 1) / chunks) * 50); // 0-50%
@@ -67,15 +70,13 @@ class CloudinaryE2EUploader {
         onProgress
       );
 
-      // メタデータも暗号化して保存
+      // メタデータも暗号化して保存（chunkLengthsを必ず含める）
+      const fullMetadata = { ...this.uploadingFiles.get(fileId).metadata, chunkLengths };
       const metadata = {
         fileId,
         cloudinaryUrl,
         cloudinaryPublicId: this.extractPublicId(cloudinaryUrl),
-        encryptedMetadata: await this.encryptMetadata(
-          this.uploadingFiles.get(fileId).metadata,
-          sharedKey
-        ),
+        encryptedMetadata: await this.encryptMetadata(fullMetadata, sharedKey),
         chunkCount: chunks
       };
 
@@ -91,31 +92,53 @@ class CloudinaryE2EUploader {
 
   /**
    * チャンクを暗号化
+   * NOTE: 過去の実装はnonceが実質固定値になっており(Uint8Array.slice()は
+   * コピーを返すため元配列への乱数書き込みが反映されていなかった)、かつ
+   * box.keyPair.fromSecretKey()をsecretbox用の鍵導出に誤用していた。
+   * secretbox は「32バイトの共通鍵 + 毎回ユニークな24バイトnonce」が前提の
+   * ため、鍵はハッシュで導出し、nonceは呼び出しごとに真の乱数で生成する。
    */
   async encryptChunk(data, key, fileId, chunkIndex) {
     if (!window.nacl) {
       throw new Error('TweetNaCl not loaded');
     }
 
-    // nonce生成（ファイルID + チャンク番号 + ランダム）
-    const nonce = new Uint8Array(24);
-    const encoder = new TextEncoder();
-    const prefix = encoder.encode(fileId + ':' + chunkIndex);
-    nonce.set(prefix.slice(0, Math.min(16, prefix.length)));
-    window.crypto.getRandomValues(nonce.slice(prefix.length));
+    const encryptKey = this.deriveSecretboxKey(key);
+    const nonce = window.nacl.randomBytes(24); // 呼び出しごとに真の乱数
 
-    // 秘密鍵から暗号化キー生成
-    const encryptKey = window.nacl.box.keyPair.fromSecretKey(key).secretKey;
+    const encrypted = window.nacl.secretbox(data, nonce, encryptKey);
 
-    // チャンク + メタデータ（nonce）を結合
-    const chunkWithMeta = new Uint8Array(data.length + 24);
-    chunkWithMeta.set(nonce);
-    chunkWithMeta.set(data, 24);
+    // nonceを先頭に付けて保存し、復号時に取り出せるようにする
+    const combined = new Uint8Array(24 + encrypted.length);
+    combined.set(nonce);
+    combined.set(encrypted, 24);
+    return combined;
+  }
 
-    // 暗号化
-    const encrypted = window.nacl.secretbox(chunkWithMeta, nonce, encryptKey);
+  /**
+   * E2E鍵ペアの秘密鍵(32バイト)から、secretbox用の対称鍵を導出する。
+   * nacl.hashはSHA-512(64バイト)を返すため、先頭32バイトを鍵として使う。
+   */
+  deriveSecretboxKey(secretKey) {
+    const hashed = window.nacl.hash(secretKey);
+    return hashed.slice(0, 32);
+  }
 
-    return encrypted;
+  /**
+   * 暗号化済みチャンク(nonce+暗号文)を復号する
+   */
+  decryptChunk(combined, key) {
+    if (!window.nacl) {
+      throw new Error('TweetNaCl not loaded');
+    }
+    const nonce = combined.slice(0, 24);
+    const box = combined.slice(24);
+    const decryptKey = this.deriveSecretboxKey(key);
+    const decrypted = window.nacl.secretbox.open(box, nonce, decryptKey);
+    if (!decrypted) {
+      throw new Error('Decryption failed (wrong key or corrupted data)');
+    }
+    return decrypted;
   }
 
   /**
@@ -126,13 +149,27 @@ class CloudinaryE2EUploader {
     const data = new TextEncoder().encode(json);
     const nonce = window.nacl.randomBytes(24);
 
-    const encryptKey = window.nacl.box.keyPair.fromSecretKey(key).secretKey;
+    const encryptKey = this.deriveSecretboxKey(key);
     const encrypted = window.nacl.secretbox(data, nonce, encryptKey);
 
     return {
       encrypted: window.nacl.util.encodeBase64(encrypted),
       nonce: window.nacl.util.encodeBase64(nonce)
     };
+  }
+
+  /**
+   * 暗号化されたメタデータを復号
+   */
+  decryptMetadata(encryptedMetadata, key) {
+    const encrypted = window.nacl.util.decodeBase64(encryptedMetadata.encrypted);
+    const nonce = window.nacl.util.decodeBase64(encryptedMetadata.nonce);
+    const decryptKey = this.deriveSecretboxKey(key);
+    const decrypted = window.nacl.secretbox.open(encrypted, nonce, decryptKey);
+    if (!decrypted) {
+      throw new Error('Metadata decryption failed');
+    }
+    return JSON.parse(new TextDecoder().decode(decrypted));
   }
 
   /**
@@ -198,26 +235,43 @@ class CloudinaryE2EUploader {
 
   /**
    * 暗号化されたメディアをダウンロード・復号化
+   * アップロード時、ファイルは複数チャンクに分割され各チャンクが個別に
+   * (nonce 24B + 暗号文) の形で暗号化された後、単純に連結されてCloudinaryに
+   * 保存されている。そのため復号時は、まずencryptedMetadataからchunkLengths
+   * (各暗号化チャンクの正確なバイト長)を取り出し、それに従って正しい境界で
+   * 分割してから1チャンクずつ復号し、最後に平文を結合する必要がある。
    */
   async downloadAndDecryptMedia(cloudinaryUrl, encryptedMetadata, key) {
     try {
-      const response = await fetch(cloudinaryUrl);
-      const encryptedData = await response.arrayBuffer();
-      const encrypted = new Uint8Array(encryptedData);
-
-      // nonce を最初の24バイトから抽出
-      const nonce = encrypted.slice(0, 24);
-      const ciphertext = encrypted.slice(24);
-
-      // TweetNaCl で復号化
-      const decryptKey = window.nacl.box.keyPair.fromSecretKey(key).secretKey;
-      const decrypted = window.nacl.secretbox.open(ciphertext, nonce, decryptKey);
-
-      if (!decrypted) {
-        throw new Error('Decryption failed');
+      const metadata = this.decryptMetadata(encryptedMetadata, key);
+      const chunkLengths = metadata.chunkLengths;
+      if (!Array.isArray(chunkLengths) || chunkLengths.length === 0) {
+        throw new Error('chunkLengths missing from metadata (old/incompatible upload format)');
       }
 
-      return new Blob([decrypted], { type: 'application/octet-stream' });
+      const response = await fetch(cloudinaryUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch media: ${response.status}`);
+      }
+      const buffer = new Uint8Array(await response.arrayBuffer());
+
+      const decryptedParts = [];
+      let offset = 0;
+      for (const len of chunkLengths) {
+        const chunk = buffer.slice(offset, offset + len);
+        offset += len;
+        decryptedParts.push(this.decryptChunk(chunk, key));
+      }
+
+      const totalLength = decryptedParts.reduce((sum, p) => sum + p.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let pos = 0;
+      for (const part of decryptedParts) {
+        combined.set(part, pos);
+        pos += part.length;
+      }
+
+      return new Blob([combined], { type: metadata.fileType || 'application/octet-stream' });
     } catch (e) {
       console.error('[cloudinaryE2E] Decrypt error:', e);
       throw e;

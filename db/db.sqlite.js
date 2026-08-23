@@ -91,6 +91,7 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS identity_keys (
       user_id TEXT PRIMARY KEY,
       identity_pubkey TEXT NOT NULL,
+      signing_pubkey TEXT,
       signed_prekey_pub TEXT NOT NULL,
       signed_prekey_sig TEXT NOT NULL,
       registration_id INTEGER,
@@ -267,6 +268,12 @@ function get(sql, params = []) {
   stmt.bind(params);
   const row = stmt.step() ? stmt.getAsObject() : null;
   stmt.free();
+  // get()は本来読み取り専用の想定だが、UPDATE...RETURNING等の書き込みを伴う
+  // クエリもこの関数経由で呼ばれることがあるため、変更系キーワードを含む場合は
+  // 保存しておく(persistを呼ばないとプロセス再起動時に変更が消える)。
+  if (/^\s*(UPDATE|INSERT|DELETE)/i.test(sql)) {
+    persist();
+  }
   return row;
 }
 

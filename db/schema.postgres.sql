@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS friendships (
 CREATE TABLE IF NOT EXISTS identity_keys (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
   identity_pubkey TEXT NOT NULL,
+  signing_pubkey TEXT, -- Ed25519署名検証鍵。signed_prekey_sigの検証に必須。NULL許容は既存行の後方互換のため
   signed_prekey_pub TEXT NOT NULL,
   signed_prekey_sig TEXT NOT NULL,
   registration_id INTEGER,

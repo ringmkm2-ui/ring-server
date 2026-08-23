@@ -160,6 +160,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/libsodium-wrappers.min.js"></script>
+<script src="/js/signalkeymanager.js"></script>
+<script src="/js/groupE2E.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -179,7 +182,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.26.1 beta</div>
+  <div class="version-badge">Bro Chat v1.27.0 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -360,6 +363,16 @@ async function api(path, opts={}) {
 // URLパラメータのnameのみで暫定表示し、loadGroupInfo()完了後に更新する。
 let gi = { id: groupId, name: params.get('name') || 'グループ', avatarImg: '', members: [], ownerId: null };
 
+// グループのE2E共有鍵(復号済みUint8Array)。取得済みならメモリ上に保持し、
+// メッセージ・メディアの送受信のたびに毎回サーバー問い合わせ・復号をしないようにする。
+let cachedGroupKey = null;
+async function ensureGroupKey() {
+  if (cachedGroupKey) return cachedGroupKey;
+  const result = await groupE2E.getGroupKey(groupId);
+  cachedGroupKey = result.key;
+  return cachedGroupKey;
+}
+
 async function loadGroupInfo(){
   try {
     const data = await api('/api/groups/list');
@@ -465,23 +478,15 @@ async function handleMediaGroup(f,t){
     return;
   }
 
-  // E2E暗号化用の鍵を取得
-  if(!window.myE2EKey){
-    console.error('E2E鍵が初期化されていません。再試行します...');
-    try {
-      if (typeof window.getOrCreateMyKeyPair === 'function') {
-        const keypair = await window.getOrCreateMyKeyPair();
-        window.myE2EKey = keypair.secretKey;
-        console.log('[handleMediaGroup] E2E key initialized on-demand');
-      } else {
-        alert(i18n.t('err_encryption_module_not_loaded'));
-        return;
-      }
-    } catch (e) {
-      console.error('E2E鍵の再初期化に失敗:', e);
-      alert(i18n.t('err_encryption_not_ready'));
-      return;
-    }
+  // グループ共有鍵を取得(全メンバーが復号できるようにするため、個人の秘密鍵ではなく
+  // groupE2Eのグループ鍵を使う)
+  let groupKey;
+  try {
+    groupKey = await ensureGroupKey();
+  } catch (e) {
+    console.error('グループ鍵の取得に失敗:', e);
+    alert(i18n.t('err_encryption_not_ready'));
+    return;
   }
 
   // 楽観的更新用のテンポラリID
@@ -492,10 +497,10 @@ async function handleMediaGroup(f,t){
   const msgDiv = createMsg(caption, { mediaType: t, mediaData: null, uploading: true }, false, null, tempId, null, true);
 
   try {
-    // Cloudinary E2E アップロード
+    // Cloudinary E2E アップロード（グループ共有鍵で暗号化 → 全メンバーが復号可能）
     const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
       f,
-      window.myE2EKey,
+      groupKey,
       `brochat/groups/${groupId}`,
       (progress) => {
         // 進捗表示（オプション）
@@ -557,9 +562,19 @@ document.getElementById('tform').onsubmit=async e=>{
       return;
     }
     try{
+      let editBody;
+      try {
+        const groupKey = await ensureGroupKey();
+        const encryptedContent = await groupE2E.encryptGroupText(txt, groupKey);
+        editBody = { content: encryptedContent, encrypted: true };
+      } catch (keyErr) {
+        console.error('グループ鍵の取得/暗号化に失敗しました(編集):', keyErr);
+        alert(i18n.t('err_encryption_not_ready'));
+        return;
+      }
       const data=await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/edit',{
         method:'POST',
-        body:JSON.stringify({content:txt,encrypted:false})
+        body:JSON.stringify(editBody)
       });
       if(data&&data.ok){
         const el=document.querySelector(`[data-msg-id="${targetMsgId}"] .msg-text`);
@@ -581,9 +596,21 @@ document.getElementById('tform').onsubmit=async e=>{
   const msgDiv=createMsg(txt,null,false,null,tempId,null,true);
 
   try{
+    let sendBody;
+    try {
+      const groupKey = await ensureGroupKey();
+      const encryptedContent = await groupE2E.encryptGroupText(txt, groupKey);
+      sendBody = { content: encryptedContent, encrypted: true };
+    } catch (keyErr) {
+      console.error('グループ鍵の取得/暗号化に失敗しました。平文で送信せず中断します:', keyErr);
+      msgDiv.remove();
+      alert(i18n.t('err_encryption_not_ready'));
+      return;
+    }
+
     const data=await api('/api/groups/'+groupId+'/messages/send',{
       method:'POST',
-      body:JSON.stringify({content:txt})
+      body:JSON.stringify(sendBody)
     });
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
@@ -863,12 +890,29 @@ function openMemModal(){
         document.getElementById('memOv').classList.remove('show');
         showConf('メンバー削除',`${m.name}をグループから削除しますか？`,'削除',async ()=>{
           try{
-            await api('/api/groups/remove-member',{
+            // 脱退者は以後のメッセージを読めないようにするため(後方秘匿性)、
+            // 残るメンバー全員分の新しいグループ鍵を先に生成してから送信する。
+            const remainingMemberIds = gi.members.filter(x=>x.id!==m.id).map(x=>x.id);
+            const dist = await groupE2E.createInitialGroupKeyDistribution(remainingMemberIds);
+
+            const data = await api('/api/groups/remove-member',{
               method:'POST',
-              body:JSON.stringify({groupId,removeUserId:m.id})
+              body:JSON.stringify({
+                groupId,
+                removeUserId:m.id,
+                encryptedKeysForRemainingMembers: dist.distributions,
+              })
             });
-            gi.members=gi.members.filter(x=>x.id!==m.id);refreshHdr();
-          }catch(err){console.error('メンバー削除エラー:',err);}
+            if(data && data.ok){
+              cachedGroupKey = dist.groupKey;
+              gi.members=gi.members.filter(x=>x.id!==m.id);refreshHdr();
+            }else{
+              alert((data && data.error) || i18n.t('err_group_create_failed'));
+            }
+          }catch(err){
+            console.error('メンバー削除エラー:',err);
+            alert(i18n.t('err_group_create_failed'));
+          }
         });
       };
       d.appendChild(rb);
@@ -881,12 +925,63 @@ document.getElementById('hinfoEl').onclick=openMemModal;
 document.getElementById('memOv').onclick=e=>{if(e.target===document.getElementById('memOv'))document.getElementById('memOv').classList.remove('show');};
 
 // 招待
-document.getElementById('invBtn').onclick=()=>{
-  const name=document.getElementById('invInput').value.trim();if(!name)return;
-  const newM={id:`u${Date.now()}`,name,color:nameColor(name),initials:name.charAt(0),avatarImg:''};
-  gi.members.push(newM);saveGI(gi);refreshHdr();
-  document.getElementById('invInput').value='';
-  openMemModal();
+document.getElementById('invBtn').onclick=async ()=>{
+  const targetUsername=document.getElementById('invInput').value.trim();
+  if(!targetUsername)return;
+
+  const invBtn=document.getElementById('invBtn');
+  invBtn.disabled=true;
+  const originalLabel=invBtn.textContent;
+  invBtn.textContent='...';
+
+  try{
+    // 新メンバーは過去のメッセージを読めないようにするため、鍵ローテーションが必要。
+    // 現メンバー全員(自分含む)+招待対象の新しいバージョンのグループ鍵を生成し、
+    // それぞれの公開鍵でX3DH暗号化してからサーバーに送る。
+    const currentMemberIds = gi.members.map(m=>m.id);
+    // 招待対象のuserIdはまだ分からない(usernameでしか指定できない)ため、
+    // サーバー側で招待成立後に新バージョンの鍵を配布し直す2段階方式にする:
+    // 1. まず招待APIを呼び、成功したらinvitedUserIdを受け取る
+    // 2. その場でクライアント側が新グループ鍵を作り、現メンバー+新メンバー全員に配布する
+    //
+    // ただしサーバー側/inviteは「鍵配布も同じリクエストで」という設計のため、
+    // ここでは先にuserIdを解決してから鍵を生成する2段階にする。
+    const searchRes = await api('/api/friends/search?q='+encodeURIComponent(targetUsername));
+    const exactMatch = Array.isArray(searchRes) ? searchRes.find(u => u.userIdCode === targetUsername) : null;
+    if(!exactMatch){
+      alert('そのユーザーは見つかりません');
+      return;
+    }
+    const newMemberId = exactMatch.userId;
+
+    const allMemberIds = [...currentMemberIds, newMemberId];
+    const dist = await groupE2E.createInitialGroupKeyDistribution(allMemberIds);
+
+    const data = await api('/api/groups/invite', {
+      method:'POST',
+      body: JSON.stringify({
+        groupId,
+        targetUsername,
+        encryptedKeysForMembers: dist.distributions,
+      }),
+    });
+
+    if(data && data.ok){
+      // 新しいグループ鍵バージョンをローカルキャッシュにも反映
+      cachedGroupKey = dist.groupKey;
+      await loadGroupInfo(); // メンバー一覧をサーバーから再取得して正しいidに更新
+      document.getElementById('invInput').value='';
+      openMemModal();
+    }else{
+      alert((data && data.error) || i18n.t('err_group_create_failed'));
+    }
+  }catch(e){
+    console.error('招待エラー:', e);
+    alert(i18n.t('err_group_create_failed'));
+  }finally{
+    invBtn.disabled=false;
+    invBtn.textContent=originalLabel;
+  }
 };
 
 // グループ設定
@@ -1019,18 +1114,50 @@ window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener
 document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
 document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
-// サーバーのcontentカラムは、テキストの場合は生の文字列、
-// メディアの場合はJSON.stringify({text, media, mediaType})が入っている。
-// 判別してパースする。
-function parseMsgContent(rawContent){
+// サーバーのcontentカラムは以下のいずれかの形式:
+// 1. 平文テキスト(暗号化前の古いメッセージ、または鍵未配布時の互換)
+// 2. JSON.stringify({text, media, mediaType}) - Base64直送り方式の古いメディア
+// 3. JSON.stringify({text, mediaType, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount}) - Cloudinary方式
+// 4. JSON.stringify({ciphertext, nonce}) - groupE2E.encryptGroupTextで暗号化されたテキスト(msg.encrypted===trueの時)
+// msg.encryptedフラグと中身を見て判別し、復号が必要なものは復号してから返す。
+async function parseMsgContent(rawContent, isEncrypted){
   if(typeof rawContent!=='string')return{text:'',media:null};
+
   if(rawContent.startsWith('{')){
-    try{
-      const parsed=JSON.parse(rawContent);
-      if(parsed&&parsed.media&&parsed.mediaType){
-        return{text:parsed.text||'',media:{mediaType:parsed.mediaType,mediaData:parsed.media}};
+    let parsed;
+    try{ parsed=JSON.parse(rawContent); }catch(e){ return{text:rawContent,media:null}; }
+
+    // Cloudinary方式のメディア(暗号化された動画/画像)
+    if(parsed && parsed.mediaUrl && parsed.mediaType){
+      try{
+        const groupKey = await ensureGroupKey();
+        const blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(
+          parsed.mediaUrl, parsed.encryptedMetadata, groupKey
+        );
+        const objectUrl = URL.createObjectURL(blob);
+        return{text:parsed.text||'', media:{mediaType:parsed.mediaType, mediaData:objectUrl}};
+      }catch(e){
+        console.error('メディア復号エラー:', e);
+        return{text:parsed.text||'(メディアの復号に失敗しました)', media:null};
       }
-    }catch(e){/* JSONでなければ通常テキストとして扱う */}
+    }
+
+    // 旧Base64直送り方式のメディア(暗号化されていない)
+    if(parsed && parsed.media && parsed.mediaType){
+      return{text:parsed.text||'',media:{mediaType:parsed.mediaType,mediaData:parsed.media}};
+    }
+
+    // groupE2Eで暗号化されたテキスト
+    if(isEncrypted && parsed && parsed.ciphertext && parsed.nonce){
+      try{
+        const groupKey = await ensureGroupKey();
+        const text = await groupE2E.decryptGroupText(rawContent, groupKey);
+        return{text, media:null};
+      }catch(e){
+        console.error('テキスト復号エラー:', e);
+        return{text:'(復号に失敗しました)', media:null};
+      }
+    }
   }
   return{text:rawContent,media:null};
 }
@@ -1040,28 +1167,29 @@ async function loadGroupMessages(){
   try{
     const msgs=await api('/api/groups/'+groupId+'/messages');
     if(Array.isArray(msgs)){
-      msgs.forEach(msg=>{
+      for(const msg of msgs){
         const member=gi.members.find(m=>m.id===msg.sender_id);
-        const{text,media}=parseMsgContent(msg.content);
+        const{text,media}=await parseMsgContent(msg.content, msg.encrypted);
         const incoming=msg.sender_id!==myUserId;
         const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
         if(msg.edited_at){
           const meta=msgDiv.querySelector('.mmeta .time');
           if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
         }
-      });
+      }
     }
     // ピン留め中のメッセージがあればバナーを表示
     const pinned=await api('/api/groups/'+groupId+'/pinned');
     if(Array.isArray(pinned)&&pinned.length>0){
       const latest=pinned[0];
-      const{text}=parseMsgContent(latest.content);
+      const{text}=await parseMsgContent(latest.content, latest.encrypted);
       document.getElementById('pinText').textContent=text||'メディア';
       document.getElementById('pinBanner').classList.add('show');
       document.getElementById('pinBanner').dataset.msgId=latest.id;
     }
   }catch(err){console.error('load messages error:',err);}
 }
+
 
 // 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
 // (メンバー名・アバターを正しく紐付けるため)
@@ -1115,14 +1243,14 @@ function connectGroupWS(){
     groupWs.send(JSON.stringify({type:'auth',token}));
   };
 
-  groupWs.onmessage=e=>{
+  groupWs.onmessage=async e=>{
     try{
       const data=JSON.parse(e.data);
       if(data.type==='group_message'&&data.groupId===groupId){
         const msg=data.message;
         if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
         const member=gi.members.find(m=>m.id===msg.senderId);
-        const{text,media}=parseMsgContent(msg.content);
+        const{text,media}=await parseMsgContent(msg.content, msg.encrypted);
         createMsg(text,media,true,member,msg.id,msg.createdAt,true);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)

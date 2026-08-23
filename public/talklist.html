@@ -131,6 +131,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/libsodium-wrappers.min.js"></script>
+<script src="/js/signalkeymanager.js"></script>
+<script src="/js/groupE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/i18n.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -247,7 +250,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.26.1 beta</div>
+  <div class="version-badge">Bro Chat v1.27.0 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1131,9 +1134,25 @@ document.getElementById('ngCreate').onclick = async () => {
   createBtn.textContent = '作成中...';
 
   try {
+    const memberIds = Array.from(selectedGroupMembers);
+    // 自分自身も含めた全メンバー分のグループ鍵配布を、送信前にクライアント側で用意する。
+    // (サーバーは平文のグループ鍵を一切見ない: X3DHで各メンバー宛に個別暗号化済み)
+    const allMemberIds = [window.myUserId, ...memberIds];
+    let encryptedKeysForMembers = [];
+    try {
+      const dist = await groupE2E.createInitialGroupKeyDistribution(allMemberIds);
+      encryptedKeysForMembers = dist.distributions;
+    } catch (e) {
+      console.error('グループ鍵の生成に失敗しました:', e);
+      alert(i18n.t('err_encryption_init_failed'));
+      createBtn.disabled = false;
+      createBtn.textContent = i18n.t('create_btn');
+      return;
+    }
+
     const data = await api('/api/groups/create', {
       method: 'POST',
-      body: JSON.stringify({ name, memberIds: Array.from(selectedGroupMembers) })
+      body: JSON.stringify({ name, memberIds, encryptedKeysForMembers })
     });
     if (!data || !data.groupId) {
       throw new Error('グループ作成に失敗しました');
@@ -1146,7 +1165,7 @@ document.getElementById('ngCreate').onclick = async () => {
     alert(i18n.t('err_group_create_failed'));
   } finally {
     createBtn.disabled = false;
-    createBtn.textContent = '作成する';
+    createBtn.textContent = i18n.t('create_btn');
   }
 };
 
