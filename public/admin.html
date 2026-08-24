@@ -163,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.27.0 beta</div>
+  <div class="version-badge">Bro Chat v1.28.0 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1270,6 +1270,17 @@ function connectRealWS() {
           // 自分の送信メッセージが既読になった
           msg.readAt = new Date().toISOString();
           renderMessage(msg);
+        }
+      } else if (data.type === 'read_receipt_bulk') {
+        // 相手がトーク画面を開いて、まとめて複数メッセージが既読になった通知
+        if (data.readerId === otherId && Array.isArray(data.messageIds)) {
+          data.messageIds.forEach(msgId => {
+            const msg = realMessages.find(m => m.id === msgId);
+            if (msg && msg.senderId === myUserId) {
+              msg.readAt = data.readAt;
+              renderMessage(msg);
+            }
+          });
         }
       } else if (data.type === 'call_offer') {
         onCallOffer(data);

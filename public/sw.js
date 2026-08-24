@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.27.0';
+const CACHE_VERSION = 'v1.28.0';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 const urlsToCache = [
   '/',
@@ -102,6 +102,36 @@ self.addEventListener('push', event => {
           .then(notifications => notifications.forEach(n => n.close()))
       );
     }
+
+    // 1対1チャットの新着メッセージ
+    if (data.type === 'new_message') {
+      const { senderId, senderName, preview } = data;
+      const title = senderName || 'メッセージ';
+      const options = {
+        body: preview || 'メッセージが届きました',
+        icon: '/images/icons/icon-192.png',
+        badge: '/images/icons/icon-192.png',
+        tag: `dm-${senderId}`, // 同じ相手からの連続通知はまとめる(通知欄が埋まらないように)
+        renotify: true,
+        data: { type: 'dm', senderId },
+      };
+      event.waitUntil(self.registration.showNotification(title, options));
+    }
+
+    // グループチャットの新着メッセージ
+    if (data.type === 'new_group_message') {
+      const { groupId, groupName, senderName, preview } = data;
+      const title = groupName || 'グループ';
+      const options = {
+        body: `${senderName || 'ユーザー'}: ${preview || 'メッセージが届きました'}`,
+        icon: '/images/icons/icon-192.png',
+        badge: '/images/icons/icon-192.png',
+        tag: `group-${groupId}`,
+        renotify: true,
+        data: { type: 'group', groupId },
+      };
+      event.waitUntil(self.registration.showNotification(title, options));
+    }
   } catch (e) {
     console.error('Push event parse error:', e);
   }
@@ -110,10 +140,36 @@ self.addEventListener('push', event => {
 // 通知クリック → アプリをフォアグラウンドに
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  
-  const { callId, callerId, isVideo } = event.notification.data;
+
+  const notifData = event.notification.data || {};
   const action = event.action;
-  
+
+  // DM/グループの新着メッセージ通知 → 該当のトーク画面を開く/フォーカスする
+  if (notifData.type === 'dm' || notifData.type === 'group') {
+    const targetUrl = notifData.type === 'dm'
+      ? `/admin.html?userId=${encodeURIComponent(notifData.senderId)}`
+      : `/groupchat.html?groupId=${encodeURIComponent(notifData.groupId)}`;
+
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clientList => {
+          for (let client of clientList) {
+            // 既に同じトークを開いていればフォーカスするだけ
+            if (client.url.includes(targetUrl.split('?')[0]) && client.url.includes(
+              notifData.type === 'dm' ? notifData.senderId : notifData.groupId
+            )) {
+              return client.focus();
+            }
+          }
+          return clients.openWindow(targetUrl);
+        })
+    );
+    return;
+  }
+
+  // 以下は通話系(call_incoming)の既存ロジック
+  const { callId, callerId, isVideo } = notifData;
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(clientList => {

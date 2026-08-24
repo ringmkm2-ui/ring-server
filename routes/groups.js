@@ -254,8 +254,12 @@ router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res
     'SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL',
     [groupId]
   );
-  const { broadcastToUser } = require('../ws/wsServer');
+  const { broadcastToUser, isUserOnline } = require('../ws/wsServer');
+  const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.user.userId]);
+  const { sendPushToUser } = require('../utils/webPush');
+
   members.forEach(m => {
+    if (m.user_id === req.user.userId) return; // 自分には通知不要(送信元)
     broadcastToUser(m.user_id, {
       type: 'group_message',
       groupId,
@@ -270,6 +274,18 @@ router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res
         createdAt: msg.created_at,
       }
     });
+
+    // オフラインのメンバーにはPush通知。E2E暗号化のためcontentは復号できないので、
+    // 通知には「誰から・どのグループに届いたか」だけを載せる。
+    if (!isUserOnline(m.user_id)) {
+      sendPushToUser(m.user_id, {
+        type: 'new_group_message',
+        groupId,
+        groupName: group.name,
+        senderName: sender?.display_name || 'ユーザー',
+        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+      }).catch(err => console.error('[push] group message send failed:', err.message));
+    }
   });
 
   res.json({ ok: true, message: msg });

@@ -104,7 +104,7 @@ router.post('/send', auth, async (req, res) => {
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
 
     // WebSocket でリアルタイム通知
-    const { broadcastToUser } = require('../ws/wsServer');
+    const { broadcastToUser, isUserOnline } = require('../ws/wsServer');
     const payload = {
       type: 'new_message',
       message: {
@@ -120,6 +120,21 @@ router.post('/send', auth, async (req, res) => {
     };
     broadcastToUser(recipientId, payload);
     broadcastToUser(req.userId, payload); // 自分の他端末にも
+
+    // 相手がオフライン(WebSocket未接続)の場合のみPush通知を送る。
+    // オンラインならWS経由で既にリアルタイム表示されるため、二重通知を避ける。
+    // NOTE: E2E暗号化のためcontentは復号できない。通知本文には出さず、
+    // 「メッセージが届いた」ことと送信者名だけを載せる(プライバシー配慮)。
+    if (!isUserOnline(recipientId)) {
+      const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]);
+      const { sendPushToUser } = require('../utils/webPush');
+      sendPushToUser(recipientId, {
+        type: 'new_message',
+        senderId: req.userId,
+        senderName: sender?.display_name || 'ユーザー',
+        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+      }).catch(err => console.error('[push] new_message send failed:', err.message));
+    }
 
     res.json({ ok: true, message: payload.message });
   } catch (e) {
@@ -153,10 +168,30 @@ router.get('/history/:userId', auth, async (req, res) => {
     const rows = await db.all(sql, params);
 
     const now = new Date().toISOString();
+    // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
+    // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
+    const newlyRead = await db.all(
+      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
+      [otherId, req.userId]
+    );
     await db.run(
       "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
       [now, otherId, req.userId]
     );
+
+    // 履歴を開いただけ(WS経由のread_receiptイベントを個別に送っていないケース)でも
+    // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
+    // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
+    //  既読マークが付かないバグがあった)
+    if (newlyRead.length > 0) {
+      const { broadcastToUser } = require('../ws/wsServer');
+      broadcastToUser(otherId, {
+        type: 'read_receipt_bulk',
+        readerId: req.userId,
+        messageIds: newlyRead.map(m => m.id),
+        readAt: now,
+      });
+    }
 
     const result = [];
     for (const m of rows.reverse()) {
