@@ -245,7 +245,7 @@ function initWebSocketServer(server) {
             callerName: caller?.display_name || caller?.username || '不明なユーザー',
             callerPic: caller?.profile_pic || null,
             isVideo: !!data.isVideo,
-          }).catch(err => console.error('[push] call_offer push failed:', err.message));
+          }, { ttl: 30 }).catch(err => console.error('[push] call_offer push failed:', err.message));
         } catch (err) {
           console.error('[push] caller lookup failed:', err.message);
         }
@@ -284,7 +284,7 @@ function initWebSocketServer(server) {
           reason: data.reason || 'declined',
         });
         // バックグラウンドで表示中の着信通知があれば消す
-        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId })
+        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
           .catch(err => console.error('[push] call_reject cancel push failed:', err.message));
         return;
       }
@@ -297,7 +297,7 @@ function initWebSocketServer(server) {
           fromUserId: userId,
         });
         // 呼び出し中に発信者が切った場合など、バックグラウンド通知が残っていれば消す
-        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId })
+        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
           .catch(err => console.error('[push] call_end cancel push failed:', err.message));
         return;
       }

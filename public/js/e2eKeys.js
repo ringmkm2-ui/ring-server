@@ -59,7 +59,7 @@ async function getOrCreateMyKeyPair() {
 async function registerMyPublicKey(keyPair) {
   try {
     const publicKeyB64 = window.nacl.util.encodeBase64(keyPair.publicKey);
-    await api('/api/friends/me', {
+    await api('/api/friends/publickey', {
       method: 'POST',
       body: JSON.stringify({ publicKey: publicKeyB64 })
     });

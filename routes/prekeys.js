@@ -43,16 +43,22 @@ router.post('/upload', verifyToken, asyncHandler(async (req, res) => {
   }
 
   if (Array.isArray(oneTimePrekeys)) {
-    // key_idの重複を避けるため、このユーザーの現在の最大key_idを取得してから続き番号で採番する。
-    // (以前は常にidx=0からINSERTしていたため、補充のたびにkey_idが重複していた)
-    const maxRow = await db.get('SELECT MAX(key_id) as maxId FROM one_time_prekeys WHERE user_id = ?', [userId]);
-    let nextKeyId = (maxRow && maxRow.maxId != null) ? maxRow.maxId + 1 : 0;
-    for (const pubkey of oneTimePrekeys) {
+    // クライアントから { keyId, pubkey } 形式または旧来の文字列(pubkeyのみ)が来る。
+    // クライアント指定のkeyIdがある場合はそれを使う(クライアント側のローカルと一致させるため)。
+    // 旧来の文字列形式の場合はサーバー側でMAX(key_id)+1から採番する(後方互換)。
+    const hasStructured = oneTimePrekeys.length > 0 && typeof oneTimePrekeys[0] === 'object';
+    let nextKeyId = 0;
+    if (!hasStructured) {
+      const maxRow = await db.get('SELECT MAX(key_id) as maxId FROM one_time_prekeys WHERE user_id = ?', [userId]);
+      nextKeyId = (maxRow && maxRow.maxId != null) ? maxRow.maxId + 1 : 0;
+    }
+    for (const entry of oneTimePrekeys) {
+      const pubkey = hasStructured ? entry.pubkey : entry;
+      const keyId = hasStructured ? entry.keyId : nextKeyId++;
       await db.run(
         'INSERT INTO one_time_prekeys (id, user_id, key_id, pubkey) VALUES (?, ?, ?, ?)',
-        [uuidv4(), userId, nextKeyId, pubkey]
+        [uuidv4(), userId, keyId, pubkey]
       );
-      nextKeyId++;
     }
   }
 

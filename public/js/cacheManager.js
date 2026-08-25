@@ -159,7 +159,7 @@ class CacheManager {
       const req = store.getAll();
       
       req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(tx.error);
+      req.onerror = () => reject(req.error);
     });
   }
 

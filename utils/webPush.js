@@ -19,7 +19,9 @@ webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
  * @param {object} payload 通知データ (JSON.stringifyしてSWのpushイベントに渡る)
  * @returns {Promise<number>} 送信成功件数
  */
-async function sendPushToUser(userId, payload) {
+// options: { ttl, urgency } を渡せる。
+// 通話着信は TTL:30(30秒で破棄)、テキスト通知はデフォルト TTL:86400(1日)。
+async function sendPushToUser(userId, payload, options = {}) {
   const subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
   if (!subs || subs.length === 0) return 0;
 
@@ -33,8 +35,8 @@ async function sendPushToUser(userId, payload) {
     };
     try {
       await webpush.sendNotification(pushSubscription, payloadStr, {
-        urgency: 'high', // 着信は最優先で即座に配送させる
-        TTL: 30 // 30秒以内に配送できなければ破棄（通話の即時性のため）
+        urgency: options.urgency || 'high',
+        TTL: options.ttl !== undefined ? options.ttl : 86400,
       });
       successCount++;
     } catch (err) {

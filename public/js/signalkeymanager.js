@@ -36,7 +36,8 @@
 
     const oneTimePrekeys = [];
     for (let i = 0; i < oneTimeCount; i++) {
-      oneTimePrekeys.push(sodium.crypto_box_keypair());
+      const kp = sodium.crypto_box_keypair();
+      oneTimePrekeys.push({ keyId: i, publicKey: kp.publicKey, privateKey: kp.privateKey });
     }
 
     return {
@@ -54,6 +55,7 @@
         signature: sodium.to_base64(signature),
       },
       oneTimePrekeys: oneTimePrekeys.map(kp => ({
+        keyId: kp.keyId,
         publicKey: sodium.to_base64(kp.publicKey),
         privateKey: sodium.to_base64(kp.privateKey),
       })),
@@ -113,7 +115,9 @@
 
     let myOtkPriv = null;
     if (usedOneTimeKeyId !== null && usedOneTimeKeyId !== undefined) {
-      const found = myFullBundle.oneTimePrekeys[usedOneTimeKeyId];
+      // key_id はDBの連番であり、配列インデックスとは一致しない(補充後はずれる)。
+      // find()でkey_idが一致するものを探す。
+      const found = myFullBundle.oneTimePrekeys.find(k => k.keyId === usedOneTimeKeyId);
       if (found) myOtkPriv = sodium.from_base64(found.privateKey);
     }
 

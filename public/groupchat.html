@@ -182,7 +182,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.0 beta</div>
+  <div class="version-badge">Bro Chat v1.28.1 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1302,6 +1302,17 @@ function connectGroupWS(){
       }else if(data.type==='added_to_group'){
         // 自分が新しいグループに追加された通知(トーク一覧側で表示更新が必要になるため、
         // 現在開いているのが別グループの場合は何もしない)
+      }else if(data.type==='removed_from_group'&&data.groupId===groupId){
+        // 自分または他のメンバーが削除 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
+        cachedGroupKey = null;
+        loadGroupInfo();
+      }else if(data.type==='group_member_added'&&data.groupId===groupId){
+        // 新メンバー追加 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
+        cachedGroupKey = null;
+        loadGroupInfo();
+      }else if(data.type==='group_key_rotated'&&data.groupId===groupId){
+        // 鍵ローテーション通知 → メモリキャッシュとlocalStorageの古いバージョンを破棄して次回取得時に再取得させる
+        cachedGroupKey = null;
       }
     }catch(err){console.error('WebSocketメッセージ処理エラー:',err);}
   };

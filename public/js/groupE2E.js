@@ -51,7 +51,8 @@
         signedPrekeyPub: bundle.signedPrekey.publicKey,
         signedPrekeySig: bundle.signedPrekey.signature,
         registrationId: Math.floor(Math.random() * 1e9),
-        oneTimePrekeys: bundle.oneTimePrekeys.map(k => k.publicKey),
+        // { keyId, pubkey } 形式で送り、サーバーがこのkeyIdでDBに格納する
+        oneTimePrekeys: bundle.oneTimePrekeys.map(k => ({ keyId: k.keyId, pubkey: k.publicKey })),
       }),
     });
 
@@ -60,16 +61,24 @@
 
   async function replenishOneTimeKeys() {
     const sodium = await (async () => { await window.sodium.ready; return window.sodium; })();
-    const newKeys = [];
-    for (let i = 0; i < 20; i++) newKeys.push(sodium.crypto_box_keypair());
 
-    // ローカル保存分にも追加(x3dhRespondで使う可能性があるため)
-    myFullBundle.oneTimePrekeys.push(
-      ...newKeys.map(kp => ({
+    // 補充時のkeyIdは既存エントリの最大値+1から採番する
+    const currentMaxKeyId = myFullBundle.oneTimePrekeys.reduce(
+      (max, k) => (k.keyId != null && k.keyId > max ? k.keyId : max), -1
+    );
+
+    const newKeys = [];
+    for (let i = 0; i < 20; i++) {
+      const kp = sodium.crypto_box_keypair();
+      newKeys.push({
+        keyId: currentMaxKeyId + 1 + i,
         publicKey: sodium.to_base64(kp.publicKey),
         privateKey: sodium.to_base64(kp.privateKey),
-      }))
-    );
+      });
+    }
+
+    // ローカル保存分にも追加(x3dhRespondで使う可能性があるため)
+    myFullBundle.oneTimePrekeys.push(...newKeys);
     localStorage.setItem(IDENTITY_STORAGE_KEY_PREFIX + window.myUserId, JSON.stringify(myFullBundle));
 
     await api('/api/prekeys/upload', {
@@ -78,7 +87,8 @@
         identityPubkey: myFullBundle.identity.publicKey,
         signedPrekeyPub: myFullBundle.signedPrekey.publicKey,
         signedPrekeySig: myFullBundle.signedPrekey.signature,
-        oneTimePrekeys: newKeys.map(k => window.sodium.to_base64(k.publicKey)),
+        // { keyId, pubkey } 形式で送り、サーバーがこのkeyIdで格納する
+        oneTimePrekeys: newKeys.map(k => ({ keyId: k.keyId, pubkey: k.publicKey })),
       }),
     });
   }

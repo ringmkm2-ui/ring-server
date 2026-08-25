@@ -41,7 +41,7 @@ function isValidProfilePic(value) {
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
-    const { displayName, bio, profilePic } = req.body;
+    const { displayName, bio, profilePic, publicKey } = req.body;
     // 表示名・自己紹介は無制限だとUIレイアウト崩壊やDB肥大化の原因になるため上限を設ける
     if (displayName && displayName.length > 50) {
       return res.status(400).json({ error: '表示名は50文字以内にしてください' });
@@ -56,6 +56,10 @@ router.post('/me', auth, async (req, res) => {
       await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', profilePic, req.userId]);
     } else {
       await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
+    }
+    // publicKey が含まれていた場合もここで処理する（/api/friends/publickey と同等）
+    if (publicKey) {
+      await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
     }
     res.json({ ok: true });
   } catch (e) {
