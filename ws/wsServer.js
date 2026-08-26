@@ -148,6 +148,15 @@ function initWebSocketServer(server) {
 
       // --- 既読通知の中継・DB更新 ---
       if (data.type === 'read_receipt') {
+        // 認可チェック: 自分が受信者のメッセージのみ既読にできる
+        const targetMsg = await db.get(
+          'SELECT id, sender_id, recipient_id FROM messages WHERE id = ?',
+          [data.msgUuid]
+        );
+        if (!targetMsg || targetMsg.recipient_id !== userId) {
+          // 存在しないIDや他人宛のメッセージへの操作は無視する
+          return;
+        }
         // DBの read_at をすぐに更新
         await db.run(
           'UPDATE messages SET read_at = ? WHERE id = ?',

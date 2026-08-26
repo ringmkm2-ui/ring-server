@@ -250,7 +250,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.2 beta</div>
+  <div class="version-badge">Bro Chat v1.28.3 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -609,18 +609,22 @@ async function initializeWithCache() {
 
 async function refreshFromServer() {
   try {
+    const token = localStorage.getItem('jwt');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
     // 友達情報を取得
-    const response = await fetch('/api/friends/me');
+    const response = await fetch('/api/friends/list', { headers });
     if (response.ok) {
       const friends = await response.json();
       await cacheManager.saveFriends(friends);
       renderFriends(friends);
     }
-    
+
     // グループ情報を取得
-    const groupsResponse = await fetch('/api/groups');
+    const groupsResponse = await fetch('/api/groups/list', { headers });
     if (groupsResponse.ok) {
-      const groups = await groupsResponse.json();
+      const groupsData = await groupsResponse.json();
+      const groups = groupsData.groups || groupsData;
       await cacheManager.saveGroups(groups);
       renderGroups(groups);
     }
