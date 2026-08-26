@@ -204,10 +204,12 @@
   }
 
   // 配布者(fromUserId)のidentity公開鍵を取得する。x3dhRespondの計算に必要。
+  // NOTE: /api/prekeys/bundle は使い捨て鍵(OTK)を消費するため、
+  // identity鍵のみが目的の場合は /api/prekeys/identity を使う。
   const identityPubkeyCache = new Map();
   async function getIdentityPubkeyOf(userId) {
     if (identityPubkeyCache.has(userId)) return identityPubkeyCache.get(userId);
-    const bundle = await api('/api/prekeys/bundle/' + userId);
+    const bundle = await api('/api/prekeys/identity/' + userId);
     if (!bundle || !bundle.identityPubkey) {
       throw new Error('配布者の鍵情報が見つかりません: ' + userId);
     }

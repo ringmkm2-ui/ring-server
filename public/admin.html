@@ -163,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.1 beta</div>
+  <div class="version-badge">Bro Chat v1.28.2 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -540,13 +540,20 @@ async function decryptMessageContent(rawContent, senderId) {
     // JSONでなければ通常のテキストメッセージ
   }
 
-  if (parsed && typeof parsed === 'object' && parsed.media && parsed.mediaType) {
-    // メディアメッセージ: media フィールドだけを復号する
-    const decryptedMedia = await decryptMessage(parsed.media, senderId);
-    if (decryptedMedia === null) {
-      return null; // 呼び出し側で「復号化に失敗しました」等のフォールバック表示に使う
+  if (parsed && typeof parsed === 'object') {
+    if (parsed.mediaUrl && parsed.mediaType) {
+      // Cloudinary方式: コンテンツ自体は暗号化されておらず、
+      // 復号はlazyLoadObserver側で実施する。そのままrawContentを返す。
+      return rawContent;
     }
-    return JSON.stringify({ text: parsed.text || '', media: decryptedMedia, mediaType: parsed.mediaType });
+    if (parsed.media && parsed.mediaType) {
+      // Base64直送り方式: media フィールドだけを復号する
+      const decryptedMedia = await decryptMessage(parsed.media, senderId);
+      if (decryptedMedia === null) {
+        return null;
+      }
+      return JSON.stringify({ text: parsed.text || '', media: decryptedMedia, mediaType: parsed.mediaType });
+    }
   }
 
   // 通常のテキストメッセージ

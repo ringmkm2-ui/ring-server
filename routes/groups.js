@@ -259,7 +259,7 @@ router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res
   const { sendPushToUser } = require('../utils/webPush');
 
   members.forEach(m => {
-    if (m.user_id === req.user.userId) return; // 自分には通知不要(送信元)
+    const isSelf = m.user_id === req.user.userId;
     broadcastToUser(m.user_id, {
       type: 'group_message',
       groupId,
@@ -274,6 +274,9 @@ router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res
         createdAt: msg.created_at,
       }
     });
+
+    // 自分自身はスキップ(送信元端末には既に表示済み)、Push通知も不要
+    if (isSelf) return;
 
     // オフラインのメンバーにはPush通知。E2E暗号化のためcontentは復号できないので、
     // 通知には「誰から・どのグループに届いたか」だけを載せる。

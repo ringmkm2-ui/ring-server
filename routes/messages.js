@@ -272,7 +272,7 @@ router.get('/talks', auth, async (req, res) => {
           userIdCode: user.user_id,
           displayName: user.display_name,
           profilePic: user.profile_pic,
-          lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content),
+          lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content, row.encrypted),
           lastTime: row.last_time,
           unreadCount: unread ? unread.cnt : 0,
         });

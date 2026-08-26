@@ -65,7 +65,7 @@ router.post('/upload', verifyToken, asyncHandler(async (req, res) => {
   res.json({ ok: true, uploadedOneTimeKeys: (oneTimePrekeys || []).length });
 }));
 
-// --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
+// --- 指定ユーザーのidentity公開鍵だけを返す (OTK消費なし) ---\n// x3dhRespond (受信側) で配布者のidentityPubkeyを取得するために使う。\n// /bundle/:userId はOTKを消費してしまうためこのエンドポイントを分けている。\nrouter.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {\n  const targetId = req.params.userId;\n  const identity = await db.get('SELECT identity_pubkey, signing_pubkey, signed_prekey_pub, signed_prekey_sig, registration_id FROM identity_keys WHERE user_id = ?', [targetId]);\n  if (!identity) {\n    return res.status(404).json({ error: 'このユーザーの鍵が登録されていません' });\n  }\n  res.json({\n    userId: targetId,\n    identityPubkey: identity.identity_pubkey,\n    signingPubkey: identity.signing_pubkey || null,\n    signedPrekeyPub: identity.signed_prekey_pub,\n    signedPrekeySig: identity.signed_prekey_sig,\n  });\n}));\n\n// --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
 router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
   const identity = await db.get('SELECT * FROM identity_keys WHERE user_id = ?', [targetId]);
