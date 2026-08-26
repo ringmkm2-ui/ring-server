@@ -197,15 +197,35 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
             </div>
             <button class="sibtn glass-interactive" id="openSettings" type="button">
               <svg class="siico" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <defs><linearGradient id="g1" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#afafb3"/><stop offset="100%" stop-color="#8e8e93"/></linearGradient></defs>
-                <rect width="100" height="100" rx="22" fill="url(#g1)"/>
-                <circle cx="50" cy="50" r="28" fill="none" stroke="#fff" stroke-width="5"/>
-                <g fill="#fff" transform="translate(50,50)">
-                  <rect x="-4" y="-33" width="8" height="7" rx="1"/><rect x="-4" y="26" width="8" height="7" rx="1"/><rect x="-33" y="-4" width="7" height="8" rx="1"/><rect x="26" y="-4" width="7" height="8" rx="1"/>
-                  <g transform="rotate(45)"><rect x="-4" y="-33" width="8" height="7" rx="1"/><rect x="-4" y="26" width="8" height="7" rx="1"/><rect x="-33" y="-4" width="7" height="8" rx="1"/><rect x="26" y="-4" width="7" height="8" rx="1"/></g>
+                <defs>
+                  <linearGradient id="sg-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#c8c8cc"/>
+                    <stop offset="100%" stop-color="#8e8e93"/>
+                  </linearGradient>
+                  <linearGradient id="sg-gear" x1="0%" y1="0%" x2="30%" y2="100%">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+                    <stop offset="100%" stop-color="#d0d0d5" stop-opacity="0.85"/>
+                  </linearGradient>
+                  <linearGradient id="sg-shine" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#fff" stop-opacity="0.55"/>
+                    <stop offset="60%" stop-color="#fff" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <!-- 背景 -->
+                <rect width="100" height="100" rx="23" fill="url(#sg-bg)"/>
+                <!-- 大歯車（左下寄り） -->
+                <g transform="translate(38,57)" fill="url(#sg-gear)">
+                  <path d="M0-20 a20 20 0 0 1 0 40 a20 20 0 0 1 0-40z" fill="none"/>
+                  <path d="M-3-22 h6 l1 6 a17 17 0 0 1 4 1.7l5-3 4 4-3 5a17 17 0 0 1 1.7 4l6 1 v6l-6 1a17 17 0 0 1-1.7 4l3 5-4 4-5-3a17 17 0 0 1-4 1.7l-1 6h-6l-1-6a17 17 0 0 1-4-1.7l-5 3-4-4 3-5a17 17 0 0 1-1.7-4l-6-1v-6l6-1a17 17 0 0 1 1.7-4l-3-5 4-4 5 3a17 17 0 0 1 4-1.7z"/>
+                  <circle cx="0" cy="0" r="8" fill="url(#sg-bg)"/>
                 </g>
-                <circle cx="50" cy="50" r="16" fill="url(#g1)"/>
-                <circle cx="50" cy="50" r="5" fill="url(#g1)"/><circle cx="50" cy="50" r="2.5" fill="#fff"/>
+                <!-- 中歯車（右上寄り） -->
+                <g transform="translate(63,37)" fill="url(#sg-gear)" opacity="0.88">
+                  <path d="M-2-15 h4 l0.8 4.5a12 12 0 0 1 2.8 1.2l3.7-2.2 2.8 2.8-2.2 3.7a12 12 0 0 1 1.2 2.8l4.5 0.8v4l-4.5 0.8a12 12 0 0 1-1.2 2.8l2.2 3.7-2.8 2.8-3.7-2.2a12 12 0 0 1-2.8 1.2l-0.8 4.5h-4l-0.8-4.5a12 12 0 0 1-2.8-1.2l-3.7 2.2-2.8-2.8 2.2-3.7a12 12 0 0 1-1.2-2.8l-4.5-0.8v-4l4.5-0.8a12 12 0 0 1 1.2-2.8l-2.2-3.7 2.8-2.8 3.7 2.2a12 12 0 0 1 2.8-1.2z"/>
+                  <circle cx="0" cy="0" r="5.5" fill="url(#sg-bg)"/>
+                </g>
+                <!-- 光沢ハイライト -->
+                <rect width="100" height="50" rx="23" fill="url(#sg-shine)"/>
               </svg>
             </button>
           </div>
@@ -250,7 +270,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.4 beta</div>
+  <div class="version-badge">Bro Chat v1.28.5 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
