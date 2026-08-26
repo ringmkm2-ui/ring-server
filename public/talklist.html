@@ -84,9 +84,59 @@ body.has-custom-bg .pc{background:transparent}
 .sgrow-label{display:flex;flex-direction:column;gap:2px}
 .sgrow-label .sgtitle{font-size:14px;font-weight:600;color:#0f172a}
 .sgrow-label .sgdesc{font-size:12px;color:#94a3b8}
-/* iOS 27 Liquid Glass トグル: スタイルはliquidGlass.cssに集約 */
-.toggle-switch{position:relative;display:inline-block;width:52px;height:30px;flex-shrink:0}
+/* Tactile Switch — 物理スプリング+SVGフィルターによるガラストグル */
+.toggle-switch{position:relative;display:inline-block;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+/* Tactile Switch トラック */
+.ts-track{
+  display:inline-block;position:relative;
+  width:80px;height:34px;
+  background-color:rgba(200,210,215,0.35);
+  border-radius:100px;cursor:pointer;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,0.18),0 1px 0 rgba(255,255,255,0.6);
+  border:1px solid rgba(255,255,255,0.4);
+  transition:background-color 0.3s ease;
+  overflow:visible;
+}
+/* サム（ノブ） */
+.ts-thumb{
+  position:absolute;
+  width:72px;height:46px;
+  border-radius:23px;
+  top:17px;
+  transform:translateY(-50%) scale(0.65);
+  transform-origin:center center;
+  cursor:pointer;touch-action:none;user-select:none;
+  background-color:rgba(255,255,255,1);
+  box-shadow:0 10px 30px rgba(0,0,0,0.35);
+  overflow:hidden;
+  will-change:transform,left,background-color,box-shadow;
+  z-index:10;
+}
+.ts-thumb-clone{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  overflow:hidden;border-radius:inherit;z-index:1;opacity:0;
+  will-change:opacity;
+}
+.ts-thumb-clone-inner{
+  position:absolute;top:0;left:0;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%,#e8f5e9 0%,#c8e6c9 100%);
+}
+.ts-thumb-clone-inner::before{
+  content:"";position:absolute;
+  left:var(--track-left,0);top:var(--track-top,0);
+  width:80px;height:34px;border-radius:100px;
+  background-color:var(--ts-track-color,rgba(200,210,215,0.35));
+}
+.ts-thumb-inner{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  border-radius:inherit;z-index:3;pointer-events:none;
+}
+.use-backdrop-filter .ts-thumb-inner{
+  backdrop-filter:url(#tsGlassFilter);
+  -webkit-backdrop-filter:url(#tsGlassFilter);
+}
+.use-backdrop-filter .ts-thumb-clone{display:none;}
 .version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
 html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
@@ -280,7 +330,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.6 beta</div>
+  <div class="version-badge">Bro Chat v1.28.7 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -309,15 +359,52 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="sg">
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle" data-i18n="dark_mode">ダークモード</span><span class="sgdesc">画面全体を暗いテーマに切り替えます</span></div>
-        <label class="toggle-switch"><input type="checkbox" id="toggleDarkMode"><span class="toggle-slider"></span></label>
+        <div class="ts-wrap" id="tsDarkMode">
+          <div class="ts-track" id="tsTrackDarkMode">
+            <div class="ts-thumb" id="tsThumbDarkMode">
+              <div class="ts-thumb-clone"><div class="ts-thumb-clone-inner" id="tsCloneInnerDarkMode"></div></div>
+              <div class="ts-thumb-inner"></div>
+              <svg style="width:0;height:0;position:absolute"><defs>
+                <filter id="tsGlassFilter" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+                  <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="blurred"/>
+                  <feImage id="tsDispImg" href="" x="0" y="0" width="72" height="46" result="dmap" preserveAspectRatio="none"/>
+                  <feDisplacementMap id="tsDispMap" in="blurred" in2="dmap" scale="20" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+                  <feColorMatrix in="displaced" type="saturate" values="4" result="saturated"/>
+                  <feImage id="tsSpecImg" href="" x="0" y="0" width="72" height="46" result="specular" preserveAspectRatio="none"/>
+                  <feComposite in="saturated" in2="specular" operator="in" result="spec_sat"/>
+                  <feComponentTransfer in="specular" result="spec_fade"><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+                  <feBlend in="spec_sat" in2="displaced" mode="normal" result="ws"/>
+                  <feBlend in="spec_fade" in2="ws" mode="normal"/>
+                </filter>
+              </defs></svg>
+            </div>
+          </div>
+          <input type="checkbox" id="toggleDarkMode" style="display:none">
+        </div>
       </div>
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle" data-i18n="mobile_data_saver">モバイルデータ節約</span><span class="sgdesc">モバイル回線利用中は画像の画質を下げて送信します</span></div>
-        <label class="toggle-switch"><input type="checkbox" id="toggleDataSaver"><span class="toggle-slider"></span></label>
+        <div class="ts-wrap" id="tsDataSaver">
+          <div class="ts-track" id="tsTrackDataSaver">
+            <div class="ts-thumb" id="tsThumbDataSaver">
+              <div class="ts-thumb-clone"><div class="ts-thumb-clone-inner" id="tsCloneInnerDataSaver"></div></div>
+              <div class="ts-thumb-inner" style="backdrop-filter:url(#tsGlassFilter);-webkit-backdrop-filter:url(#tsGlassFilter)"></div>
+            </div>
+          </div>
+          <input type="checkbox" id="toggleDataSaver" style="display:none">
+        </div>
       </div>
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle">バッテリーセーバー時のアニメーション軽減</span><span class="sgdesc">オンにすると、装飾アニメーションを常に無効化します</span></div>
-        <label class="toggle-switch"><input type="checkbox" id="toggleBatterySaver"><span class="toggle-slider"></span></label>
+        <div class="ts-wrap" id="tsBatterySaver">
+          <div class="ts-track" id="tsTrackBatterySaver">
+            <div class="ts-thumb" id="tsThumbBatterySaver">
+              <div class="ts-thumb-clone"><div class="ts-thumb-clone-inner" id="tsCloneInnerBatterySaver"></div></div>
+              <div class="ts-thumb-inner" style="backdrop-filter:url(#tsGlassFilter);-webkit-backdrop-filter:url(#tsGlassFilter)"></div>
+            </div>
+          </div>
+          <input type="checkbox" id="toggleBatterySaver" style="display:none">
+        </div>
       </div>
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle" data-i18n="language_settings">言語設定</span></div>
@@ -932,20 +1019,21 @@ document.getElementById('openSettings').onclick=()=>{
 settingsMov.onclick=e=>{if(e.target===settingsMov)settingsMov.classList.remove('open');};
 
 // 各トグルは変更した瞬間に即座に反映する(保存ボタンを待たずに体感できた方が良いため)
-document.getElementById('toggleDarkMode').onchange=e=>{
+// Tactile Switchがchange eventを発火するのでそれを受け取る
+document.getElementById('toggleDarkMode').addEventListener('change', e=>{
   localStorage.setItem('darkMode', e.target.checked ? '1' : '0');
   window.dispatchEvent(new Event('settings-changed'));
-};
-document.getElementById('toggleDataSaver').onchange=e=>{
+});
+document.getElementById('toggleDataSaver').addEventListener('change', e=>{
   localStorage.setItem('mobileDataSaver', e.target.checked ? '1' : '0');
-};
+});
 document.getElementById('langSelectSettings').onchange=e=>{
   if (window.i18n) i18n.setLang(e.target.value);
 };
-document.getElementById('toggleBatterySaver').onchange=e=>{
+document.getElementById('toggleBatterySaver').addEventListener('change', e=>{
   localStorage.setItem('batterySaverAnimations', e.target.checked ? '1' : '0');
   window.dispatchEvent(new Event('settings-changed'));
-};
+});
 
 // クロップ
 let cx=0,cy=0,cs=1,cd=false,csx=0,csy=0;
@@ -1775,6 +1863,277 @@ async function deletePost(postId, card) {
 document.addEventListener('DOMContentLoaded', () => {
   initializeWithCache();
 });
+
+// =============================================================================
+// Tactile Switch Engine
+// 物理スプリング + SVGフィルター(feDisplacementMap)による本物のガラストグル
+// オン時はグリーン(#34c759)発光
+// =============================================================================
+(function() {
+  const SurfaceEquations = {
+    convex_squircle: (x) => Math.pow(1 - Math.pow(1 - x, 4), 1/4)
+  };
+
+  class Spring {
+    constructor(v, s=300, d=20) {
+      this.value=v; this.target=v; this.velocity=0;
+      this.stiffness=s; this.damping=d;
+    }
+    setTarget(t){ this.target=t; }
+    update(dt){
+      const f=(this.target-this.value)*this.stiffness;
+      const df=this.velocity*this.damping;
+      this.velocity+=(f-df)*dt;
+      this.value+=this.velocity*dt;
+      return this.value;
+    }
+    isSettled(){
+      return Math.abs(this.target-this.value)<0.001 && Math.abs(this.velocity)<0.001;
+    }
+  }
+
+  function calcDispMap1D(gt,bw,sf,ri,s=128){
+    const e=1/ri,r=[];
+    for(let i=0;i<s;i++){
+      const x=i/s, y=sf(x);
+      const dx=x<1?0.0001:-0.0001;
+      const d=(sf(Math.max(0,Math.min(1,x+dx)))-y)/dx;
+      const m=Math.sqrt(d*d+1);
+      const n=[-d/m,-1/m];
+      const dt2=n[1];
+      const k=1-e*e*(1-dt2*dt2);
+      if(k<0){r.push(0);}
+      else{
+        const rf=[-(e*dt2+Math.sqrt(k))*n[0],e-(e*dt2+Math.sqrt(k))*n[1]];
+        r.push(rf[0]*((y*bw+gt)/rf[1]));
+      }
+    }
+    return r;
+  }
+
+  function calcDispMap2D(cw,ch,ow,oh,rad,bw,md,pMap){
+    const img=new ImageData(cw,ch);
+    for(let i=0;i<img.data.length;i+=4){img.data[i]=128;img.data[i+1]=128;img.data[i+3]=255;}
+    const rSq=rad*rad,rp1Sq=(rad+1)**2,rmBwSq=Math.max(0,rad-bw)**2;
+    const wB=ow-rad*2,hB=oh-rad*2,oX=(cw-ow)/2,oY=(ch-oh)/2;
+    for(let y1=0;y1<oh;y1++){
+      for(let x1=0;x1<ow;x1++){
+        const idx=((oY+y1)*cw+oX+x1)*4;
+        const x=x1<rad?x1-rad:x1>=ow-rad?x1-rad-wB:0;
+        const y=y1<rad?y1-rad:y1>=oh-rad?y1-rad-hB:0;
+        const dSq=x*x+y*y;
+        if(dSq<=rp1Sq&&dSq>=rmBwSq){
+          const dist=Math.sqrt(dSq);
+          const op=dSq<rSq?1:1-(dist-rad)/(Math.sqrt(rp1Sq)-rad);
+          const bIdx=Math.floor(Math.max(0,Math.min(1,(rad-dist)/bw))*pMap.length);
+          const dVal=pMap[Math.max(0,Math.min(bIdx,pMap.length-1))]||0;
+          const dX=md>0?(-(dist>0?x/dist:0)*dVal)/md:0;
+          const dY=md>0?(-(dist>0?y/dist:0)*dVal)/md:0;
+          img.data[idx]=Math.max(0,Math.min(255,128+dX*127*op));
+          img.data[idx+1]=Math.max(0,Math.min(255,128+dY*127*op));
+        }
+      }
+    }
+    return img;
+  }
+
+  function calcSpecular(ow,oh,rad){
+    const img=new ImageData(ow,oh);
+    const sVec=[Math.cos(Math.PI/3),Math.sin(Math.PI/3)];
+    const rSq=rad*rad,rp1Sq=(rad+1)**2,rmSSq=Math.max(0,(rad-1.5)**2);
+    for(let y1=0;y1<oh;y1++){
+      for(let x1=0;x1<ow;x1++){
+        const x=x1<rad?x1-rad:x1>=ow-rad?x1-rad-(ow-rad*2):0;
+        const y=y1<rad?y1-rad:y1>=oh-rad?y1-rad-(oh-rad*2):0;
+        const dSq=x*x+y*y;
+        if(dSq<=rp1Sq&&dSq>=rmSSq){
+          const dist=Math.sqrt(dSq);
+          const op=dSq<rSq?1:1-(dist-rad)/(Math.sqrt(rp1Sq)-rad);
+          const dp=Math.abs((dist>0?x/dist:0)*sVec[0]+(dist>0?-y/dist:0)*sVec[1]);
+          const cf=dp*Math.sqrt(1-(1-Math.max(0,Math.min(1,(rad-dist)/1.5)))**2);
+          const c=Math.min(255,255*cf);
+          const idx=(y1*ow+x1)*4;
+          img.data[idx]=img.data[idx+1]=img.data[idx+2]=c;
+          img.data[idx+3]=Math.min(255,c*cf*op);
+        }
+      }
+    }
+    return img;
+  }
+
+  function imgToDataURL(img){
+    const c=document.createElement('canvas');
+    c.width=img.width;c.height=img.height;
+    c.getContext('2d').putImageData(img,0,0);
+    return c.toDataURL();
+  }
+
+  // グリーン(#34c759)のRGB
+  const GREEN_R=52,GREEN_G=199,GREEN_B=89;
+
+  function initTactileSwitch(thumbEl, trackEl, cloneInnerEl, inputEl, dispImgId, dispMapId) {
+    const c={tw:80,th:34,w:72,h:46,r:23,bw:10,gt:24,ri:1.5,sr:0.65,sa:0.88};
+    const s={chk:inputEl.checked,pd:false,ix:0,xr:inputEl.checked?1:0,md:0};
+    const sp={
+      xr:new Spring(s.chk?1:0,1000,80),
+      sc:new Spring(c.sr,2000,80),
+      bo:new Spring(1,2000,80),
+      tc:new Spring(s.chk?1:0,1000,80),
+      sr:new Spring(0.4,100,10)
+    };
+    c.ro=((1-c.sr)*c.w)/2;
+    c.tr=c.tw-c.th-(c.w-c.h)*c.sr;
+    let af=null;
+
+    // displacement mapはdispImgIdが存在する最初のスイッチにのみ設定
+    const dispImgEl=document.getElementById(dispImgId);
+    const dispMapEl=document.getElementById(dispMapId);
+    if(dispImgEl){
+      const pc=calcDispMap1D(c.gt,c.bw,SurfaceEquations.convex_squircle,c.ri);
+      s.md=Math.max(...pc.map(Math.abs));
+      dispImgEl.setAttribute('href',imgToDataURL(calcDispMap2D(c.w,c.h,c.w,c.h,c.r,c.bw,s.md||1,pc)));
+      const specEl=document.getElementById(dispImgId.replace('DispImg','SpecImg'));
+      if(specEl) specEl.setAttribute('href',imgToDataURL(calcSpecular(c.w,c.h,c.r)));
+    }
+
+    function loop(){
+      const dt=Math.min(0.032,1/60);
+      sp.sc.setTarget(s.pd?c.sa:c.sr);
+      sp.bo.setTarget(s.pd?0.1:1);
+      sp.sr.setTarget(s.pd?0.9:0.4);
+      if(!s.pd) sp.xr.setTarget(s.chk?1:0);
+      sp.tc.setTarget(s.pd?(s.xr>0.5?1:0):(s.chk?1:0));
+
+      const xr=sp.xr.update(dt),sc=sp.sc.update(dt),bo=sp.bo.update(dt),tc=sp.tc.update(dt);
+      const tx=-c.ro+(c.th-c.h*c.sr)/2+xr*c.tr;
+
+      thumbEl.style.left=tx+'px';
+      thumbEl.style.transform=`translateY(-50%) scale(${sc})`;
+      thumbEl.style.backgroundColor=`rgba(255,255,255,${bo})`;
+      thumbEl.style.boxShadow=s.pd
+        ?'0 4px 18px rgba(0,0,0,0.1),inset 2px 7px 20px rgba(0,0,0,0.08),inset -2px -7px 20px rgba(255,255,255,0.08)'
+        :'0 8px 28px rgba(0,0,0,0.38)';
+
+      if(cloneInnerEl){
+        const cloneOp=1-bo;
+        thumbEl.querySelector('.ts-thumb-clone').style.opacity=cloneOp;
+      }
+
+      // オン=グリーン(#34c759)、オフ=ガラス素材
+      const r=Math.round(255+(GREEN_R-255)*tc);
+      const g=Math.round(255+(GREEN_G-255)*tc);
+      const b=Math.round(255+(GREEN_B-255)*tc);
+      const a=0.05+(0.55-0.05)*tc;
+      const tBg=`rgba(${r},${g},${b},${a})`;
+      trackEl.style.backgroundColor=tBg;
+
+      // グリーングロー
+      const glowA=tc*0.5;
+      trackEl.style.boxShadow=`inset 0 2px 8px rgba(0,0,0,0.18),0 1px 0 rgba(255,255,255,0.6),0 0 0 ${tc*3}px rgba(52,199,89,${glowA})`;
+
+      if(cloneInnerEl){
+        const aR=trackEl.closest('.ts-wrap')||trackEl.parentElement;
+        const aRect=aR.getBoundingClientRect();
+        const cl=(aRect.width-c.tw)/2;
+        const ct=(aRect.height-c.th)/2;
+        cloneInnerEl.style.width=aRect.width+'px';
+        cloneInnerEl.style.height=aRect.height+'px';
+        cloneInnerEl.style.transform=`translate(${-(cl+tx)}px,${-(ct+(c.th/2-c.h/2))}px)`;
+        cloneInnerEl.style.setProperty('--ts-track-color',tBg);
+        cloneInnerEl.style.setProperty('--track-left',`${cl}px`);
+        cloneInnerEl.style.setProperty('--track-top',`${ct}px`);
+      }
+
+      if(dispMapEl) dispMapEl.setAttribute('scale',s.md*sp.sr.update(dt));
+
+      if(!Object.values(sp).every(x=>x.isSettled())) af=requestAnimationFrame(loop);
+      else af=null;
+    }
+
+    function fireChange(){
+      const ev=new Event('change',{bubbles:true});
+      inputEl.checked=s.chk;
+      inputEl.dispatchEvent(ev);
+    }
+
+    thumbEl.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();
+      s.pd=true;s.ix=e.clientX;s.xr=s.chk?1:0;
+      if(!af)af=requestAnimationFrame(loop);
+    });
+    thumbEl.addEventListener('touchstart',e=>{
+      e.preventDefault();e.stopPropagation();
+      s.pd=true;s.ix=e.touches[0].clientX;s.xr=s.chk?1:0;
+      if(!af)af=requestAnimationFrame(loop);
+    },{passive:false});
+    window.addEventListener('mousemove',e=>{
+      if(!s.pd)return;
+      const cx=e.clientX;
+      const r2=(s.chk?1:0)+(cx-s.ix)/c.tr;
+      s.xr=Math.min(1,Math.max(0,r2))+((r2<0?1:-1)*(r2<0?-r2:r2>1?r2-1:0))/22;
+      sp.xr.setTarget(s.xr);
+      if(!af)af=requestAnimationFrame(loop);
+    });
+    window.addEventListener('touchmove',e=>{
+      if(!s.pd)return;
+      const cx=e.touches[0].clientX;
+      const r2=(s.chk?1:0)+(cx-s.ix)/c.tr;
+      s.xr=Math.min(1,Math.max(0,r2))+((r2<0?1:-1)*(r2<0?-r2:r2>1?r2-1:0))/22;
+      sp.xr.setTarget(s.xr);
+      if(!af)af=requestAnimationFrame(loop);
+    },{passive:false});
+    window.addEventListener('mouseup',e=>{
+      if(s.pd){
+        s.pd=false;
+        s.chk=Math.abs(e.clientX-s.ix)<4?!s.chk:s.xr>0.5;
+        fireChange();
+        if(!af)af=requestAnimationFrame(loop);
+      }
+    });
+    window.addEventListener('touchend',e=>{
+      if(s.pd){
+        s.pd=false;
+        const cx=e.changedTouches?e.changedTouches[0].clientX:0;
+        s.chk=Math.abs(cx-s.ix)<4?!s.chk:s.xr>0.5;
+        fireChange();
+        if(!af)af=requestAnimationFrame(loop);
+      }
+    });
+    trackEl.addEventListener('click',e=>{
+      if(e.target===trackEl){
+        s.chk=!s.chk;
+        fireChange();
+        if(!af)af=requestAnimationFrame(loop);
+      }
+    });
+    // 初期状態を描画
+    af=requestAnimationFrame(loop);
+  }
+
+  document.addEventListener('DOMContentLoaded',()=>{
+    // Chrome系のbackdrop-filter: url() サポート検出
+    const t=document.createElement('div');
+    t.style.backdropFilter='url(#test)';
+    if(!!window.chrome&&t.style.backdropFilter.includes('url')) document.body.classList.add('use-backdrop-filter');
+
+    // 各スイッチを初期化
+    const switches=[
+      {thumb:'tsThumbDarkMode',  track:'tsTrackDarkMode',  clone:'tsCloneInnerDarkMode',  input:'toggleDarkMode',   dispImg:'tsDispImg',  dispMap:'tsDispMap'},
+      {thumb:'tsThumbDataSaver', track:'tsTrackDataSaver', clone:'tsCloneInnerDataSaver', input:'toggleDataSaver',  dispImg:null,         dispMap:null},
+      {thumb:'tsThumbBatterySaver',track:'tsTrackBatterySaver',clone:'tsCloneInnerBatterySaver',input:'toggleBatterySaver',dispImg:null,dispMap:null},
+    ];
+    switches.forEach(sw=>{
+      const thumbEl=document.getElementById(sw.thumb);
+      const trackEl=document.getElementById(sw.track);
+      const cloneEl=document.getElementById(sw.clone);
+      const inputEl=document.getElementById(sw.input);
+      if(thumbEl&&trackEl&&inputEl){
+        initTactileSwitch(thumbEl,trackEl,cloneEl,inputEl,sw.dispImg,sw.dispMap);
+      }
+    });
+  });
+})();
+
 </script>
 </body>
 </html>
