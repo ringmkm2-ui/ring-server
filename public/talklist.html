@@ -84,12 +84,9 @@ body.has-custom-bg .pc{background:transparent}
 .sgrow-label{display:flex;flex-direction:column;gap:2px}
 .sgrow-label .sgtitle{font-size:14px;font-weight:600;color:#0f172a}
 .sgrow-label .sgdesc{font-size:12px;color:#94a3b8}
-.toggle-switch{position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0}
-.toggle-switch input{opacity:0;width:0;height:0}
-.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:rgba(148,163,184,.4);border-radius:999px;transition:background .25s ease}
-.toggle-slider::before{position:absolute;content:"";height:22px;width:22px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .25s ease;box-shadow:0 2px 4px rgba(0,0,0,.2)}
-.toggle-switch input:checked + .toggle-slider{background:#34c759}
-.toggle-switch input:checked + .toggle-slider::before{transform:translateX(20px)}
+/* iOS 27 Liquid Glass トグル: スタイルはliquidGlass.cssに集約 */
+.toggle-switch{position:relative;display:inline-block;width:52px;height:30px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
 .version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
 html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
@@ -115,9 +112,22 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
    視認性を保つ。 */
 .savebtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
 .cancelbtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
-.btn-glass{position:relative;padding:12px 24px;border-radius:12px;color:#0f172a;font-weight:600;cursor:pointer}
-.btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
-.btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
+.btn-glass{
+  position:relative;padding:10px 22px;border-radius:999px;color:#0f172a;font-weight:600;cursor:pointer;
+  background:rgba(255,255,255,0.32);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.58)!important;
+  border-top-color:rgba(255,255,255,0.92)!important;
+  box-shadow:0 6px 24px rgba(0,0,0,0.11),inset 0 1px 0 rgba(255,255,255,0.8);
+  transition:transform 0.28s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.28s ease,background 0.2s ease;
+}
+.btn-glass:hover{
+  background:rgba(255,255,255,0.45);
+  box-shadow:0 8px 30px rgba(0,0,0,0.16),inset 0 1px 0 rgba(255,255,255,0.95);
+  transform:translateY(-1px);
+}
+.btn-glass:active{transform:scale(0.95);box-shadow:0 2px 8px rgba(0,0,0,0.10);}
 /* glass-plus-btn: 友達追加ボタン。素材はliquidGlass.cssの.glass-clearに統一し、
    ここでは形状と「+」アイコン(::before/::after の十字線)のみ定義する。 */
 .glass-plus-btn{
@@ -160,11 +170,11 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   <div class="bgo"></div>
   <div class="tp">
     <header class="ahdr">
-      <div class="sc glass-clear">
-        <div class="sslider glass-clear" id="slider"></div>
-        <button class="sbtn active glass-interactive" id="btnTalk" type="button" data-i18n="talk">トーク</button>
-        <button class="sbtn glass-interactive" id="btnHome" type="button" data-i18n="home">ホーム</button>
-        <button class="sbtn glass-interactive" id="btnPosts" type="button" data-i18n="post">投稿</button>
+      <div class="sc lg-segment">
+        <div class="sslider lg-segment-slider" id="slider"></div>
+        <button class="sbtn lg-segment-btn active" id="btnTalk" type="button" data-i18n="talk">トーク</button>
+        <button class="sbtn lg-segment-btn" id="btnHome" type="button" data-i18n="home">ホーム</button>
+        <button class="sbtn lg-segment-btn" id="btnPosts" type="button" data-i18n="post">投稿</button>
       </div>
     </header>
     <main class="tc">
@@ -270,7 +280,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.5 beta</div>
+  <div class="version-badge">Bro Chat v1.28.6 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -353,16 +363,22 @@ if (!token) location.href = '/auth.html';
 
 function switchTab(activeBtnId){
   const tabs=[
-    {btn:'btnTalk',page:pageTalk,x:0},
-    {btn:'btnHome',page:pageHome,x:80},
-    {btn:'btnPosts',page:pagePosts,x:160},
+    {btn:'btnTalk',page:pageTalk},
+    {btn:'btnHome',page:pageHome},
+    {btn:'btnPosts',page:pagePosts},
   ];
   tabs.forEach(t=>{
     const btn=document.getElementById(t.btn);
     const isActive=t.btn===activeBtnId;
     btn.classList.toggle('active',isActive);
     t.page.style.display=isActive?'block':'none';
-    if(isActive)slider.style.transform=`translateX(${t.x}px)`;
+    if(isActive){
+      // ボタンの実際の幅・位置を取得してスライダーをフィット
+      const btnRect=btn.getBoundingClientRect();
+      const parentRect=btn.parentElement.getBoundingClientRect();
+      slider.style.width=btnRect.width+'px';
+      slider.style.transform=`translateX(${btnRect.left-parentRect.left-4}px)`;
+    }
   });
 }
 

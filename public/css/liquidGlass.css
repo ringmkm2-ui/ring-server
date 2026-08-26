@@ -1,19 +1,8 @@
 /* ==========================================================================
-   Liquid Glass デザインシステム
+   Liquid Glass デザインシステム - iOS 27 / Apple Intelligence スタイル
    ==========================================================================
-   Apple の Liquid Glass (WWDC 2025, iOS/iPadOS/macOS 26) をWeb技術で近似する
-   実装。ネイティブの glassEffect() / GlassEffectContainer はSwiftUI専用の
-   レンダリング機能(実時間の光学屈折・鏡面ハイライト)を持つため完全な再現は
-   不可能だが、CSSのbackdrop-filter・View Transitions API・Vibration APIの
-   組み合わせで、同じ設計原則(素材の二層構造・控えめな使用・状態に応じた
-   適応)を踏襲した近似を作る。
-
-   2つのバリアント:
-   - Regular: 背景の濃淡に適応し、可読性を保つバランス型。ほとんどの
-     コントロール(ボタン・ナビゲーション・カード)に使うデフォルト。
-   - Clear: より透過的でフィルタが弱く、背景を活かす。動画通話画面など
-     メディアリッチな背景の上でのみ、小さな要素に限定して使う
-     (Appleのガイドライン通り、多用すると可読性を損なうため乱用しない)。
+   WWDC 2025で発表されたLiquid Glassをベースに、iOS 27 Beta 5のUI要素
+   （トグル・スライダー・ボタン・タブ）をWebで近似した実装。
    ========================================================================== */
 
 :root {
@@ -21,10 +10,6 @@
   --glass-blur-clear: 28px;
   --glass-saturate: 180%;
 
-  /* Apple公式の見た目に近づけるため、以前の値(0.55/0.10)より大幅に透過度を
-     上げた。以前の値は「不透明なグレーの板」に近く見えており、
-     Regular=「背景に適応しつつも向こう側の形・色が透けて見える」という
-     Liquid Glassの本質的な質感になっていなかった。 */
   --glass-regular-bg: rgba(255, 255, 255, 0.28);
   --glass-regular-bg-strong: rgba(255, 255, 255, 0.42);
   --glass-clear-bg: rgba(255, 255, 255, 0.06);
@@ -34,10 +19,13 @@
   --glass-shadow-regular: 0 8px 32px rgba(15, 23, 42, 0.16);
   --glass-shadow-clear: 0 4px 24px rgba(15, 23, 42, 0.24);
 
-  /* Appleのスプリングアニメーションに寄せたイージング。
-     .interactive() の軽いオーバーシュート感を再現する。 */
   --glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --glass-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* iOS 27 Liquid Glass トグル用カラー */
+  --lg-toggle-off-bg: rgba(180, 190, 200, 0.38);
+  --lg-toggle-on-bg: #34c759;
+  --lg-toggle-on-glow: rgba(52, 199, 89, 0.45);
 }
 
 /* ---- Regular: デフォルトのガラス素材 ---- */
@@ -51,7 +39,6 @@
   position: relative;
 }
 
-/* 強調用(プロミネントボタン相当): やや不透明度を上げて視認性を強める */
 .glass-regular-strong {
   background: var(--glass-regular-bg-strong);
   backdrop-filter: blur(var(--glass-blur-regular)) saturate(var(--glass-saturate));
@@ -61,7 +48,7 @@
   box-shadow: var(--glass-shadow-regular);
 }
 
-/* ---- Clear: 高透過ガラス素材(メディア上の小さな要素に限定して使う) ---- */
+/* ---- Clear: 高透過ガラス素材 ---- */
 .glass-clear {
   background: var(--glass-clear-bg);
   backdrop-filter: blur(var(--glass-blur-clear)) saturate(140%);
@@ -71,8 +58,6 @@
   box-shadow: var(--glass-shadow-clear);
 }
 
-/* トグル系ボタンの「オフ」状態: ガラスの透明感だとOFFが伝わりにくいため、
-   意図的に不透明な暗色へ切り替える(ビデオ/マイクのミュート時など) */
 .glass-btn-off {
   background: rgba(30, 41, 59, 0.92) !important;
   backdrop-filter: none !important;
@@ -81,14 +66,7 @@
 }
 .glass-btn-off svg { stroke: #fff !important; }
 
-/* 鏡面ハイライト: 上端の縁を明るい色にすることで光の反射感を出す。
-   以前は mix-blend-mode: overlay + isolation: isolate の組み合わせで
-   ::before疑似要素を重ねていたが、この組み合わせは一部のAndroid Chrome/
-   GPUドライバの環境でbackdrop-filterのレンダリングを破壊し、
-   本来透けるはずのガラスが不透明なグレーの板として描画される
-   既知の相性問題を引き起こす。border-top-colorのみで光沢感を表現する
-   よりシンプルで互換性の高い手法に切り替えた。 */
-/* ---- Interactive: タップへの反応(スケール+シマー) ---- */
+/* ---- Interactive ---- */
 .glass-interactive {
   transition: transform 0.28s var(--glass-spring), box-shadow 0.28s var(--glass-ease), background 0.2s ease;
   cursor: pointer;
@@ -104,40 +82,237 @@
   }
 }
 
-/* ---- Materialize: 要素がガラスとして「凝縮」して現れる入場アニメーション ---- */
+/* ==========================================================================
+   iOS 27 Liquid Glass トグルスイッチ
+   - 背景: ガラス素材（オフ）/ グリーン発光（オン）
+   - ノブ: 白いガラス球、光沢ハイライト付き
+   - アニメーション: スプリング + 軽いバウンス
+   ========================================================================== */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 52px;
+  height: 30px;
+  flex-shrink: 0;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 999px;
+  /* オフ状態: Liquid Glassの透明素材 */
+  background: var(--lg-toggle-off-bg);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition:
+    background 0.3s var(--glass-ease),
+    box-shadow 0.3s var(--glass-ease),
+    border-color 0.3s ease;
+}
+/* ノブ */
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 24px;
+  width: 24px;
+  left: 3px;
+  bottom: 3px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #ffffff 0%, #e8edf2 100%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: transform 0.35s var(--glass-spring);
+}
+/* オン状態 */
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--lg-toggle-on-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: rgba(40, 180, 70, 0.6);
+  border-top-color: rgba(120, 230, 140, 0.7);
+  box-shadow:
+    0 0 0 3px var(--lg-toggle-on-glow),
+    0 2px 8px rgba(52, 199, 89, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+}
+
+/* ==========================================================================
+   iOS 27 Liquid Glass セグメントコントロール（タブスライダー）
+   - 外枠: 薄いガラス素材
+   - スライダー: 白いガラス板、上端ハイライト + ドロップシャドウ
+   ========================================================================== */
+.lg-segment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(200, 210, 220, 0.22);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-top-color: rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  padding: 4px;
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.lg-segment-slider {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.92) 0%, rgba(235,240,248,0.82) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-top-color: rgba(255, 255, 255, 1);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  transition: transform 0.38s var(--glass-spring), width 0.38s var(--glass-spring);
+  z-index: 1;
+  pointer-events: none;
+}
+.lg-segment-btn {
+  position: relative;
+  z-index: 2;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(30, 40, 60, 0.6);
+  cursor: pointer;
+  transition: color 0.25s ease, font-weight 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.lg-segment-btn.active {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   Liquid Glass ボタン（汎用 / 送信 / プラス）
+   - 屈折ハイライト: 上端の明るい縁 + 内側グロー
+   - アクティブ: 軽くへこむ（scale down）
+   ========================================================================== */
+.lg-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.30);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition:
+    transform 0.28s var(--glass-spring),
+    box-shadow 0.28s var(--glass-ease),
+    background 0.2s ease;
+}
+.lg-btn:active {
+  transform: scale(0.93);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+@media (hover: hover) {
+  .lg-btn:hover {
+    background: rgba(255, 255, 255, 0.42);
+    box-shadow:
+      0 8px 30px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* プライマリカラーボタン（アクセントカラー付き） */
+.lg-btn-primary {
+  background: rgba(10, 132, 255, 0.85);
+  border-color: rgba(100, 180, 255, 0.5);
+  border-top-color: rgba(180, 220, 255, 0.7);
+  color: #fff;
+  box-shadow:
+    0 6px 24px rgba(10, 132, 255, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.lg-btn-primary:active {
+  background: rgba(10, 132, 255, 0.95);
+}
+
+/* 丸型アイコンボタン（送信・プラス等） */
+.lg-btn-circle {
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+/* ==========================================================================
+   Liquid Glass カード
+   ========================================================================== */
+.lg-card {
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-top-color: rgba(255, 255, 255, 0.88);
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(15, 23, 42, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* ==========================================================================
+   Materialize アニメーション
+   ========================================================================== */
 @keyframes glass-materialize {
-  from {
-    opacity: 0;
-    transform: scale(0.86) translateY(6px);
-    filter: blur(14px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-    filter: blur(0);
-  }
+  from { opacity: 0; transform: scale(0.86) translateY(6px); filter: blur(14px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
 }
 .glass-materialize {
   animation: glass-materialize 0.5s var(--glass-spring) both;
 }
 
 @keyframes glass-dematerialize {
-  from {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.9);
-    filter: blur(10px);
-  }
+  from { opacity: 1; transform: scale(1); filter: blur(0); }
+  to   { opacity: 0; transform: scale(0.9); filter: blur(10px); }
 }
 .glass-dematerialize {
   animation: glass-dematerialize 0.28s var(--glass-ease) both;
 }
 
-/* メッセージバブル等、連続して現れる要素向けの軽量版(ブラーを省いて負荷を抑える) */
 @keyframes glass-materialize-light {
   from { opacity: 0; transform: scale(0.94) translateY(4px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
@@ -146,44 +321,24 @@
   animation: glass-materialize-light 0.32s var(--glass-spring) both;
 }
 
-/* ---- Fluid Morphing: View Transitions API と組み合わせて使う土台 ----
-   個々の要素に一意な view-transition-name を振ると、
-   document.startViewTransition() でDOM更新を挟んだ際にブラウザが
-   自動で形状・位置を補間してくれる(matchedGeometryEffectに近い体験)。
-   実際の名前指定はJS側(liquidGlass.js の glassMorphTag)で動的に行う。 */
+/* View Transitions */
 ::view-transition-old(*),
 ::view-transition-new(*) {
   animation-duration: 0.45s;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 注意: @view-transition { navigation: auto; } によるページ遷移全体への
-   Cross-Document View Transitions強制適用は、以下の問題により削除した。
-   - <video>要素(通話画面)のスナップショット化に失敗し、グレーの凍結フレームが
-     表示される「チカチカ」現象を引き起こした
-   - Service Worker自動更新によるlocation.reload()等、意図しないタイミングの
-     ページ遷移にも無条件で適用されてしまい、制御できない見た目の崩れを招いた
-   ページをまたぐアバターのモーフィング演出は現時点では見送り、
-   同一ページ内でのglassMorph()呼び出し(matchedGeometryEffectの限定利用)と
-   materializeIn()による出現アニメーションのみで代替する。 */
-
-/* Reduced Motion: OSの「視差効果を減らす」設定を尊重し、
-   アニメーションを大幅に短縮する(Appleも同様のアクセシビリティ配慮を要求している) */
+/* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
-  .glass-materialize,
-  .glass-dematerialize,
-  .glass-materialize-light,
-  .glass-interactive {
+  .glass-materialize, .glass-dematerialize, .glass-materialize-light, .glass-interactive {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation-duration: 0.01ms !important;
-  }
 }
 
-/* ダークモード: globalTheme.css の .dark-mode クラスと連動 */
+/* ==========================================================================
+   ダークモード
+   ========================================================================== */
 .dark-mode .glass-regular,
 .dark-mode .glass-regular-strong {
   background: rgba(30, 41, 59, 0.32);
@@ -193,4 +348,26 @@
 .dark-mode .glass-clear {
   background: rgba(15, 23, 42, 0.12);
   border-color: rgba(255, 255, 255, 0.14);
+}
+.dark-mode .toggle-slider {
+  background: rgba(60, 70, 85, 0.55);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.dark-mode .toggle-slider::before {
+  background: linear-gradient(160deg, #d0d8e4 0%, #b0bcc8 100%);
+}
+.dark-mode .lg-segment {
+  background: rgba(30, 40, 55, 0.45);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.dark-mode .lg-segment-slider {
+  background: linear-gradient(160deg, rgba(60, 75, 100, 0.9) 0%, rgba(45, 58, 80, 0.85) 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.dark-mode .lg-segment-btn { color: rgba(200, 210, 230, 0.55); }
+.dark-mode .lg-segment-btn.active { color: #f1f5f9; }
+.dark-mode .lg-btn {
+  background: rgba(40, 52, 70, 0.55);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f1f5f9;
 }
