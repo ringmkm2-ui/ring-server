@@ -66,10 +66,33 @@ async function flushOfflineQueue(userId) {
 }
 
 function initWebSocketServer(server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  // maxPayload: 単一WSフレームの最大サイズ。デフォルトは100MBで実質無制限。
+  // 大きいペイロードでメモリ枯渇するDoSを防ぐため64KBに制限する。
+  // (メッセージ本体はREST API経由で送られ、WSは通知のみのため64KBで十分)
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
+
+  // IP別接続数トラッキング（DDoS/接続枯渇対策）
+  const ipConnections = new Map(); // IP -> count
+  const MAX_CONNECTIONS_PER_IP = 10;
 
   wss.on('connection', (ws, req) => {
     let userId = null;
+
+    // 同一IPからの過剰接続をブロック
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    const currentCount = ipConnections.get(clientIp) || 0;
+    if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+      ws.close(1008, 'Too many connections from this IP');
+      console.warn(`[ws] IP接続数上限 (${MAX_CONNECTIONS_PER_IP}): ${clientIp}`);
+      return;
+    }
+    ipConnections.set(clientIp, currentCount + 1);
+
+    ws.on('close', () => {
+      const cnt = (ipConnections.get(clientIp) || 1) - 1;
+      if (cnt <= 0) ipConnections.delete(clientIp);
+      else ipConnections.set(clientIp, cnt);
+    });
 
     ws.on('message', async raw => {
       let data;

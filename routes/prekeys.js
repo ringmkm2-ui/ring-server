@@ -8,12 +8,13 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { prekeyLimiter } = require('../utils/rateLimits');
 
 const router = express.Router();
 
 // --- 自分の鍵バンドルをサーバーに登録 ---
 // body: { identityPubkey, signingPubkey, signedPrekeyPub, signedPrekeySig, registrationId, oneTimePrekeys: [pubkey,...] }
-router.post('/upload', verifyToken, asyncHandler(async (req, res) => {
+router.post('/upload', prekeyLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { identityPubkey, signingPubkey, signedPrekeyPub, signedPrekeySig, registrationId, oneTimePrekeys } = req.body;
   const userId = req.user.userId;
 

@@ -9,6 +9,7 @@ const { sendServerError } = require('../utils/errorResponse');
 // 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
 const { verifyToken: auth } = require('../utils/authMiddleware');
 
+const { searchLimiter } = require('../utils/rateLimits');
 const router = express.Router();
 
 // 自分のプロフィール取得
@@ -91,10 +92,11 @@ router.get('/publickey/:userId', auth, async (req, res) => {
 });
 
 // IDで検索
-router.get('/search', auth, async (req, res) => {
+router.get('/search', searchLimiter, auth, async (req, res) => {
   try {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json([]);
+    if (q.length > 100) return res.status(400).json({ error: '検索クエリが長すぎます' });
     const results = await db.all(
       'SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? OR display_name LIKE ?) AND id != ? LIMIT 10',
       [q + '%', '%' + q + '%', req.userId]

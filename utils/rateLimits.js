@@ -1,17 +1,7 @@
 // utils/rateLimits.js
-// -----------------------------------------------------------------------
-// エンドポイントの性質ごとに異なるレート制限を定義する。
-//
-// 以前はレート制限が一切無く、以下がいずれも無制限に実行できた:
-//   - /api/auth/login への総当たり攻撃(パスワード推測)
-//   - /api/auth/register の大量アカウント作成(スパム・DoS)
-//   - /api/messages/send 等での大量送信によるサーバー・DB負荷
-//   - API全体への高頻度リクエストによるサービス妨害
-// -----------------------------------------------------------------------
 const rateLimit = require('express-rate-limit');
 
-// ログイン試行: 短時間の総当たりを防ぐため厳しめ。
-// 15分に10回まで。正規ユーザーが打ち間違える分には十分な余裕がある回数。
+// ログイン・Google認証: ブルートフォース対策。15分に10回まで。
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -29,16 +19,59 @@ const registerLimiter = rateLimit({
   message: { error: '登録試行が多すぎます。しばらくしてから再度お試しください。' },
 });
 
-// API全体にかける緩めの制限。通常利用では絶対に引っかからない値にし、
-// スクリプトによる連打・スクレイピングだけを防ぐ。1分に120リクエストまで。
+// API全体: 1分120req（通常利用では引っかからない値、スクリプト連打防止）
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'リクエストが多すぎます。しばらくしてから再度お試しください。' },
-  // ヘルスチェックはインフラ監視・Renderの死活監視で高頻度に叩かれるため除外
   skip: (req) => req.path === '/health',
 });
 
-module.exports = { loginLimiter, registerLimiter, apiLimiter };
+// メッセージ送信: DoS・スパム対策。1分に30件まで。
+// 通常会話で1分に30件は十分すぎる余裕がある。
+const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'メッセージ送信が多すぎます。しばらくしてからお試しください。' },
+});
+
+// メディア・ファイルアップロード: 重い処理のため厳しめ。1分に10件まで。
+const mediaUploadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
+});
+
+// プリキー補充: X3DH鍵配布。1時間に20回まで（通常は補充頻度が低い）。
+const prekeyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リクエストが多すぎます。' },
+});
+
+// 友達検索: 1分に20回まで（連打スクレイピング防止）。
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '検索が多すぎます。しばらくしてからお試しください。' },
+});
+
+module.exports = {
+  loginLimiter,
+  registerLimiter,
+  apiLimiter,
+  messageSendLimiter,
+  mediaUploadLimiter,
+  prekeyLimiter,
+  searchLimiter,
+};

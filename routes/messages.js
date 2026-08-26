@@ -4,6 +4,12 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
+const { messageSendLimiter } = require('../utils/rateLimits');
+
+// メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
+// 上限なしだと50MB JSONで1リクエストでDB/メモリを食いつぶせる。
+const MAX_CONTENT_LENGTH = 64 * 1024; // 64KB
+const MAX_HISTORY_LIMIT = 100;
 
 const router = express.Router();
 
@@ -40,7 +46,7 @@ function toPreviewText(content, encrypted) {
 // mediaUrl: Cloudinary上のURL（新方式、暗号化済みバイナリ）
 // encrypted: true の場合、content は暗号文（サーバーは復号化しない）
 // repliedToId: リプライ対象のメッセージID
-router.post('/send', auth, async (req, res) => {
+router.post('/send', messageSendLimiter, auth, async (req, res) => {
   try {
     const {
       recipientId, content, mediaType, mediaData,
@@ -48,6 +54,9 @@ router.post('/send', auth, async (req, res) => {
       encrypted, repliedToId,
     } = req.body;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
+    if (typeof content === 'string' && content.length > MAX_CONTENT_LENGTH) {
+      return res.status(413).json({ error: 'メッセージが長すぎます' });
+    }
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
@@ -148,7 +157,7 @@ router.post('/send', auth, async (req, res) => {
 router.get('/history/:userId', auth, async (req, res) => {
   try {
     const { userId: otherId } = req.params;
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = Math.min(parseInt(req.query.limit) || 50, MAX_HISTORY_LIMIT);
     const before = req.query.before;
 
     let sql = `
@@ -430,6 +439,10 @@ router.post('/react', auth, async (req, res) => {
   try {
     const { messageId, emoji } = req.body;
     if (!messageId || !emoji) return res.status(400).json({ error: 'messageId and emoji required' });
+    // emojiは絵文字1〜2文字想定。長い文字列でDBを汚染させない。
+    if (typeof emoji !== 'string' || emoji.length > 10) {
+      return res.status(400).json({ error: '不正なemojiです' });
+    }
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
     if (!msg) return res.status(404).json({ error: 'message not found' });

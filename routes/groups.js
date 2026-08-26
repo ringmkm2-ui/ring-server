@@ -6,6 +6,9 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { messageSendLimiter } = require('../utils/rateLimits');
+
+const MAX_GROUP_CONTENT_LENGTH = 64 * 1024; // 64KB
 
 const router = express.Router();
 
@@ -207,10 +210,13 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // body: { content, mediaType?, mediaData?, encrypted? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
-router.post('/:groupId/messages/send', verifyToken, asyncHandler(async (req, res) => {
+router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
+  if (typeof content === 'string' && content.length > MAX_GROUP_CONTENT_LENGTH) {
+    return res.status(413).json({ error: 'メッセージが長すぎます' });
+  }
 
   // 個人チャットと同様、ファイルサイズの上限チェック（Base64直送り方式のみ対象。
   // Cloudinary方式はmediaUrlのみを保存するためサイズチェック不要）

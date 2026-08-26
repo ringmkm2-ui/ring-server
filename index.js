@@ -69,6 +69,16 @@ async function main() {
   }));
   app.use(express.json({ limit: '50mb' }));
 
+  // Slowloris/遅延攻撃対策: リクエスト全体のタイムアウトを設定。
+  // デフォルトは無制限で、接続を意図的に遅延させてサーバーリソースを枯渇させる攻撃が可能。
+  // ファイルアップロード(最大50MB)を考慮して60秒に設定する。
+  app.use((req, res, next) => {
+    res.setTimeout(60000, () => {
+      res.status(408).json({ error: 'リクエストタイムアウト' });
+    });
+    next();
+  });
+
   // API全体への高頻度リクエストを制限(スクリプトによる連打・スクレイピング対策)
   app.use('/api', apiLimiter);
 
