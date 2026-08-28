@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.22 beta</div>
+  <div class="version-badge">Bro Chat v1.28.23 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1905,8 +1905,10 @@ function hideCallOverlay() {
   document.getElementById('callOv').classList.remove('show');
   document.getElementById('incomingBtnRow').style.display = 'none';
   document.getElementById('callBtnRow').style.display = 'flex';
-  document.getElementById('muteBtn').style.display = 'none';
-  document.getElementById('speakerBtn').style.display = 'none';
+  const _mb = document.getElementById('muteBtn2');
+  const _sb = document.getElementById('speakerBtn2');
+  if (_mb) _mb.style.display = 'none';
+  if (_sb) _sb.style.display = 'none';
 }
 
 function startCallTimer() {
@@ -1983,13 +1985,13 @@ function createPeerConnection() {
       setCallStatus('00:00');
       startCallTimer();
       if (window.LiquidGlass) window.LiquidGlass.haptic('success');
-      const muteBtn = document.getElementById('muteBtn');
-      const speakerBtn = document.getElementById('speakerBtn');
-      muteBtn.style.display = 'flex';
-      speakerBtn.style.display = 'flex';
+      const muteBtn = document.getElementById('muteBtn2');
+      const speakerBtn = document.getElementById('speakerBtn2');
+      if (muteBtn) muteBtn.style.display = 'flex';
+      if (speakerBtn) speakerBtn.style.display = 'flex';
       if (window.LiquidGlass) {
-        window.LiquidGlass.materializeIn(muteBtn, true);
-        window.LiquidGlass.materializeIn(speakerBtn, true);
+        if (muteBtn) window.LiquidGlass.materializeIn(muteBtn, true);
+        if (speakerBtn) window.LiquidGlass.materializeIn(speakerBtn, true);
       }
       if (isVideoCall) {
         const toggleVideoBtn = document.getElementById('toggleVideoBtn');
@@ -2093,7 +2095,7 @@ async function startOutgoingCall(isVideo = false) {
 
   // 通話録音開始
   if (callRecorder) {
-    callRecorder.startRecording(localStream, currentCallId, otherId, otherName);
+    callRecorder.startRecording(localStream, currentCallId, otherId, partnerName);
   }
 
   const offer = await pc.createOffer();
@@ -2250,11 +2252,12 @@ function toggleMute() {
   if (!localStream) return;
   isMuted = !isMuted;
   localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
-  const muteBtn = document.getElementById('muteBtn');
+  const muteBtn = document.getElementById('muteBtn2');
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   // アイコンの線色は常に白のまま(ネイティブ風の暗い背景の上に置かれるため)。
   // オン/オフの区別はボタン背景(glass-clear ⇔ glass-btn-off)だけで表現する。
-  if (isMuted) {
+  if (!muteBtn) { /* ボタン要素が無くてもミュート自体は継続する */ }
+  else if (isMuted) {
     muteBtn.classList.remove('glass-clear');
     muteBtn.classList.add('glass-btn-off');
   } else {
@@ -2342,8 +2345,10 @@ document.getElementById('endBtn').onclick = () => {
 };
 document.getElementById('acceptBtn').onclick = () => { acceptIncomingCall(); };
 document.getElementById('declineBtn').onclick = () => { declineIncomingCall(); };
-document.getElementById('muteBtn').onclick = () => { toggleMute(); };
-document.getElementById('speakerBtn').onclick = () => { toggleSpeaker(); };
+const _muteBtnEl = document.getElementById('muteBtn2');
+const _speakerBtnEl = document.getElementById('speakerBtn2');
+if (_muteBtnEl) _muteBtnEl.onclick = () => { toggleMute(); };
+if (_speakerBtnEl) _speakerBtnEl.onclick = () => { toggleSpeaker(); };
 const _toggleVideoBtnEl = document.getElementById('toggleVideoBtn');
 const _flipCamBtnEl = document.getElementById('flipCamBtn');
 if (_toggleVideoBtnEl) _toggleVideoBtnEl.onclick = () => { toggleVideo(); };
