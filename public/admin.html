@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.21 beta</div>
+  <div class="version-badge">Bro Chat v1.28.22 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1994,11 +1994,11 @@ function createPeerConnection() {
       if (isVideoCall) {
         const toggleVideoBtn = document.getElementById('toggleVideoBtn');
         const flipCamBtn = document.getElementById('flipCamBtn');
-        toggleVideoBtn.style.display = 'flex';
-        flipCamBtn.style.display = 'flex';
+        if (toggleVideoBtn) toggleVideoBtn.style.display = 'flex';
+        if (flipCamBtn) flipCamBtn.style.display = 'flex';
         if (window.LiquidGlass) {
-          window.LiquidGlass.materializeIn(toggleVideoBtn, true);
-          window.LiquidGlass.materializeIn(flipCamBtn, true);
+          if (toggleVideoBtn) window.LiquidGlass.materializeIn(toggleVideoBtn, true);
+          if (flipCamBtn) window.LiquidGlass.materializeIn(flipCamBtn, true);
         }
       }
       acquireWakeLock();
@@ -2040,8 +2040,10 @@ function cleanupCall() {
   const localVideoEl = document.getElementById('localVideo');
   localVideoEl.srcObject = null;
   localVideoEl.style.display = 'none';
-  document.getElementById('toggleVideoBtn').style.display = 'none';
-  document.getElementById('flipCamBtn').style.display = 'none';
+  const _tvb = document.getElementById('toggleVideoBtn');
+  const _fcb = document.getElementById('flipCamBtn');
+  if (_tvb) _tvb.style.display = 'none';
+  if (_fcb) _fcb.style.display = 'none';
   document.getElementById('callAv').style.display = '';
   hideCallOverlay();
   // 通話中に保留していたService Worker自動更新のリロードがあれば、ここで反映する
@@ -2285,6 +2287,7 @@ function toggleVideo() {
   localStream.getVideoTracks().forEach(t => { t.enabled = isVideoEnabled; });
   const localVideoEl = document.getElementById('localVideo');
   const videoBtn = document.getElementById('toggleVideoBtn');
+  if (!videoBtn) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   if (isVideoEnabled) {
     localVideoEl.style.display = 'block';
@@ -2341,8 +2344,10 @@ document.getElementById('acceptBtn').onclick = () => { acceptIncomingCall(); };
 document.getElementById('declineBtn').onclick = () => { declineIncomingCall(); };
 document.getElementById('muteBtn').onclick = () => { toggleMute(); };
 document.getElementById('speakerBtn').onclick = () => { toggleSpeaker(); };
-document.getElementById('toggleVideoBtn').onclick = () => { toggleVideo(); };
-document.getElementById('flipCamBtn').onclick = () => { flipCamera(); };
+const _toggleVideoBtnEl = document.getElementById('toggleVideoBtn');
+const _flipCamBtnEl = document.getElementById('flipCamBtn');
+if (_toggleVideoBtnEl) _toggleVideoBtnEl.onclick = () => { toggleVideo(); };
+if (_flipCamBtnEl) _flipCamBtnEl.onclick = () => { flipCamera(); };
 
 // Call Assist ボタン（音声認識・翻訳・要約）
 const callAssistBtn = document.getElementById('callAssistBtn');
