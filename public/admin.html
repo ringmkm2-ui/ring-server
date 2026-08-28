@@ -211,7 +211,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.18 beta</div>
+  <div class="version-badge">Bro Chat v1.28.19 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1810,6 +1810,14 @@ let ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// TURNサーバーの取得に成功しているかどうか。
+// WebRTCはP2P直結時、ICE candidateの交換で双方の公開IPアドレスが相手に見える。
+// 通話相手が既知の友人であってもIPは住所や契約ISPの推定につながる個人情報のため、
+// TURN(中継サーバー)経由を強制することで相手からはTURNサーバーのIPしか見えなくなる。
+// Bro ChatはSignal相当のプライバシーを目指す設計方針のため、
+// TURNが利用可能な場合は常にrelay強制とする。
+let TURN_AVAILABLE = false;
+
 async function refreshIceServers() {
   try {
     const res = await fetch('/api/ice', {
@@ -1819,11 +1827,30 @@ async function refreshIceServers() {
     const data = await res.json();
     if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
       ICE_SERVERS = data.iceServers;
-      console.log('[ice] TwilioのICEサーバーを取得しました (' + ICE_SERVERS.length + '件)');
+      // turn:/turns: を含むサーバーが実際に含まれているかを確認する。
+      // STUNだけのリストが返ってきた場合にrelay強制すると通話が一切繋がらなくなるため、
+      // TURNの実在を確認できた場合のみ強制モードに入る。
+      TURN_AVAILABLE = ICE_SERVERS.some(s => {
+        const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+        return urls.some(u => typeof u === 'string' && /^turns?:/i.test(u));
+      });
+      console.log('[ice] ICEサーバー取得完了 (' + ICE_SERVERS.length + '件), TURN利用可: ' + TURN_AVAILABLE);
     }
   } catch (e) {
-    console.warn('[ice] ICEサーバー取得に失敗、フォールバック(STUNのみ)を使用します:', e.message);
+    TURN_AVAILABLE = false;
+    console.warn('[ice] ICEサーバー取得に失敗、STUNのみで継続します(IPが相手に見える状態):', e.message);
   }
+}
+
+// RTCPeerConnectionの設定を組み立てる。
+// TURNが使える場合は iceTransportPolicy:'relay' でP2P直結を禁止し、
+// 全てのメディアをTURN経由にすることで自分の公開IPを相手に晒さない。
+function buildPcConfig() {
+  const cfg = { iceServers: ICE_SERVERS };
+  if (TURN_AVAILABLE) {
+    cfg.iceTransportPolicy = 'relay';
+  }
+  return cfg;
 }
 // ページ読み込み時に一度先読みしておく(通話開始のたびに毎回待たせないため)。
 // 発信/着信のたびにも念のため再取得し、常に有効期限内の最新情報を使う。
@@ -1932,7 +1959,7 @@ async function getMediaStream(isVideo) {
 }
 
 function createPeerConnection() {
-  const conn = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const conn = new RTCPeerConnection(buildPcConfig());
 
   conn.onicecandidate = (e) => {
     if (e.candidate) {
