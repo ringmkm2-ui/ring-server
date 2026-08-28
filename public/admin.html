@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.26 beta</div>
+  <div class="version-badge">Bro Chat v1.28.27 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2047,6 +2047,16 @@ function createPeerConnection() {
     } else {
       const audioEl = document.getElementById('remoteAudio');
       audioEl.srcObject = e.streams[0];
+      // Call Assistを先に開始していた場合、相手の音声トラックが後から
+      // 届いたタイミングでここから字幕セッションを繋ぐ。
+      if (typeof isCallAssistActive !== 'undefined' && isCallAssistActive &&
+          window.deepgramRemoteRecognizer && !window.deepgramRemoteRecognizer.isStreaming) {
+        window.deepgramRemoteRecognizer.startFromStream(
+          currentCallId,
+          document.getElementById('ltOtherLang') ? document.getElementById('ltOtherLang').value : 'ja',
+          e.streams[0]
+        );
+      }
     }
   };
 
@@ -2097,6 +2107,7 @@ function cleanupCall() {
   // currentCallIdがリセットされる前に、字幕停止と要約リクエストを済ませておく
   if (typeof deepgramRecognizer !== 'undefined' && deepgramRecognizer && typeof isCallAssistActive !== 'undefined' && isCallAssistActive) {
     deepgramRecognizer.stopStream();
+    if (window.deepgramRemoteRecognizer) window.deepgramRemoteRecognizer.stopStream();
     isCallAssistActive = false;
     const assistBtn = document.getElementById('callAssistBtn');
     if (assistBtn) assistBtn.style.background = '';
@@ -2534,27 +2545,77 @@ function closeLiveTranslatePanel() {
 }
 document.getElementById('closeLiveTranslateBtn').onclick = closeLiveTranslatePanel;
 
-// Call Assistボタン: 初回タップでLive Translateパネルを開き、字幕(Deepgram)を開始する。
-// もう一度タップで停止してパネルを閉じる。
+// 相手の発言(remoteAudioストリーム)の確定テキストが来た時、自分の言語へ
+// 翻訳して左寄せの吹き出しとして追加する。
+function handleRemoteTranscript(text, isFinal) {
+  if (!isFinal || !text.trim()) return;
+  callTranscriptLog.push({ speaker: partnerName || '相手', text: text.trim() });
+
+  const targetLang = ltMyLang ? ltMyLang.value : '';
+  translateQueue = translateQueue.then(async () => {
+    let translated = text;
+    if (targetLang) {
+      try {
+        const res = await fetch('/api/call-assist/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ text, targetLanguage: targetLang }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.translated) translated = data.translated;
+        }
+      } catch (e) {
+        console.warn('[callAssist] 翻訳失敗(相手):', e.message);
+      }
+    }
+    addTranslateBubble(text, translated, false);
+  });
+}
+
+// Call Assistボタン: 初回タップでLive Translateパネルを開き、自分のマイクと
+// 相手の受信音声(remoteAudio)の両方を同時に文字起こし・翻訳する。
+// もう一度タップで両方停止してパネルを閉じる。
 if (callAssistBtn) {
   callAssistBtn.onclick = async () => {
     if (!isCallAssistActive) {
       if (!deepgramRecognizer) {
         // Bro Chat本体のWebSocket接続をそのまま渡す。
         // Deepgram APIキーはサーバー側が保持しクライアントには一切渡らない。
-        deepgramRecognizer = new DeepgramVoiceRecognizer(ws);
+        deepgramRecognizer = new DeepgramVoiceRecognizer(ws, 'mic');
         deepgramRecognizer.onTranscript(handleIncomingTranscript);
       }
-      const success = await deepgramRecognizer.startRealtimeStream(currentCallId, ltMyLang ? ltMyLang.value : 'ja');
-      if (success) {
-        isCallAssistActive = true;
-        callAssistBtn.style.background = 'rgba(76, 110, 245, 0.85)';
-        openLiveTranslatePanel();
-      } else {
-        alert(i18n.t('err_mic_denied'));
+      if (!window.deepgramRemoteRecognizer) {
+        window.deepgramRemoteRecognizer = new DeepgramVoiceRecognizer(ws, 'remote');
+        window.deepgramRemoteRecognizer.onTranscript(handleRemoteTranscript);
       }
+
+      const micSuccess = await deepgramRecognizer.startRealtimeStream(currentCallId, ltMyLang ? ltMyLang.value : 'ja');
+      if (!micSuccess) {
+        alert(i18n.t('err_mic_denied'));
+        return;
+      }
+
+      // 相手の音声(remoteAudio要素のsrcObject)にトラックがあれば、そちらも文字起こしする。
+      // 通話開始直後などでまだ相手の音声が来ていない場合はマイクのみで続行する。
+      const remoteAudioEl = document.getElementById('remoteAudio');
+      const remoteMediaStream = remoteAudioEl ? remoteAudioEl.srcObject : null;
+      if (remoteMediaStream && remoteMediaStream.getAudioTracks().length > 0) {
+        await window.deepgramRemoteRecognizer.startFromStream(
+          currentCallId,
+          ltOtherLang ? ltOtherLang.value : 'ja',
+          remoteMediaStream
+        );
+      } else {
+        console.warn('[callAssist] 相手の音声ストリームが未取得のため、自分の発言のみ字幕化します');
+      }
+
+      isCallAssistActive = true;
+      callAssistBtn.style.background = 'rgba(76, 110, 245, 0.85)';
+      openLiveTranslatePanel();
     } else {
       deepgramRecognizer.stopStream();
+      if (window.deepgramRemoteRecognizer) window.deepgramRemoteRecognizer.stopStream();
       isCallAssistActive = false;
       callAssistBtn.style.background = '';
       closeLiveTranslatePanel();

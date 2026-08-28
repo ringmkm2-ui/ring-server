@@ -78,7 +78,9 @@ function initWebSocketServer(server) {
 
   wss.on('connection', (ws, req) => {
     let userId = null;
-    let currentCallAssistSessionId = null; // Call Assist: 有効なDeepgramセッションID
+    // Call Assist: track('mic'|'remote')ごとに有効なDeepgramセッションIDを保持する。
+    // 自分のマイク音声と相手の受信音声(remoteAudio)を別々に文字起こしするため。
+    let callAssistSessions = { mic: null, remote: null };
 
     // 同一IPからの過剰接続をブロック
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
@@ -97,10 +99,18 @@ function initWebSocketServer(server) {
     });
 
     ws.on('message', async (raw, isBinary) => {
-      // Call Assist: リアルタイム字幕用の音声チャンク(バイナリフレーム)
+      // Call Assist: リアルタイム字幕用の音声チャンク(バイナリフレーム)。
+      // 先頭1バイトがtrack識別子(0x01=自分のマイク, 0x02=相手の受信音声)、
+      // 残りがPCM16音声データ本体。
       if (isBinary) {
-        if (userId && currentCallAssistSessionId) {
-          callAssist.sendAudioChunk(currentCallAssistSessionId, raw);
+        if (userId && raw.length > 1) {
+          const trackByte = raw[0];
+          const audioData = raw.subarray(1);
+          const track = trackByte === 0x02 ? 'remote' : 'mic';
+          const sessionId = callAssistSessions[track];
+          if (sessionId) {
+            callAssist.sendAudioChunk(sessionId, audioData);
+          }
         }
         return;
       }
@@ -341,32 +351,39 @@ function initWebSocketServer(server) {
         // 呼び出し中に発信者が切った場合など、バックグラウンド通知が残っていれば消す
         sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
           .catch(err => console.error('[push] call_end cancel push failed:', err.message));
-        if (currentCallAssistSessionId) {
-          callAssist.stopSession(currentCallAssistSessionId);
-          currentCallAssistSessionId = null;
-        }
+        ['mic', 'remote'].forEach(track => {
+          if (callAssistSessions[track]) {
+            callAssist.stopSession(callAssistSessions[track]);
+            callAssistSessions[track] = null;
+          }
+        });
         return;
       }
 
       // --- Call Assist: リアルタイム字幕・翻訳セッションの開始 ---
-      // data: { callId, language? }
+      // data: { callId, language?, track? }  track: 'mic'(自分) | 'remote'(相手)
       if (data.type === 'call_assist_start') {
         if (!userId) return;
         if (!callAssist.isDeepgramConfigured()) {
-          ws.send(JSON.stringify({ type: 'call_assist_error', error: '音声認識機能が現在利用できません(サーバー未設定)' }));
+          ws.send(JSON.stringify({ type: 'call_assist_error', error: '音声認識機能が現在利用できません(サーバー未設定)', track: data.track }));
           return;
         }
-        currentCallAssistSessionId = `${userId}:${data.callId}:${Date.now()}`;
-        callAssist.startSession(currentCallAssistSessionId, {
+        const track = data.track === 'remote' ? 'remote' : 'mic';
+        if (callAssistSessions[track]) {
+          callAssist.stopSession(callAssistSessions[track]);
+        }
+        const sessionId = `${userId}:${data.callId}:${track}:${Date.now()}`;
+        callAssistSessions[track] = sessionId;
+        callAssist.startSession(sessionId, {
           language: data.language || 'ja',
           onTranscript: (text, isFinal) => {
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'call_assist_transcript', text, isFinal }));
+              ws.send(JSON.stringify({ type: 'call_assist_transcript', text, isFinal, track }));
             }
           },
           onError: (err) => {
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'call_assist_error', error: err.message }));
+              ws.send(JSON.stringify({ type: 'call_assist_error', error: err.message, track }));
             }
           },
         });
@@ -374,20 +391,26 @@ function initWebSocketServer(server) {
       }
 
       // --- Call Assist: 字幕セッション終了 ---
+      // data: { track? }  未指定なら両方停止する
       if (data.type === 'call_assist_stop') {
-        if (currentCallAssistSessionId) {
-          callAssist.stopSession(currentCallAssistSessionId);
-          currentCallAssistSessionId = null;
-        }
+        const tracks = data.track ? [data.track] : ['mic', 'remote'];
+        tracks.forEach(track => {
+          if (callAssistSessions[track]) {
+            callAssist.stopSession(callAssistSessions[track]);
+            callAssistSessions[track] = null;
+          }
+        });
         return;
       }
     });
 
     ws.on('close', () => {
-      if (currentCallAssistSessionId) {
-        callAssist.stopSession(currentCallAssistSessionId);
-        currentCallAssistSessionId = null;
-      }
+      ['mic', 'remote'].forEach(track => {
+        if (callAssistSessions[track]) {
+          callAssist.stopSession(callAssistSessions[track]);
+          callAssistSessions[track] = null;
+        }
+      });
       if (userId && connections.has(userId)) {
         connections.get(userId).delete(ws);
         if (connections.get(userId).size === 0) {
