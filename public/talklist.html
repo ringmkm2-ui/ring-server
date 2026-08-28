@@ -26,10 +26,74 @@ body.has-custom-bg .pc{background:transparent}
    素材(背景/ぼかし/縁)をliquidGlass.cssの.glass-clearに統一し、
    ここでは形状・レイアウトのみ定義する。
    3タブ(トーク/ホーム/投稿)構成のため、各ボタン幅を80pxに調整。 */
-.sc{position:relative;display:inline-flex;padding:6px;border-radius:999px}
-.sslider{position:absolute;top:4px;left:4px;width:80px;height:calc(100% - 8px);border-radius:999px;transition:transform .3s cubic-bezier(.25,1,.5,1);z-index:1}
-.sbtn{position:relative;z-index:2;background:none;border:none;outline:none;width:80px;padding:8px 0;font-size:14px;font-weight:700;color:rgba(15,23,42,.4);cursor:pointer;text-align:center;transition:color .3s ease}
-.sbtn.active{color:#0f172a}
+/* ===== Codepen "ios26-nav" デザインをそのまま移植 (アイコンは不使用、テキストのみ) ===== */
+:root{
+  --panel-soft:#dce2eaab;
+  --line-soft:rgba(123,138,161,.28);
+  --shadow-light:rgba(255,255,255,.78);
+  --shadow-dark:rgba(148,160,181,.36);
+  --accent:#3b82f6;
+  --nav-glow-rgb:205,228,255;
+}
+html.dark-mode{
+  --panel-soft:#1b191f80;
+  --line-soft:rgba(165,177,205,.2);
+  --shadow-light:rgba(255,255,255,.04);
+  --shadow-dark:rgba(0,0,0,.52);
+  --accent:#4f8cff;
+  --nav-glow-rgb:168,201,255;
+}
+.sc{
+  position:relative;
+  display:inline-grid;
+  grid-auto-flow:column;
+  grid-auto-columns:1fr;
+  align-items:center;
+  gap:6px;
+  padding:8px 10px;
+  border-radius:999px;
+  background:var(--panel-soft);
+  box-shadow:
+    14px 14px 36px var(--shadow-dark),
+    -14px -14px 36px var(--shadow-light);
+  --gx:50%;--gy:50%;--ga:0;
+  overflow:visible;
+}
+.nav-glow{
+  position:absolute;inset:0;border-radius:999px;
+  clip-path:inset(0 round 999px);
+  pointer-events:none;z-index:0;
+  background:radial-gradient(240px 150px at var(--gx) var(--gy), rgba(var(--nav-glow-rgb),var(--ga)) 0%, rgba(var(--nav-glow-rgb),0) 74%);
+  transition:background .18s ease;
+}
+.sslider{
+  position:absolute;left:10px;top:8px;height:calc(100% - 16px);width:80px;
+  border-radius:999px;z-index:6;pointer-events:none;
+  transform-origin:center center;will-change:left,width,transform;
+  background:rgba(255,255,255,.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.46),
+    10px 10px 24px var(--shadow-dark),
+    -8px -8px 20px var(--shadow-light);
+  transition:
+    left .24s cubic-bezier(.2,.9,.22,1),
+    width .24s cubic-bezier(.2,.9,.22,1),
+    transform .25s ease,
+    background-color .25s ease,
+    box-shadow .25s ease;
+}
+.sslider.interacting{z-index:999;transform:scale(1.5);background:rgba(255,255,255,.16);}
+.sbtn{
+  position:relative;z-index:2;border:none;outline:none;cursor:pointer;
+  height:44px;border-radius:999px;color:var(--muted,#3d434e);
+  background:transparent;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:14px;letter-spacing:.01em;
+  padding:0 18px;white-space:nowrap;
+  transition:color .2s ease;
+}
+.sbtn:hover{color:var(--accent);}
+.sbtn.active{color:var(--accent);}
 .tc{flex:1;padding:0 16px 16px;overflow-y:auto}
 .card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
 /* 投稿タイムライン */
@@ -316,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.10 beta</div>
+  <div class="version-badge">Bro Chat v1.28.11 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -440,7 +504,6 @@ function switchTab(activeBtnId){
     {btn:'btnHome',page:pageHome},
     {btn:'btnPosts',page:pagePosts},
   ];
-  const glowEl=document.getElementById('navGlow');
   const segEl=document.getElementById('tabSegment');
   tabs.forEach(t=>{
     const btn=document.getElementById(t.btn);
@@ -448,21 +511,41 @@ function switchTab(activeBtnId){
     btn.classList.toggle('active',isActive);
     t.page.style.display=isActive?'block':'none';
     if(isActive){
-      // スライダーをボタン幅にフィット
+      // tab-indicator (slider) をボタン位置・幅にフィット (Codepen tab-indicator仕様: left/width)
       const btnRect=btn.getBoundingClientRect();
-      const parentRect=btn.parentElement.getBoundingClientRect();
+      const segRect=segEl.getBoundingClientRect();
+      slider.style.left=(btnRect.left-segRect.left)+'px';
       slider.style.width=btnRect.width+'px';
-      slider.style.transform=`translateX(${btnRect.left-parentRect.left-4}px)`;
-      // nav-glow: アクティブタブの中心にグローを当てる（Codepen準拠）
-      if(glowEl&&segEl){
-        const segRect=segEl.getBoundingClientRect();
-        const cx=((btnRect.left+btnRect.width/2)-segRect.left)/segRect.width*100;
-        glowEl.style.setProperty('--glow-x',cx+'%');
-        glowEl.style.opacity='1';
-      }
     }
   });
 }
+
+// Codepen bindNavSwitcher準拠: pointer位置に応じてnav-glowを動かす(--gx/--gy/--ga)
+(function bindNavGlow(){
+  const nav=document.getElementById('tabSegment');
+  if(!nav) return;
+  function setGlow(clientX,clientY,alpha){
+    const r=nav.getBoundingClientRect();
+    nav.style.setProperty('--gx',(clientX-r.left)+'px');
+    nav.style.setProperty('--gy',(clientY-r.top)+'px');
+    nav.style.setProperty('--ga',String(alpha));
+  }
+  let glowTimer=null;
+  nav.addEventListener('pointerdown',e=>{
+    clearTimeout(glowTimer);
+    setGlow(e.clientX,e.clientY,0.24);
+  });
+  nav.addEventListener('pointermove',e=>{
+    if(e.buttons>0) setGlow(e.clientX,e.clientY,0.22);
+  });
+  function fadeGlow(){
+    clearTimeout(glowTimer);
+    glowTimer=setTimeout(()=>{ nav.style.setProperty('--ga','0'); },500);
+  }
+  nav.addEventListener('pointerup',fadeGlow);
+  nav.addEventListener('pointerleave',fadeGlow);
+  nav.addEventListener('pointercancel',fadeGlow);
+})();
 
 document.getElementById('btnTalk').onclick=()=>{
   switchTab('btnTalk');
