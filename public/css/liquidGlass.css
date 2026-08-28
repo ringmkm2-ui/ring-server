@@ -317,6 +317,10 @@
 .friend-card:active,
 .post-card:active,
 .action-btn:active,
+.ctx-btn:active,
+.mm-close:active,
+.phone-btn:active,
+.plus-btn:active,
 [class*="glass"]:active {
   animation: lg-press-flash 0.38s var(--glass-ease) forwards;
   transform: scale(1.07) !important;

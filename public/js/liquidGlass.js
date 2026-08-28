@@ -25,14 +25,14 @@
     tintOpacity: 0,
   };
 
-  // ボタン用(小さめ・軽め)
+  // ボタン用: Codepenの glassCircle (DEFAULT_CONFIG) 相当の厚みのある本物のガラス
   const BTN_CONFIG = {
-    glassThickness: 30,
+    glassThickness: 60,
     bezelWidth: 40,
     ior: 1.4,
     scaleRatio: 1.0,
-    blur: 0,
-    specularOpacity: 0.5,
+    blur: 0.6,
+    specularOpacity: 0.65,
     specularSat: 0,
     tintColor: '255,255,255',
     tintOpacity: 0,
@@ -180,6 +180,11 @@
       '.glass-send-btn:not([data-lg-applied]),' +
       '.glass-plus-btn:not([data-lg-applied]),' +
       '.glass-clear:not([data-lg-applied]),' +
+      '.glass-btn:not([data-lg-applied]),' +
+      '.ctx-btn:not([data-lg-applied]),' +
+      '.mm-close:not([data-lg-applied]),' +
+      '.phone-btn:not([data-lg-applied]),' +
+      '.plus-btn:not([data-lg-applied]),' +
       '.lg-btn:not([data-lg-applied])'
     );
     targets.forEach(el => {
@@ -187,6 +192,15 @@
       // レイアウト完了後に適用（getBoundingClientRectが正確になってから）
       requestAnimationFrame(() => applyGlassFilter(el));
     });
+  }
+
+  // 動的に生成されるボタン(トークリストの項目、メニューなど)にも定期的に適用する。
+  // MutationObserverでDOM変化を監視し、新規追加分だけを拾う。
+  function watchForNewGlassButtons() {
+    const observer = new MutationObserver(() => {
+      applyGlassFiltersToAll();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   // ============================================================
@@ -269,14 +283,20 @@
     if (target && !target.dataset.noAutoHaptic) haptic('light');
   }, { passive: true });
 
-  // DOMContentLoaded後に全ボタンへフィルター適用
+  // DOMContentLoaded後に全ボタンへフィルター適用 + 動的追加分の監視開始
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       // レイアウト安定を待ってから適用
-      setTimeout(applyGlassFiltersToAll, 300);
+      setTimeout(() => {
+        applyGlassFiltersToAll();
+        watchForNewGlassButtons();
+      }, 300);
     });
   } else {
-    setTimeout(applyGlassFiltersToAll, 300);
+    setTimeout(() => {
+      applyGlassFiltersToAll();
+      watchForNewGlassButtons();
+    }, 300);
   }
 
 })();
