@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyTokenRaw } = require('../routes/auth');
 const { sendPushToUser } = require('../utils/webPush');
+const callAssist = require('./callAssistProxy');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -77,6 +78,7 @@ function initWebSocketServer(server) {
 
   wss.on('connection', (ws, req) => {
     let userId = null;
+    let currentCallAssistSessionId = null; // Call Assist: 有効なDeepgramセッションID
 
     // 同一IPからの過剰接続をブロック
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
@@ -94,7 +96,15 @@ function initWebSocketServer(server) {
       else ipConnections.set(clientIp, cnt);
     });
 
-    ws.on('message', async raw => {
+    ws.on('message', async (raw, isBinary) => {
+      // Call Assist: リアルタイム字幕用の音声チャンク(バイナリフレーム)
+      if (isBinary) {
+        if (userId && currentCallAssistSessionId) {
+          callAssist.sendAudioChunk(currentCallAssistSessionId, raw);
+        }
+        return;
+      }
+
       let data;
       try { data = JSON.parse(raw.toString()); } catch { return; }
 
@@ -331,11 +341,53 @@ function initWebSocketServer(server) {
         // 呼び出し中に発信者が切った場合など、バックグラウンド通知が残っていれば消す
         sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
           .catch(err => console.error('[push] call_end cancel push failed:', err.message));
+        if (currentCallAssistSessionId) {
+          callAssist.stopSession(currentCallAssistSessionId);
+          currentCallAssistSessionId = null;
+        }
+        return;
+      }
+
+      // --- Call Assist: リアルタイム字幕・翻訳セッションの開始 ---
+      // data: { callId, language? }
+      if (data.type === 'call_assist_start') {
+        if (!userId) return;
+        if (!callAssist.isDeepgramConfigured()) {
+          ws.send(JSON.stringify({ type: 'call_assist_error', error: '音声認識機能が現在利用できません(サーバー未設定)' }));
+          return;
+        }
+        currentCallAssistSessionId = `${userId}:${data.callId}:${Date.now()}`;
+        callAssist.startSession(currentCallAssistSessionId, {
+          language: data.language || 'ja',
+          onTranscript: (text, isFinal) => {
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'call_assist_transcript', text, isFinal }));
+            }
+          },
+          onError: (err) => {
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'call_assist_error', error: err.message }));
+            }
+          },
+        });
+        return;
+      }
+
+      // --- Call Assist: 字幕セッション終了 ---
+      if (data.type === 'call_assist_stop') {
+        if (currentCallAssistSessionId) {
+          callAssist.stopSession(currentCallAssistSessionId);
+          currentCallAssistSessionId = null;
+        }
         return;
       }
     });
 
     ws.on('close', () => {
+      if (currentCallAssistSessionId) {
+        callAssist.stopSession(currentCallAssistSessionId);
+        currentCallAssistSessionId = null;
+      }
       if (userId && connections.has(userId)) {
         connections.get(userId).delete(ws);
         if (connections.get(userId).size === 0) {

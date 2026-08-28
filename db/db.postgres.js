@@ -84,6 +84,35 @@ async function initDB() {
     console.log('[db] push_subscriptions migration skip:', e.message);
   }
 
+  // マイグレーション: Call Assist機能(通話メモ・要約)用テーブル。
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS call_notes (
+        id TEXT PRIMARY KEY,
+        call_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL REFERENCES users(id),
+        other_id TEXT REFERENCES users(id),
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now(),
+        updated_at TIMESTAMP DEFAULT now(),
+        UNIQUE(call_id, owner_id)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS call_summaries (
+        id TEXT PRIMARY KEY,
+        call_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL REFERENCES users(id),
+        other_id TEXT REFERENCES users(id),
+        summary TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now(),
+        UNIQUE(call_id, owner_id)
+      )
+    `);
+  } catch (e) {
+    console.log('[db] call_notes/call_summaries migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 

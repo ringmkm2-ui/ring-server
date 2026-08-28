@@ -251,6 +251,27 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       deleted_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS call_notes (
+      id TEXT PRIMARY KEY,
+      call_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      other_id TEXT,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(call_id, owner_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_summaries (
+      id TEXT PRIMARY KEY,
+      call_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      other_id TEXT,
+      summary TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(call_id, owner_id)
+    );
   `);
 
   persist();

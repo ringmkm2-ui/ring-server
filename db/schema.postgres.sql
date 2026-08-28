@@ -186,6 +186,29 @@ CREATE TABLE IF NOT EXISTS post_comments (
   deleted_at TIMESTAMP
 );
 
+-- Call Assist: 通話中に取るメモ(本人のみが見られる、E2E外の平文メモなので機密情報は避ける想定)
+CREATE TABLE IF NOT EXISTS call_notes (
+  id TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
+  owner_id TEXT NOT NULL REFERENCES users(id),
+  other_id TEXT REFERENCES users(id),
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now(),
+  UNIQUE(call_id, owner_id)
+);
+
+-- Call Assist: 通話終了後の要約(字幕ログをAnthropic APIで要約したもの)
+CREATE TABLE IF NOT EXISTS call_summaries (
+  id TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
+  owner_id TEXT NOT NULL REFERENCES users(id),
+  other_id TEXT REFERENCES users(id),
+  summary TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  UNIQUE(call_id, owner_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_recipient ON offline_queue(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
@@ -201,3 +224,5 @@ CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC) WHERE del
 CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
 CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id);
 CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments(post_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_call_notes_owner ON call_notes(owner_id);
+CREATE INDEX IF NOT EXISTS idx_call_summaries_owner ON call_summaries(owner_id);
