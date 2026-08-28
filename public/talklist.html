@@ -380,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.28 beta</div>
+  <div class="version-badge">Bro Chat v1.28.29 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -709,8 +709,8 @@ function bindTalkNavSwitcher(){
   const indicator=document.getElementById('slider');
   const glow=document.getElementById('navGlow');
   const items=[
-    {el:document.getElementById('btnTalk'), page:pageTalk, onSelect:loadTalks},
-    {el:document.getElementById('btnHome'), page:pageHome, onSelect:loadPendingRequests},
+    {el:document.getElementById('btnTalk'), page:pageTalk, onSelect:()=>loadTalks(true)},
+    {el:document.getElementById('btnHome'), page:pageHome, onSelect:()=>loadPendingRequests(true)},
     {el:document.getElementById('btnPosts'), page:pagePosts, onSelect:loadPosts},
   ];
   if(!nav||!indicator||!glow||!items.length) return;
@@ -931,7 +931,7 @@ async function loadProfile(){
 loadProfile();
 
 // トークリスト読み込み
-async function loadTalks() {
+async function loadTalks(animate = false) {
   try {
     const talks = await api('/api/messages/talks');
     const friends = await api('/api/friends/list');
@@ -1008,8 +1008,8 @@ async function loadTalks() {
     list.textContent = '';
     merged.forEach((t, idx) => {
       const item = document.createElement('div');
-      item.className = 'ti glass-materialize-light';
-      item.style.animationDelay = Math.min(idx * 30, 300) + 'ms';
+      item.className = animate ? 'ti glass-materialize-light' : 'ti';
+      if (animate) item.style.animationDelay = Math.min(idx * 30, 300) + 'ms';
 
       const av = document.createElement('div');
       const time = t.lastTime ? formatTime(t.lastTime) : '';
@@ -1710,7 +1710,7 @@ document.getElementById('ngCreate').onclick = async () => {
 };
 
 // 友達リクエスト読み込み
-async function loadPendingRequests() {
+async function loadPendingRequests(animate = false) {
   try {
     const pending = await api('/api/friends/pending');
     const card = document.getElementById('pendingRequestsCard');
@@ -1725,9 +1725,9 @@ async function loadPendingRequests() {
     list.textContent = '';
     pending.forEach((p, idx) => {
       const row = document.createElement('div');
-      row.className = 'glass-materialize-light';
+      row.className = animate ? 'glass-materialize-light' : '';
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
-      row.style.animationDelay = Math.min(idx * 40, 240) + 'ms';
+      if (animate) row.style.animationDelay = Math.min(idx * 40, 240) + 'ms';
 
       const av = document.createElement('div');
       av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
@@ -1771,8 +1771,8 @@ async function acceptFriendRequest(friendshipId, btn) {
     if (data.ok) {
       btn.textContent = '承認済み';
       btn.style.background = '#6b7280';
-      loadPendingRequests();
-      loadTalks();
+      loadPendingRequests(true);
+      loadTalks(true);
     } else {
       btn.textContent = 'エラー';
       btn.disabled = false;
@@ -1784,8 +1784,8 @@ async function acceptFriendRequest(friendshipId, btn) {
 }
 
 // 初期読み込み
-loadTalks();
-loadPendingRequests();
+loadTalks(true);
+loadPendingRequests(true);
 
 // ブラウザ通知の許可リクエスト
 // 個人チャット画面(admin.html)だけでリクエストしていたため、
