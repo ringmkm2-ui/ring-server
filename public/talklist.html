@@ -380,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.11 beta</div>
+  <div class="version-badge">Bro Chat v1.28.12 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -498,69 +498,386 @@ const myUserId = localStorage.getItem('ring_userId');
 window.myUserId = myUserId; // e2eKeys.js から参照できるようにグローバル化
 if (!token) location.href = '/auth.html';
 
-function switchTab(activeBtnId){
-  const tabs=[
-    {btn:'btnTalk',page:pageTalk},
-    {btn:'btnHome',page:pageHome},
-    {btn:'btnPosts',page:pagePosts},
-  ];
-  const segEl=document.getElementById('tabSegment');
-  tabs.forEach(t=>{
-    const btn=document.getElementById(t.btn);
-    const isActive=t.btn===activeBtnId;
-    btn.classList.toggle('active',isActive);
-    t.page.style.display=isActive?'block':'none';
-    if(isActive){
-      // tab-indicator (slider) をボタン位置・幅にフィット (Codepen tab-indicator仕様: left/width)
-      const btnRect=btn.getBoundingClientRect();
-      const segRect=segEl.getBoundingClientRect();
-      slider.style.left=(btnRect.left-segRect.left)+'px';
-      slider.style.width=btnRect.width+'px';
+// ============================================================================
+// Codepen "Liquid Glass Demo" (demo.js) を忠実に移植。
+// SVG feDisplacementMap による本物の光学屈折 + specular ハイライトを
+// tab-indicator(slider)に適用し、ドラッグでタブ間を移動できるようにする。
+// ============================================================================
+const LG_SWITCHER_CONFIG = {
+  glassThickness: 30, bezelWidth: 40, ior: 1.4, scaleRatio: 1.0,
+  blur: 0, specularOpacity: 0.5, specularSat: 0,
+  tintColor: '255,255,255', tintOpacity: 0,
+  innerShadow: 'rgba(255,255,255,0)', innerShadowBlur: 0, innerShadowSpread: 0,
+  balancedSpecular: true
+};
+
+function lgClamp(n,min,max){ return Math.min(max,Math.max(min,n)); }
+
+function lgSurfaceFn(x){ return Math.pow(1-Math.pow(1-x,4),0.25); }
+
+function lgCalcRefractionProfile(glassThickness,bezelWidth,ior,samples){
+  samples=samples||128;
+  const eta=1/ior;
+  function refract(nx,ny){
+    const dot=ny;
+    const k=1-eta*eta*(1-dot*dot);
+    if(k<0) return null;
+    const sq=Math.sqrt(k);
+    return [-(eta*dot+sq)*nx, eta-(eta*dot+sq)*ny];
+  }
+  const p=new Float64Array(samples);
+  for(let i=0;i<samples;i++){
+    const x=i/samples, y=lgSurfaceFn(x);
+    const dx=x<1?0.0001:-0.0001;
+    const y2=lgSurfaceFn(x+dx);
+    const deriv=(y2-y)/dx;
+    const mag=Math.sqrt(deriv*deriv+1);
+    const ref=refract(-deriv/mag,-1/mag);
+    p[i]=ref?ref[0]*((y*bezelWidth+glassThickness)/ref[1]):0;
+  }
+  return p;
+}
+
+function lgGenerateDisplacementMap(w,h,radius,bezelWidth,profile,maxDisp){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx=c.getContext('2d');
+  const img=ctx.createImageData(w,h);
+  const d=img.data;
+  for(let i=0;i<d.length;i+=4){d[i]=128;d[i+1]=128;d[i+2]=0;d[i+3]=255;}
+  const r=radius, rSq=r*r, r1Sq=(r+1)**2;
+  const rBSq=Math.max(r-bezelWidth,0)**2;
+  const wB=w-r*2, hB=h-r*2, S=profile.length;
+  for(let y1=0;y1<h;y1++){
+    for(let x1=0;x1<w;x1++){
+      const x=x1<r?x1-r:x1>=w-r?x1-r-wB:0;
+      const y=y1<r?y1-r:y1>=h-r?y1-r-hB:0;
+      const dSq=x*x+y*y;
+      if(dSq>r1Sq||dSq<rBSq) continue;
+      const dist=Math.sqrt(dSq);
+      const fromSide=r-dist;
+      const op=dSq<rSq?1:1-(dist-Math.sqrt(rSq))/(Math.sqrt(r1Sq)-Math.sqrt(rSq));
+      if(op<=0||dist===0) continue;
+      const cos=x/dist, sin=y/dist;
+      const bi=Math.min(((fromSide/bezelWidth)*S)|0,S-1);
+      const disp=profile[bi]||0;
+      const dX=(-cos*disp)/maxDisp, dY=(-sin*disp)/maxDisp;
+      const idx=(y1*w+x1)*4;
+      d[idx]=(128+dX*127*op+0.5)|0;
+      d[idx+1]=(128+dY*127*op+0.5)|0;
     }
+  }
+  ctx.putImageData(img,0,0);
+  return c.toDataURL();
+}
+
+function lgGenerateSpecularMap(w,h,radius,bezelWidth,balanced){
+  const angle=Math.PI/3;
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx=c.getContext('2d');
+  const img=ctx.createImageData(w,h);
+  const d=img.data; d.fill(0);
+  const r=radius, rSq=r*r, r1Sq=(r+1)**2;
+  const rBSq=Math.max(r-bezelWidth,0)**2;
+  const wB=w-r*2, hB=h-r*2;
+  const sv=[Math.cos(angle),Math.sin(angle)];
+  for(let y1=0;y1<h;y1++){
+    for(let x1=0;x1<w;x1++){
+      const x=x1<r?x1-r:x1>=w-r?x1-r-wB:0;
+      const y=y1<r?y1-r:y1>=h-r?y1-r-hB:0;
+      const dSq=x*x+y*y;
+      if(dSq>r1Sq||dSq<rBSq) continue;
+      const dist=Math.sqrt(dSq);
+      const fromSide=r-dist;
+      const op=dSq<rSq?1:1-(dist-Math.sqrt(rSq))/(Math.sqrt(r1Sq)-Math.sqrt(rSq));
+      if(op<=0||dist===0) continue;
+      const cos=x/dist, sin=-y/dist;
+      const dot=balanced?1:Math.abs(cos*sv[0]+sin*sv[1]);
+      const edge=Math.sqrt(Math.max(0,1-(1-fromSide)**2));
+      const coeff=dot*edge;
+      const col=(255*coeff)|0;
+      const alpha=(col*coeff*op)|0;
+      const idx=(y1*w+x1)*4;
+      d[idx]=col; d[idx+1]=col; d[idx+2]=col; d[idx+3]=alpha;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return c.toDataURL();
+}
+
+function lgSvgEl(tag,attrs){
+  const el=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for(const [k,v] of Object.entries(attrs)) el.setAttribute(k,v);
+  return el;
+}
+
+let lgDefs=null;
+function lgEnsureDefs(){
+  const old=document.getElementById('lg-talklist-defs');
+  if(old && document.documentElement.contains(old)){ lgDefs=old; return; }
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('width','0'); svg.setAttribute('height','0');
+  svg.style.cssText='position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:-1;';
+  lgDefs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  lgDefs.id='lg-talklist-defs';
+  svg.appendChild(lgDefs);
+  document.documentElement.appendChild(svg);
+}
+
+function lgBuildFilter(id,w,h,radius,cfg){
+  const bezel=Math.min(cfg.bezelWidth,radius-1,Math.min(w,h)/2-1);
+  const profile=lgCalcRefractionProfile(cfg.glassThickness,bezel,cfg.ior,128);
+  const maxDisp=Math.max(...Array.from(profile).map(Math.abs))||1;
+  const dispUrl=lgGenerateDisplacementMap(w,h,radius,bezel,profile,maxDisp);
+  const specUrl=lgGenerateSpecularMap(w,h,radius,bezel*2.5,!!cfg.balancedSpecular);
+  const scale=maxDisp*cfg.scaleRatio;
+  const pad=cfg.balancedSpecular?0.36:0;
+  const fx=Math.round(-w*pad), fy=Math.round(-h*pad);
+  const fw=Math.round(w*(1+pad*2)), fh=Math.round(h*(1+pad*2));
+
+  const filter=lgSvgEl('filter',{
+    id, x:String(fx), y:String(fy), width:String(fw), height:String(fh),
+    filterUnits:'userSpaceOnUse', primitiveUnits:'userSpaceOnUse',
+    'color-interpolation-filters':'sRGB'
+  });
+  const blur=lgSvgEl('feGaussianBlur',{in:'SourceGraphic',stdDeviation:cfg.blur,result:'blurred'});
+  const dispImg=lgSvgEl('feImage',{href:dispUrl,x:0,y:0,width:w,height:h,result:'disp_map'});
+  const dispMap=lgSvgEl('feDisplacementMap',{in:'blurred',in2:'disp_map',scale,xChannelSelector:'R',yChannelSelector:'G',result:'displaced'});
+  const sat=lgSvgEl('feColorMatrix',{in:'displaced',type:'saturate',values:cfg.specularSat,result:'displaced_sat'});
+  const spec=lgSvgEl('feImage',{href:specUrl,x:0,y:0,width:w,height:h,result:'spec_layer'});
+  const comp=lgSvgEl('feComposite',{in:'displaced_sat',in2:'spec_layer',operator:'in',result:'spec_masked'});
+  const tr=lgSvgEl('feComponentTransfer',{in:'spec_layer',result:'spec_faded'});
+  tr.appendChild(lgSvgEl('feFuncA',{type:'linear',slope:cfg.specularOpacity}));
+  const b1=lgSvgEl('feBlend',{in:'spec_masked',in2:'displaced',mode:'normal',result:'with_sat'});
+  const b2=lgSvgEl('feBlend',{in:'spec_faded',in2:'with_sat',mode:'normal'});
+  filter.append(blur,dispImg,dispMap,sat,spec,comp,tr,b1,b2);
+  return filter;
+}
+
+const lgTargets=new Map();
+function lgApplyGlass(el,cfgGetter){
+  if(lgTargets.has(el)) return;
+  if(getComputedStyle(el).position==='static') el.style.position='relative';
+  let filterNode=null, timer=null;
+  function rebuild(){
+    lgEnsureDefs();
+    const rect=el.getBoundingClientRect();
+    const w=Math.round(el.offsetWidth||rect.width);
+    const h=Math.round(el.offsetHeight||rect.height);
+    if(w<4||h<4) return;
+    const dataR=parseFloat(el.getAttribute('data-radius')||'0');
+    const cssR=parseFloat(getComputedStyle(el).borderTopLeftRadius||'0');
+    const r=Math.max(2,Math.min(dataR||cssR||24,w/2,h/2));
+    if(filterNode) filterNode.remove();
+    const cfg=cfgGetter();
+    const id='lg-tab-'+Math.random().toString(36).slice(2,10);
+    filterNode=lgBuildFilter(id,w,h,r,cfg);
+    lgDefs.appendChild(filterNode);
+    el.style.backdropFilter=`url(#${id})`;
+    el.style.webkitBackdropFilter=`url(#${id})`;
+  }
+  function schedule(){ clearTimeout(timer); timer=setTimeout(rebuild,16); }
+  const ro=new ResizeObserver(schedule);
+  ro.observe(el);
+  lgTargets.set(el,{
+    rebuild,
+    destroy(){ clearTimeout(timer); ro.disconnect(); if(filterNode) filterNode.remove(); }
+  });
+  rebuild();
+}
+function lgRemoveGlass(el){
+  const inst=lgTargets.get(el);
+  if(!inst) return;
+  inst.destroy();
+  lgTargets.delete(el);
+}
+function lgEnableGlass(el,cfgGetter){
+  if(!lgTargets.has(el)) lgApplyGlass(el,cfgGetter);
+  else lgTargets.get(el).rebuild();
+}
+function lgQueueGlassRebuild(el){
+  requestAnimationFrame(()=>{
+    const inst=lgTargets.get(el);
+    if(inst) inst.rebuild();
   });
 }
 
-// Codepen bindNavSwitcher準拠: pointer位置に応じてnav-glowを動かす(--gx/--gy/--ga)
-(function bindNavGlow(){
+// ============================================================================
+// bindNavSwitcher: Codepen準拠のドラッグ可能タブインジケーター
+// ============================================================================
+function bindTalkNavSwitcher(){
   const nav=document.getElementById('tabSegment');
-  if(!nav) return;
+  const indicator=document.getElementById('slider');
+  const glow=document.getElementById('navGlow');
+  const items=[
+    {el:document.getElementById('btnTalk'), page:pageTalk, onSelect:loadTalks},
+    {el:document.getElementById('btnHome'), page:pageHome, onSelect:loadPendingRequests},
+    {el:document.getElementById('btnPosts'), page:pagePosts, onSelect:loadPosts},
+  ];
+  if(!nav||!indicator||!glow||!items.length) return;
+
+  const DRAG_THRESHOLD=6, OVERSHOOT=22;
+  let active=0, targetIndex=0, pointerId=null, pressX=0, pressY=0;
+  let dragMode=false, pressWidth=0, finishTimer=null;
+
+  function navRect(){ return nav.getBoundingClientRect(); }
+  function toLocalX(clientX){
+    const nr=navRect();
+    const sx=nr.width>0?nav.clientWidth/nr.width:1;
+    return (clientX-nr.left)*sx;
+  }
+  function itemMetrics(i){
+    const nr=navRect(), ir=items[i].el.getBoundingClientRect();
+    const sx=nr.width>0?nav.clientWidth/nr.width:1;
+    const left=(ir.left-nr.left)*sx, width=ir.width*sx;
+    return {left,width,center:left+width/2};
+  }
+  function nearestIndex(localX){
+    let best=0,bestD=Infinity;
+    for(let i=0;i<items.length;i++){
+      const d=Math.abs(localX-itemMetrics(i).center);
+      if(d<bestD){bestD=d;best=i;}
+    }
+    return best;
+  }
+  function setActive(i){
+    active=i;
+    items.forEach((it,idx)=>{
+      it.el.classList.toggle('active',idx===i);
+      it.page.style.display=idx===i?'block':'none';
+    });
+  }
+  function setIndicator(left,width,animate){
+    if(!animate){
+      const old=indicator.style.transition;
+      indicator.style.transition='none';
+      indicator.style.left=`${left}px`;
+      indicator.style.width=`${width}px`;
+      indicator.offsetWidth;
+      indicator.style.transition=old;
+      return;
+    }
+    indicator.style.left=`${left}px`;
+    indicator.style.width=`${width}px`;
+  }
+  function snapToIndex(i,animate){
+    const m=itemMetrics(i);
+    setIndicator(m.left,m.width,animate);
+  }
   function setGlow(clientX,clientY,alpha){
-    const r=nav.getBoundingClientRect();
-    nav.style.setProperty('--gx',(clientX-r.left)+'px');
-    nav.style.setProperty('--gy',(clientY-r.top)+'px');
+    const nr=navRect();
+    const lx=toLocalX(clientX);
+    nav.style.setProperty('--gx',`${lx}px`);
+    nav.style.setProperty('--gy',`${clientY-nr.top}px`);
     nav.style.setProperty('--ga',String(alpha));
   }
-  let glowTimer=null;
-  nav.addEventListener('pointerdown',e=>{
-    clearTimeout(glowTimer);
-    setGlow(e.clientX,e.clientY,0.24);
-  });
-  nav.addEventListener('pointermove',e=>{
-    if(e.buttons>0) setGlow(e.clientX,e.clientY,0.22);
-  });
-  function fadeGlow(){
-    clearTimeout(glowTimer);
-    glowTimer=setTimeout(()=>{ nav.style.setProperty('--ga','0'); },500);
+  function beginInteraction(clientX,clientY){
+    clearTimeout(finishTimer);
+    indicator.classList.add('interacting');
+    setGlow(clientX,clientY,0.24);
+    lgEnableGlass(indicator,()=>Object.assign({},LG_SWITCHER_CONFIG,{balancedSpecular:true}));
+    lgQueueGlassRebuild(indicator);
   }
-  nav.addEventListener('pointerup',fadeGlow);
-  nav.addEventListener('pointerleave',fadeGlow);
-  nav.addEventListener('pointercancel',fadeGlow);
-})();
+  function endInteraction(){
+    clearTimeout(finishTimer);
+    finishTimer=setTimeout(()=>{
+      indicator.classList.remove('interacting');
+      nav.classList.remove('dragging');
+      nav.style.setProperty('--ga','0');
+      lgRemoveGlass(indicator);
+    },500);
+  }
+  function dragMove(clientX){
+    const localX=toLocalX(clientX);
+    const w=pressWidth||itemMetrics(active).width;
+    let left=localX-w/2;
+    left=lgClamp(left,-OVERSHOOT,nav.clientWidth-w+OVERSHOOT);
+    indicator.style.left=`${left}px`;
+    indicator.style.width=`${w}px`;
+    targetIndex=nearestIndex(localX);
+    lgQueueGlassRebuild(indicator);
+  }
+  function clearPointerHandlers(){
+    window.removeEventListener('pointermove',onPointerMove);
+    window.removeEventListener('pointerup',onPointerUp);
+    window.removeEventListener('pointercancel',onPointerCancel);
+  }
+  function finishSelection(){
+    nav.classList.remove('dragging');
+    const changed=targetIndex!==active;
+    setActive(targetIndex);
+    snapToIndex(targetIndex,true);
+    lgQueueGlassRebuild(indicator);
+    setTimeout(()=>lgQueueGlassRebuild(indicator),120);
+    endInteraction();
+    if(changed && items[targetIndex].onSelect) items[targetIndex].onSelect();
+  }
+  function onPointerMove(e){
+    if(e.pointerId!==pointerId) return;
+    const dx=Math.abs(e.clientX-pressX), dy=Math.abs(e.clientY-pressY);
+    if(!dragMode&&(dx>DRAG_THRESHOLD||dy>DRAG_THRESHOLD)){ dragMode=true; nav.classList.add('dragging'); }
+    if(dragMode){ setGlow(e.clientX,e.clientY,0.18); dragMove(e.clientX); }
+    else{ setGlow(e.clientX,e.clientY,0.22); }
+  }
+  function onPointerUp(e){
+    if(e.pointerId!==pointerId) return;
+    clearPointerHandlers();
+    finishSelection();
+    pointerId=null; dragMode=false;
+  }
+  function onPointerCancel(e){
+    if(e.pointerId!==pointerId) return;
+    clearPointerHandlers();
+    nav.classList.remove('dragging');
+    snapToIndex(active,true);
+    endInteraction();
+    pointerId=null; dragMode=false;
+  }
+  function armPointer(idx,e){
+    if(pointerId!==null) return;
+    pointerId=e.pointerId; dragMode=false; targetIndex=idx;
+    pressX=e.clientX; pressY=e.clientY;
+    pressWidth=itemMetrics(idx).width;
+    beginInteraction(e.clientX,e.clientY);
+    window.addEventListener('pointermove',onPointerMove);
+    window.addEventListener('pointerup',onPointerUp);
+    window.addEventListener('pointercancel',onPointerCancel);
+  }
 
-document.getElementById('btnTalk').onclick=()=>{
-  switchTab('btnTalk');
-  loadTalks();
-};
+  items.forEach((it,idx)=>{
+    it.el.style.touchAction='none';
+    it.el.addEventListener('pointerdown',e=>{
+      if(!e.isPrimary||e.button!==0) return;
+      e.preventDefault();
+      armPointer(idx,e);
+    });
+  });
 
-document.getElementById('btnHome').onclick=()=>{
-  switchTab('btnHome');
-  loadPendingRequests();
-};
+  snapToIndex(active,false);
+  window.addEventListener('resize',()=>snapToIndex(active,false));
+}
 
-document.getElementById('btnPosts').onclick=()=>{
-  switchTab('btnPosts');
-  loadPosts();
-};
+// switchTab: 外部(ログイン後の初期表示など)から呼ばれる互換関数として維持
+function switchTab(activeBtnId){
+  const idx=activeBtnId==='btnTalk'?0:activeBtnId==='btnHome'?1:2;
+  const items=[
+    {el:document.getElementById('btnTalk'), page:pageTalk},
+    {el:document.getElementById('btnHome'), page:pageHome},
+    {el:document.getElementById('btnPosts'), page:pagePosts},
+  ];
+  items.forEach((it,i)=>{
+    it.el.classList.toggle('active',i===idx);
+    it.page.style.display=i===idx?'block':'none';
+  });
+  const btn=items[idx].el, seg=document.getElementById('tabSegment'), slider=document.getElementById('slider');
+  if(btn&&seg&&slider){
+    const btnRect=btn.getBoundingClientRect(), segRect=seg.getBoundingClientRect();
+    slider.style.left=(btnRect.left-segRect.left)+'px';
+    slider.style.width=btnRect.width+'px';
+  }
+}
+
+// 初期化: レイアウト確定後にドラッグ機構をバインド
+requestAnimationFrame(()=>{ bindTalkNavSwitcher(); });
 
 async function api(path, opts={}) {
   const res = await fetch(path, {
