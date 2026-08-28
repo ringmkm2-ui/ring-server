@@ -333,7 +333,6 @@
 .ctx-btn:active,
 .ctxbtn:active,
 .mm-close:active,
-.phone-btn:active,
 .plus-btn:active,
 .glass-btn:active,
 .cbtn:active,
@@ -346,6 +345,21 @@
   box-shadow: var(--lg-shadow), inset 0 0 30px 8px rgba(255,255,255,0.85), 0 0 26px 8px rgba(255,255,255,0.4);
   z-index: 50;
   transition: transform 0.12s var(--glass-ease), filter 0.12s var(--glass-ease), box-shadow 0.12s var(--glass-ease);
+}
+
+/* 通話系ボタン(発信/終了/受話/拒否): scale変換するとモバイルのtouchendが
+   別の要素で発火してonclickが効かなくなるバグがあるため、膨張させない。
+   代わりに明るさだけでフィードバック。 */
+.phone-btn:active,
+.end-btn:active,
+.call-control-btn:active,
+.call-assist-btn:active,
+.accept-btn-glass:active,
+.decline-btn-glass:active {
+  transform: none !important;
+  filter: brightness(1.25);
+  box-shadow: inset 0 0 16px 3px rgba(255,255,255,0.5);
+  transition: filter 0.12s var(--glass-ease);
 }
 
 /* フル幅ボタン(width:100%等)は横にはみ出すため膨張させない。
