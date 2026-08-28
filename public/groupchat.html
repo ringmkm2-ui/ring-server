@@ -182,7 +182,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.29 beta</div>
+  <div class="version-badge">Bro Chat v1.28.30 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -424,12 +424,19 @@ function refreshHdr(){
     av.style.background=nameColor(gi.name||'グループ');
     av.textContent=(gi.name||'グループ').charAt(0);
   }
-  // talklist.htmlのトーク一覧アバターから、このヘッダーアバターへ滑らかにモーフィングする
-  // (Cross-Document View Transitions、talklist.html側のglassMorphTag('chat-avatar')と対になる)
-  if ('viewTransitionName' in av.style) {
-    av.style.viewTransitionName = 'chat-avatar';
+  // talklist.htmlのトーク一覧アバターから飛んできた場合、着地アニメーションを再生する。
+  // あわせて現在位置を記録し、次回の飛行の着地点として使う。
+  // (talklist.html側のflyAvatarTo()と対になる)
+  if (window.LiquidGlass && window.LiquidGlass.consumeAvatarFlight) {
+    window.LiquidGlass.consumeAvatarFlight(av);
   }
 }
+
+// グループチャット画面全体を右から差し込むように表示する(iOSのpush遷移風)
+document.addEventListener('DOMContentLoaded', () => {
+  const pcEl = document.querySelector('.pc');
+  if (pcEl) pcEl.classList.add('lg-page-push-in');
+});
 refreshHdr();
 // loadGroupInfo()の呼び出しはファイル末尾でloadGroupMessages()より先に
 // await完了させる形にまとめてある(メンバー情報が揃ってから履歴を描画するため)

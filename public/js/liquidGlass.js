@@ -263,6 +263,104 @@
   }
 
   // ============================================================
+  // Shared Element Transition (FLIP方式)
+  // 遷移元でアバターのクローンを作り、遷移先のヘッダーアバター位置へ
+  // 飛ばしてから画面遷移する。Cross-Document View Transitionsは
+  // ブラウザ対応が限定的なため、確実に動くFLIP方式で実装する。
+  // ============================================================
+  const FLIGHT_KEY = 'lg_avatar_flight';
+  const TARGET_RECT_KEY = 'lg_avatar_target_rect';
+
+  // 遷移先(admin.html等)で実際のアバター位置を記録しておく。
+  // 次回以降の飛行アニメーションの着地点として使う。
+  function rememberAvatarTarget(el) {
+    if (!el) return;
+    try {
+      const r = el.getBoundingClientRect();
+      if (r.width < 4) return;
+      sessionStorage.setItem(TARGET_RECT_KEY, JSON.stringify({
+        top: r.top, left: r.left, width: r.width, height: r.height,
+      }));
+    } catch (e) { /* sessionStorage不可の環境では何もしない */ }
+  }
+
+  // 遷移元でアバターを飛ばし、完了後にnavigateFnを呼ぶ。
+  function flyAvatarTo(sourceEl, navigateFn) {
+    if (!sourceEl) { navigateFn(); return; }
+
+    let target = null;
+    try {
+      const cached = sessionStorage.getItem(TARGET_RECT_KEY);
+      if (cached) target = JSON.parse(cached);
+    } catch (e) { /* ignore */ }
+
+    // 着地点が未記録の場合はヘッダー左上あたりを推定値として使う
+    if (!target) {
+      const safeTop = parseInt(getComputedStyle(document.documentElement)
+        .getPropertyValue('--sat') || '0', 10) || 0;
+      target = { top: safeTop + 18, left: 54, width: 38, height: 38 };
+    }
+
+    const src = sourceEl.getBoundingClientRect();
+    const clone = document.createElement('div');
+    clone.className = 'lg-flying-avatar';
+    clone.style.top = src.top + 'px';
+    clone.style.left = src.left + 'px';
+    clone.style.width = src.width + 'px';
+    clone.style.height = src.height + 'px';
+    clone.style.fontSize = getComputedStyle(sourceEl).fontSize;
+    clone.style.backgroundImage = sourceEl.style.backgroundImage || '';
+    clone.style.backgroundColor = getComputedStyle(sourceEl).backgroundColor;
+    if (!sourceEl.style.backgroundImage) clone.textContent = sourceEl.textContent || '';
+    document.body.appendChild(clone);
+
+    // 元のアバターは飛んでいる間だけ隠す
+    const prevVisibility = sourceEl.style.visibility;
+    sourceEl.style.visibility = 'hidden';
+
+    // 遷移先で着地アニメーションを再生するための情報を渡す
+    try {
+      sessionStorage.setItem(FLIGHT_KEY, '1');
+    } catch (e) { /* ignore */ }
+
+    // 現在のページ全体を奥に沈ませる
+    const main = document.querySelector('.tp') || document.body;
+    main.classList.add('lg-page-recede');
+
+    requestAnimationFrame(() => {
+      clone.style.top = target.top + 'px';
+      clone.style.left = target.left + 'px';
+      clone.style.width = target.width + 'px';
+      clone.style.height = target.height + 'px';
+      clone.style.fontSize = '15px';
+      clone.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+    });
+
+    // アニメーション完了を待ってから遷移する
+    setTimeout(() => {
+      sourceEl.style.visibility = prevVisibility;
+      navigateFn();
+    }, 380);
+  }
+
+  // 遷移先で「飛んできた直後か」を判定し、着地アニメーションを再生する。
+  function consumeAvatarFlight(targetEl) {
+    if (!targetEl) return;
+    let flew = false;
+    try {
+      flew = sessionStorage.getItem(FLIGHT_KEY) === '1';
+      sessionStorage.removeItem(FLIGHT_KEY);
+    } catch (e) { /* ignore */ }
+    if (flew) {
+      targetEl.classList.remove('lg-avatar-land');
+      void targetEl.offsetWidth;
+      targetEl.classList.add('lg-avatar-land');
+    }
+    // 次回の飛行のために現在位置を記録しておく
+    rememberAvatarTarget(targetEl);
+  }
+
+  // ============================================================
   // グローバル公開
   // ============================================================
   window.LiquidGlass = {
@@ -275,6 +373,9 @@
     applyGlassFilter,
     applyGlassFiltersToAll,
     createGlassFilter,
+    flyAvatarTo,
+    consumeAvatarFlight,
+    rememberAvatarTarget,
   };
 
   // タップ時のハプティクス + 膨らむフラッシュアニメーション

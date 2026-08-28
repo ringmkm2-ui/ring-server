@@ -380,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.29 beta</div>
+  <div class="version-badge">Bro Chat v1.28.30 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -740,15 +740,18 @@ function bindTalkNavSwitcher(){
     return best;
   }
   function setActive(i){
+    const prev = active;
     active=i;
+    // 移動方向に応じて左右どちらから入ってくるかを決める
+    const dirClass = i > prev ? 'lg-page-enter-right' : (i < prev ? 'lg-page-enter-left' : 'lg-page-enter');
     items.forEach((it,idx)=>{
       it.el.classList.toggle('active',idx===i);
       const wasHidden = it.page.style.display==='none';
       it.page.style.display=idx===i?'block':'none';
       if(idx===i && wasHidden){
-        it.page.classList.remove('lg-page-enter');
+        it.page.classList.remove('lg-page-enter','lg-page-enter-right','lg-page-enter-left');
         void it.page.offsetWidth; // reflow強制でアニメーション再生を保証
-        it.page.classList.add('lg-page-enter');
+        it.page.classList.add(dirClass);
       }
     });
   }
@@ -870,14 +873,18 @@ function switchTab(activeBtnId){
     {el:document.getElementById('btnHome'), page:pageHome},
     {el:document.getElementById('btnPosts'), page:pagePosts},
   ];
+  // 現在表示中のページ位置を調べて、移動方向を決める
+  let prevIdx = items.findIndex(it => it.page.style.display !== 'none');
+  if (prevIdx < 0) prevIdx = idx;
+  const dirClass = idx > prevIdx ? 'lg-page-enter-right' : (idx < prevIdx ? 'lg-page-enter-left' : 'lg-page-enter');
   items.forEach((it,i)=>{
     it.el.classList.toggle('active',i===idx);
     const wasHidden = it.page.style.display==='none';
     it.page.style.display=i===idx?'block':'none';
     if(i===idx && wasHidden){
-      it.page.classList.remove('lg-page-enter');
+      it.page.classList.remove('lg-page-enter','lg-page-enter-right','lg-page-enter-left');
       void it.page.offsetWidth;
-      it.page.classList.add('lg-page-enter');
+      it.page.classList.add(dirClass);
     }
   });
   const btn=items[idx].el, seg=document.getElementById('tabSegment'), slider=document.getElementById('slider');
@@ -1039,8 +1046,12 @@ async function loadTalks(animate = false) {
         item.appendChild(av);
         item.appendChild(body);
         item.addEventListener('click', () => {
-          if (window.LiquidGlass) window.LiquidGlass.glassMorphTag(av, 'chat-avatar');
-          openGroupChat(t.groupId, t.displayName);
+          // アバターをヘッダー位置へ飛ばしてから遷移する(Shared Element Transition)
+          if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+            window.LiquidGlass.flyAvatarTo(av, () => openGroupChat(t.groupId, t.displayName));
+          } else {
+            openGroupChat(t.groupId, t.displayName);
+          }
         });
       } else {
         av.className = 'tav';
@@ -1074,12 +1085,14 @@ async function loadTalks(animate = false) {
           item.appendChild(badge);
         }
 
-        // クリックされたアバターにタグを付けてから遷移することで、
-        // チャット画面のヘッダーアバターへ滑らかにモーフィングする
-        // (Cross-Document View Transitions、matchedGeometryEffect相当)。
+        // クリックされたアバターをチャット画面のヘッダーアバター位置へ
+        // 実際に飛ばしてから遷移する(FLIP方式のShared Element Transition)。
         item.addEventListener('click', () => {
-          if (window.LiquidGlass) window.LiquidGlass.glassMorphTag(av, 'chat-avatar');
-          openChat(t.userId, t.displayName);
+          if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+            window.LiquidGlass.flyAvatarTo(av, () => openChat(t.userId, t.displayName));
+          } else {
+            openChat(t.userId, t.displayName);
+          }
         });
       }
 
@@ -1174,8 +1187,15 @@ function renderFriends(friends) {
   friends.forEach(f => {
     const card = document.createElement('div');
     card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.5);margin-bottom:8px;cursor:pointer;transition:background .2s';
-    card.onclick = () => openChat(f.id, f.name, f.profilePic);
-    
+    // アバター要素はこの直後に生成されるため、参照を遅延評価する
+    card.onclick = () => {
+      if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+        window.LiquidGlass.flyAvatarTo(avatar, () => openChat(f.id, f.name, f.profilePic));
+      } else {
+        openChat(f.id, f.name, f.profilePic);
+      }
+    };
+
     const avatar = document.createElement('div');
     avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;background-size:cover;background-position:center';
     if (f.profilePic && f.profilePic.startsWith('data:image/')) {

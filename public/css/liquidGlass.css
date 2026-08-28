@@ -419,6 +419,7 @@
 
 /* ==========================================================================
    タブ/ページ切り替えアニメーション(トーク⇔ホーム⇔投稿)
+   タブの並び順に応じて左右どちらから入ってくるかを切り替える。
    ========================================================================== */
 @keyframes lg-page-in {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
@@ -426,6 +427,78 @@
 }
 .lg-page-enter {
   animation: lg-page-in 0.32s var(--glass-spring) both;
+}
+
+/* 右のタブへ移動: 新しいページが右から入る */
+@keyframes lg-page-in-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.lg-page-enter-right {
+  animation: lg-page-in-right 0.34s var(--glass-ease) both;
+}
+
+/* 左のタブへ移動: 新しいページが左から入る */
+@keyframes lg-page-in-left {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.lg-page-enter-left {
+  animation: lg-page-in-left 0.34s var(--glass-ease) both;
+}
+
+/* ==========================================================================
+   Shared Element Transition: トーク相手のアイコンがヘッダー位置へ飛ぶ演出
+   遷移元(talklist)でアバターのクローンを飛ばし、遷移先(admin)で着地させる。
+   ========================================================================== */
+.lg-flying-avatar {
+  position: fixed;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  z-index: 9999;
+  pointer-events: none;
+  will-change: transform, width, height, top, left;
+  transition:
+    top 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
+    left 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
+    width 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
+    height 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
+    font-size 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
+    box-shadow 0.42s ease;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* 遷移先で着地したアバターがふわっと定位置に収まる */
+@keyframes lg-avatar-land {
+  from { transform: scale(1.35); opacity: 0.6; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.lg-avatar-land {
+  animation: lg-avatar-land 0.34s var(--glass-spring) both;
+}
+
+/* 遷移元ページ全体が奥に沈む(iOSのpush遷移風) */
+@keyframes lg-page-recede {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+.lg-page-recede {
+  animation: lg-page-recede 0.32s var(--glass-ease) both;
+}
+
+/* 遷移先ページが右から差し込まれる(iOSのpush遷移風) */
+@keyframes lg-page-push-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.lg-page-push-in {
+  animation: lg-page-push-in 0.38s var(--glass-ease) both;
 }
 
 /* View Transitions */

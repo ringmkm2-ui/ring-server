@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.29 beta</div>
+  <div class="version-badge">Bro Chat v1.28.30 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -658,11 +658,19 @@ const pAv = document.getElementById('partnerAv');
 pAv.style.background = `linear-gradient(135deg, ${nameColor(partnerName)}, ${nameColor(partnerName+'x')})`;
 pAv.textContent = partnerName.charAt(0);
 document.getElementById('partnerName').textContent = partnerName;
-// talklist.htmlのトーク一覧アバターから、このヘッダーアバターへ滑らかにモーフィングする
-// (Cross-Document View Transitions、talklist.html側のglassMorphTag('chat-avatar')と対になる)
-if ('viewTransitionName' in pAv.style) {
-  pAv.style.viewTransitionName = 'chat-avatar';
-}
+// talklist.htmlのトーク一覧アバターから飛んできた場合、ここで着地アニメーションを再生する。
+// あわせて現在のアバター位置をsessionStorageに記録し、次回の飛行の着地点として使う。
+// (talklist.html側のflyAvatarTo()と対になる)
+// liquidGlass.jsはdeferで読み込まれるため、このインラインスクリプト実行時点では
+// まだ未定義。DOMContentLoadedまで待ってから呼ぶ。
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.LiquidGlass && window.LiquidGlass.consumeAvatarFlight) {
+    window.LiquidGlass.consumeAvatarFlight(pAv);
+  }
+});
+// チャット画面全体を右から差し込むように表示する(iOSのpush遷移風)
+const phoneContainer = document.querySelector('.phone-container');
+if (phoneContainer) phoneContainer.classList.add('lg-page-push-in');
 
 // 通話オーバーレイ → パートナーを表示（自分じゃない）
 const callAv = document.getElementById('callAv');
