@@ -278,7 +278,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </div>
     </header>
     <main class="tc">
-      <section id="pageTalk">
+      <section id="pageTalk" class="lg-page-enter">
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
           <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
@@ -380,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.27 beta</div>
+  <div class="version-badge">Bro Chat v1.28.28 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -743,7 +743,13 @@ function bindTalkNavSwitcher(){
     active=i;
     items.forEach((it,idx)=>{
       it.el.classList.toggle('active',idx===i);
+      const wasHidden = it.page.style.display==='none';
       it.page.style.display=idx===i?'block':'none';
+      if(idx===i && wasHidden){
+        it.page.classList.remove('lg-page-enter');
+        void it.page.offsetWidth; // reflow強制でアニメーション再生を保証
+        it.page.classList.add('lg-page-enter');
+      }
     });
   }
   function setIndicator(left,width,animate){
@@ -866,7 +872,13 @@ function switchTab(activeBtnId){
   ];
   items.forEach((it,i)=>{
     it.el.classList.toggle('active',i===idx);
+    const wasHidden = it.page.style.display==='none';
     it.page.style.display=i===idx?'block':'none';
+    if(i===idx && wasHidden){
+      it.page.classList.remove('lg-page-enter');
+      void it.page.offsetWidth;
+      it.page.classList.add('lg-page-enter');
+    }
   });
   const btn=items[idx].el, seg=document.getElementById('tabSegment'), slider=document.getElementById('slider');
   if(btn&&seg&&slider){
@@ -994,9 +1006,10 @@ async function loadTalks() {
     // addEventListenerとtextContentを使うDOM構築方式は、ユーザー文字列が
     // 一切HTML/JSソースとして再解釈されないため、この種の攻撃が構造的に成立しない。
     list.textContent = '';
-    merged.forEach(t => {
+    merged.forEach((t, idx) => {
       const item = document.createElement('div');
-      item.className = 'ti';
+      item.className = 'ti glass-materialize-light';
+      item.style.animationDelay = Math.min(idx * 30, 300) + 'ms';
 
       const av = document.createElement('div');
       const time = t.lastTime ? formatTime(t.lastTime) : '';
@@ -1344,9 +1357,11 @@ async function searchFriend() {
       result.appendChild(empty);
       return;
     }
-    data.forEach(u => {
+    data.forEach((u, idx) => {
       const row = document.createElement('div');
+      row.className = 'glass-materialize-light';
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
+      row.style.animationDelay = Math.min(idx * 40, 240) + 'ms';
 
       const av = document.createElement('div');
       av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
@@ -1612,9 +1627,11 @@ document.getElementById('ngBtn').onclick = async () => {
       // 以前は ${p.displayName} をエスケープ無しでinnerHTMLへ直接埋め込んでおり、
       // 表示名に <script> 等を含めるだけで実行される直接的な保存型XSSだった。
       // DOM構築 + textContent に切り替えることで構造的に無害化する。
-      allPeople.forEach(p => {
+      allPeople.forEach((p, idx) => {
         const label = document.createElement('label');
+        label.className = 'glass-materialize-light';
         label.style.cssText = 'display:flex;align-items:center;margin:8px 0;cursor:pointer;';
+        label.style.animationDelay = Math.min(idx * 25, 200) + 'ms';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -1706,9 +1723,11 @@ async function loadPendingRequests() {
 
     card.style.display = 'block';
     list.textContent = '';
-    pending.forEach(p => {
+    pending.forEach((p, idx) => {
       const row = document.createElement('div');
+      row.className = 'glass-materialize-light';
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
+      row.style.animationDelay = Math.min(idx * 40, 240) + 'ms';
 
       const av = document.createElement('div');
       av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
@@ -2046,7 +2065,11 @@ async function loadPosts() {
       postsOldestTimestamp = null;
       return;
     }
-    posts.forEach(p => list.appendChild(renderPostCard(p)));
+    posts.forEach((p, idx) => {
+      const card = renderPostCard(p);
+      card.style.animationDelay = Math.min(idx * 40, 320) + 'ms';
+      list.appendChild(card);
+    });
     postsOldestTimestamp = posts[posts.length - 1].createdAt;
   } catch (e) {
     console.error('loadPosts error:', e);
@@ -2062,7 +2085,7 @@ async function loadPosts() {
 
 function renderPostCard(p) {
   const card = document.createElement('div');
-  card.className = 'post-card';
+  card.className = 'post-card glass-materialize-light';
   card.dataset.postId = p.id;
 
   const header = document.createElement('div');

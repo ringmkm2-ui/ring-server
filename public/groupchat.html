@@ -182,7 +182,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.27 beta</div>
+  <div class="version-badge">Bro Chat v1.28.28 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -858,8 +858,8 @@ document.getElementById('confNo').onclick=()=>{document.getElementById('confOv')
 // 既読モーダル
 function openReadModal(readers,t){
   const list=document.getElementById('readList');list.innerHTML='';
-  readers.forEach(m=>{
-    const d=document.createElement('div');d.className='litem';
+  readers.forEach((m,idx)=>{
+    const d=document.createElement('div');d.className='litem glass-materialize-light';d.style.animationDelay=Math.min(idx*30,240)+'ms';
     const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
     if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
     d.appendChild(av);
@@ -874,9 +874,9 @@ document.getElementById('readOv').onclick=e=>{if(e.target===document.getElementB
 // メンバーモーダル
 function openMemModal(){
   const list=document.getElementById('memList');list.innerHTML='';
-  gi.members.forEach(m=>{
+  gi.members.forEach((m,idx)=>{
     const isMe=m.id===myUserId;
-    const d=document.createElement('div');d.className='litem';
+    const d=document.createElement('div');d.className='litem glass-materialize-light';d.style.animationDelay=Math.min(idx*30,240)+'ms';
     const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
     if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
     d.appendChild(av);

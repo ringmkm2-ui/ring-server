@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.27 beta</div>
+  <div class="version-badge">Bro Chat v1.28.28 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -316,7 +316,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     </button>
 
     <!-- Live Translate 専用パネル(Google Phone風: 2言語の会話ログを吹き出しで縦に表示) -->
-    <div id="liveTranslatePanel" style="display:none;position:fixed;inset:0;z-index:700;background:linear-gradient(160deg,#4c6ef5,#3b5bdb);display:none;flex-direction:column">
+    <div id="liveTranslatePanel" style="display:none;position:fixed;inset:0;z-index:700;background:linear-gradient(160deg,#4c6ef5,#3b5bdb);flex-direction:column;opacity:0;transform:scale(0.96) translateY(10px);transition:opacity 0.32s var(--glass-ease,ease),transform 0.32s var(--glass-spring,ease)">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 16px 8px;color:#fff">
         <button id="closeLiveTranslateBtn" type="button" class="glass-interactive" style="background:rgba(255,255,255,.15);border:none;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:18px">←</button>
         <div style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
@@ -378,8 +378,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </div>
 
       <!-- 通話メモモーダル -->
-      <div id="callNoteModal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.5);align-items:flex-end;justify-content:center">
-        <div class="glass-regular" style="width:100%;max-width:480px;border-radius:24px 24px 0 0;padding:20px;max-height:70vh;display:flex;flex-direction:column">
+      <div id="callNoteModal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.5);align-items:flex-end;justify-content:center;opacity:0;transition:opacity 0.25s ease">
+        <div id="callNoteSheet" class="glass-regular" style="width:100%;max-width:480px;border-radius:24px 24px 0 0;padding:20px;max-height:70vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform 0.3s var(--glass-spring,ease)">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <span style="font-weight:700;color:#fff;font-size:16px" data-i18n="call_note">通話メモ</span>
             <button id="closeCallNoteBtn" type="button" class="glass-interactive" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 10px">×</button>
@@ -2113,7 +2113,11 @@ function cleanupCall() {
     if (assistBtn) assistBtn.style.background = '';
   }
   const ltPanel = document.getElementById('liveTranslatePanel');
-  if (ltPanel) ltPanel.style.display = 'none';
+  if (ltPanel) {
+    ltPanel.style.display = 'none';
+    ltPanel.style.opacity = '0';
+    ltPanel.style.transform = 'scale(0.96) translateY(10px)';
+  }
   if (typeof requestCallSummaryIfAny === 'function') {
     requestCallSummaryIfAny();
   }
@@ -2478,6 +2482,7 @@ let translateQueue = Promise.resolve(); // 翻訳リクエストの順序を保�
 function addTranslateBubble(originalText, translatedText, isMine) {
   if (!liveTranslateLog) return;
   const wrap = document.createElement('div');
+  wrap.className = 'glass-materialize-light';
   wrap.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? 'flex-end' : 'flex-start'};gap:2px;`;
 
   const bubble = document.createElement('div');
@@ -2538,10 +2543,21 @@ function handleIncomingTranscript(text, isFinal) {
 
 // Live Translateパネルを開く/閉じる
 function openLiveTranslatePanel() {
-  if (liveTranslatePanel) liveTranslatePanel.style.display = 'flex';
+  if (!liveTranslatePanel) return;
+  liveTranslatePanel.style.display = 'flex';
+  // display変更直後にtransitionを発火させるため1フレーム待つ
+  requestAnimationFrame(() => {
+    liveTranslatePanel.style.opacity = '1';
+    liveTranslatePanel.style.transform = 'scale(1) translateY(0)';
+  });
 }
 function closeLiveTranslatePanel() {
-  if (liveTranslatePanel) liveTranslatePanel.style.display = 'none';
+  if (!liveTranslatePanel) return;
+  liveTranslatePanel.style.opacity = '0';
+  liveTranslatePanel.style.transform = 'scale(0.96) translateY(10px)';
+  setTimeout(() => {
+    if (liveTranslatePanel.style.opacity === '0') liveTranslatePanel.style.display = 'none';
+  }, 320);
 }
 document.getElementById('closeLiveTranslateBtn').onclick = closeLiveTranslatePanel;
 
@@ -2635,10 +2651,29 @@ syncLangLabels();
 // --- 通話メモ ---
 const callNoteOpenBtn = document.getElementById('callNoteOpenBtn');
 const callNoteModal = document.getElementById('callNoteModal');
+const callNoteSheet = document.getElementById('callNoteSheet');
 const callNoteText = document.getElementById('callNoteText');
+
+function openCallNoteModal() {
+  if (!callNoteModal) return;
+  callNoteModal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    callNoteModal.style.opacity = '1';
+    if (callNoteSheet) callNoteSheet.style.transform = 'translateY(0)';
+  });
+}
+function closeCallNoteModal() {
+  if (!callNoteModal) return;
+  callNoteModal.style.opacity = '0';
+  if (callNoteSheet) callNoteSheet.style.transform = 'translateY(100%)';
+  setTimeout(() => {
+    if (callNoteModal.style.opacity === '0') callNoteModal.style.display = 'none';
+  }, 300);
+}
+
 if (callNoteOpenBtn && callNoteModal) {
   callNoteOpenBtn.onclick = async () => {
-    callNoteModal.style.display = 'flex';
+    openCallNoteModal();
     if (currentCallId) {
       try {
         const res = await fetch('/api/call-assist/notes/' + currentCallId, {
@@ -2652,11 +2687,9 @@ if (callNoteOpenBtn && callNoteModal) {
     }
   };
 }
-document.getElementById('closeCallNoteBtn').onclick = () => {
-  callNoteModal.style.display = 'none';
-};
+document.getElementById('closeCallNoteBtn').onclick = closeCallNoteModal;
 document.getElementById('saveCallNoteBtn').onclick = async () => {
-  if (!currentCallId) { callNoteModal.style.display = 'none'; return; }
+  if (!currentCallId) { closeCallNoteModal(); return; }
   try {
     await fetch('/api/call-assist/notes', {
       method: 'POST',
@@ -2667,7 +2700,7 @@ document.getElementById('saveCallNoteBtn').onclick = async () => {
   } catch (e) {
     console.warn('[callAssist] メモ保存失敗:', e.message);
   }
-  callNoteModal.style.display = 'none';
+  closeCallNoteModal();
 };
 
 // 通話終了時: 字幕ログが溜まっていれば要約をリクエストしておく

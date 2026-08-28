@@ -417,6 +417,17 @@
   animation: glass-materialize-light 0.32s var(--glass-spring) both;
 }
 
+/* ==========================================================================
+   タブ/ページ切り替えアニメーション(トーク⇔ホーム⇔投稿)
+   ========================================================================== */
+@keyframes lg-page-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.lg-page-enter {
+  animation: lg-page-in 0.32s var(--glass-spring) both;
+}
+
 /* View Transitions */
 ::view-transition-old(*),
 ::view-transition-new(*) {
