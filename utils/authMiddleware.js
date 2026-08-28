@@ -26,7 +26,12 @@ const { JWT_SECRET } = require('./jwtSecret');
 async function verifyTokenWithRevocation(token) {
   let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
+    // algorithms を明示的に HS256 のみに限定する。
+    // 指定しない場合ライブラリのデフォルト挙動に依存することになり、
+    // "alg":"none" を許容する設定や実装の取り違えを機械的に防げなくなるため、
+    // 攻撃者がヘッダーを書き換えて署名検証をバイパスする"alg:none"攻撃への
+    // 防御として明示指定しておく。
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
   } catch (e) {
     return null;
   }

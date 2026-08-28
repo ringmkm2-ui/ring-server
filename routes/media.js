@@ -125,9 +125,11 @@ router.get('/download/:fileId', verifyToken, asyncHandler(async (req, res) => {
 }));
 
 // --- Cloudinary からメディアを削除 ---
-const CLOUDINARY_CLOUD_NAME = 'a6rxinoz';
-const CLOUDINARY_API_KEY = '312198856948918';
-const CLOUDINARY_API_SECRET = '1ZwGejRa5kqG4AfEbEancn1N7Ag';
+// 鍵はRenderの環境変数から読む(以前はソースコードにハードコードされており、
+// GitHubリポジトリを閲覧できる人間には全て筒抜けだった重大な機密情報漏洩だった)。
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 
 function generateCloudinarySig(params) {
   const crypto = require('crypto');
@@ -140,9 +142,30 @@ function generateCloudinarySig(params) {
 
 router.post('/delete', verifyToken, asyncHandler(async (req, res) => {
   const { publicId } = req.body;
-  
+
   if (!publicId) {
     return res.status(400).json({ error: 'publicId is required' });
+  }
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    return res.status(500).json({ error: 'Cloudinary設定がサーバーに未設定です' });
+  }
+
+  // 認可チェック: 以前はここに一切のアクセス制御が無く、有効なJWTさえ持っていれば
+  // (=Bro Chatの誰であっても) publicIdを知るだけで他人がアップロードした画像/動画を
+  // 勝手に削除できてしまう重大な脆弱性(IDOR)があった。
+  // publicIdは自分が送信者(sender_id)であるメッセージのcontentに含まれている場合のみ
+  // 削除を許可する(DM・グループメッセージの両方をチェック)。
+  const escapedId = publicId.replace(/[%_]/g, c => '\\' + c); // LIKE用エスケープ
+  const ownDm = await db.get(
+    "SELECT id FROM messages WHERE sender_id = ? AND content LIKE ? ESCAPE '\\\\'",
+    [req.user.userId, `%"mediaPublicId":"${escapedId}"%`]
+  );
+  const ownGroupMsg = await db.get(
+    "SELECT id FROM group_messages WHERE sender_id = ? AND content LIKE ? ESCAPE '\\\\'",
+    [req.user.userId, `%"mediaPublicId":"${escapedId}"%`]
+  );
+  if (!ownDm && !ownGroupMsg) {
+    return res.status(403).json({ error: 'このメディアを削除する権限がありません' });
   }
 
   try {
