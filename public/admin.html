@@ -47,7 +47,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .msg-wrap{display:flex;flex-direction:column;max-width:72%}
 .outgoing .msg-wrap{align-items:flex-end}
 .incoming .msg-wrap{align-items:flex-start}
-.bubble{padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
+.bubble{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
 .outgoing .bubble{border-radius:20px 20px 4px 20px}
 .incoming .bubble{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
 .bubble.media-bub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
@@ -210,7 +210,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.30 beta</div>
+  <div class="version-badge">Bro Chat v1.28.31 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -279,6 +279,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="ctx-div"></div>
     <button type="button" class="ctx-btn" style="color:#3b82f6" id="replyBtn" data-i18n="reply">リプライ</button>
     <div class="ctx-div"></div>
+    <button type="button" class="ctx-btn" id="copyBtn" data-i18n="copy">コピー</button>
+    <div class="ctx-div"></div>
     <button type="button" class="ctx-btn ctx-edit" id="editBtn" data-i18n="edit">編集する</button>
     <div class="ctx-div"></div>
     <button type="button" class="ctx-btn ctx-pin" id="pinBtn" data-i18n="pin">ピン留め</button>
@@ -292,6 +294,9 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="mm-inner" id="mmInner"></div>
     <button class="mm-close" id="mmClose" type="button">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="mm-close" id="mmDownload" type="button" style="right:74px" title="ダウンロード">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     </button>
   </div>
 
@@ -1162,8 +1167,24 @@ function renderMessageImpl(msg) {
     rDiv.style.cssText = 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
     msg.reactions.forEach(r => {
       const rb = document.createElement('span');
-      rb.style.cssText = 'background:rgba(0,0,0,.06);border-radius:10px;padding:2px 6px;font-size:12px;';
+      // タップで同じ絵文字を再送信するとサーバー側でトグル解除される
+      rb.style.cssText = 'background:rgba(0,0,0,.06);border-radius:10px;padding:2px 6px;font-size:12px;cursor:pointer;user-select:none;transition:transform .15s ease,background .15s ease;';
       rb.textContent = `${r.emoji}${r.count > 1 ? ' ' + r.count : ''}`;
+      rb.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+        api('/api/messages/react', { method: 'POST', body: JSON.stringify({ messageId: msg.id, emoji: r.emoji }) })
+          .then(data => {
+            if (data.ok) {
+              const local = realMessages.find(m => m.id === msg.id);
+              if (local) {
+                local.reactions = data.reactions;
+                renderMessage(local);
+              }
+            }
+          })
+          .catch(err => console.error('react toggle error:', err));
+      });
       rDiv.appendChild(rb);
     });
     bubble.appendChild(rDiv);
@@ -1633,19 +1654,78 @@ if (otherId) {
 
 function attachPress(msgDiv, wrap, bubble, own) {
   let timer; let lp = false;
+  // スワイプ判定用の状態。横に一定量スワイプするとリプライを開始する。
+  let swipeStartX = 0, swipeStartY = 0, swiping = false, swipeFired = false;
+  const SWIPE_TRIGGER = 60;   // これ以上動かしたらリプライ確定
+  const SWIPE_MAX = 90;       // 見た目上の最大移動量
+  const DIR = own ? -1 : 1;   // 自分の吹き出しは左へ、相手のは右へ引く
+
   const start = ev => {
     lp = false;
+    swipeFired = false;
     const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
     const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    swipeStartX = cx; swipeStartY = cy; swiping = true;
     timer = setTimeout(() => { lp = true; showMenu(msgDiv, wrap, bubble, cx, cy, own); }, 400);
   };
-  const cancel = () => clearTimeout(timer);
+
+  const move = ev => {
+    if (!swiping) return;
+    const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    const dx = cx - swipeStartX;
+    const dy = cy - swipeStartY;
+
+    // 縦方向の動きが大きい場合はスクロール操作とみなして何もしない
+    if (Math.abs(dy) > Math.abs(dx)) { clearTimeout(timer); return; }
+
+    // 指定方向へのスワイプのみ受け付ける
+    const travel = dx * DIR;
+    if (travel <= 0) return;
+
+    clearTimeout(timer); // スワイプ中は長押しメニューを出さない
+    const shift = Math.min(travel, SWIPE_MAX) * DIR;
+    bubble.style.transition = 'none';
+    bubble.style.transform = `translateX(${shift}px)`;
+
+    // 閾値を超えた瞬間に一度だけ触覚フィードバックを返す
+    if (!swipeFired && travel >= SWIPE_TRIGGER) {
+      swipeFired = true;
+      if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+    }
+  };
+
+  const end = ev => {
+    clearTimeout(timer);
+    if (!swiping) return;
+    swiping = false;
+    bubble.style.transition = 'transform .28s cubic-bezier(.34,1.56,.64,1)';
+    bubble.style.transform = 'translateX(0)';
+    if (swipeFired) {
+      swipeFired = false;
+      startReplyTo(msgDiv.dataset.msgId);
+    }
+  };
+
+  const cancel = () => {
+    clearTimeout(timer);
+    if (swiping) {
+      swiping = false;
+      swipeFired = false;
+      bubble.style.transition = 'transform .28s cubic-bezier(.34,1.56,.64,1)';
+      bubble.style.transform = 'translateX(0)';
+    }
+  };
+
   bubble.addEventListener('contextmenu', ev => { ev.preventDefault(); showMenu(msgDiv, wrap, bubble, ev.clientX, ev.clientY, own); });
   bubble.addEventListener('mousedown', start);
   bubble.addEventListener('touchstart', start, { passive: true });
-  bubble.addEventListener('mouseup', cancel);
+  bubble.addEventListener('mousemove', move);
+  bubble.addEventListener('touchmove', move, { passive: true });
+  bubble.addEventListener('mouseup', end);
+  bubble.addEventListener('touchend', end);
   bubble.addEventListener('mouseleave', cancel);
-  bubble.addEventListener('touchend', cancel);
+  bubble.addEventListener('touchcancel', cancel);
 }
 
 function showMenu(msgDiv, wrap, bubble, x, y, own) {
@@ -1669,27 +1749,62 @@ function hideMenu() {
 
 document.getElementById('menuOv').onclick = hideMenu;
 
-document.getElementById('replyBtn').onclick = () => {
-  // 以前は msgUnderContext という未定義の変数を参照しており、常にundefinedのため
-  // リプライが一切機能していなかった。showMenu()が実際に設定するactiveMsg
-  // (長押しされたメッセージのDOM要素、dataset.msgIdにメッセージIDが入っている)
-  // から正しく取得する。
+// コピー: 長押ししたメッセージの本文をクリップボードへコピーする。
+// 吹き出しはuser-select:noneにしてあるため手動選択ができない代わりに、
+// このボタンから明示的にコピーできるようにしている。
+document.getElementById('copyBtn').onclick = async () => {
   const msgId = activeMsg ? activeMsg.dataset.msgId : null;
-  if (msgId) {
-    const msg = realMessages.find(m => m.id === msgId);
-    if (msg) {
-      replyingTo = msgId;
-      const preview = document.getElementById('replyPreview');
-      const { displayText: rText, mediaType: rMediaType } = parseMsgContent(msg.content);
-      const rPreview = rMediaType === 'image' ? '[画像]'
-        : rMediaType === 'video' ? '[動画]'
-        : rText.substring(0, 100);
-      document.getElementById('replyText').textContent = rPreview;
-      preview.style.display = 'block';
-      setTimeout(() => { preview.style.opacity = '1'; }, 0);
-      document.getElementById('msgInput').focus();
+  if (!msgId) { hideMenu(); return; }
+  const msg = realMessages.find(m => m.id === msgId);
+  if (!msg) { hideMenu(); return; }
+
+  const { displayText, mediaType } = parseMsgContent(msg.content);
+  const textToCopy = displayText || (mediaType === 'image' ? '[画像]' : mediaType === 'video' ? '[動画]' : '');
+  if (!textToCopy) { hideMenu(); return; }
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(textToCopy);
+    } else {
+      // HTTP環境やクリップボードAPI非対応ブラウザ向けのフォールバック
+      const ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
     }
+    if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+  } catch (e) {
+    console.error('copy error:', e);
   }
+  hideMenu();
+};
+
+// リプライ開始を共通関数に切り出す。
+// コンテキストメニューの「リプライ」ボタンと、吹き出しの横スワイプの
+// 両方からこの関数を呼ぶ。
+function startReplyTo(msgId) {
+  if (!msgId) return;
+  const msg = realMessages.find(m => m.id === msgId);
+  if (!msg) return;
+  replyingTo = msgId;
+  const preview = document.getElementById('replyPreview');
+  const { displayText: rText, mediaType: rMediaType } = parseMsgContent(msg.content);
+  const rPreview = rMediaType === 'image' ? '[画像]'
+    : rMediaType === 'video' ? '[動画]'
+    : rText.substring(0, 100);
+  document.getElementById('replyText').textContent = rPreview;
+  preview.style.display = 'block';
+  setTimeout(() => { preview.style.opacity = '1'; }, 0);
+  document.getElementById('msgInput').focus();
+}
+
+document.getElementById('replyBtn').onclick = () => {
+  // showMenu()が設定するactiveMsg(長押しされたメッセージのDOM要素、
+  // dataset.msgIdにメッセージIDが入っている)から対象を取得する。
+  startReplyTo(activeMsg ? activeMsg.dataset.msgId : null);
   hideMenu();
 };
 
@@ -1843,6 +1958,30 @@ window.addEventListener('touchmove', e => {
 window.addEventListener('mouseup', () => { dragging=false; tmode=''; });
 window.addEventListener('touchend', () => { dragging=false; tmode=''; });
 document.getElementById('mmClose').onclick = () => { document.getElementById('mediaMod').classList.remove('show'); setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300); };
+
+// プレビュー中のメディアを端末に保存する。
+// blob:/data: URLもCloudinaryのhttps URLも同じ手順で扱えるよう、
+// 一度fetchしてBlob化してからダウンロードさせる。
+document.getElementById('mmDownload').onclick = async () => {
+  const el = document.getElementById('mmInner').firstElementChild;
+  if (!el || !el.src) return;
+  try {
+    const res = await fetch(el.src);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const isVideo = el.tagName.toLowerCase() === 'video';
+    a.download = `brochat_${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+  } catch (e) {
+    console.error('download error:', e);
+  }
+};
 document.getElementById('mediaMod').onclick = e => { if(e.target===document.getElementById('mediaMod')){document.getElementById('mediaMod').classList.remove('show');setTimeout(()=>{document.getElementById('mmInner').innerHTML='';},300);} };
 
 // ==================== 音声通話 (WebRTC) ====================
