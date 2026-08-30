@@ -65,6 +65,7 @@
     send_video: { ja: "動画を送る", en: "Send Video", "zh-CN": "发送视频", ko: "동영상 보내기" },
     reaction: { ja: "リアクション", en: "React", "zh-CN": "回应", ko: "반응" },
     reply: { ja: "リプライ", en: "Reply", "zh-CN": "回复", ko: "답장" },
+    copy: { ja: "コピー", en: "Copy", "zh-CN": "复制", ko: "복사" },
     replying_to: { ja: "リプライ中:", en: "Replying to:", "zh-CN": "正在回复：", ko: "답장 중:" },
     calling: { ja: "呼び出し中...", en: "Calling...", "zh-CN": "呼叫中...", ko: "발신 중..." },
     unsend: { ja: "送信取り消し", en: "Unsend", "zh-CN": "撤回", ko: "전송 취소" },

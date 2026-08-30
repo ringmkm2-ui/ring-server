@@ -47,9 +47,13 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .msg-wrap{display:flex;flex-direction:column;max-width:72%}
 .outgoing .msg-wrap{align-items:flex-end}
 .incoming .msg-wrap{align-items:flex-start}
-.bubble{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
+/* NOTE: 以前は吹き出し1つ1つにbackdrop-filter:blur(20px)をかけていたが、
+   メッセージが増えるほどブラー処理が積み上がりモバイルで極端に重くなる。
+   背景が淡いグラデーションのため、半透明白の重ね塗りでほぼ同じ見た目を
+   維持できるので、blurをやめて不透明度を上げる方式に変更した。 */
+.bubble{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
 .outgoing .bubble{border-radius:20px 20px 4px 20px}
-.incoming .bubble{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
+.incoming .bubble{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.82)}
 .bubble.media-bub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
 .bubble.media-bub img,.bubble.media-bub video{display:block;width:100%;max-height:280px;object-fit:cover;cursor:pointer}
 .file-inner{display:flex;align-items:center;gap:10px}
@@ -107,28 +111,27 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .menu-overlay.show{opacity:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
 .ctx-menu{position:absolute;background:rgba(255,255,255,.6);backdrop-filter:blur(40px) saturate(200%);-webkit-backdrop-filter:blur(40px) saturate(200%);border:1px solid rgba(255,255,255,.7);border-top:1px solid rgba(255,255,255,1);border-left:1px solid rgba(255,255,255,1);box-shadow:0 20px 50px rgba(0,0,0,.12);min-width:190px;z-index:200;pointer-events:none;border-radius:24px;transform:scale(.4) translateY(30px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .2s ease;overflow:hidden}
 .ctx-menu.show{pointer-events:auto;transform:scale(1) translateY(0);opacity:1}
+/* NOTE: 親の.ctx-menuが既にbackdrop-filter:blur(40px)をかけているため、
+   ここで入れ子のbackdrop-filterを重ねてはいけない。
+   入れ子のbackdrop-filterはモバイルで極端に重く、描画がズレて
+   白い矩形が浮いて見える表示崩れの原因になっていた。 */
 .ctx-btn{
-  background:rgba(255,255,255,0.18);
-  backdrop-filter:blur(16px) saturate(180%);
-  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  background:transparent;
   border:none;border-radius:14px;
   padding:14px 18px;width:100%;
   display:flex;align-items:center;gap:10px;
   font-size:15px;font-weight:600;cursor:pointer;
-  transition:transform 0.28s cubic-bezier(0.34,1.56,0.64,1),
-             box-shadow 0.28s ease,
-             background 0.2s ease;
-  margin-bottom:2px;
+  transition:background 0.15s ease;
+  -webkit-tap-highlight-color:transparent;
 }
+/* メニュー項目は拡大させず、背景のハイライトだけで押下を表現する
+   (項目が膨らむとメニュー内で隣とぶつかって崩れて見えるため) */
 .ctx-btn:active{
-  animation:lg-press-flash 0.38s cubic-bezier(0.22,1,0.36,1) forwards;
-  transform:scale(1.04)!important;
+  background:rgba(255,255,255,0.55);
 }
 @media(hover:hover){
   .ctx-btn:hover{
     background:rgba(255,255,255,0.35);
-    transform:scale(1.02);
-    box-shadow:0 4px 16px rgba(0,0,0,0.10),inset 0 0 10px 2px rgba(255,255,255,0.4);
   }
 }
 .ctx-edit{color:#007aff}.ctx-pin{color:#8b5cf6}.ctx-del{color:#ff3b30}.ctx-react{color:#f59e0b}
@@ -210,7 +213,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.31 beta</div>
+  <div class="version-badge">Bro Chat v1.28.32 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -279,7 +282,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="ctx-div"></div>
     <button type="button" class="ctx-btn" style="color:#3b82f6" id="replyBtn" data-i18n="reply">リプライ</button>
     <div class="ctx-div"></div>
-    <button type="button" class="ctx-btn" id="copyBtn" data-i18n="copy">コピー</button>
+    <button type="button" class="ctx-btn" style="color:#0f172a" id="copyBtn" data-i18n="copy">コピー</button>
     <div class="ctx-div"></div>
     <button type="button" class="ctx-btn ctx-edit" id="editBtn" data-i18n="edit">編集する</button>
     <div class="ctx-div"></div>

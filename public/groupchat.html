@@ -51,7 +51,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .out .mwrap{align-items:flex-end}
 .inc .mwrap{align-items:flex-start}
 .sname{font-size:11px;font-weight:600;color:#64748b;margin-bottom:2px;padding-left:4px}
-.bub{padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.35);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
+/* admin.htmlと同様、吹き出しごとのbackdrop-filterはメッセージ数に比例して
+   重くなるため使わず、半透明白の重ね塗りで見た目を維持する。 */
+.bub{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:11px 15px;font-size:15px;line-height:1.5;position:relative;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(0,0,0,.04);color:#0f172a;display:flex;flex-direction:column;align-items:flex-start;min-width:80px;word-break:break-all;overflow-wrap:break-word}
 .out .bub{border-radius:20px 20px 4px 20px}
 .inc .bub{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
 .bub.mbub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
@@ -182,7 +184,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.31 beta</div>
+  <div class="version-badge">Bro Chat v1.28.32 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>

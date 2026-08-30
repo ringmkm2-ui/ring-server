@@ -171,36 +171,22 @@
     }
   }
 
-  // ページ内の全glassボタンにフィルターを適用
+  // NOTE: 以前はページ内の全ボタンに対してSVG屈折フィルターを自動適用し、
+  // さらにMutationObserverでDOM変化のたびに再適用していた。
+  // しかしこれは以下の深刻な問題を引き起こしていたため廃止した:
+  //   1. メッセージ描画や4秒ごとのリスト更新のたびにObserverが発火する
+  //   2. そのたびにcanvasでピクセル単位の変位マップを再計算する(w×hループ)
+  //   3. 生成したSVG要素がbodyに溜まり続けメモリリークになる
+  //   4. 結果としてボタンがチカチカ再描画され、動作全体が重くなる
+  // ボタン程度の質感はCSSのbackdrop-filter(GPU処理)で十分表現できるため、
+  // 自動適用はやめてCSS側(liquidGlass.css)に一本化した。
+  // applyGlassFilter()自体は残してあるので、必要な箇所だけ個別に呼べる。
   function applyGlassFiltersToAll() {
-    // 既にフィルター適用済みのものはスキップ
-    const targets = document.querySelectorAll(
-      '.glass-interactive:not([data-lg-applied]),' +
-      '.btn-glass:not([data-lg-applied]),' +
-      '.glass-send-btn:not([data-lg-applied]),' +
-      '.glass-plus-btn:not([data-lg-applied]),' +
-      '.glass-clear:not([data-lg-applied]),' +
-      '.glass-btn:not([data-lg-applied]),' +
-      '.ctx-btn:not([data-lg-applied]),' +
-      '.mm-close:not([data-lg-applied]),' +
-      '.phone-btn:not([data-lg-applied]),' +
-      '.plus-btn:not([data-lg-applied]),' +
-      '.lg-btn:not([data-lg-applied])'
-    );
-    targets.forEach(el => {
-      el.dataset.lgApplied = '1';
-      // レイアウト完了後に適用（getBoundingClientRectが正確になってから）
-      requestAnimationFrame(() => applyGlassFilter(el));
-    });
+    // 自動適用は行わない(意図的に何もしない)
   }
 
-  // 動的に生成されるボタン(トークリストの項目、メニューなど)にも定期的に適用する。
-  // MutationObserverでDOM変化を監視し、新規追加分だけを拾う。
   function watchForNewGlassButtons() {
-    const observer = new MutationObserver(() => {
-      applyGlassFiltersToAll();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    // DOM監視も行わない(意図的に何もしない)
   }
 
   // ============================================================
@@ -384,20 +370,7 @@
     if (target && !target.dataset.noAutoHaptic) haptic('light');
   }, { passive: true });
 
-  // DOMContentLoaded後に全ボタンへフィルター適用 + 動的追加分の監視開始
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      // レイアウト安定を待ってから適用
-      setTimeout(() => {
-        applyGlassFiltersToAll();
-        watchForNewGlassButtons();
-      }, 300);
-    });
-  } else {
-    setTimeout(() => {
-      applyGlassFiltersToAll();
-      watchForNewGlassButtons();
-    }, 300);
-  }
+  // ボタンの質感はCSS(liquidGlass.css)のbackdrop-filterに任せているため、
+  // 起動時にSVGフィルターを流し込む処理は行わない。
 
 })();
