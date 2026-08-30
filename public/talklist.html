@@ -380,7 +380,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.32 beta</div>
+  <div class="version-badge">Bro Chat v1.28.33 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -992,7 +992,16 @@ async function loadTalks(animate = false) {
       if (!b.lastTime) return -1;
       return new Date(b.lastTime) - new Date(a.lastTime);
     });
-    
+
+    // 4秒ごとの自動更新は「変化があった時だけ」DOMを再構築する。
+    // タブ切り替え等の明示的な操作(animate=true)は毎回きちんと
+    // アニメーション付きで再描画したいので、差分チェックは自動更新時のみ行う。
+    const mergedFingerprint = JSON.stringify(merged);
+    if (!animate && mergedFingerprint === window.__lastTalkListFingerprint) {
+      return; // 前回と同じ内容なので描画をスキップ
+    }
+    window.__lastTalkListFingerprint = mergedFingerprint;
+
     if (merged.length === 0) {
       list.textContent = '';
       const empty = document.createElement('div');
@@ -1738,8 +1747,17 @@ async function loadPendingRequests(animate = false) {
 
     if (!Array.isArray(pending) || pending.length === 0) {
       card.style.display = 'none';
+      window.__lastPendingFingerprint = '[]';
       return;
     }
+
+    // loadTalksと同様、自動更新時(animate=false)のみ差分チェックしてチカチカを防ぐ
+    const pendingFingerprint = JSON.stringify(pending);
+    if (!animate && pendingFingerprint === window.__lastPendingFingerprint) {
+      card.style.display = 'block';
+      return;
+    }
+    window.__lastPendingFingerprint = pendingFingerprint;
 
     card.style.display = 'block';
     list.textContent = '';

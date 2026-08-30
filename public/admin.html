@@ -213,7 +213,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.32 beta</div>
+  <div class="version-badge">Bro Chat v1.28.33 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -895,9 +895,12 @@ async function loadLazyMedia(placeholder) {
   }
   if (mediaEl) {
     placeholder.replaceWith(mediaEl);
-    let lp = false;
-    setTimeout(() => { lp = true; }, 400);
-    mediaEl.addEventListener('click', () => { if (!lp) openMedia(mediaEl, mediaType); });
+    // 以前はここに「表示から400ms以内のクリックだけ開く」という
+    // ロジックが誤って逆転しており、実質的にタップしても永久に
+    // 画像/動画が開かなくなっていた。attachPress側(bubbleに対する
+    // 長押し判定)と競合しないことは確認済みなので、単純にタップで
+    // 開くだけにする。
+    mediaEl.addEventListener('click', () => openMedia(mediaEl, mediaType));
   }
 }
 

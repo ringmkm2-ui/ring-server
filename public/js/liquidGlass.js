@@ -118,9 +118,16 @@
     return c.toDataURL();
   }
 
-  // SVGフィルターを生成してDOMに挿入
+  // SVGフィルターを生成してDOMに挿入。
+  // 同じ(幅,高さ,角丸,設定)の組み合わせであれば1つのフィルターを使い回す。
+  // 以前はボタン1個ごとに毎回canvasでピクセル単位の変位マップを計算しており、
+  // 同じ見た目のボタンが複数あるだけで無駄な再計算が積み重なっていた。
   let filterIdCounter = 0;
+  const filterCache = new Map();
   function createGlassFilter(w, h, rad, cfg) {
+    const cacheKey = [w, h, rad, cfg.glassThickness, cfg.bezelWidth, cfg.ior, cfg.scaleRatio, cfg.blur, cfg.specularOpacity, cfg.specularSat].join(',');
+    if (filterCache.has(cacheKey)) return filterCache.get(cacheKey);
+
     const id = 'lg-filter-' + (filterIdCounter++);
     const bw = Math.round(cfg.bezelWidth/100 * Math.min(w,h)/2);
     const gt = cfg.glassThickness;
@@ -147,6 +154,7 @@
       </filter>
     </defs>`;
     document.body.appendChild(svg);
+    filterCache.set(cacheKey, id);
     return id;
   }
 
@@ -171,22 +179,41 @@
     }
   }
 
-  // NOTE: 以前はページ内の全ボタンに対してSVG屈折フィルターを自動適用し、
-  // さらにMutationObserverでDOM変化のたびに再適用していた。
-  // しかしこれは以下の深刻な問題を引き起こしていたため廃止した:
+  // NOTE: 以前はページ内の「全ボタン」に対してSVG屈折フィルターを自動適用し、
+  // さらにMutationObserverでDOM変化のたびに再適用していた。これは
   //   1. メッセージ描画や4秒ごとのリスト更新のたびにObserverが発火する
   //   2. そのたびにcanvasでピクセル単位の変位マップを再計算する(w×hループ)
   //   3. 生成したSVG要素がbodyに溜まり続けメモリリークになる
-  //   4. 結果としてボタンがチカチカ再描画され、動作全体が重くなる
-  // ボタン程度の質感はCSSのbackdrop-filter(GPU処理)で十分表現できるため、
-  // 自動適用はやめてCSS側(liquidGlass.css)に一本化した。
-  // applyGlassFilter()自体は残してあるので、必要な箇所だけ個別に呼べる。
+  // という深刻な問題を起こしていたため、DOM監視は完全に廃止する。
+  //
+  // 代わりに、本物のガラス屈折を見せたい「主要な操作ボタン」だけに絞って
+  // ページ読み込み時に1回だけ適用する。同じサイズのボタンはフィルターを
+  // 共有する(createGlassFilterのキャッシュ)ため、対象が増えてもコストは
+  // ほぼ増えない。メッセージ本文やリスト項目のような大量に生成される
+  // 要素は対象に含めない。
+  const HERO_BUTTON_SELECTOR = [
+    '.glass-send-btn',      // メッセージ送信ボタン
+    '.glass-plus-btn',      // 添付/友達追加ボタン
+    '.phone-btn',           // 通話発信ボタン
+    '.savebtn',             // 設定などの保存ボタン
+    '.ngbtn',               // 新規グループ作成ボタン
+  ].join(',');
+
   function applyGlassFiltersToAll() {
-    // 自動適用は行わない(意図的に何もしない)
+    const targets = document.querySelectorAll(
+      HERO_BUTTON_SELECTOR.split(',').map(s => `${s}:not([data-lg-applied])`).join(',')
+    );
+    targets.forEach(el => {
+      el.dataset.lgApplied = '1';
+      requestAnimationFrame(() => applyGlassFilter(el));
+    });
   }
 
   function watchForNewGlassButtons() {
-    // DOM監視も行わない(意図的に何もしない)
+    // DOM全体の監視はコストが高すぎるため行わない。
+    // 通話オーバーレイのように後から出現するヒーローボタン群は、
+    // それぞれの表示処理側でapplyGlassFiltersToAll()を明示的に
+    // 呼び直すことで対応する(admin.htmlのshowCallOverlay等を参照)。
   }
 
   // ============================================================
@@ -370,7 +397,16 @@
     if (target && !target.dataset.noAutoHaptic) haptic('light');
   }, { passive: true });
 
-  // ボタンの質感はCSS(liquidGlass.css)のbackdrop-filterに任せているため、
-  // 起動時にSVGフィルターを流し込む処理は行わない。
+  // 主要ボタン(送信・発信・保存など)にだけ、ページ読み込み後に1回だけ
+  // 本物のガラス屈折フィルターを適用する。DOM監視は行わないため、
+  // これ以降にDOMが変化しても再計算コストは発生しない。
+  function initHeroGlassButtons() {
+    setTimeout(applyGlassFiltersToAll, 300);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHeroGlassButtons);
+  } else {
+    initHeroGlassButtons();
+  }
 
 })();
