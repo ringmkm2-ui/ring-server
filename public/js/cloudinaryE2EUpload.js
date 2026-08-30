@@ -3,6 +3,54 @@
 
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 const CLOUDINARY_UNSIGNED_PRESET = 'brochat_upload'; // Unsigned Upload Preset (設定必須)
+// Cloudinaryの無料プランは画像の最大アップロードサイズが10MB(10485760バイト)に
+// 制限されている。スマートフォンの高画素カメラ(4800万画素等)で撮った写真は
+// 平気で40〜50MBに達するため、その上限に収まるよう事前に圧縮しておかないと
+// 「File size too large」で送信自体が失敗してしまう。
+const CLOUDINARY_IMAGE_LIMIT = 9.5 * 1024 * 1024; // 少し余裕を持たせて9.5MBを目標にする
+
+/**
+ * 画像ファイルがCloudinaryの上限を超えている場合、Canvas経由で
+ * 段階的に解像度と画質を落としながら再エンコードし、上限内に収める。
+ * 動画やGIF、既に上限内のファイルはそのまま返す(圧縮しない)。
+ */
+async function compressImageIfNeeded(file) {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  if (file.size <= CLOUDINARY_IMAGE_LIMIT) return file;
+
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file; // デコードできない形式は諦めて元ファイルのまま送る
+
+  let { width, height } = bitmap;
+  let quality = 0.9;
+  let blob = null;
+
+  // 最大8回まで、解像度を10%ずつ縮小しながら再圧縮を試みる。
+  // JPEG/WebPともに画質より解像度を落とす方が視覚的な劣化が少ないため、
+  // まず画質0.9固定で数回サイズを縮め、それでも収まらなければ画質も下げる。
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+
+    if (blob && blob.size <= CLOUDINARY_IMAGE_LIMIT) break;
+
+    width *= 0.85;
+    height *= 0.85;
+    if (quality > 0.5) quality -= 0.1;
+  }
+
+  bitmap.close?.();
+  if (!blob) return file; // 何らかの理由で圧縮に失敗した場合は元ファイルのまま送る
+
+  console.log(`[cloudinaryE2E] 画像を圧縮しました: ${(file.size/1024/1024).toFixed(1)}MB → ${(blob.size/1024/1024).toFixed(1)}MB`);
+  return new File([blob], file.name, { type: blob.type, lastModified: Date.now() });
+}
 
 class CloudinaryE2EUploader {
   constructor() {
@@ -17,6 +65,10 @@ class CloudinaryE2EUploader {
    * @param {Function} onProgress - 進捗コールバック
    */
   async uploadEncryptedChunked(file, sharedKey, folder = 'brochat', onProgress) {
+    // Cloudinaryの上限(10MB)を超える画像は、暗号化・送信前に圧縮しておく。
+    // 動画や既に上限内のファイルはそのまま(compressImageIfNeeded内で判定)。
+    file = await compressImageIfNeeded(file);
+
     const fileId = this.generateFileId();
     const chunks = Math.ceil(file.size / CHUNK_SIZE);
 

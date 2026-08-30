@@ -397,16 +397,21 @@
     if (target && !target.dataset.noAutoHaptic) haptic('light');
   }, { passive: true });
 
-  // 主要ボタン(送信・発信・保存など)にだけ、ページ読み込み後に1回だけ
-  // 本物のガラス屈折フィルターを適用する。DOM監視は行わないため、
-  // これ以降にDOMが変化しても再計算コストは発生しない。
-  function initHeroGlassButtons() {
-    setTimeout(applyGlassFiltersToAll, 300);
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initHeroGlassButtons);
-  } else {
-    initHeroGlassButtons();
-  }
+  // NOTE: 以前はここで主要ボタンに backdrop-filter: url(#svgフィルター) を
+  // 自動適用していたが、これが「チカチカ」「重い」問題の真因だった。
+  //
+  // 生成コスト(canvas計算)はキャッシュで解決できたが、根本的な問題は
+  // それとは別で、backdrop-filter: url() は"生きたフィルター"であり、
+  // 一度適用したら終わりではなく、要素の背後にある内容が変わるたびに
+  // feGaussianBlur → feDisplacementMap → feComposite → feBlend という
+  // 重い処理チェーンを毎フレーム再計算し続ける。
+  // 送信ボタンのように常時画面に出ていてチャットが頻繁にスクロール・
+  // 更新される場所では、その裏側が変わるたびにGPUがこれをやり直すため
+  // モバイルでコマ落ち(チカチカして見える)の原因になっていた。
+  //
+  // ボタンの見た目より安定動作を優先し、自動適用は行わない。
+  // applyGlassFilter()自体はAPIとして残してあるので、スクロールしない
+  // 静的な画面(例: ログイン画面の単発ボタン等)でだけ個別に使うのは
+  // 比較的安全だが、チャット画面のような動きの多い場所では避けること。
 
 })();
