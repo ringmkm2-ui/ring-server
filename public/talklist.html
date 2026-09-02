@@ -118,7 +118,9 @@ html.dark-mode{
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
-.tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
+/* tav: トークリストのアバター。親の.cardが既にbackdrop-filter:blur(20px)を
+   持つため、入れ子backdrop-filterを避ける。 */
+.tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.55);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .group-default-av{position:relative}
 .tbody{flex:1;min-width:0}
 .ttr{display:flex;justify-content:space-between;margin-bottom:4px}
@@ -380,7 +382,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.34 beta</div>
+  <div class="version-badge">Bro Chat v1.28.35 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->

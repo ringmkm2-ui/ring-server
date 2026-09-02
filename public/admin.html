@@ -30,12 +30,22 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .app-header-container{padding:14px 16px}
 .app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
 .back-link{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
-.partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+/* partner-avatar: ヘッダー内のアバター。親の.app-header-barが既に
+   backdrop-filter:blur(30px)を持つため、入れ子backdrop-filterを外す。
+   画像で背景を覆うため、そもそもここのblurはほぼ視認されていなかった。 */
+.partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
 .name{font-weight:700;font-size:15px;color:#1e293b}
 .status{font-size:12px;font-weight:600;color:#059669}
 /* phone-btn: 発信ボタン。liquidGlass.cssの.glass-clearに背景/ぼかし/縁は任せ、
    ここでは形状(円形・サイズ)のみ定義する。 */
-.phone-btn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:38px;height:38px}
+/* phone-btn: ヘッダー内の通話ボタン。親の.app-header-barが既に
+   backdrop-filter:blur(30px)を持つため、入れ子backdrop-filterを避ける。 */
+.phone-btn{
+  border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  width:38px;height:38px;
+  background:rgba(255,255,255,0.7);
+  border:1px solid rgba(255,255,255,0.6);
+}
 .pin-banner{position:relative;z-index:10;margin:0 16px 6px;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(-6px);transition:all .3s ease;pointer-events:none}
 .pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
 .pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -75,21 +85,28 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .input-floating-bar.media-open{max-height:230px;border-radius:22px}
 .input-main-row{display:flex;align-items:center;width:100%;height:34px;min-width:0}
 /* plus-btn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
-.plus-btn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
+/* plus-btn: 添付メニューを開くボタン。send-btnと同様の理由で
+   入れ子backdrop-filterを避け、不透明度の高い背景色のみにする。 */
+.plus-btn{
+  border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  width:34px;height:34px;flex-shrink:0;transition:transform .3s ease;
+  background:rgba(255,255,255,0.75);
+  border:1px solid rgba(255,255,255,0.65);
+}
 .input-floating-bar.media-open .plus-btn{transform:rotate(45deg)}
 .txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
 .txt-form input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
 .txt-form input::placeholder{color:rgba(15,23,42,.4)}
-/* glass-send-btn: 送信ボタン。素材(背景/ぼかし/縁)はliquidGlass.cssの
-   .glass-clearに統一し、ここでは形状とホバー/タップ時の追加演出のみ定義する。 */
+/* glass-send-btn: 送信ボタン。
+   親の.input-floating-barが既にbackdrop-filter:blur(35px)を持っているため、
+   ここで入れ子のbackdrop-filterを重ねない(ctx-menu>ctx-btnと同じ問題を回避)。
+   代わりに不透明度の高い背景色だけでコントラストを出す。 */
 .glass-send-btn{
   position:relative;width:36px;height:36px;border-radius:50%;border:none;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;padding:0;
-  background:rgba(255,255,255,0.28);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.55);
-  border-top-color:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.75);
+  border:1px solid rgba(255,255,255,0.65);
+  border-top-color:rgba(255,255,255,0.95);
   box-shadow:0 4px 16px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.8);
   transition:transform 0.28s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.28s ease;
 }
@@ -144,11 +161,11 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .media-modal.show{opacity:1;pointer-events:auto}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
+/* mm-close: 親の.media-modalが既にbackdrop-filter:blur(20px)を持つため、
+   入れ子backdrop-filterを避けて不透明度の高い背景色のみにする。 */
 .mm-close{
   position:absolute;top:22px;right:22px;
-  background:rgba(255,255,255,0.22);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  background:rgba(255,255,255,0.5);
   border:1px solid rgba(255,255,255,0.55);
   border-top-color:rgba(255,255,255,0.9);
   border-radius:50%;width:42px;height:42px;
@@ -182,12 +199,16 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 /* 下部のドッキングされたコントロールパネル(glass-regularで質感を出す)。
    ネイティブの通話アプリのように、丸背景のアイコンボタンをグリッド状に収める。 */
 .call-controls-panel{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;width:calc(100% - 48px);max-width:340px;padding:26px 22px;border-radius:32px;z-index:1;margin-bottom:14px}
-/* 通話終了ボタン: 意味の即時性が重要なため、Clear Glassをベースにしつつ
-   赤みを乗せた「色付きガラス」にする(全面赤ではなく、ガラス質感は保つ)。 */
-.end-btn{background:rgba(239,68,68,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(239,68,68,.4);transform:rotate(135deg)}
-/* 応答/拒否ボタンも同様に色付きClear Glassにする */
-.accept-btn-glass{background:rgba(34,197,94,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35)}
-.decline-btn-glass{background:rgba(239,68,68,.55);backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);-webkit-backdrop-filter:blur(var(--glass-blur-clear,36px)) saturate(140%);border:1px solid rgba(255,255,255,.35)}
+/* call-control-btn(ミュート/スピーカー等): 親のcallControlsPanel(glass-regular)が
+   既にbackdrop-filterを持つため、ここでは重ねずに半透明背景色のみにする。 */
+.call-control-btn{background:rgba(255,255,255,0.22);border:1px solid rgba(255,255,255,0.35)}
+/* 通話終了ボタン: call-overlay(blur40) > callControlsPanel.glass-regular(blur20) >
+   このボタン、という三重の入れ子backdrop-filterになっていたため外す。
+   色付きの半透明背景があるのでブラー無しでも視認性は保たれる。 */
+.end-btn{background:rgba(239,68,68,.75);border:1px solid rgba(255,255,255,.35);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(239,68,68,.4);transform:rotate(135deg)}
+/* 応答/拒否ボタンも同様の理由でbackdrop-filterを外す */
+.accept-btn-glass{background:rgba(34,197,94,.75);border:1px solid rgba(255,255,255,.35)}
+.decline-btn-glass{background:rgba(239,68,68,.75);border:1px solid rgba(255,255,255,.35)}
 .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -213,7 +234,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.34 beta</div>
+  <div class="version-badge">Bro Chat v1.28.35 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -226,10 +247,10 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <div class="name" id="partnerName">ユーザー名</div>
         <div class="status" data-i18n="online">オンライン</div>
       </div>
-      <button class="phone-btn glass-clear glass-interactive" id="videoCallBtn" type="button" style="margin-right:6px">
+      <button class="phone-btn glass-interactive" id="videoCallBtn" type="button" style="margin-right:6px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
       </button>
-      <button class="phone-btn glass-clear glass-interactive" id="phoneBtn" type="button">
+      <button class="phone-btn glass-interactive" id="phoneBtn" type="button">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
     </div>
@@ -249,12 +270,12 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
-        <button class="plus-btn glass-clear glass-interactive" id="plusBtn" type="button">
+        <button class="plus-btn glass-interactive" id="plusBtn" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <form class="txt-form" id="chatForm">
           <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="glass-send-btn glass-clear glass-interactive" id="sendBtn" data-no-auto-haptic="1">
+          <button type="submit" class="glass-send-btn glass-interactive" id="sendBtn" data-no-auto-haptic="1">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
@@ -360,26 +381,26 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div id="callBtnRow" style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:center;width:100%;padding:16px">
         <!-- 上段: 通話機能ボタン -->
         <div style="display:flex;gap:18px;width:100%;justify-content:center;flex-wrap:wrap">
-          <button class="call-control-btn glass-clear glass-interactive" id="addCallBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Add call">
+          <button class="call-control-btn glass-interactive" id="addCallBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Add call">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
-          <button class="call-control-btn glass-clear glass-interactive" id="holdBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Hold call">
+          <button class="call-control-btn glass-interactive" id="holdBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Hold call">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="9" y1="6" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="18"/></svg>
           </button>
-          <button class="call-control-btn glass-clear glass-interactive" id="bluetoothBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Bluetooth">
+          <button class="call-control-btn glass-interactive" id="bluetoothBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Bluetooth">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="17 16 12 20 12 4 17 8"/><polyline points="7 16 12 20 12 4 7 8"/></svg>
           </button>
         </div>
 
         <!-- 下段: 音声・ミュート・キーパッド -->
         <div style="display:flex;gap:18px;width:100%;justify-content:center;flex-wrap:wrap">
-          <button class="call-control-btn glass-clear glass-interactive" id="speakerBtn2" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Speaker">
+          <button class="call-control-btn glass-interactive" id="speakerBtn2" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Speaker">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
           </button>
-          <button class="call-control-btn glass-clear glass-interactive" id="muteBtn2" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Mute">
+          <button class="call-control-btn glass-interactive" id="muteBtn2" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Mute">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
-          <button class="call-control-btn glass-clear glass-interactive" id="callNoteOpenBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Note">
+          <button class="call-control-btn glass-interactive" id="callNoteOpenBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Note">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
           </button>
         </div>

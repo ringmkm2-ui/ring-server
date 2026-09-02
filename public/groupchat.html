@@ -31,13 +31,16 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .hdr-wrap{padding:14px 16px}
 .hdr{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
 .back{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
-.gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;background:rgba(255,255,255,.2);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 10px rgba(0,0,0,.1)}
+/* gav: ヘッダー内のグループアバター。親の.hdrが既にbackdrop-filter:blur(30px)を
+   持つため、入れ子backdrop-filterを外す。 */
+.gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;background:rgba(255,255,255,.55);box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .hinfo{flex:1;min-width:0;cursor:pointer}
 .gname{font-weight:700;font-size:15px;color:#1e293b}
 .mcnt{font-size:12px;color:#64748b;font-weight:500}
 /* hbtn: ヘッダーの電話/設定アイコンボタン。素材はliquidGlass.cssの.glass-clearに
    統一し、形状のみ定義する。 */
-.hbtn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:36px;height:36px;flex-shrink:0}
+/* hbtn: ヘッダー内ボタン。親の.hdrが既にbackdrop-filterを持つため重ねない。 */
+.hbtn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:36px;height:36px;flex-shrink:0;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.5)}
 .pin-banner{position:relative;z-index:10;margin:0 16px 6px;background:rgba(255,255,255,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:9px 12px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(-6px);transition:all .3s ease;pointer-events:none}
 .pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
 .pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -80,7 +83,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .ibar.open{max-height:240px;border-radius:22px}
 .imrow{display:flex;align-items:center;width:100%;height:34px;min-width:0}
 /* pbtn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
-.pbtn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease}
+/* pbtn: 添付メニュー開閉ボタン。親の.ibarが既にbackdrop-filter:blur(35px)を
+   持つため、入れ子backdrop-filterを避けて不透明度の高い背景色のみにする。 */
+.pbtn{border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;width:34px;height:34px;flex-shrink:0;transition:transform .3s ease;background:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.65)}
 .ibar.open .pbtn{transform:rotate(45deg)}
 .tform{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
 #mi{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:15px;color:#0f172a;height:34px}
@@ -115,8 +120,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .cbtn{flex:1;padding:12px;border:none;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer}
 .cbtn.no{color:#0f172a}
 .cbtn.yes{background:rgba(255,59,48,.5);color:#fff}
-.sh-close{width:100%;padding:13px;margin-top:10px;border:none;border-radius:14px;font-size:15px;font-weight:700;color:#0f172a;cursor:pointer}
-.sh-save{width:100%;padding:13px;color:#0f172a;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
+/* sh-close/sh-save: 親の.sheetが既にbackdrop-filter:blur(30px)を
+   持つため、入れ子backdrop-filterを避けて背景色のみにする。 */
+.sh-close{width:100%;padding:13px;margin-top:10px;border:none;border-radius:14px;font-size:15px;font-weight:700;color:#0f172a;cursor:pointer;background:rgba(255,255,255,0.6)}
+.sh-save{width:100%;padding:13px;color:#0f172a;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;background:rgba(255,255,255,0.6)}
 .inv-btn{padding:10px 16px;background:rgba(59,130,246,.5);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
 .sheet-ov{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.25);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:300;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s ease}
 .sheet-ov.show{opacity:1;pointer-events:auto}
@@ -125,9 +132,12 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .sh-title{font-size:16px;font-weight:800;color:#0f172a;text-align:center;margin-bottom:16px}
 /* glass-btn: 送信ボタン。素材はliquidGlass.cssの.glass-clearに統一し、
    ここでは形状とホバー/タップ演出のみ定義する。 */
+/* glass-btn: 送信ボタン。親の.ibarが既にbackdrop-filterを持つため
+   入れ子にせず、不透明度の高い背景色のみにする。 */
 .glass-btn{
-  position:relative;width:34px;height:34px;border-radius:50%;border:none;
+  position:relative;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,0.65);
   display:flex;align-items:center;justify-content:center;cursor:pointer;outline:0;padding:0;flex-shrink:0;
+  background:rgba(255,255,255,0.75);
 }
 .glass-btn:hover{transform:scale(1.08);}
 .glass-btn:active{/* liquidGlass.cssで管理 */}
@@ -184,7 +194,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.34 beta</div>
+  <div class="version-badge">Bro Chat v1.28.35 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -197,10 +207,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
         <div class="mcnt" id="mcntEl" data-i18n="members_count">メンバー 0人</div>
       </div>
-      <button class="hbtn glass-clear glass-interactive" id="phoneBtnG" type="button">
+      <button class="hbtn glass-interactive" id="phoneBtnG" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
-      <button class="hbtn glass-clear glass-interactive" onclick="openGS()" type="button">
+      <button class="hbtn glass-interactive" onclick="openGS()" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
@@ -217,12 +227,12 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   <div class="ibc">
     <div class="ibar" id="ibar">
       <div class="imrow">
-        <button class="pbtn glass-clear glass-interactive" id="pbtn" type="button">
+        <button class="pbtn glass-interactive" id="pbtn" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <form class="tform" id="tform">
           <input type="text" id="mi" placeholder="メッセージを入力" autocomplete="off">
-          <button type="submit" class="glass-btn glass-clear glass-interactive" id="sbtn" data-no-auto-haptic="1">
+          <button type="submit" class="glass-btn glass-interactive" id="sbtn" data-no-auto-haptic="1">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
@@ -264,7 +274,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
     <div class="sheet">
       <div class="sh-title" data-i18n="read_by">既読メンバー</div>
       <div id="readList"></div>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('readOv').classList.remove('show')" data-i18n="close">閉じる</button>
+      <button class="sh-close glass-interactive" onclick="document.getElementById('readOv').classList.remove('show')" data-i18n="close">閉じる</button>
     </div>
   </div>
 
@@ -275,9 +285,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
       <div id="memList"></div>
       <div class="inv-row">
         <input class="inv-input" id="invInput" placeholder="招待するユーザー名を入力">
-        <button class="inv-btn glass-clear glass-interactive" id="invBtn" data-i18n="invite">招待</button>
+        <button class="inv-btn glass-interactive" id="invBtn" data-i18n="invite">招待</button>
       </div>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('memOv').classList.remove('show')" data-i18n="close">閉じる</button>
+      <button class="sh-close glass-interactive" onclick="document.getElementById('memOv').classList.remove('show')" data-i18n="close">閉じる</button>
     </div>
   </div>
 
@@ -309,8 +319,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <span class="slabel" data-i18n="group_name">グループ名</span>
         <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
       </div>
-      <button class="sh-save glass-clear glass-interactive" id="gSaveBtn" data-i18n="save">保存する</button>
-      <button class="sh-close glass-clear glass-interactive" onclick="document.getElementById('gsOv').classList.remove('show')" data-i18n="cancel">キャンセル</button>
+      <button class="sh-save glass-interactive" id="gSaveBtn" data-i18n="save">保存する</button>
+      <button class="sh-close glass-interactive" onclick="document.getElementById('gsOv').classList.remove('show')" data-i18n="cancel">キャンセル</button>
     </div>
   </div>
 
