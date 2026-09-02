@@ -18,9 +18,12 @@ const router = express.Router();
 // (express.jsonのlimitは index.js で 50mb に設定済み)。
 const MAX_MEDIA_BASE64_LENGTH = 30 * 1024 * 1024 * 1.4; // Base64は元データの約1.37倍になる
 
-function isValidMediaDataUri(value) {
+function isValidMediaUrl(value) {
   if (!value) return true;
   if (typeof value !== 'string') return false;
+  // Cloudinary URL (投稿メディアはCloudinaryに直接アップロードされる)
+  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\//.test(value)) return true;
+  // 旧形式: Base64 Data URI (後方互換)
   if (value.length > MAX_MEDIA_BASE64_LENGTH) return false;
   return /^data:(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+$/.test(value);
 }
@@ -108,7 +111,7 @@ router.post('/', verifyToken, asyncHandler(async (req, res) => {
   if (text && text.length > 2000) {
     return res.status(400).json({ error: '投稿は2000文字以内にしてください' });
   }
-  if (mediaUrl && !isValidMediaDataUri(mediaUrl)) {
+  if (mediaUrl && !isValidMediaUrl(mediaUrl)) {
     return res.status(400).json({ error: 'メディアの形式が不正です' });
   }
   if (mediaUrl && !['image', 'video'].includes(mediaType)) {
