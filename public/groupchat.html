@@ -176,6 +176,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script src="/js/signalkeymanager.js"></script>
 <script src="/js/groupE2E.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
@@ -677,7 +678,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
     bub.classList.add('mbub');
     mediaEl=document.createElement('video');mediaEl.src=media.mediaData;mediaEl.controls=true;bub.appendChild(mediaEl);
   }else if(text){
-    const sp=document.createElement('span');sp.className='msg-text';sp.textContent=text;bub.appendChild(sp);
+    const sp=document.createElement('span');sp.className='msg-text';setLinkedText(sp,text);bub.appendChild(sp);
   }
 
   const dt=createdAt?new Date(createdAt):new Date();
@@ -1278,7 +1279,7 @@ function connectGroupWS(){
         }
       }else if(data.type==='group_message_edited'&&data.groupId===groupId){
         const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text`);
-        if(el)el.textContent=data.content;
+        if(el)setLinkedText(el,data.content);
         const editedLabel=document.querySelector(`[data-msg-id="${data.messageId}"] .edited-label`);
         if(!editedLabel){
           const meta=document.querySelector(`[data-msg-id="${data.messageId}"] .mmeta .time`);

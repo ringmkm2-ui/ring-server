@@ -247,6 +247,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script src="/js/groupE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/linkify.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
@@ -392,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.38 beta</div>
+  <div class="version-badge">Bro Chat v1.28.39 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2196,7 +2197,7 @@ function renderPostCard(p) {
   if (p.text) {
     const textEl = document.createElement('div');
     textEl.className = 'post-text';
-    textEl.textContent = p.text;
+    setLinkedText(textEl, p.text);
     card.appendChild(textEl);
   }
 
@@ -2301,7 +2302,7 @@ function renderCommentRow(c) {
   nameEl.textContent = c.authorName + '：';
   const textEl = document.createElement('span');
   textEl.className = 'post-comment-text';
-  textEl.textContent = c.text;
+  setLinkedText(textEl, c.text);
   row.appendChild(nameEl);
   row.appendChild(textEl);
   return row;

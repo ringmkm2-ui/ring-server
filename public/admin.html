@@ -223,6 +223,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/linkify.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -1179,11 +1180,11 @@ function renderMessageImpl(msg) {
       const cap = document.createElement('div');
       cap.className = 'msg-text';
       cap.style.marginTop = '6px';
-      cap.textContent = displayText;
+      setLinkedText(cap, displayText);
       bubble.appendChild(cap);
     }
   } else if (displayText) {
-    const sp = document.createElement('span'); sp.className = 'msg-text'; sp.textContent = displayText;
+    const sp = document.createElement('span'); sp.className = 'msg-text'; setLinkedText(sp, displayText);
     bubble.appendChild(sp);
   }
 
