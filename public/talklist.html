@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.43 beta</div>
+  <div class="version-badge">Bro Chat v1.28.44 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -421,7 +421,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     </div>
     <div class="sg">
       <div class="sgrow">
-        <div class="sgrow-label"><span class="sgtitle" data-i18n="dark_mode">ダークモード</span><span class="sgdesc">画面全体を暗いテーマに切り替えます</span></div>
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="dark_mode">ダークモード</span><span class="sgdesc">システム設定に連動 (手動で切替も可能)</span></div>
         <div class="ts-wrap" id="tsDarkMode">
           <div class="ts-track" id="tsTrackDarkMode">
             <div class="ts-thumb" id="tsThumbDarkMode">
@@ -446,7 +446,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </div>
       </div>
       <div class="sgrow">
-        <div class="sgrow-label"><span class="sgtitle" data-i18n="mobile_data_saver">モバイルデータ節約</span><span class="sgdesc">モバイル回線利用中は画像の画質を下げて送信します</span></div>
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="mobile_data_saver">モバイルデータ節約</span><span class="sgdesc">モバイル回線を自動検出して画質を下げます</span></div>
         <div class="ts-wrap" id="tsDataSaver">
           <div class="ts-track" id="tsTrackDataSaver">
             <div class="ts-thumb" id="tsThumbDataSaver">
@@ -1495,7 +1495,11 @@ async function sendFriendRequest(targetId, btn) {
 const settingsMov=document.getElementById('settingsMov');
 document.getElementById('openSettings').onclick=()=>{
   // 現在の設定値をトグルに反映してから開く
-  document.getElementById('toggleDarkMode').checked = localStorage.getItem('darkMode') === '1';
+  // ダークモード: 手動設定がなければシステム設定に従う
+  const darkManual = localStorage.getItem('darkMode');
+  if (darkManual === '1') document.getElementById('toggleDarkMode').checked = true;
+  else if (darkManual === '0') document.getElementById('toggleDarkMode').checked = false;
+  else document.getElementById('toggleDarkMode').checked = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.getElementById('toggleDataSaver').checked = localStorage.getItem('mobileDataSaver') === '1';
   document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
   document.getElementById('langSelectSettings').value = (window.i18n ? i18n.getLang() : 'ja');
