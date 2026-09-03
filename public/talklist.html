@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.42 beta</div>
+  <div class="version-badge">Bro Chat v1.28.43 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1641,13 +1641,23 @@ document.getElementById('saveSettings').onclick=async ()=>{
   const name=document.getElementById('inName').value.trim();
   let newAvatarUrl=null;
 
-  if(cropImg.src&&cropImg.complete&&cropImg.src!==location.href){
+  if(cropImg.src&&cropImg.complete&&cropImg.src!==location.href&&cropBox.style.display!=='none'){
     const canvas=document.createElement('canvas');canvas.width=140;canvas.height=140;
     const ctx=canvas.getContext('2d');
-    const bx=cropBox.offsetWidth/2,by=cropBox.offsetHeight/2;
-    const sx=(bx-cx)/cs,sy=(by-cy)/cs;
-    const cw=140/cs,ch=140/cs;
-    ctx.drawImage(cropImg,sx-cw/2,sy-ch/2,cw,ch,0,0,140,140);
+    // ガイド円の中心 = cropBoxの中心
+    const guideCenterX=cropBox.offsetWidth/2;
+    const guideCenterY=cropBox.offsetHeight/2;
+    // ガイド円中心が原画像のどの座標に対応するか
+    const srcCenterX=(guideCenterX-cx)/cs;
+    const srcCenterY=(guideCenterY-cy)/cs;
+    // 原画像座標でのガイド円半径
+    const srcRadius=70/cs;
+    // 原画像から切り出す矩形（ガイド円に内接する正方形）
+    const srcX=srcCenterX-srcRadius;
+    const srcY=srcCenterY-srcRadius;
+    const srcW=srcRadius*2;
+    const srcH=srcRadius*2;
+    ctx.drawImage(cropImg,srcX,srcY,srcW,srcH,0,0,140,140);
     croppedUrl=canvas.toDataURL();
     newAvatarUrl=croppedUrl;
     localStorage.setItem('myAvatar',croppedUrl);
