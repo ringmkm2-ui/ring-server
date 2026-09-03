@@ -209,6 +209,19 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 /* 応答/拒否ボタンも同様の理由でbackdrop-filterを外す */
 .accept-btn-glass{background:rgba(34,197,94,.75);border:1px solid rgba(255,255,255,.35)}
 .decline-btn-glass{background:rgba(239,68,68,.75);border:1px solid rgba(255,255,255,.35)}
+/* 着信時のグラデーション背景 */
+.call-overlay.incoming-mode{background:linear-gradient(160deg,rgba(88,28,135,.85),rgba(30,58,138,.85),rgba(15,23,42,.9))}
+/* 着信時のアバターパルス */
+@keyframes incomingPulse{
+  0%,100%{box-shadow:0 4px 24px rgba(34,197,94,.5),0 0 40px rgba(34,197,94,.2)}
+  50%{box-shadow:0 4px 32px rgba(34,197,94,.7),0 0 60px rgba(34,197,94,.35)}
+}
+@keyframes avatarRing{
+  0%{box-shadow:0 0 0 0 rgba(255,255,255,.4)}
+  70%{box-shadow:0 0 0 20px rgba(255,255,255,0)}
+  100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}
+}
+.call-av.ringing{animation:avatarRing 1.5s ease-out infinite}
 .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -426,14 +439,22 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </button>
       </div>
 
-      <!-- 着信ボタン（着信時のみ表示） -->
-      <div id="incomingBtnRow" style="display:none;flex-wrap:wrap;gap:28px;align-items:center;justify-content:center;width:100%;padding:16px">
-        <button id="declineBtn" class="glass-interactive decline-btn-glass" type="button" data-no-auto-haptic="1" style="width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#ef4444;box-shadow:0 8px 20px rgba(239,68,68,.4)">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </button>
-        <button id="acceptBtn" class="glass-interactive accept-btn-glass" type="button" data-no-auto-haptic="1" style="width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#22c55e;box-shadow:0 8px 20px rgba(34,197,94,.4)">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </button>
+      <!-- 着信ボタン（着信時のみ表示 — Galaxy風） -->
+      <div id="incomingBtnRow" style="display:none;width:100%;padding:24px 32px 40px">
+        <div style="display:flex;justify-content:space-between;align-items:center;max-width:320px;margin:0 auto">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+            <button id="declineBtn" class="glass-interactive decline-btn-glass" type="button" data-no-auto-haptic="1" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#ef4444;box-shadow:0 4px 24px rgba(239,68,68,.5),0 0 40px rgba(239,68,68,.2)">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <span style="color:rgba(255,255,255,.7);font-size:13px;font-weight:500">拒否</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+            <button id="acceptBtn" class="glass-interactive accept-btn-glass" type="button" data-no-auto-haptic="1" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#22c55e;box-shadow:0 4px 24px rgba(34,197,94,.5),0 0 40px rgba(34,197,94,.2);animation:incomingPulse 2s ease-in-out infinite">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <span style="color:rgba(255,255,255,.7);font-size:13px;font-weight:500">応答</span>
+          </div>
+        </div>
       </div>
     </div>
     <audio id="remoteAudio" autoplay playsinline></audio>
@@ -1632,6 +1653,8 @@ if ('serviceWorker' in navigator) {
         document.getElementById('callBtnRow').style.display = 'none';
         document.getElementById('endBtnRow').style.display = 'none';
         document.getElementById('incomingBtnRow').style.display = 'flex';
+        document.getElementById('callOv').classList.add('incoming-mode');
+        document.getElementById('callAv').classList.add('ringing');
       }
     }
   });
@@ -1661,6 +1684,8 @@ if (otherId) {
       document.getElementById('callBtnRow').style.display = 'none';
       document.getElementById('endBtnRow').style.display = 'none';
       document.getElementById('incomingBtnRow').style.display = 'flex';
+        document.getElementById('callOv').classList.add('incoming-mode');
+        document.getElementById('callAv').classList.add('ringing');
     }
   }
 
@@ -2125,6 +2150,8 @@ function showCallOverlay() {
 function hideCallOverlay() {
   document.getElementById('callOv').classList.remove('show');
   document.getElementById('incomingBtnRow').style.display = 'none';
+        document.getElementById('callOv').classList.remove('incoming-mode');
+        document.getElementById('callAv').classList.remove('ringing');
   document.getElementById('endBtnRow').style.display = 'flex';
   document.getElementById('callBtnRow').style.display = 'flex';
   const _mb = document.getElementById('muteBtn2');
@@ -2348,6 +2375,8 @@ async function startOutgoingCall(isVideo = false) {
   showCallOverlay();
   // 発信時は必ず「着信ボタン(応答/拒否)」を隠し、「通話終了ボタン」のみ表示する
   document.getElementById('incomingBtnRow').style.display = 'none';
+        document.getElementById('callOv').classList.remove('incoming-mode');
+        document.getElementById('callAv').classList.remove('ringing');
   document.getElementById('endBtnRow').style.display = 'flex';
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('発信中...');
@@ -2422,6 +2451,8 @@ function onCallOffer(data) {
   document.getElementById('callBtnRow').style.display = 'none';
   document.getElementById('endBtnRow').style.display = 'none';
   document.getElementById('incomingBtnRow').style.display = 'flex';
+        document.getElementById('callOv').classList.add('incoming-mode');
+        document.getElementById('callAv').classList.add('ringing');
 
   // 着信音（バイブ）— Xiaomi含む多くのAndroid Chromeで有効
   if (navigator.vibrate) {
@@ -2432,6 +2463,8 @@ function onCallOffer(data) {
 async function acceptIncomingCall() {
   if (window.LiquidGlass) window.LiquidGlass.haptic('success');
   document.getElementById('incomingBtnRow').style.display = 'none';
+        document.getElementById('callOv').classList.remove('incoming-mode');
+        document.getElementById('callAv').classList.remove('ringing');
   document.getElementById('endBtnRow').style.display = 'flex';
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('接続中...');
