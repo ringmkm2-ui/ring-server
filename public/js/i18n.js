@@ -34,6 +34,8 @@
     group: { ja: "グループ", en: "Group", "zh-CN": "群组", ko: "그룹" },
     new_group: { ja: "新しいグループ", en: "New Group", "zh-CN": "新建群组", ko: "새 그룹" },
     create_new_group: { ja: "新しいグループを作成", en: "Create New Group", "zh-CN": "创建新群组", ko: "새 그룹 만들기" },
+    community: { ja: "コミュニティ", en: "Community", "zh-CN": "社区", ko: "커뮤니티" },
+    create_new_community: { ja: "コミュニティを作成", en: "Create Community", "zh-CN": "创建社区", ko: "커뮤니티 만들기" },
     group_name: { ja: "グループ名", en: "Group Name", "zh-CN": "群组名称", ko: "그룹 이름" },
     group_name_placeholder: { ja: "グループ名を入力", en: "Enter group name", "zh-CN": "输入群组名称", ko: "그룹 이름 입력" },
     member_select: { ja: "メンバー選択", en: "Select Members", "zh-CN": "选择成员", ko: "멤버 선택" },

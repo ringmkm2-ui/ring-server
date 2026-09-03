@@ -392,7 +392,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.37 beta</div>
+  <div class="version-badge">Bro Chat v1.28.38 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2722,15 +2722,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // モーダル開閉
   document.getElementById('communityCreateBtn').onclick = () => {
-    communityMov.classList.add('show');
+    communityMov.classList.add('open');
     createForm.style.display = '';
     joinForm.style.display = 'none';
     tabCreate.style.opacity = '1';
     tabJoin.style.opacity = '0.5';
   };
   document.getElementById('communityCancel').onclick = () => {
-    communityMov.classList.remove('show');
+    communityMov.classList.remove('open');
   };
+  communityMov.onclick = e => { if (e.target === communityMov) communityMov.classList.remove('open'); };
 
   // タブ切り替え
   tabCreate.onclick = () => {
@@ -2757,7 +2758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ name, description: desc || null })
       });
       if (data.ok) {
-        communityMov.classList.remove('show');
+        communityMov.classList.remove('open');
         document.getElementById('communityNameInput').value = '';
         document.getElementById('communityDescInput').value = '';
         loadCommunities();
@@ -2781,7 +2782,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ inviteCode: code })
       });
       if (data.ok) {
-        communityMov.classList.remove('show');
+        communityMov.classList.remove('open');
         document.getElementById('communityInviteInput').value = '';
         loadCommunities();
         if (window.LiquidGlass) window.LiquidGlass.haptic('success');
