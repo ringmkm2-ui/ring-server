@@ -296,6 +296,16 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
             <div id="groupList"></div>
           </div>
         </div>
+        <div class="card">
+          <div class="slabel" data-i18n="community">コミュニティ</div>
+          <div>
+            <button class="ngbtn" id="communityCreateBtn" type="button">
+              <div class="ngicon glass-clear"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+              <span class="nglabel" data-i18n="create_new_community">コミュニティを作成</span>
+            </button>
+            <div id="communityList"></div>
+          </div>
+        </div>
       </section>
       <section id="pageHome" style="display:none">
         <div class="card">
@@ -382,7 +392,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.36 beta</div>
+  <div class="version-badge">Bro Chat v1.28.37 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -484,6 +494,27 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     </div>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="ngCreate" type="button" data-i18n="create_btn">作成する</button>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="ngCancel" type="button" data-i18n="cancel">キャンセル</button>
+  </div>
+</div>
+
+<!-- コミュニティ作成/参加モーダル -->
+<div class="mov" id="communityMov">
+  <div class="mc">
+    <h3 class="mtitle">コミュニティ</h3>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="savebtn btn-glass glass-clear glass-interactive" id="communityTabCreate" type="button" style="flex:1;font-size:13px;">作成する</button>
+      <button class="cancelbtn btn-glass glass-clear glass-interactive" id="communityTabJoin" type="button" style="flex:1;font-size:13px;">参加する</button>
+    </div>
+    <div id="communityCreateForm">
+      <div class="sg"><label>コミュニティ名</label><input type="text" id="communityNameInput" placeholder="コミュニティ名を入力" maxlength="50"></div>
+      <div class="sg"><label>説明 (任意)</label><input type="text" id="communityDescInput" placeholder="コミュニティの説明"></div>
+      <button class="savebtn btn-glass glass-clear glass-interactive" id="communityCreateSubmit" type="button">作成する</button>
+    </div>
+    <div id="communityJoinForm" style="display:none;">
+      <div class="sg"><label>招待コード</label><input type="text" id="communityInviteInput" placeholder="招待コードを入力" maxlength="10"></div>
+      <button class="savebtn btn-glass glass-clear glass-interactive" id="communityJoinSubmit" type="button">参加する</button>
+    </div>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="communityCancel" type="button">キャンセル</button>
   </div>
 </div>
 
@@ -973,18 +1004,10 @@ async function loadTalks(animate = false) {
       });
     }
 
-    // グループをリストに統合
+    // グループをリストに統合せず、別セクションで表示する
+    // (グループは下のgroupListカードに表示)
     if (groupsData && Array.isArray(groupsData.groups)) {
-      groupsData.groups.forEach(g => {
-        merged.push({
-          kind: 'group',
-          groupId: g.groupId,
-          displayName: g.name,
-          lastMessage: g.lastMessage ? (g.lastMessage.encrypted ? '(暗号化されたメッセージ)' : g.lastMessage.content) : 'まだメッセージがありません',
-          lastTime: g.lastMessage ? g.lastMessage.createdAt : null,
-          memberCount: g.members.length,
-        });
-      });
+      renderGroups(groupsData.groups);
     }
 
     // 最終メッセージ時刻で降順ソート（メッセージが無いものは末尾）
@@ -1232,28 +1255,48 @@ function renderFriends(friends) {
 function renderGroups(groups) {
   const list = document.getElementById('groupList');
   if (!Array.isArray(groups) || groups.length === 0) {
+    list.textContent = '';
     return;
   }
-  list.innerHTML = '';
+  list.textContent = '';
   groups.forEach(g => {
-    const card = document.createElement('div');
-    card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.5);margin-bottom:8px;cursor:pointer;transition:background .2s';
-    card.onclick = () => location.href = `/groupchat.html?groupId=${g.id}`;
-    
-    const avatar = document.createElement('div');
-    avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;background-size:cover;background-position:center;background-color:hsl(' + Math.abs(g.id.charCodeAt(0)) % 360 + ',70%,60%)';
-    avatar.textContent = g.name.charAt(0);
-    
-    const info = document.createElement('div');
-    info.style.cssText = 'flex:1;min-width:0';
+    const item = document.createElement('div');
+    item.className = 'ti';
+
+    const av = document.createElement('div');
+    av.className = 'tav group-default-av';
+    setAvatarBackground(av, null, (g.name || '?')[0]);
+
+    const body = document.createElement('div');
+    body.className = 'tbody';
+    const row = document.createElement('div');
+    row.className = 'ttr';
     const nameEl = document.createElement('div');
-    nameEl.style.cssText = 'font-weight:700;font-size:14px;color:#0f172a';
+    nameEl.className = 'tname';
     nameEl.textContent = g.name;
-    info.appendChild(nameEl);
-    
-    card.appendChild(avatar);
-    card.appendChild(info);
-    list.appendChild(card);
+    const timeEl = document.createElement('div');
+    timeEl.className = 'ttime';
+    timeEl.textContent = g.lastMessage && g.lastMessage.createdAt ? formatTime(g.lastMessage.createdAt) : '';
+    row.appendChild(nameEl);
+    row.appendChild(timeEl);
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'tmsg';
+    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? '(暗号化されたメッセージ)' : g.lastMessage.content) : 'まだメッセージがありません';
+    msgEl.textContent = lastMsg + ` ・ ${g.members ? g.members.length : 0}人`;
+    body.appendChild(row);
+    body.appendChild(msgEl);
+
+    item.appendChild(av);
+    item.appendChild(body);
+    item.addEventListener('click', () => {
+      if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+        window.LiquidGlass.flyAvatarTo(av, () => openGroupChat(g.groupId || g.id, g.name));
+      } else {
+        openGroupChat(g.groupId || g.id, g.name);
+      }
+    });
+    list.appendChild(item);
   });
 }
 
@@ -2665,6 +2708,159 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('download error:', e);
     }
   };
+})();
+</script>
+
+<script>
+// ========== コミュニティ機能 ==========
+(function() {
+  const communityMov = document.getElementById('communityMov');
+  const createForm = document.getElementById('communityCreateForm');
+  const joinForm = document.getElementById('communityJoinForm');
+  const tabCreate = document.getElementById('communityTabCreate');
+  const tabJoin = document.getElementById('communityTabJoin');
+
+  // モーダル開閉
+  document.getElementById('communityCreateBtn').onclick = () => {
+    communityMov.classList.add('show');
+    createForm.style.display = '';
+    joinForm.style.display = 'none';
+    tabCreate.style.opacity = '1';
+    tabJoin.style.opacity = '0.5';
+  };
+  document.getElementById('communityCancel').onclick = () => {
+    communityMov.classList.remove('show');
+  };
+
+  // タブ切り替え
+  tabCreate.onclick = () => {
+    createForm.style.display = '';
+    joinForm.style.display = 'none';
+    tabCreate.style.opacity = '1';
+    tabJoin.style.opacity = '0.5';
+  };
+  tabJoin.onclick = () => {
+    createForm.style.display = 'none';
+    joinForm.style.display = '';
+    tabCreate.style.opacity = '0.5';
+    tabJoin.style.opacity = '1';
+  };
+
+  // コミュニティ作成
+  document.getElementById('communityCreateSubmit').onclick = async () => {
+    const name = document.getElementById('communityNameInput').value.trim();
+    if (!name) return;
+    const desc = document.getElementById('communityDescInput').value.trim();
+    try {
+      const data = await api('/api/communities', {
+        method: 'POST',
+        body: JSON.stringify({ name, description: desc || null })
+      });
+      if (data.ok) {
+        communityMov.classList.remove('show');
+        document.getElementById('communityNameInput').value = '';
+        document.getElementById('communityDescInput').value = '';
+        loadCommunities();
+        if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+        // 招待コードを表示
+        alert('コミュニティを作成しました！\n招待コード: ' + data.community.inviteCode);
+      }
+    } catch (e) {
+      console.error('Community create error:', e);
+      alert('コミュニティの作成に失敗しました');
+    }
+  };
+
+  // コミュニティ参加
+  document.getElementById('communityJoinSubmit').onclick = async () => {
+    const code = document.getElementById('communityInviteInput').value.trim();
+    if (!code) return;
+    try {
+      const data = await api('/api/communities/join', {
+        method: 'POST',
+        body: JSON.stringify({ inviteCode: code })
+      });
+      if (data.ok) {
+        communityMov.classList.remove('show');
+        document.getElementById('communityInviteInput').value = '';
+        loadCommunities();
+        if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+        if (data.already) {
+          alert('既に参加しています: ' + data.name);
+        } else {
+          alert(data.name + ' に参加しました！');
+        }
+      }
+    } catch (e) {
+      console.error('Community join error:', e);
+      alert('参加に失敗しました。招待コードを確認してください');
+    }
+  };
+
+  // コミュニティ一覧読み込み
+  window.loadCommunities = async function() {
+    try {
+      const data = await api('/api/communities/list');
+      const list = document.getElementById('communityList');
+      list.textContent = '';
+      if (!data.ok || !data.communities || data.communities.length === 0) return;
+
+      data.communities.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'ti';
+
+        const av = document.createElement('div');
+        av.className = 'tav';
+        // コミュニティアイコン or 頭文字
+        if (c.icon_url) {
+          av.style.backgroundImage = `url(${c.icon_url})`;
+          av.style.backgroundSize = 'cover';
+          av.style.backgroundPosition = 'center';
+        } else {
+          const hue = Math.abs((c.name || '').charCodeAt(0) * 47) % 360;
+          av.style.background = `linear-gradient(135deg, hsl(${hue},70%,60%), hsl(${(hue+40)%360},70%,50%))`;
+          av.style.display = 'flex';
+          av.style.alignItems = 'center';
+          av.style.justifyContent = 'center';
+          av.style.fontWeight = '700';
+          av.style.color = '#fff';
+          av.style.fontSize = '16px';
+          av.textContent = (c.name || '?')[0];
+        }
+
+        const body = document.createElement('div');
+        body.className = 'tbody';
+        const row = document.createElement('div');
+        row.className = 'ttr';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'tname';
+        nameEl.textContent = c.name;
+        const countEl = document.createElement('div');
+        countEl.className = 'ttime';
+        countEl.textContent = c.member_count + '人';
+        row.appendChild(nameEl);
+        row.appendChild(countEl);
+
+        const descEl = document.createElement('div');
+        descEl.className = 'tmsg';
+        descEl.textContent = c.description || '';
+        body.appendChild(row);
+        body.appendChild(descEl);
+
+        item.appendChild(av);
+        item.appendChild(body);
+        item.addEventListener('click', () => {
+          location.href = '/community.html?id=' + c.id;
+        });
+        list.appendChild(item);
+      });
+    } catch (e) {
+      console.error('loadCommunities error:', e);
+    }
+  };
+
+  // 初回読み込み
+  loadCommunities();
 })();
 </script>
 </body>

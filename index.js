@@ -16,6 +16,7 @@ const pushRouter = require('./routes/push');
 const postsRouter = require('./routes/posts');
 const iceRouter = require('./routes/ice');
 const callAssistRouter = require('./routes/callAssist');
+const communitiesRouter = require('./routes/communities');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 const { apiLimiter } = require('./utils/rateLimits');
@@ -116,6 +117,7 @@ async function main() {
   app.use('/api/posts', postsRouter);
   app.use('/api/ice', iceRouter);
   app.use('/api/call-assist', callAssistRouter);
+  app.use('/api/communities', communitiesRouter);
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、

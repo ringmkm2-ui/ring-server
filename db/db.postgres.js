@@ -113,6 +113,54 @@ async function initDB() {
     console.log('[db] call_notes/call_summaries migration skip:', e.message);
   }
 
+  // コミュニティ機能
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS communities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        icon_url TEXT,
+        owner_id TEXT NOT NULL REFERENCES users(id),
+        invite_code TEXT UNIQUE,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS community_members (
+        community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        role TEXT DEFAULT 'member',
+        joined_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (community_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS community_channels (
+        id TEXT PRIMARY KEY,
+        community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS community_messages (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL REFERENCES community_channels(id) ON DELETE CASCADE,
+        sender_id TEXT NOT NULL REFERENCES users(id),
+        content TEXT NOT NULL,
+        media_url TEXT,
+        media_type TEXT,
+        created_at TIMESTAMP DEFAULT now(),
+        edited_at TIMESTAMP,
+        deleted_at TIMESTAMP
+      )
+    `);
+  } catch (e) {
+    console.log('[db] communities migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 
