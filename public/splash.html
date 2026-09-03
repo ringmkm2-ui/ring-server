@@ -170,6 +170,13 @@
     }
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    // トークンがあればsplashを描画せず即遷移（チラつき防止）
+    if (localStorage.getItem('ring_token')) {
+      window.location.replace('/talklist.html');
+      document.documentElement.style.display = 'none';
+    }
+  </script>
 </head>
 <body>
 
