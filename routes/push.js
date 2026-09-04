@@ -53,4 +53,17 @@ router.post('/unsubscribe', auth, async (req, res) => {
   }
 });
 
+// FCMトークン登録（Capacitorアプリ用）
+router.post('/fcm-register', auth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'token required' });
+    const fcm = require('../utils/fcm');
+    await fcm.saveToken(req.userId, token);
+    res.json({ success: true });
+  } catch (e) {
+    sendServerError(res, e);
+  }
+});
+
 module.exports = router;

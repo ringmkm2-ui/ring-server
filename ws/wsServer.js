@@ -182,6 +182,16 @@ function initWebSocketServer(server) {
             'INSERT INTO offline_queue (id, recipient_id, sender_id, payload, msg_uuid) VALUES (?, ?, ?, ?, ?)',
             [uuidv4(), data.recipientId, userId, JSON.stringify(data.payload), msgUuid]
           );
+
+          // FCMでオフラインの相手に通知
+          try {
+            const fcm = require('../utils/fcm');
+            const sender = await db.get('SELECT display_name, username FROM users WHERE id = ?', [userId]);
+            const senderName = sender?.display_name || sender?.username || '不明';
+            fcm.sendMessageNotification(data.recipientId, senderName, '新しいメッセージ', 'dm');
+          } catch (fcmErr) {
+            console.error('[fcm] message push failed:', fcmErr.message);
+          }
         }
 
         // 送信者に確認応答 (チェックマーク点灯用)
@@ -290,14 +300,26 @@ function initWebSocketServer(server) {
         // (ws.on('message', async raw => ...) 内なのでawaitが使える)。
         try {
           const caller = await db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [userId]);
+          const callerName = caller?.display_name || caller?.username || '不明なユーザー';
+          const callerPic = caller?.profile_pic || null;
+
+          // Web Push（ブラウザ用）
           sendPushToUser(data.recipientId, {
             type: 'call_incoming',
             callId: data.callId,
             callerId: userId,
-            callerName: caller?.display_name || caller?.username || '不明なユーザー',
-            callerPic: caller?.profile_pic || null,
+            callerName,
+            callerPic,
             isVideo: !!data.isVideo,
           }, { ttl: 30 }).catch(err => console.error('[push] call_offer push failed:', err.message));
+
+          // FCM Push（Capacitorアプリ用）
+          try {
+            const fcm = require('../utils/fcm');
+            fcm.sendCallNotification(data.recipientId, userId, callerName, callerPic || '', data.callId);
+          } catch (fcmErr) {
+            console.error('[fcm] call push failed:', fcmErr.message);
+          }
         } catch (err) {
           console.error('[push] caller lookup failed:', err.message);
         }

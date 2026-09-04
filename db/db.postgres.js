@@ -161,6 +161,20 @@ async function initDB() {
     console.log('[db] communities migration skip:', e.message);
   }
 
+  // FCMトークン管理
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fcm_tokens (
+        user_id TEXT NOT NULL REFERENCES users(id),
+        token TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (user_id, token)
+      )
+    `);
+  } catch (e) {
+    console.log('[db] fcm_tokens migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 
