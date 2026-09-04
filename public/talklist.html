@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.45 beta</div>
+  <div class="version-badge">Bro Chat v1.28.46 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2897,6 +2897,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 初回読み込み
   loadCommunities();
+})();
+</script>
+
+<script>
+// ========== アプリ内自動アップデート ==========
+(function() {
+  // Capacitorネイティブアプリの場合のみ実行
+  if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.AppUpdater) return;
+
+  const AppUpdater = window.Capacitor.Plugins.AppUpdater;
+
+  async function checkUpdate() {
+    try {
+      const result = await AppUpdater.checkForUpdate();
+      console.log('[AppUpdater]', result);
+
+      if (result.available && result.apkUrl) {
+        // アップデートダイアログ表示
+        const msg = `新しいバージョンが利用可能です\n${result.releaseName}\n\n今すぐアップデートしますか？`;
+        if (confirm(msg)) {
+          await AppUpdater.downloadAndInstall({ apkUrl: result.apkUrl });
+        }
+      }
+    } catch (e) {
+      console.log('[AppUpdater] check failed:', e);
+    }
+  }
+
+  // 起動後3秒で静かにチェック
+  setTimeout(checkUpdate, 3000);
 })();
 </script>
 </body>
