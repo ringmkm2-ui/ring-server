@@ -307,6 +307,10 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileInput" hidden>
         </label>
+        <button class="mopt" type="button" id="locationBtn" style="border:none;background:none;cursor:pointer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="8"/></svg>
+          <span>位置情報</span>
+        </button>
       </div>
     </div>
   </div>
@@ -770,6 +774,49 @@ document.getElementById('plusBtn').onclick = () => document.getElementById('inpu
 document.getElementById('imgInput').onchange = e => { handleMedia(e.target.files[0], 'image'); };
 document.getElementById('vidInput').onchange = e => { handleMedia(e.target.files[0], 'video'); };
 document.getElementById('fileInput').onchange = e => { handleMedia(e.target.files[0], 'file'); };
+
+// 位置情報送信
+document.getElementById('locationBtn').onclick = async () => {
+  document.getElementById('inputBar').classList.remove('media-open');
+  if (!navigator.geolocation) {
+    alert('位置情報がサポートされていません');
+    return;
+  }
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      });
+    });
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+    const text = `📍 現在地を共有しました\n${mapUrl}`;
+    // 通常メッセージとして送信
+    const msgId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
+    const msg = {
+      type: 'message',
+      recipientId: otherId,
+      content: text,
+      id: msgId
+    };
+    ws.send(JSON.stringify(msg));
+    renderMessage({
+      id: msgId,
+      senderId: myUserId,
+      content: text,
+      createdAt: new Date().toISOString()
+    });
+    document.getElementById('chatScreen').scrollTop = 99999;
+  } catch (e) {
+    if (e.code === 1) alert('位置情報の権限が拒否されました');
+    else if (e.code === 2) alert('位置情報を取得できませんでした');
+    else if (e.code === 3) alert('位置情報の取得がタイムアウトしました');
+    else alert('位置情報エラー: ' + e.message);
+  }
+};
 
 function handleMedia(f, t) {
   if (!f) return;
@@ -1492,11 +1539,32 @@ function showTypingIndicator() {
   if (!ti) {
     ti = document.createElement('div');
     ti.id = 'typingIndicator';
-    ti.style.cssText = 'padding:8px 12px;color:#999;font-size:13px;';
+    ti.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 12px;';
+    // アバター
+    const av = document.createElement('div');
+    av.style.cssText = 'width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;background:hsl(' + (Math.abs((partnerName||'?').charCodeAt(0)*47)%360) + ',60%,55%);';
+    if (window._partnerAvatar) {
+      av.style.backgroundImage = 'url(' + window._partnerAvatar + ')';
+      av.style.backgroundSize = 'cover';
+    } else {
+      av.textContent = (partnerName||'?')[0];
+    }
+    // バブル
+    const bubble = document.createElement('div');
+    bubble.style.cssText = 'display:flex;align-items:center;gap:4px;padding:10px 16px;border-radius:18px;background:rgba(0,0,0,.08);';
+    bubble.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#999;animation:typingDot 1.4s ease-in-out infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:#999;animation:typingDot 1.4s ease-in-out .2s infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:#999;animation:typingDot 1.4s ease-in-out .4s infinite"></span>';
+    ti.appendChild(av);
+    ti.appendChild(bubble);
+    // アニメーションCSS（まだ追加されてなければ）
+    if (!document.getElementById('typingDotStyle')) {
+      const style = document.createElement('style');
+      style.id = 'typingDotStyle';
+      style.textContent = '@keyframes typingDot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}';
+      document.head.appendChild(style);
+    }
     document.getElementById('chatScreen').appendChild(ti);
   }
-  ti.textContent = `${partnerName}が入力中...`;
-  ti.style.display = 'block';
+  ti.style.display = 'flex';
   document.getElementById('chatScreen').scrollTop = 99999;
 
   clearTimeout(typingTimeoutId);
