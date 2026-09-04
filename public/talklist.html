@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.49 beta</div>
+  <div class="version-badge">Bro Chat v1.28.50 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2897,6 +2897,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 初回読み込み
   loadCommunities();
+})();
+</script>
+
+<script>
+// ========== FCMトークン登録 ==========
+(function() {
+  async function registerFcmToken() {
+    const token = localStorage.getItem('fcm_token');
+    const authToken = localStorage.getItem('ring_token');
+    if (!token || !authToken) return;
+    // 既に登録済みなら送らない
+    if (localStorage.getItem('fcm_token_registered') === token) return;
+    try {
+      const res = await fetch('/api/push/fcm-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('fcm_token_registered', token);
+        console.log('[FCM] Token registered to server');
+      }
+    } catch (e) {
+      console.log('[FCM] Token registration failed:', e);
+    }
+  }
+  // 起動後すぐ + 5秒後にリトライ（MainActivityからの注入を待つ）
+  registerFcmToken();
+  setTimeout(registerFcmToken, 5000);
 })();
 </script>
 

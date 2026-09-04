@@ -131,7 +131,19 @@ function initWebSocketServer(server) {
         connections.get(userId).add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
         await flushOfflineQueue(userId); // オンラインになった瞬間、溜まっていたメッセージを配送
-        broadcastPresence(userId, true); // 相手に「オンラインになった」ことを通知
+        // WS接続だけではオンラインにしない（chat_openイベントで明示的にオンラインにする）
+        return;
+      }
+
+      // --- チャット画面を開いた/閉じた通知 ---
+      if (data.type === 'chat_open') {
+        if (!userId) return;
+        broadcastPresence(userId, true);
+        return;
+      }
+      if (data.type === 'chat_close') {
+        if (!userId) return;
+        broadcastPresence(userId, false);
         return;
       }
 

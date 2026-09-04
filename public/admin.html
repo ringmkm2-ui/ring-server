@@ -248,7 +248,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.49 beta</div>
+  <div class="version-badge">Bro Chat v1.28.35 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1389,7 +1389,9 @@ function connectRealWS() {
     try {
       const data = JSON.parse(e.data);
       if (data.type === 'auth_ok') {
-        // 自分の接続がサーバーに登録された直後に、相手の現在のオンライン状態を問い合わせる
+        // チャット画面を開いたことをサーバーに通知（オンライン表示用）
+        ws.send(JSON.stringify({ type: 'chat_open' }));
+        // 相手の現在のオンライン状態を問い合わせる
         ws.send(JSON.stringify({ type: 'presence_query', targetUserId: otherId }));
         return;
       }
@@ -2738,40 +2740,54 @@ document.getElementById('endBtn').onclick = () => {
     try { cleanupCall(); } catch (e2) { console.error('[endBtn] cleanupCall also failed:', e2); }
   }
 };
-// スワイプ式着信ボタン
+// スワイプ式着信ボタン（全方向対応）
 function setupSwipeButton(thumbId, trackId, onComplete) {
   const thumb = document.getElementById(thumbId);
   const track = document.getElementById(trackId);
   if (!thumb || !track) return;
-  let startX = 0, currentX = 0, isDragging = false;
-  const THRESHOLD = 0.65; // トラック幅の65%で発動
+  let startX = 0, startY = 0, isDragging = false, triggered = false;
+  const THRESHOLD = 100; // 100px移動で発動
 
   function onStart(e) {
-    isDragging = true;
-    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    isDragging = true; triggered = false;
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
     thumb.style.transition = 'none';
   }
   function onMove(e) {
-    if (!isDragging) return;
+    if (!isDragging || triggered) return;
     e.preventDefault();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX);
-    const dx = Math.max(0, x - startX);
-    const maxX = track.offsetWidth - thumb.offsetWidth - 8;
-    currentX = Math.min(dx, maxX);
-    thumb.style.left = (4 + currentX) + 'px';
+    const t = e.touches ? e.touches[0] : e;
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // つまみを動かす（右方向のみ視覚的に）
+    const moveX = Math.max(0, Math.min(dx, track.offsetWidth - thumb.offsetWidth - 8));
+    thumb.style.left = (4 + moveX) + 'px';
+    thumb.style.opacity = Math.max(0.3, 1 - dist / (THRESHOLD * 1.5));
+    if (dist > THRESHOLD) {
+      triggered = true;
+      isDragging = false;
+      thumb.style.transition = 'all .3s ease';
+      thumb.style.opacity = '0';
+      thumb.style.transform = 'scale(0.5)';
+      setTimeout(() => {
+        onComplete();
+        // リセット
+        thumb.style.left = '4px';
+        thumb.style.opacity = '1';
+        thumb.style.transform = 'scale(1)';
+      }, 250);
+    }
   }
   function onEnd() {
     if (!isDragging) return;
     isDragging = false;
-    thumb.style.transition = 'left .3s ease';
-    const maxX = track.offsetWidth - thumb.offsetWidth - 8;
-    if (currentX > maxX * THRESHOLD) {
-      thumb.style.left = (4 + maxX) + 'px';
-      setTimeout(onComplete, 200);
-    } else {
+    if (!triggered) {
+      thumb.style.transition = 'left .3s ease, opacity .3s ease';
       thumb.style.left = '4px';
+      thumb.style.opacity = '1';
     }
-    currentX = 0;
   }
   thumb.addEventListener('touchstart', onStart, { passive: true });
   thumb.addEventListener('touchmove', onMove, { passive: false });
@@ -3053,6 +3069,10 @@ async function requestCallSummaryIfAny() {
 window.addEventListener('pagehide', () => {
   if (currentCallId) {
     sendSignal('call_end', {});
+  }
+  // チャット画面を閉じたことをサーバーに通知（オフライン表示用）
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat_close' }));
   }
 });
 
