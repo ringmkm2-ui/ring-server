@@ -248,7 +248,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.52 beta</div>
+  <div class="version-badge">Bro Chat v1.28.53 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1171,6 +1171,85 @@ function flushRenderQueue() {
 }
 
 // 実際のレンダリング関数（内部用）
+// ==== 通話ログ（LINE/WhatsApp風の通話履歴をチャット内に表示）====
+function callDurationText(sec) {
+  const s = Math.max(0, sec | 0);
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+function parseCallLog(content) {
+  if (typeof content !== 'string' || content.indexOf('__call__') === -1) return null;
+  try {
+    const p = JSON.parse(content);
+    if (p && p.__call__) return p.__call__;
+  } catch (e) {}
+  return null;
+}
+
+function callLogLabel(info, isMine) {
+  const icon = info.video ? '📹' : '📞';
+  if (info.status === 'completed') return `${icon} ${isMine ? '発信' : '着信'}　${callDurationText(info.duration || 0)}`;
+  if (info.status === 'cancelled') return isMine ? `${icon} キャンセル` : `${icon} 不在着信`;
+  if (info.status === 'no_answer') return isMine ? `${icon} 応答なし` : `${icon} 不在着信`;
+  if (info.status === 'busy') return isMine ? `${icon} 通話中でした` : `${icon} 不在着信`;
+  return `${icon} 通話`;
+}
+
+function renderCallLogMessage(msgDiv, msg, info, isMine, isNew, cs) {
+  const missed = !isMine && (info.status === 'cancelled' || info.status === 'no_answer' || info.status === 'busy');
+  msgDiv.className = 'message ' + (isMine ? 'outgoing' : 'incoming');
+  const wrap = document.createElement('div'); wrap.className = 'msg-wrap';
+  const bubble = document.createElement('div'); bubble.className = 'bubble';
+  bubble.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+  const label = document.createElement('span');
+  label.className = 'msg-text';
+  label.textContent = callLogLabel(info, isMine);
+  if (missed) label.style.color = '#ef4444';
+  bubble.appendChild(label);
+  const d = new Date(msg.createdAt);
+  const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const meta = document.createElement('div'); meta.className = 'msg-meta';
+  meta.innerHTML = `<span class="time">${t}</span>`;
+  bubble.appendChild(meta);
+  bubble.addEventListener('click', () => {
+    if (typeof startOutgoingCall === 'function' && !pc) startOutgoingCall(!!info.video);
+  });
+  wrap.appendChild(bubble);
+  msgDiv.appendChild(wrap);
+  if (isNew) {
+    cs.appendChild(msgDiv);
+    msgDOMCache.set(msg.id, msgDiv);
+    cs.scrollTop = 99999;
+    if (!isBulkHistoryLoad && window.LiquidGlass) window.LiquidGlass.materializeIn(msgDiv, true);
+  }
+  return msgDiv;
+}
+
+// 通話ログを1件送信する（記録は発信者側のみ。非暗号化メッセージとして両者に届き、各自の視点で表示される）
+async function logCall(status) {
+  if (callRole !== 'caller') return; // 二重記録防止
+  const info = { v: 1, status, video: !!isVideoCall };
+  if (status === 'completed') info.duration = callSeconds || 0;
+  const content = JSON.stringify({ __call__: info });
+  const tempId = 'call-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const optimistic = { id: tempId, senderId: myUserId, recipientId: otherId, content, createdAt: new Date().toISOString(), isRead: false, encrypted: false };
+  addRealMessage(optimistic);
+  renderMessage(optimistic);
+  try {
+    const data = await api('/api/messages/send', {
+      method: 'POST',
+      body: JSON.stringify({ recipientId: otherId, content, encrypted: false, noPush: true }),
+    });
+    if (data && data.message) {
+      removeMessageById(tempId);
+      const displayMsg = { ...data.message, content };
+      addRealMessage(displayMsg);
+      renderMessage(displayMsg);
+    }
+  } catch (e) { console.error('logCall send failed:', e); }
+}
+
 function renderMessage(msg) {
   queueRender(msg);
 }
@@ -1205,6 +1284,12 @@ function renderMessageImpl(msg) {
       cs.scrollTop = 99999;
     }
     return msgDiv;
+  }
+
+  // 通話ログ（システムメッセージ）
+  const __callLog = parseCallLog(msg.content);
+  if (__callLog) {
+    return renderCallLogMessage(msgDiv, msg, __callLog, isMine, isNew, cs);
   }
 
   const { displayText, mediaType, mediaSrc, cloudinaryMedia } = parseMsgContent(msg.content, msg);
@@ -1618,7 +1703,31 @@ document.getElementById('msgInput').addEventListener('input', () => {
   }
 });
 
-async function initialLoadHistory() {
+async // 未読区切り線を、未読の先頭メッセージの直前に挿入する（描画キューのflush完了を待つ）
+function insertUnreadDivider(beforeId, count) {
+  const cs = document.getElementById('chatScreen');
+  if (!cs) return;
+  let attempts = 0;
+  const tryInsert = () => {
+    const node = msgDOMCache.get(beforeId);
+    if (node && renderQueue.length === 0) {
+      if (document.getElementById('unreadDivider')) return;
+      const div = document.createElement('div');
+      div.id = 'unreadDivider';
+      div.style.cssText = 'width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;';
+      const line = () => { const l = document.createElement('div'); l.style.cssText = 'flex:1;height:1px;background:rgba(239,68,68,.35);'; return l; };
+      const txt = document.createElement('span'); txt.textContent = `未読メッセージ ${count}件`;
+      div.appendChild(line()); div.appendChild(txt); div.appendChild(line());
+      cs.insertBefore(div, node);
+      div.scrollIntoView({ block: 'center' });
+      return;
+    }
+    if (attempts++ < 120) requestAnimationFrame(tryInsert);
+  };
+  requestAnimationFrame(tryInsert);
+}
+
+function initialLoadHistory() {
   // 履歴の一括読み込み中は、メッセージ1件ごとの出現アニメーション(materialize)を
   // 抑制する。何十件も同時にアニメーションさせると視覚的にうるさく、
   // 低スペック端末では描画負荷にもなるため、リアルタイム受信時のみ演出する。
@@ -1626,6 +1735,11 @@ async function initialLoadHistory() {
   try {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
+
+    // 未読区切り線: 開いた時点で未読だった受信メッセージの先頭位置を記録
+    const unreadIncoming = data.filter(m => m.senderId !== myUserId && !m.readAt && !m.deletedAt);
+    const unreadDividerCount = unreadIncoming.length;
+    const firstUnreadId = unreadDividerCount > 0 ? unreadIncoming[0].id : null;
 
     // 復号化してから保持・描画（自分が送ったメッセージは復号化不要、相手からのみ復号化）
     for (const msg of data) {
@@ -1643,6 +1757,8 @@ async function initialLoadHistory() {
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
     }
+
+    if (firstUnreadId) insertUnreadDivider(firstUnreadId, unreadDividerCount);
   } catch (err) {
     console.error('initialLoadHistory error:', err);
   } finally {
@@ -2180,6 +2296,7 @@ let callSeconds = 0;
 let isMuted = false;
 let wakeLock = null;       // 通話中の画面スリープ防止
 let pendingRemoteIce = [];  // remote description 到着前に届いたICE候補の一時保管
+let callConnected = false;  // 現在の通話が接続確立まで到達したか(通話ログの完了/不在判定用)
 let isVideoCall = urlIsVideoParam;    // 現在の通話がビデオ通話か（SW通知タップ時はURLパラメータで初期化）
 let isVideoEnabled = true;  // 自分のカメラがONか（ビデオ通話中のみ意味を持つ）
 let currentFacingMode = 'user'; // 'user'=インカメ, 'environment'=アウトカメ
@@ -2344,6 +2461,7 @@ function createPeerConnection() {
   conn.onconnectionstatechange = () => {
     if (!conn) return;
     if (conn.connectionState === 'connected') {
+      callConnected = true;
       setCallStatus('00:00');
       startCallTimer();
       if (window.LiquidGlass) window.LiquidGlass.haptic('success');
@@ -2415,6 +2533,7 @@ function cleanupCall() {
   }
   currentCallId = null;
   callRole = null;
+  callConnected = false;
   isMuted = false;
   isVideoCall = false;
   isVideoEnabled = true;
@@ -2611,12 +2730,14 @@ async function onCallIce(data) {
 function onCallReject(data) {
   if (data.callId !== currentCallId) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
+  logCall(data.reason === 'busy' ? 'busy' : 'no_answer');
   setCallStatus(data.reason === 'busy' ? '通話中です' : '応答がありませんでした');
   setTimeout(cleanupCall, 1500);
 }
 
 function onCallEnd(data) {
   if (data.callId !== currentCallId) return;
+  logCall(callConnected ? 'completed' : 'cancelled');
   setCallStatus('通話終了');
   setTimeout(cleanupCall, 800);
 }
@@ -2636,7 +2757,10 @@ function endCall() {
   if (currentCallId) {
     sendSignal('call_end', {});
   }
-  
+
+  // 通話ログを記録（発信者側のみ。接続まで到達＝完了、未接続＝キャンセル）
+  logCall(callConnected ? 'completed' : 'cancelled');
+
   // 通話録音停止
   if (callRecorder && callRecorder.isRecording) {
     callRecorder.stopRecording();
