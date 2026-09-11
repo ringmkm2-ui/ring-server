@@ -248,7 +248,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.53 beta</div>
+  <div class="version-badge">Bro Chat v1.28.54 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1187,13 +1187,20 @@ function parseCallLog(content) {
   return null;
 }
 
+function callIconSvg(info, missed) {
+  const col = missed ? '#ef4444' : '#1e293b';
+  if (info.video) {
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+  }
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+}
+
 function callLogLabel(info, isMine) {
-  const icon = info.video ? '📹' : '📞';
-  if (info.status === 'completed') return `${icon} ${isMine ? '発信' : '着信'}　${callDurationText(info.duration || 0)}`;
-  if (info.status === 'cancelled') return isMine ? `${icon} キャンセル` : `${icon} 不在着信`;
-  if (info.status === 'no_answer') return isMine ? `${icon} 応答なし` : `${icon} 不在着信`;
-  if (info.status === 'busy') return isMine ? `${icon} 通話中でした` : `${icon} 不在着信`;
-  return `${icon} 通話`;
+  if (info.status === 'completed') return `${isMine ? '発信' : '着信'}　${callDurationText(info.duration || 0)}`;
+  if (info.status === 'cancelled') return isMine ? 'キャンセル' : '不在着信';
+  if (info.status === 'no_answer') return isMine ? '応答なし' : '不在着信';
+  if (info.status === 'busy') return isMine ? '通話中でした' : '不在着信';
+  return '通話';
 }
 
 function renderCallLogMessage(msgDiv, msg, info, isMine, isNew, cs) {
@@ -1202,6 +1209,10 @@ function renderCallLogMessage(msgDiv, msg, info, isMine, isNew, cs) {
   const wrap = document.createElement('div'); wrap.className = 'msg-wrap';
   const bubble = document.createElement('div'); bubble.className = 'bubble';
   bubble.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+  const iconWrap = document.createElement('span');
+  iconWrap.style.cssText = 'display:inline-flex;align-items:center;';
+  iconWrap.innerHTML = callIconSvg(info, missed);
+  bubble.appendChild(iconWrap);
   const label = document.createElement('span');
   label.className = 'msg-text';
   label.textContent = callLogLabel(info, isMine);

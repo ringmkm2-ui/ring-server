@@ -35,7 +35,7 @@ function toPreviewText(content, encrypted) {
       return parsed.mediaType === 'image' ? '画像が送信されました' : '動画が送信されました';
     }
     if (parsed && parsed.__call__) {
-      return '📞 通話';
+      return '通話';
     }
   } catch (e) {}
   return content;
