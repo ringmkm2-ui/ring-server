@@ -257,7 +257,7 @@ router.get('/talks', auth, async (req, res) => {
       const msg = await db.get(`
         SELECT
           CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
-          content, created_at, sender_id, deleted_at
+          content, encrypted, created_at, sender_id, deleted_at
         FROM messages
         WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
           AND created_at = ?
