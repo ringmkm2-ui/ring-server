@@ -28,6 +28,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 @keyframes spin{to{transform:rotate(360deg)}}
 .upload-pct{font-size:11px;font-weight:800;color:#007aff;animation:pctPulse 0.6s ease-in-out infinite alternate;}
 @keyframes pctPulse{from{transform:scale(1);opacity:.85}to{transform:scale(1.12);opacity:1}}
+.upload-bar-track{width:28px;height:5px;border-radius:999px;background:rgba(0,122,255,.18);overflow:hidden;position:relative}
+.upload-bar-fill{height:100%;width:0%;background:#007aff;border-radius:999px;transition:width .18s ease}
 .app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
 .app-header-container{padding:14px 16px}
 .app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
@@ -257,7 +259,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.64 beta</div>
+  <div class="version-badge">Bro Chat v1.28.65 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -853,7 +855,7 @@ function handleMedia(f, t) {
 
 async function sendMediaViaCloudinary(f, t) {
   const sendBtn = document.getElementById('sendBtn');
-  sendBtn.innerHTML = '<div class="upload-pct">0%</div>';
+  sendBtn.innerHTML = '<div class="upload-bar-track"><div class="upload-bar-fill"></div></div>';
 
   try {
     // 1対1チャットの共有鍵: 自分の秘密鍵 + 相手の公開鍵からECDHで導出した32byteの
@@ -874,8 +876,8 @@ async function sendMediaViaCloudinary(f, t) {
       sharedKey,
       `brochat/dm/${[myUserId, otherId].sort().join('_')}`,
       (progress) => {
-        const pctEl = sendBtn.querySelector('.upload-pct');
-        if (pctEl) pctEl.textContent = Math.round(progress) + '%';
+        const fillEl = sendBtn.querySelector('.upload-bar-fill');
+        if (fillEl) fillEl.style.width = Math.round(progress) + '%';
       }
     );
 
