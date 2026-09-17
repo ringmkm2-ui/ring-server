@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<script>
+// 【一時的な診断コード】チャット画面が「読み込み中」で止まる問題の調査用。
+window.addEventListener('error', function(e) {
+  alert('【デバッグ:JSエラー】\n' + e.message + '\n' + (e.filename || '') + ':' + e.lineno + ':' + e.colno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  alert('【デバッグ:Promiseエラー】\n' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '\n' + (e.reason && e.reason.stack || ''));
+});
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title data-i18n="talk">トーク</title>
@@ -248,7 +257,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.61 beta</div>
+  <div class="version-badge">Bro Chat v1.28.62 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -535,11 +544,13 @@ const publicKeyCache = new Map(); // userId -> Uint8Array公開鍵（メモリ�
 // 自分の鍵ペアを取得（なければ生成してサーバーに公開鍵を登録）
 async function getOrCreateMyKeyPair() {
   if (myKeyPair) return myKeyPair;
+  alert('[DEBUG] getOrCreateMyKeyPair 開始');
 
   const keyStorageName = `e2e_keypair_${myUserId}`;
   let keyStr = localStorage.getItem(keyStorageName);
 
   if (!keyStr) {
+    alert('[DEBUG] 新規鍵ペア生成');
     // 新規鍵ペア生成（Curve25519）
     myKeyPair = nacl.box.keyPair();
     keyStr = JSON.stringify({
@@ -547,7 +558,9 @@ async function getOrCreateMyKeyPair() {
       secretKey: Array.from(myKeyPair.secretKey)
     });
     localStorage.setItem(keyStorageName, keyStr);
+    alert('[DEBUG] registerMyPublicKey 呼び出し前');
     await registerMyPublicKey(myKeyPair);
+    alert('[DEBUG] registerMyPublicKey 完了');
   } else {
     const keyObj = JSON.parse(keyStr);
     myKeyPair = {
@@ -1888,11 +1901,15 @@ if (otherId) {
 
   // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行
   refreshPartnerProfile();
+  alert('[DEBUG] getOrCreateMyKeyPair 呼び出し直前');
   // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
   getOrCreateMyKeyPair().then(() => {
+    alert('[DEBUG] getOrCreateMyKeyPair.then 到達、initialLoadHistory等を開始');
     initialLoadHistory();
     connectRealWS();
     loadPinnedMessages();
+  }).catch(err => {
+    alert('【デバッグ:鍵初期化エラー】' + err.message + '\n' + err.stack);
   });
   // 念のためネットワーク遮断時のフォールバック用に低頻度ポーリング（5分ごと）
   setInterval(() => {
