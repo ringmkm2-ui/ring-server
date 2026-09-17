@@ -26,6 +26,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%}
 .phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.4}
 @keyframes spin{to{transform:rotate(360deg)}}
+.send-launch svg{animation:sendLaunch .42s cubic-bezier(.4,0,.2,1) both}
+@keyframes sendLaunch{0%{transform:translate(0,0) rotate(0) scale(1);opacity:1}55%{transform:translate(10px,-14px) rotate(18deg) scale(1.15);opacity:.4}100%{transform:translate(0,0) rotate(0) scale(1);opacity:1}}
 @keyframes msgSlideRight{from{opacity:0;transform:translateX(28px) scale(.92)}to{opacity:1;transform:translateX(0) scale(1)}}
 @keyframes msgSlideLeft{from{opacity:0;transform:translateX(-28px) scale(.92)}to{opacity:1;transform:translateX(0) scale(1)}}
 .msg-slide-right{animation:msgSlideRight .38s cubic-bezier(.34,1.56,.64,1) both}
@@ -78,6 +80,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .dl-btn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
 .msg-meta{align-self:flex-end;margin-top:5px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
 .msg-meta.overlay{position:absolute;right:8px;bottom:8px;margin:0;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);animation:islandPop .35s cubic-bezier(.34,1.56,.64,1) both}
+.partner-avatar.typing-pulse{animation:avatarPulseRing 1.1s ease-out infinite}
+@keyframes avatarPulseRing{0%{box-shadow:0 0 0 0 rgba(59,130,246,.55)}100%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
 .msg-meta.overlay .time{color:#fff}
 .msg-meta.overlay .check-1,.msg-meta.overlay .check-2{stroke:rgba(255,255,255,.55)}
 .msg-meta.overlay .check-1.lit,.msg-meta.overlay .check-2.lit{stroke:#34d399}
@@ -167,6 +171,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .react-picker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.34,1.56,.64,1);transform:scale(.8) translateY(10px)}
 .react-picker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
 .rp-btn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
+.react-picker.show .rp-btn{animation:rpBtnPop .32s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes rpBtnPop{from{transform:scale(0) translateY(6px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
 .rp-btn:hover{transform:scale(1.3)}
 .media-modal{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
 .media-modal.show{opacity:1;pointer-events:auto}
@@ -259,7 +265,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.66 beta</div>
+  <div class="version-badge">Bro Chat v1.28.67 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -270,7 +276,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div class="partner-avatar" id="partnerAv"></div>
       <div style="flex:1;min-width:0">
         <div class="name" id="partnerName">ユーザー名</div>
-        <div class="status" style="color:#94a3b8" data-i18n="loading">...</div>
+        <div class="status" style="color:#94a3b8"></div>
       </div>
       <button class="phone-btn glass-interactive" id="videoCallBtn" type="button" style="margin-right:6px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -772,10 +778,11 @@ const checkSvg = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" st
 
 // リアクションピッカー生成
 const rp = document.getElementById('reactPicker');
-REACTIONS.forEach(e => {
+REACTIONS.forEach((e, __rpIdx) => {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'rp-btn'; b.textContent = e;
+  b.style.animationDelay = (__rpIdx * 35) + 'ms';
   b.onclick = () => {
     if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
     const msgId = activeMsg ? activeMsg.dataset.msgId : null;
@@ -966,6 +973,11 @@ document.getElementById('chatForm').onsubmit = async e => {
         .catch(err => console.error('edit error:', err));
     }
   } else {
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.classList.remove('send-launch');
+    void sendBtn.offsetWidth;
+    sendBtn.classList.add('send-launch');
+    setTimeout(() => sendBtn.classList.remove('send-launch'), 420);
     sendRealMessage(txt);
   }
 };
@@ -1735,6 +1747,7 @@ function showTypingIndicator() {
     document.getElementById('chatScreen').appendChild(ti);
   }
   ti.style.display = 'flex';
+  document.getElementById('partnerAv')?.classList.add('typing-pulse');
   clearTimeout(typingHideTimeoutId);
   requestAnimationFrame(() => {
     ti.style.transform = 'scale(1)';
@@ -1750,6 +1763,7 @@ function showTypingIndicator() {
 
 function hideTypingIndicator() {
   const ti = document.getElementById('typingIndicator');
+  document.getElementById('partnerAv')?.classList.remove('typing-pulse');
   if (!ti || ti.style.display === 'none') return;
   ti.style.transform = 'scale(.6)';
   ti.style.opacity = '0';
@@ -1811,11 +1825,12 @@ function insertUnreadDivider(beforeId, count) {
       if (document.getElementById('unreadDivider')) return;
       const div = document.createElement('div');
       div.id = 'unreadDivider';
-      div.style.cssText = 'width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;';
+      div.style.cssText = 'width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;transform:scaleX(.3);opacity:0;transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s ease;';
       const line = () => { const l = document.createElement('div'); l.style.cssText = 'flex:1;height:1px;background:rgba(239,68,68,.35);'; return l; };
       const txt = document.createElement('span'); txt.textContent = `未読メッセージ ${count}件`;
       div.appendChild(line()); div.appendChild(txt); div.appendChild(line());
       cs.insertBefore(div, node);
+      requestAnimationFrame(() => { div.style.transform = 'scaleX(1)'; div.style.opacity = '1'; });
       div.scrollIntoView({ block: 'center' });
       return;
     }

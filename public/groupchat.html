@@ -195,7 +195,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.66 beta</div>
+  <div class="version-badge">Bro Chat v1.28.67 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -352,6 +352,20 @@ const myName=localStorage.getItem('myName')||'自分';
 const myAvatar=localStorage.getItem('myAvatar')||'';
 const myColor='#3b82f6';
 const myUserId=localStorage.getItem('ring_userId');
+
+// カスタム背景画像(設定画面で選択したもの)をこのグループチャット画面にも反映する。
+// 直接documentに背景を敷くとぼかした時に前景まで一緒にぼやけてしまうため、
+// 専用の背景レイヤーを一枚敷いて、そこにだけfilter:blurをかける。
+(function applyCustomChatBg() {
+  const bgUrl = localStorage.getItem('myBgImage');
+  if (!bgUrl) return;
+  const blurOn = localStorage.getItem('chatBgBlur') === '1';
+  const bgDiv = document.createElement('div');
+  bgDiv.id = 'customChatBg';
+  bgDiv.style.cssText = 'position:fixed;inset:0;background-image:url(' + bgUrl + ');background-size:cover;background-position:center;z-index:-1;transform:scale(1.08);transition:filter .3s ease;filter:' + (blurOn ? 'blur(18px)' : 'none') + ';';
+  document.body.appendChild(bgDiv);
+  document.body.classList.add('has-custom-bg');
+})();
 window.myUserId=myUserId; // e2eKeys.js から参照できるようにグローバル化
 const token=localStorage.getItem('ring_token');
 if(!token) location.href='/auth.html';
