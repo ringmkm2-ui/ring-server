@@ -1,16 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script>
-// 【一時的な診断コード】ページ初期化中に起きた未捕捉のJSエラーを
-// 画面上にアラートで表示する。原因特定が終わったら削除する。
-window.addEventListener('error', function(e) {
-  alert('【デバッグ:JSエラー】\n' + e.message + '\n' + (e.filename || '') + ':' + e.lineno + ':' + e.colno);
-});
-window.addEventListener('unhandledrejection', function(e) {
-  alert('【デバッグ:Promiseエラー】\n' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '\n' + (e.reason && e.reason.stack || ''));
-});
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title data-i18n="talk">トーク</title>
@@ -258,7 +248,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.59 beta</div>
+  <div class="version-badge">Bro Chat v1.28.60 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1044,7 +1034,6 @@ async function sendRealMessage(content) {
     }
   } catch (err) {
     console.error('send error:', err);
-    alert('【デバッグ】送信エラー: ' + (err && err.message) + '\n' + (err && err.stack));
   }
 }
 
@@ -1749,7 +1738,7 @@ function insertUnreadDivider(beforeId, count) {
   requestAnimationFrame(tryInsert);
 }
 
-function initialLoadHistory() {
+async function initialLoadHistory() {
   // 履歴の一括読み込み中は、メッセージ1件ごとの出現アニメーション(materialize)を
   // 抑制する。何十件も同時にアニメーションさせると視覚的にうるさく、
   // 低スペック端末では描画負荷にもなるため、リアルタイム受信時のみ演出する。
