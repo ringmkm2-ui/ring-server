@@ -1,15 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<script>
-// 【一時的な診断コード】チャット画面が「読み込み中」で止まる問題の調査用。
-window.addEventListener('error', function(e) {
-  alert('【デバッグ:JSエラー】\n' + e.message + '\n' + (e.filename || '') + ':' + e.lineno + ':' + e.colno);
-});
-window.addEventListener('unhandledrejection', function(e) {
-  alert('【デバッグ:Promiseエラー】\n' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '\n' + (e.reason && e.reason.stack || ''));
-});
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title data-i18n="talk">トーク</title>
@@ -35,6 +26,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%}
 .phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.4}
 @keyframes spin{to{transform:rotate(360deg)}}
+.upload-pct{font-size:11px;font-weight:800;color:#007aff;animation:pctPulse 0.6s ease-in-out infinite alternate;}
+@keyframes pctPulse{from{transform:scale(1);opacity:.85}to{transform:scale(1.12);opacity:1}}
 .app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
 .app-header-container{padding:14px 16px}
 .app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
@@ -82,9 +75,16 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .file-sz{font-size:11px;color:#64748b}
 .dl-btn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
 .msg-meta{align-self:flex-end;margin-top:5px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
+.msg-meta.overlay{position:absolute;right:8px;bottom:8px;margin:0;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);animation:islandPop .35s cubic-bezier(.34,1.56,.64,1) both}
+.msg-meta.overlay .time{color:#fff}
+.msg-meta.overlay .check-1,.msg-meta.overlay .check-2{stroke:rgba(255,255,255,.55)}
+.msg-meta.overlay .check-1.lit,.msg-meta.overlay .check-2.lit{stroke:#34d399}
+@keyframes islandPop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .check-marks{display:flex;align-items:center;margin-left:2px}
 .check-1,.check-2{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
-.check-1.lit,.check-2.lit{stroke:#059669}
+.check-1.lit,.check-2.lit{stroke:#059669;animation:checkPop .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes checkPop{0%{transform:scale(.4)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
+.status{transition:color .35s ease,opacity .35s ease}
 .cancel-notice{text-align:center;font-size:12px;color:#94a3b8;padding:6px 20px;font-weight:500;width:100%}
 .reaction-bar{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .rbadge{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:999px;padding:3px 8px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .15s ease}
@@ -257,7 +257,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.63 beta</div>
+  <div class="version-badge">Bro Chat v1.28.64 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -498,12 +498,16 @@ function setPartnerOnlineStatus(online) {
   const statusEl = document.querySelector('.status');
   if (!statusEl) return;
   statusEl.removeAttribute('data-i18n');
-  if (window.i18n) {
-    statusEl.textContent = online ? i18n.t('online') : i18n.t('offline');
-  } else {
-    statusEl.textContent = online ? 'オンライン' : 'オフライン';
-  }
-  statusEl.style.color = online ? '' : '#94a3b8';
+  statusEl.style.opacity = '0';
+  setTimeout(() => {
+    if (window.i18n) {
+      statusEl.textContent = online ? i18n.t('online') : i18n.t('offline');
+    } else {
+      statusEl.textContent = online ? 'オンライン' : 'オフライン';
+    }
+    statusEl.style.color = online ? '' : '#94a3b8';
+    statusEl.style.opacity = '1';
+  }, 160);
 }
 
 // 自分自身とのチャットは開けないようにする（データ不整合防止）
@@ -544,13 +548,11 @@ const publicKeyCache = new Map(); // userId -> Uint8Array公開鍵（メモリ�
 // 自分の鍵ペアを取得（なければ生成してサーバーに公開鍵を登録）
 async function getOrCreateMyKeyPair() {
   if (myKeyPair) return myKeyPair;
-  alert('[DEBUG] getOrCreateMyKeyPair 開始');
 
   const keyStorageName = `e2e_keypair_${myUserId}`;
   let keyStr = localStorage.getItem(keyStorageName);
 
   if (!keyStr) {
-    alert('[DEBUG] 新規鍵ペア生成');
     // 新規鍵ペア生成（Curve25519）
     myKeyPair = nacl.box.keyPair();
     keyStr = JSON.stringify({
@@ -558,9 +560,7 @@ async function getOrCreateMyKeyPair() {
       secretKey: Array.from(myKeyPair.secretKey)
     });
     localStorage.setItem(keyStorageName, keyStr);
-    alert('[DEBUG] registerMyPublicKey 呼び出し前');
     await registerMyPublicKey(myKeyPair);
-    alert('[DEBUG] registerMyPublicKey 完了');
   } else {
     const keyObj = JSON.parse(keyStr);
     myKeyPair = {
@@ -853,7 +853,7 @@ function handleMedia(f, t) {
 
 async function sendMediaViaCloudinary(f, t) {
   const sendBtn = document.getElementById('sendBtn');
-  sendBtn.innerHTML = '<div style="width:16px;height:16px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>';
+  sendBtn.innerHTML = '<div class="upload-pct">0%</div>';
 
   try {
     // 1対1チャットの共有鍵: 自分の秘密鍵 + 相手の公開鍵からECDHで導出した32byteの
@@ -873,7 +873,10 @@ async function sendMediaViaCloudinary(f, t) {
       f,
       sharedKey,
       `brochat/dm/${[myUserId, otherId].sort().join('_')}`,
-      (progress) => console.log('[upload] Progress:', progress + '%')
+      (progress) => {
+        const pctEl = sendBtn.querySelector('.upload-pct');
+        if (pctEl) pctEl.textContent = Math.round(progress) + '%';
+      }
     );
 
     if (!metadata || !metadata.cloudinaryUrl) {
@@ -1403,7 +1406,7 @@ function renderMessageImpl(msg) {
   //  重ねてしまっており、実行環境のタイムゾーン設定によって
   //  数時間単位で時刻がずれる原因になっていた)
   const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}${msg.editedAt ? ' (編集済)' : ''}`;
-  const meta = document.createElement('div'); meta.className = 'msg-meta';
+  const meta = document.createElement('div'); meta.className = 'msg-meta' + (mediaSrc ? ' overlay' : '');
 
   if (isMine) {
     meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1 lit"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
@@ -1901,15 +1904,13 @@ if (otherId) {
 
   // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行
   refreshPartnerProfile();
-  alert('[DEBUG] getOrCreateMyKeyPair 呼び出し直前');
   // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
   getOrCreateMyKeyPair().then(() => {
-    alert('[DEBUG] getOrCreateMyKeyPair.then 到達、initialLoadHistory等を開始');
     initialLoadHistory();
     connectRealWS();
     loadPinnedMessages();
   }).catch(err => {
-    alert('【デバッグ:鍵初期化エラー】' + err.message + '\n' + err.stack);
+    console.error('鍵初期化エラー:', err);
   });
   // 念のためネットワーク遮断時のフォールバック用に低頻度ポーリング（5分ごと）
   setInterval(() => {
