@@ -42,6 +42,7 @@
     create_btn: { ja: "作成する", en: "Create", "zh-CN": "创建", ko: "만들기" },
     dark_mode: { ja: "ダークモード", en: "Dark Mode", "zh-CN": "深色模式", ko: "다크 모드" },
     mobile_data_saver: { ja: "モバイルデータ節約", en: "Mobile Data Saver", "zh-CN": "移动数据节省", ko: "모바일 데이터 절약" },
+    chat_bg_blur: { ja: "チャット背景をぼかす", en: "Blur chat background", "zh-CN": "模糊聊天背景", ko: "채팅 배경 흐리게" },
     edit_profile: { ja: "プロフィールの編集", en: "Edit Profile", "zh-CN": "编辑资料", ko: "프로필 편집" },
     profile_image: { ja: "プロフィール画像", en: "Profile Picture", "zh-CN": "头像", ko: "프로필 사진" },
     display_name: { ja: "表示名", en: "Display Name", "zh-CN": "显示名称", ko: "표시 이름" },

@@ -26,10 +26,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%}
 .phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.4}
 @keyframes spin{to{transform:rotate(360deg)}}
-.upload-pct{font-size:11px;font-weight:800;color:#007aff;animation:pctPulse 0.6s ease-in-out infinite alternate;}
-@keyframes pctPulse{from{transform:scale(1);opacity:.85}to{transform:scale(1.12);opacity:1}}
-.upload-bar-track{width:28px;height:5px;border-radius:999px;background:rgba(0,122,255,.18);overflow:hidden;position:relative}
-.upload-bar-fill{height:100%;width:0%;background:#007aff;border-radius:999px;transition:width .18s ease}
+@keyframes msgSlideRight{from{opacity:0;transform:translateX(28px) scale(.92)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes msgSlideLeft{from{opacity:0;transform:translateX(-28px) scale(.92)}to{opacity:1;transform:translateX(0) scale(1)}}
+.msg-slide-right{animation:msgSlideRight .38s cubic-bezier(.34,1.56,.64,1) both}
+.msg-slide-left{animation:msgSlideLeft .38s cubic-bezier(.34,1.56,.64,1) both}
 .app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
 .app-header-container{padding:14px 16px}
 .app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
@@ -259,7 +259,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.65 beta</div>
+  <div class="version-badge">Bro Chat v1.28.66 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -519,6 +519,20 @@ if (otherId && myUserIdForCheck && String(otherId) === String(myUserIdForCheck))
 }
 
 const token = localStorage.getItem('ring_token');
+
+// カスタム背景画像(設定画面で選択したもの)をこのチャット画面にも反映する。
+// 直接documentに背景を敷くとぼかした時に前景まで一緒にぼやけてしまうため、
+// 専用の背景レイヤーを一枚敷いて、そこにだけfilter:blurをかける。
+(function applyCustomChatBg() {
+  const bgUrl = localStorage.getItem('myBgImage');
+  if (!bgUrl) return;
+  const blurOn = localStorage.getItem('chatBgBlur') === '1';
+  const bgDiv = document.createElement('div');
+  bgDiv.id = 'customChatBg';
+  bgDiv.style.cssText = 'position:fixed;inset:0;background-image:url(' + bgUrl + ');background-size:cover;background-position:center;z-index:-1;transform:scale(1.08);transition:filter .3s ease;filter:' + (blurOn ? 'blur(18px)' : 'none') + ';';
+  document.body.appendChild(bgDiv);
+  document.body.classList.add('has-custom-bg');
+})();
 const myUserId = localStorage.getItem('ring_userId');
 if (!token) location.href = '/auth.html';
 
@@ -855,7 +869,7 @@ function handleMedia(f, t) {
 
 async function sendMediaViaCloudinary(f, t) {
   const sendBtn = document.getElementById('sendBtn');
-  sendBtn.innerHTML = '<div class="upload-bar-track"><div class="upload-bar-fill"></div></div>';
+  sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" fill="none" stroke="rgba(0,122,255,.18)" stroke-width="3"/><circle class="upload-ring-fill" cx="10" cy="10" r="8" fill="none" stroke="#007aff" stroke-width="3" stroke-linecap="round" stroke-dasharray="50.27" stroke-dashoffset="50.27" style="transition:stroke-dashoffset .18s ease"/></svg>';
 
   try {
     // 1対1チャットの共有鍵: 自分の秘密鍵 + 相手の公開鍵からECDHで導出した32byteの
@@ -876,8 +890,8 @@ async function sendMediaViaCloudinary(f, t) {
       sharedKey,
       `brochat/dm/${[myUserId, otherId].sort().join('_')}`,
       (progress) => {
-        const fillEl = sendBtn.querySelector('.upload-bar-fill');
-        if (fillEl) fillEl.style.width = Math.round(progress) + '%';
+        const ringEl = sendBtn.querySelector('.upload-ring-fill');
+        if (ringEl) ringEl.style.strokeDashoffset = (50.27 * (1 - Math.min(progress, 100) / 100)).toFixed(2);
       }
     );
 
@@ -1250,7 +1264,7 @@ function renderCallLogMessage(msgDiv, msg, info, isMine, isNew, cs) {
     cs.appendChild(msgDiv);
     msgDOMCache.set(msg.id, msgDiv);
     cs.scrollTop = 99999;
-    if (!isBulkHistoryLoad && window.LiquidGlass) window.LiquidGlass.materializeIn(msgDiv, true);
+    if (!isBulkHistoryLoad && window.LiquidGlass) msgDiv.classList.add(isMine ? 'msg-slide-right' : 'msg-slide-left');
   }
   return msgDiv;
 }
@@ -1426,7 +1440,7 @@ function renderMessageImpl(msg) {
     // 履歴の一括読み込み中でなければ、ガラスが凝縮するように出現させる
     // (リアルタイム受信・自分の送信直後のみ演出する)
     if (!isBulkHistoryLoad && window.LiquidGlass) {
-      window.LiquidGlass.materializeIn(msgDiv, true);
+      msgDiv.classList.add(isMine ? 'msg-slide-right' : 'msg-slide-left');
     }
   }
 
@@ -1479,6 +1493,7 @@ async function syncMessages() {
 // WebSocket接続（リアルタイム受信）+ バックグラウンド対応
 let ws = null;
 let wsReconnectAttempts = 0;
+let presenceTimeoutId = null;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY = [1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000];
 
@@ -1507,16 +1522,24 @@ function connectRealWS() {
         ws.send(JSON.stringify({ type: 'chat_open' }));
         // 相手の現在のオンライン状態を問い合わせる
         ws.send(JSON.stringify({ type: 'presence_query', targetUserId: otherId }));
+        // 応答が来ない場合に「読み込み中...」のまま固まらないよう、数秒でオフライン扱いにフォールバック
+        clearTimeout(presenceTimeoutId);
+        presenceTimeoutId = setTimeout(() => {
+          const statusEl = document.querySelector('.status');
+          if (statusEl && statusEl.hasAttribute('data-i18n')) setPartnerOnlineStatus(false);
+        }, 5000);
         return;
       }
       if (data.type === 'presence_result') {
         if (data.userId === otherId) {
+          clearTimeout(presenceTimeoutId);
           setPartnerOnlineStatus(data.online);
         }
         return;
       }
       if (data.type === 'presence_update') {
         if (data.userId === otherId) {
+          clearTimeout(presenceTimeoutId);
           setPartnerOnlineStatus(data.online);
         }
         return;
@@ -1525,6 +1548,15 @@ function connectRealWS() {
         const msg = data.message;
         if ((msg.senderId === otherId && msg.recipientId === myUserId) || (msg.senderId === myUserId && msg.recipientId === otherId)) {
           if (msg.senderId !== myUserId) {
+            // タイピングインジケータが出ている最中に届いたら、その位置から
+            // メッセージバブルへ「伸びる」ように見せるため、先に位置を記録しておく
+            const tiEl = document.getElementById('typingIndicator');
+            let morphRect = null;
+            if (tiEl && tiEl.style.display !== 'none' && tiEl.style.opacity !== '0') {
+              morphRect = tiEl.getBoundingClientRect();
+              clearTimeout(typingTimeoutId);
+              hideTypingIndicator();
+            }
             // 相手からのメッセージは復号化してから表示
             let displayContent = msg.content;
             if (msg.encrypted) {
@@ -1534,7 +1566,28 @@ function connectRealWS() {
             }
             const displayMsg = { ...msg, content: displayContent };
             addRealMessage(displayMsg);
-            renderMessage(displayMsg);
+            const newEl = renderMessageImpl(displayMsg);
+            if (morphRect && newEl) {
+              const newRect = newEl.getBoundingClientRect();
+              const dx = morphRect.left - newRect.left;
+              const dy = morphRect.top - newRect.top;
+              const scaleX = Math.max(morphRect.width / newRect.width, 0.2);
+              const scaleY = Math.max(morphRect.height / newRect.height, 0.2);
+              newEl.style.animation = 'none';
+              newEl.style.transformOrigin = 'top left';
+              newEl.style.transition = 'none';
+              newEl.style.opacity = '1';
+              newEl.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`;
+              requestAnimationFrame(() => {
+                newEl.style.transition = 'transform .4s cubic-bezier(.34,1.56,.64,1)';
+                newEl.style.transform = 'translate(0,0) scale(1,1)';
+                newEl.addEventListener('transitionend', () => {
+                  newEl.style.transition = '';
+                  newEl.style.transform = '';
+                  newEl.style.transformOrigin = '';
+                }, { once: true });
+              });
+            }
             // ブラウザ通知を送信(タブを見ている最中は煩わしいため非表示時のみ)
             if (document.hidden) {
               // メディアメッセージの場合、通知本文には巨大なBase64ではなく短いラベルを出す
@@ -1650,12 +1703,13 @@ function connectRealWS() {
 
 // タイピングインジケータ
 let typingTimeoutId = null;
+let typingHideTimeoutId = null;
 function showTypingIndicator() {
   let ti = document.getElementById('typingIndicator');
   if (!ti) {
     ti = document.createElement('div');
     ti.id = 'typingIndicator';
-    ti.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 12px;';
+    ti.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 12px;transform-origin:left center;transform:scale(.6);opacity:0;transition:transform .28s cubic-bezier(.34,1.56,.64,1),opacity .22s ease;';
     // アバター
     const av = document.createElement('div');
     av.style.cssText = 'width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;background:hsl(' + (Math.abs((partnerName||'?').charCodeAt(0)*47)%360) + ',60%,55%);';
@@ -1681,12 +1735,26 @@ function showTypingIndicator() {
     document.getElementById('chatScreen').appendChild(ti);
   }
   ti.style.display = 'flex';
+  clearTimeout(typingHideTimeoutId);
+  requestAnimationFrame(() => {
+    ti.style.transform = 'scale(1)';
+    ti.style.opacity = '1';
+  });
   document.getElementById('chatScreen').scrollTop = 99999;
 
   clearTimeout(typingTimeoutId);
   typingTimeoutId = setTimeout(() => {
-    ti.style.display = 'none';
+    hideTypingIndicator();
   }, 3000);
+}
+
+function hideTypingIndicator() {
+  const ti = document.getElementById('typingIndicator');
+  if (!ti || ti.style.display === 'none') return;
+  ti.style.transform = 'scale(.6)';
+  ti.style.opacity = '0';
+  clearTimeout(typingHideTimeoutId);
+  typingHideTimeoutId = setTimeout(() => { ti.style.display = 'none'; }, 240);
 }
 
 // 画面外のメッセージのBase64データをメモリから削除（メモリ節約用）

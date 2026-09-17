@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.65 beta</div>
+  <div class="version-badge">Bro Chat v1.28.66 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -418,6 +418,20 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
     <div class="sg">
       <label data-i18n="global_bg_image">全体の背景画像</label>
       <div class="fiw"><span class="cfb" data-i18n="select_bg_image">背景画像を選択する</span><input type="file" id="inBgFile" accept="image/*"></div>
+    </div>
+    <div class="sg">
+      <div class="sgrow">
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="chat_bg_blur">チャット背景をぼかす</span><span class="sgdesc">設定した背景画像をチャット画面でぼかして表示します</span></div>
+        <div class="ts-wrap" id="tsChatBgBlur">
+          <div class="ts-track" id="tsTrackChatBgBlur">
+            <div class="ts-thumb" id="tsThumbChatBgBlur">
+              <div class="ts-thumb-clone"><div class="ts-thumb-clone-inner" id="tsCloneInnerChatBgBlur"></div></div>
+              <div class="ts-thumb-inner"></div>
+            </div>
+          </div>
+          <input type="checkbox" id="toggleChatBgBlur" style="display:none">
+        </div>
+      </div>
     </div>
     <div class="sg">
       <div class="sgrow">
@@ -1503,6 +1517,7 @@ document.getElementById('openSettings').onclick=()=>{
   else if (darkManual === '0') document.getElementById('toggleDarkMode').checked = false;
   else document.getElementById('toggleDarkMode').checked = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.getElementById('toggleDataSaver').checked = localStorage.getItem('mobileDataSaver') === '1';
+  document.getElementById('toggleChatBgBlur').checked = localStorage.getItem('chatBgBlur') === '1';
   document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
   document.getElementById('langSelectSettings').value = (window.i18n ? i18n.getLang() : 'ja');
   settingsMov.classList.add('open');
@@ -1517,6 +1532,9 @@ document.getElementById('toggleDarkMode').addEventListener('change', e=>{
 });
 document.getElementById('toggleDataSaver').addEventListener('change', e=>{
   localStorage.setItem('mobileDataSaver', e.target.checked ? '1' : '0');
+});
+document.getElementById('toggleChatBgBlur').addEventListener('change', e=>{
+  localStorage.setItem('chatBgBlur', e.target.checked ? '1' : '0');
 });
 document.getElementById('langSelectSettings').onchange=e=>{
   if (window.i18n) i18n.setLang(e.target.value);
@@ -2657,6 +2675,7 @@ document.addEventListener('DOMContentLoaded', () => {
       {thumb:'tsThumbDarkMode',  track:'tsTrackDarkMode',  clone:'tsCloneInnerDarkMode',  input:'toggleDarkMode',   dispImg:'tsDispImg',  dispMap:'tsDispMap'},
       {thumb:'tsThumbDataSaver', track:'tsTrackDataSaver', clone:'tsCloneInnerDataSaver', input:'toggleDataSaver',  dispImg:null,         dispMap:null},
       {thumb:'tsThumbBatterySaver',track:'tsTrackBatterySaver',clone:'tsCloneInnerBatterySaver',input:'toggleBatterySaver',dispImg:null,dispMap:null},
+      {thumb:'tsThumbChatBgBlur',track:'tsTrackChatBgBlur',clone:'tsCloneInnerChatBgBlur',input:'toggleChatBgBlur',dispImg:null,dispMap:null},
     ];
     switches.forEach(sw=>{
       const thumbEl=document.getElementById(sw.thumb);
