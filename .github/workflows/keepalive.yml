@@ -1,0 +1,19 @@
+name: Keep Render service awake
+
+on:
+  schedule:
+    # 10分おき（Renderは15分無通信でスリープするので余裕を持たせる）
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ring-server-50sy.onrender.com/health)
+          echo "health check status: $STATUS"
+          if [ "$STATUS" -ne 200 ]; then
+            echo "::warning::ring-server /health returned $STATUS"
+          fi
