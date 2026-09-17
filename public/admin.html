@@ -275,7 +275,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.68 beta</div>
+  <div class="version-badge">Bro Chat v1.28.69 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -852,7 +852,7 @@ document.getElementById('locationBtn').onclick = async () => {
       content: text,
       createdAt: new Date().toISOString()
     });
-    document.getElementById('chatScreen').scrollTop = 99999;
+    scrollChatToBottom(document.getElementById('chatScreen'));
   } catch (e) {
     if (e.code === 1) alert('位置情報の権限が拒否されました');
     else if (e.code === 2) alert('位置情報を取得できませんでした');
@@ -1194,6 +1194,30 @@ let renderScheduled = false;
 // (initialLoadHistory参照)
 let isBulkHistoryLoad = false;
 
+// チャット欄を一番下までスクロールする。履歴の一括読み込み中は瞬時に、
+// リアルタイムでの新着(タイピングインジケータ表示・新規メッセージ受信等)は
+// ヌルッと滑らかにスクロールさせて、コンテンツが「ジャンプ」して見えないようにする。
+function scrollChatToBottom(cs, force) {
+  if (!cs) return;
+  if (isBulkHistoryLoad && !force) {
+    cs.scrollTop = cs.scrollHeight;
+    return;
+  }
+  const target = cs.scrollHeight - cs.clientHeight;
+  const start = cs.scrollTop;
+  const dist = target - start;
+  if (Math.abs(dist) < 2) return;
+  const duration = Math.min(420, 160 + Math.abs(dist) * 0.35);
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    cs.scrollTop = start + dist * eased;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 function queueRender(msg) {
   renderQueue.push(msg);
   if (!renderScheduled) {
@@ -1282,7 +1306,7 @@ function renderCallLogMessage(msgDiv, msg, info, isMine, isNew, cs) {
   if (isNew) {
     cs.appendChild(msgDiv);
     msgDOMCache.set(msg.id, msgDiv);
-    cs.scrollTop = 99999;
+    scrollChatToBottom(cs);
     if (!isBulkHistoryLoad && window.LiquidGlass) msgDiv.classList.add(isMine ? 'msg-slide-right' : 'msg-slide-left');
   }
   return msgDiv;
@@ -1343,7 +1367,7 @@ function renderMessageImpl(msg) {
     if (isNew) {
       cs.appendChild(msgDiv);
       msgDOMCache.set(msg.id, msgDiv); // キャッシュに登録
-      cs.scrollTop = 99999;
+      scrollChatToBottom(cs);
     }
     return msgDiv;
   }
@@ -1455,7 +1479,7 @@ function renderMessageImpl(msg) {
   if (isNew) {
     cs.appendChild(msgDiv);
     msgDOMCache.set(msg.id, msgDiv); // キャッシュに登録
-    cs.scrollTop = 99999;
+    scrollChatToBottom(cs);
     // 履歴の一括読み込み中でなければ、ガラスが凝縮するように出現させる
     // (リアルタイム受信・自分の送信直後のみ演出する)
     if (!isBulkHistoryLoad && window.LiquidGlass) {
@@ -1760,7 +1784,7 @@ function showTypingIndicator() {
     ti.style.transform = 'scale(1)';
     ti.style.opacity = '1';
   });
-  document.getElementById('chatScreen').scrollTop = 99999;
+  scrollChatToBottom(document.getElementById('chatScreen'), true);
 
   clearTimeout(typingTimeoutId);
   typingTimeoutId = setTimeout(() => {
