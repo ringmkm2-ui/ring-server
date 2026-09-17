@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.55 beta</div>
+  <div class="version-badge">Bro Chat v1.28.56 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -837,7 +837,9 @@ function bindTalkNavSwitcher(){
     indicator.style.left=`${left}px`;
     indicator.style.width=`${w}px`;
     targetIndex=nearestIndex(localX);
-    lgQueueGlassRebuild(indicator);
+    // NOTE: フィルター(displacement/specular map)は幅に依存するが、ドラッグ中は
+    // 幅が変わらない(pressWidthのまま)ので毎フレーム再生成する必要は無い。
+    // これを呼ぶとcanvasのピクセルループが毎フレーム走ってドラッグがカクつく。
   }
   function clearPointerHandlers(){
     window.removeEventListener('pointermove',onPointerMove);
