@@ -102,6 +102,18 @@ async function main() {
   });
 
   // 静的ファイル（クライアント側の HTML/JS）
+  // HTMLページ(トップ含む)は、AndroidアプリのWebViewが付与する専用の
+  // User-Agent識別子が無いと弾く(合言葉方式ではなく、URLを知っただけの
+  // ブラウザからのカジュアルな直接閲覧を防ぐのが目的。API/WSは対象外)。
+  app.use((req, res, next) => {
+    const isPageRequest = req.path === '/' || req.path.endsWith('.html');
+    const ua = req.headers['user-agent'] || '';
+    if (isPageRequest && !ua.includes('BroChatApp')) {
+      return res.status(404).send('Not Found');
+    }
+    next();
+  });
+
   app.use(express.static('public'));
   
   // 起動時のスプラッシュ画面（Powered by → Welcome画面へ拡大遷移）
