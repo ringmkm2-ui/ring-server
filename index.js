@@ -109,6 +109,7 @@ async function main() {
     const isPageRequest = req.path === '/' || req.path.endsWith('.html');
     const ua = req.headers['user-agent'] || '';
     if (isPageRequest && !ua.includes('BroChatApp')) {
+      console.warn('[uaGate] ブロック:', req.path, '| UA:', ua);
       return res.status(404).send('Not Found');
     }
     next();
