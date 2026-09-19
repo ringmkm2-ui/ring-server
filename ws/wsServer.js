@@ -98,7 +98,31 @@ function initWebSocketServer(server) {
       else ipConnections.set(clientIp, cnt);
     });
 
+    // WSメッセージのレート制限（スライディングウィンドウ方式）。
+    // REST APIにはexpress-rate-limitがあるが、WS経由は制限が無かった。
+    // 認証済みユーザーが毎秒数千のメッセージを流し込んでDBやブロードキャストを
+    // 飽和させるDoSが可能だったため、1秒あたり30メッセージに制限する。
+    // バイナリ(音声チャンク)は高頻度で正常なため除外する。
+    const WS_RATE_WINDOW_MS = 1000;
+    const WS_RATE_MAX = 30;
+    let wsRateCount = 0;
+    let wsRateWindowStart = Date.now();
+
     ws.on('message', async (raw, isBinary) => {
+      // バイナリ(音声)はレート制限対象外
+      if (!isBinary) {
+        const now = Date.now();
+        if (now - wsRateWindowStart > WS_RATE_WINDOW_MS) {
+          wsRateCount = 0;
+          wsRateWindowStart = now;
+        }
+        wsRateCount++;
+        if (wsRateCount > WS_RATE_MAX) {
+          ws.send(JSON.stringify({ type: 'error', error: 'メッセージ送信が速すぎます' }));
+          return;
+        }
+      }
+
       // Call Assist: リアルタイム字幕用の音声チャンク(バイナリフレーム)。
       // 先頭1バイトがtrack識別子(0x01=自分のマイク, 0x02=相手の受信音声)、
       // 残りがPCM16音声データ本体。
@@ -228,7 +252,11 @@ function initWebSocketServer(server) {
           [new Date().toISOString(), data.msgUuid]
         );
         // 送信側（通知される側）に既読通知を送信
-        broadcastToUser(data.recipientId, {
+        // セキュリティ修正: data.recipientId(クライアントが自由に指定できる値)ではなく、
+        // DBから取得したtargetMsg.sender_id(実際のメッセージ送信者)を通知先に使う。
+        // 以前はクライアントが任意のuserIdを指定して、無関係な第三者に
+        // 偽の既読通知を送りつけることが可能だった。
+        broadcastToUser(targetMsg.sender_id, {
           type: 'read_receipt',
           fromUserId: userId,
           msgUuid: data.msgUuid,
@@ -252,6 +280,17 @@ function initWebSocketServer(server) {
 
       // --- グループメッセージの中継 (メンバー全員に配送) ---
       if (data.type === 'group_message') {
+        // セキュリティ修正: 送信者がグループのアクティブメンバーか検証する。
+        // 以前はgroupIdさえ知っていれば部外者でもグループ全員に偽メッセージを
+        // 送信でき、オフラインキューにも永続的に保存されてしまう状態だった。
+        const senderMembership = await db.get(
+          'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL',
+          [data.groupId, userId]
+        );
+        if (!senderMembership) {
+          ws.send(JSON.stringify({ type: 'error', error: 'このグループのメンバーではありません' }));
+          return;
+        }
         const members = await db.all(
           'SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL AND user_id != ?',
           [data.groupId, userId]

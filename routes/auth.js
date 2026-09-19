@@ -38,6 +38,14 @@ router.post('/register', registerLimiter, async (req, res) => {
   if (username.length > 254) {
     return res.status(400).json({ error: 'ユーザー名が長すぎます' });
   }
+  if (username.length < 3) {
+    return res.status(400).json({ error: 'ユーザー名は3文字以上にしてください' });
+  }
+  // HTMLタグ・スクリプトインジェクション防止。英数字・日本語・一般的な記号のみ許可。
+  // < > " ' はXSSに悪用されるため禁止。
+  if (/[<>"'`]/.test(username)) {
+    return res.status(400).json({ error: 'ユーザー名に使用できない文字が含まれています' });
+  }
 
   const existing = await db.get('SELECT id FROM users WHERE username = ?', [username]);
   if (existing) {
@@ -235,6 +243,44 @@ async function verifyTokenRaw(token) {
   return verifyTokenWithRevocation(token);
 }
 
+// --- パスワード変更 ---
+// body: { currentPassword, newPassword }
+// 変更後、既存の全セッションを自動的に失効させる(トークン漏洩対策)。
+router.post('/change-password', verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: '現在のパスワードと新しいパスワードは必須です' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください' });
+    }
+    if (newPassword.length > 128) {
+      return res.status(400).json({ error: 'パスワードが長すぎます' });
+    }
+
+    const user = await db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.userId]);
+    if (!user || !user.password_hash) {
+      return res.status(400).json({ error: 'パスワードが設定されていないアカウントです（Google連携アカウント）' });
+    }
+
+    const match = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: '現在のパスワードが違います' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [newHash, req.user.userId]);
+
+    // 新しいトークンを発行(変更直後に再ログインさせないため)
+    const token = jwt.sign({ userId: req.user.userId, username: req.user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    res.json({ ok: true, token, message: 'パスワードを変更しました。他の全端末からサインアウトされます。' });
+  } catch (e) {
+    sendServerError(res, e, 'change-password');
+  }
+});
+
 // 全端末からサインアウト: 今このリクエストを送っているトークン以外も含め、
 // これまで発行された全てのJWTを即座に無効化する。
 // 端末紛失・トークン漏洩が疑われる場合に、パスワード変更を待たずに使える。
@@ -244,6 +290,48 @@ router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
     res.json({ ok: true, message: '全端末のセッションを無効化しました。再度ログインしてください。' });
   } catch (e) {
     sendServerError(res, e, 'revoke-all-sessions');
+  }
+});
+
+// --- アカウント削除 ---
+// body: { password } (Google連携アカウントの場合は不要)
+// ユーザーデータを完全に削除する。メッセージのcontent列は空文字に置換し、
+// メタデータ(sender_id/recipient_id等)は外部キー制約の関係でnullにできないため
+// そのまま残る(相手側の会話画面で「退会済みユーザー」と表示する想定)。
+router.post('/delete-account', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await db.get('SELECT password_hash FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+
+    // パスワードがあるアカウント(非Google)は現在のパスワードで本人確認
+    if (user.password_hash) {
+      const { password } = req.body;
+      if (!password) return res.status(400).json({ error: '確認のため現在のパスワードを入力してください' });
+      const match = await bcrypt.compare(password, user.password_hash);
+      if (!match) return res.status(401).json({ error: 'パスワードが違います' });
+    }
+
+    // メッセージ内容を消去(メタデータは残す)
+    await db.run("UPDATE messages SET content = '', deleted_at = CURRENT_TIMESTAMP WHERE sender_id = ?", [userId]);
+    await db.run("UPDATE group_messages SET content = '', deleted_at = CURRENT_TIMESTAMP WHERE sender_id = ?", [userId]);
+    // 関連データ削除
+    await db.run('DELETE FROM push_subscriptions WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM one_time_prekeys WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM identity_keys WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM message_reactions WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM offline_queue WHERE sender_id = ? OR recipient_id = ?', [userId, userId]);
+    await db.run('DELETE FROM call_notes WHERE owner_id = ?', [userId]);
+    await db.run('DELETE FROM call_summaries WHERE owner_id = ?', [userId]);
+    // ユーザー情報の匿名化(外部キー制約のため行自体は残す)
+    await db.run(
+      "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [`deleted_${userId}`, userId]
+    );
+
+    res.json({ ok: true, message: 'アカウントを削除しました' });
+  } catch (e) {
+    sendServerError(res, e, 'delete-account');
   }
 });
 

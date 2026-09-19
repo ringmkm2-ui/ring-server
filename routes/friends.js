@@ -60,6 +60,9 @@ router.post('/me', auth, async (req, res) => {
     }
     // publicKey が含まれていた場合もここで処理する（/api/friends/publickey と同等）
     if (publicKey) {
+      if (typeof publicKey !== 'string' || publicKey.length > 200 || !/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
+        return res.status(400).json({ error: '公開鍵の形式が不正です' });
+      }
       await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
     }
     res.json({ ok: true });
@@ -73,6 +76,14 @@ router.post('/publickey', auth, async (req, res) => {
   try {
     const { publicKey } = req.body;
     if (!publicKey) return res.status(400).json({ error: 'publicKey required' });
+    // 公開鍵はBase64エンコードされた32バイト(TweetNaCl)または44文字のBase64文字列。
+    // 任意の巨大文字列やスクリプトをDBに突っ込まれるのを防ぐ。
+    if (typeof publicKey !== 'string' || publicKey.length > 200) {
+      return res.status(400).json({ error: '公開鍵の形式が不正です' });
+    }
+    if (!/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
+      return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
+    }
     await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
     res.json({ ok: true });
   } catch (e) {

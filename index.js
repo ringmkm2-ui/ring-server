@@ -59,8 +59,51 @@ async function main() {
   // 空白のまま固まる」といったログイン不能の不具合を引き起こす。
   // Google公式ドキュメントの推奨に従い same-origin-allow-popups を設定する
   // (完全無効化(unsafe-none)よりもセキュリティを保てるため、こちらを優先する)。
+  // CSPを完全無効化するのではなく、必要な外部リソースだけをホワイトリストする。
+  // これにより、XSS脆弱性があっても攻撃者が任意の外部スクリプトを読み込めなくなる。
+  // 'unsafe-inline' は既存のインラインscript/styleが多数あるため当面必要だが、
+  // 将来的にはnonce方式へ移行すべき。
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",          // 既存インラインscript互換
+          "https://accounts.google.com",
+          "https://cdnjs.cloudflare.com",
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",          // 既存インラインstyle互換
+          "https://fonts.googleapis.com",
+          "https://accounts.google.com",
+        ],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: [
+          "'self'",
+          "data:",                     // Base64画像
+          "blob:",
+          "https://res.cloudinary.com",
+          "https://*.googleusercontent.com",
+        ],
+        mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
+        connectSrc: [
+          "'self'",
+          "wss:",                      // WebSocket
+          "https://api.anthropic.com",
+          "https://accounts.google.com",
+          "https://people.googleapis.com",
+          "https://res.cloudinary.com",
+          "https://api.cloudinary.com",
+        ],
+        frameSrc: ["https://accounts.google.com"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],    // クリックジャッキング防止
+      },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   }));
