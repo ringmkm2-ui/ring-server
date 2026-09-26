@@ -247,6 +247,21 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 /* 応答/拒否ボタンも同様の理由でbackdrop-filterを外す */
 .accept-btn-glass{background:rgba(34,197,94,.75);border:1px solid rgba(255,255,255,.35)}
 .decline-btn-glass{background:rgba(239,68,68,.75);border:1px solid rgba(255,255,255,.35)}
+/* Galaxy式 着信ボタン: 押すと周りに大きい円が出て、ボタンを円の外周まで引っぱると確定 */
+.gx-incoming{width:100%;justify-content:space-between;align-items:center;padding:0 48px calc(64px + env(safe-area-inset-bottom,0px))}
+.gx-wrap{position:relative;width:72px;height:72px;transition:opacity .2s ease}
+.gx-wrap.dim{opacity:0}
+.gx-ring{position:absolute;left:50%;top:50%;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;pointer-events:none;opacity:0;transform:scale(1);transition:transform .24s cubic-bezier(.2,.8,.2,1),opacity .24s ease,background .15s ease}
+#gxAcceptWrap .gx-ring{background:rgba(31,180,85,.22);border:1.5px solid rgba(31,180,85,.55)}
+#gxDeclineWrap .gx-ring{background:rgba(229,72,77,.22);border:1.5px solid rgba(229,72,77,.55)}
+.gx-wrap.active .gx-ring{opacity:1;transform:scale(3.3)}
+#gxAcceptWrap.ready .gx-ring{background:rgba(31,180,85,.4)}
+#gxDeclineWrap.ready .gx-ring{background:rgba(229,72,77,.4)}
+.gx-btn{position:absolute;inset:0;border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab;padding:0;will-change:transform;-webkit-tap-highlight-color:transparent}
+.gx-accept{background:#1fb455;box-shadow:0 6px 20px rgba(31,180,85,.45)}
+.gx-decline{background:#e5484d;box-shadow:0 6px 20px rgba(229,72,77,.45)}
+#gxAcceptWrap:not(.active)::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(31,180,85,.6);animation:gxBreath 1.8s ease-out infinite;pointer-events:none}
+@keyframes gxBreath{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.9);opacity:0}}
 /* 着信時のグラデーション背景 */
 .call-overlay.incoming-mode{background:linear-gradient(160deg,rgba(88,28,135,.85),rgba(30,58,138,.85),rgba(15,23,42,.9))}
 /* 着信時のアバターパルス */
@@ -286,7 +301,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.77 beta</div>
+  <div class="version-badge">Bro Chat v1.28.78 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -481,21 +496,19 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         </button>
       </div>
 
-      <!-- 着信ボタン（着信時のみ表示 — スワイプ式） -->
-      <div id="incomingBtnRow" style="display:none;width:100%;padding:24px 16px 48px">
-        <!-- 拒否スワイプ -->
-        <div style="position:relative;width:100%;max-width:340px;margin:0 auto 20px;height:72px;border-radius:36px;background:rgba(239,68,68,.15);overflow:hidden" id="declineSwipeTrack">
-          <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.5);font-size:14px;pointer-events:none">スワイプして拒否</div>
-          <div id="declineSwipeThumb" style="position:absolute;left:4px;top:4px;width:64px;height:64px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;box-shadow:0 4px 16px rgba(239,68,68,.5);z-index:2;transition:left .15s ease">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </div>
+      <!-- 着信ボタン（着信時のみ表示 — Galaxy式: 丸をつかんで外側へ引っぱる） -->
+      <div id="incomingBtnRow" class="gx-incoming" style="display:none">
+        <div class="gx-wrap" id="gxAcceptWrap">
+          <div class="gx-ring"></div>
+          <button class="gx-btn gx-accept" id="gxAcceptBtn" type="button" aria-label="応答" data-no-auto-haptic="1">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
         </div>
-        <!-- 応答スワイプ -->
-        <div style="position:relative;width:100%;max-width:340px;margin:0 auto;height:72px;border-radius:36px;background:rgba(34,197,94,.15);overflow:hidden" id="acceptSwipeTrack">
-          <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.5);font-size:14px;pointer-events:none">スワイプして応答</div>
-          <div id="acceptSwipeThumb" style="position:absolute;left:4px;top:4px;width:64px;height:64px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;box-shadow:0 4px 16px rgba(34,197,94,.5);z-index:2;transition:left .15s ease;animation:incomingPulse 2s ease-in-out infinite">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </div>
+        <div class="gx-wrap" id="gxDeclineWrap">
+          <div class="gx-ring"></div>
+          <button class="gx-btn gx-decline" id="gxDeclineBtn" type="button" aria-label="拒否" data-no-auto-haptic="1">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
         </div>
       </div>
     </div>
@@ -2912,11 +2925,14 @@ function onCallOffer(data) {
   window.__incomingOffer_callId = data.callId;
 
   // SW通知タップ経由で既にaccept/declineが指定されていれば、即座に実行して待たせない
+  // action が無い(=通知タップで開いただけ)場合は普通に着信画面を出す。
+  // 以前はここで action が null のとき declineIncomingCall() に落ちていて、
+  // 通知から開いた着信が勝手に拒否されていた。
   if (pendingBgCallAction && pendingBgCallAction.callId === data.callId) {
     const action = pendingBgCallAction.action;
     pendingBgCallAction = null;
-    action === 'accept' ? acceptIncomingCall() : declineIncomingCall();
-    return;
+    if (action === 'accept') { acceptIncomingCall(); return; }
+    if (action === 'decline') { declineIncomingCall(); return; }
   }
 
   showCallOverlay();
@@ -3023,7 +3039,11 @@ function onCallUnavailable(data) {
   // reason別にメッセージを出し分ける。以前は理由を問わず「相手はオフラインです」
   // 固定表示だったため、友達関係が未成立で発信できなかった場合にも
   // 誤解を招く表示になっていた。
-  setCallStatus(data.reason === 'not_friends' ? '友達ではないため発信できません' : '相手はオフラインです');
+  setCallStatus(
+    data.reason === 'not_friends' ? '友達ではないため発信できません'
+    : data.reason === 'no_answer' ? '応答がありません'
+    : '相手はオフラインです'
+  );
   setTimeout(cleanupCall, 1500);
 }
 
@@ -3139,65 +3159,75 @@ document.getElementById('endBtn').onclick = () => {
     try { cleanupCall(); } catch (e2) { console.error('[endBtn] cleanupCall also failed:', e2); }
   }
 };
-// スワイプ式着信ボタン（全方向対応）
-function setupSwipeButton(thumbId, trackId, onComplete) {
-  const thumb = document.getElementById(thumbId);
-  const track = document.getElementById(trackId);
-  if (!thumb || !track) return;
-  let startX = 0, startY = 0, isDragging = false, triggered = false;
-  const THRESHOLD = 100; // 100px移動で発動
+// Galaxy式の着信ボタン。丸に触れると周りに大きい円が出て、ボタンをどの方向でもいいので
+// その円の外周まで引っぱって離すと確定。途中で離せば元に戻る。触っている間はもう片方を隠す。
+function setupGalaxyCallButton(wrapId, btnId, otherWrapId, onComplete) {
+  const wrap = document.getElementById(wrapId);
+  const btn = document.getElementById(btnId);
+  const other = document.getElementById(otherWrapId);
+  if (!wrap || !btn) return;
+  const RING_RADIUS = 72 * 3.3 / 2;        // 表示される円の半径
+  const TRIGGER = RING_RADIUS - 36;         // ボタンの中心がここまで来たら確定圏内
+  let pointerId = null, sx = 0, sy = 0, ready = false, done = false;
 
-  function onStart(e) {
-    isDragging = true; triggered = false;
-    const t = e.touches ? e.touches[0] : e;
-    startX = t.clientX; startY = t.clientY;
-    thumb.style.transition = 'none';
-  }
-  function onMove(e) {
-    if (!isDragging || triggered) return;
-    e.preventDefault();
-    const t = e.touches ? e.touches[0] : e;
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    // つまみを動かす（右方向のみ視覚的に）
-    const moveX = Math.max(0, Math.min(dx, track.offsetWidth - thumb.offsetWidth - 8));
-    thumb.style.left = (4 + moveX) + 'px';
-    thumb.style.opacity = Math.max(0.3, 1 - dist / (THRESHOLD * 1.5));
-    if (dist > THRESHOLD) {
-      triggered = true;
-      isDragging = false;
-      thumb.style.transition = 'all .3s ease';
-      thumb.style.opacity = '0';
-      thumb.style.transform = 'scale(0.5)';
+  const reset = (animate) => {
+    btn.style.transition = animate ? 'transform .32s cubic-bezier(.34,1.56,.64,1)' : 'none';
+    btn.style.transform = 'translate(0,0)';
+    wrap.classList.remove('active', 'ready');
+    if (other) other.classList.remove('dim');
+    ready = false;
+  };
+
+  btn.addEventListener('pointerdown', e => {
+    if (done || pointerId !== null) return;
+    pointerId = e.pointerId;
+    btn.setPointerCapture(pointerId);
+    sx = e.clientX; sy = e.clientY;
+    btn.style.transition = 'none';
+    wrap.classList.add('active');
+    if (other) other.classList.add('dim');
+    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+  });
+
+  btn.addEventListener('pointermove', e => {
+    if (e.pointerId !== pointerId || done) return;
+    let dx = e.clientX - sx, dy = e.clientY - sy;
+    const dist = Math.hypot(dx, dy);
+    // 円の外には出ない
+    if (dist > RING_RADIUS) { dx *= RING_RADIUS / dist; dy *= RING_RADIUS / dist; }
+    btn.style.transform = `translate(${dx}px, ${dy}px)`;
+    const nowReady = dist >= TRIGGER;
+    if (nowReady !== ready) {
+      ready = nowReady;
+      wrap.classList.toggle('ready', ready);
+      if (ready && window.LiquidGlass) window.LiquidGlass.haptic('medium');
+    }
+  });
+
+  const end = e => {
+    if (e.pointerId !== pointerId) return;
+    pointerId = null;
+    if (ready && !done) {
+      done = true;
+      btn.style.transition = 'transform .2s ease, opacity .2s ease';
+      btn.style.opacity = '0';
       setTimeout(() => {
         onComplete();
-        // リセット
-        thumb.style.left = '4px';
-        thumb.style.opacity = '1';
-        thumb.style.transform = 'scale(1)';
-      }, 250);
+        // 次の着信のために戻しておく
+        done = false;
+        btn.style.opacity = '1';
+        reset(false);
+      }, 180);
+    } else {
+      reset(true);
     }
-  }
-  function onEnd() {
-    if (!isDragging) return;
-    isDragging = false;
-    if (!triggered) {
-      thumb.style.transition = 'left .3s ease, opacity .3s ease';
-      thumb.style.left = '4px';
-      thumb.style.opacity = '1';
-    }
-  }
-  thumb.addEventListener('touchstart', onStart, { passive: true });
-  thumb.addEventListener('touchmove', onMove, { passive: false });
-  thumb.addEventListener('touchend', onEnd);
-  thumb.addEventListener('mousedown', onStart);
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onEnd);
+  };
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
 }
 
-setupSwipeButton('acceptSwipeThumb', 'acceptSwipeTrack', () => { acceptIncomingCall(); });
-setupSwipeButton('declineSwipeThumb', 'declineSwipeTrack', () => { declineIncomingCall(); });
+setupGalaxyCallButton('gxAcceptWrap', 'gxAcceptBtn', 'gxDeclineWrap', () => { acceptIncomingCall(); });
+setupGalaxyCallButton('gxDeclineWrap', 'gxDeclineBtn', 'gxAcceptWrap', () => { declineIncomingCall(); });
 const _muteBtnEl = document.getElementById('muteBtn2');
 const _speakerBtnEl = document.getElementById('speakerBtn2');
 if (_muteBtnEl) _muteBtnEl.onclick = () => { toggleMute(); };

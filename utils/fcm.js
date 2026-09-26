@@ -57,7 +57,7 @@ async function getTokens(userId) {
 /**
  * 着信プッシュ通知を送信
  */
-async function sendCallNotification(recipientId, callerId, callerName, callerAvatar, callId) {
+async function sendCallNotification(recipientId, callerId, callerName, callerAvatar, callId, isVideo = false) {
   if (!initialized) { initFirebase(); }
   if (!initialized) return;
 
@@ -74,6 +74,7 @@ async function sendCallNotification(recipientId, callerId, callerName, callerAva
       caller_name: callerName || '不明',
       caller_avatar: callerAvatar || '',
       caller_id: callerId || '',
+      is_video: isVideo ? '1' : '0',
     },
     android: {
       priority: 'high',

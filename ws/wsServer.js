@@ -11,6 +11,44 @@ const callAssist = require('./callAssistProxy');
 
 const connections = new Map(); // userId -> Set<ws>
 
+// 呼び出し中の通話。相手のアプリが閉じていてWSが繋がっていない間に届いた
+// call_offer と ICE候補をここに置いておき、相手が(着信通知から)アプリを開いて
+// WSを繋いだ瞬間に再配送する。以前は offer を中継するだけで、相手がオフラインだと
+// 発信側に即 call_unavailable を返して終わっていたため、アプリを閉じている相手には
+// どう頑張っても繋がらなかった。
+const pendingCalls = new Map(); // callId -> { from, to, sdp, isVideo, ice[], ts, timer }
+const RING_TIMEOUT_MS = 45000;
+
+function clearPendingCall(callId) {
+  const p = pendingCalls.get(callId);
+  if (!p) return null;
+  clearTimeout(p.timer);
+  pendingCalls.delete(callId);
+  return p;
+}
+
+// 着信を鳴らしている全端末(Web Push / APKのFCM)に「もう鳴らさなくていい」を送る
+function cancelRinging(userId, callId) {
+  sendPushToUser(userId, { type: 'call_cancelled', callId }, { ttl: 30 })
+    .catch(err => console.error('[push] call_cancelled failed:', err.message));
+  try {
+    require('../utils/fcm').sendCallCancelled(userId, callId)
+      .catch(err => console.error('[fcm] call_cancelled failed:', err.message));
+  } catch (err) {
+    console.error('[fcm] call_cancelled failed:', err.message);
+  }
+}
+
+// APKのネイティブ着信画面から拒否されたとき(WSを持っていない)に使う
+function rejectPendingCall(userId, callId) {
+  const p = pendingCalls.get(callId);
+  if (!p || p.to !== userId) return false;
+  clearPendingCall(callId);
+  broadcastToUser(p.from, { type: 'call_reject', callId, fromUserId: userId, reason: 'declined' });
+  cancelRinging(userId, callId);
+  return true;
+}
+
 function isUserOnline(userId) {
   const set = connections.get(userId);
   return !!set && set.size > 0;
@@ -155,6 +193,12 @@ function initWebSocketServer(server) {
         connections.get(userId).add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
         await flushOfflineQueue(userId); // オンラインになった瞬間、溜まっていたメッセージを配送
+        // 呼び出し中の着信があれば offer と ICE をこの接続に再配送する
+        pendingCalls.forEach((p, callId) => {
+          if (p.to !== userId) return;
+          ws.send(JSON.stringify({ type: 'call_offer', callId, fromUserId: p.from, sdp: p.sdp, isVideo: p.isVideo, redelivered: true }));
+          p.ice.forEach(candidate => ws.send(JSON.stringify({ type: 'call_ice', callId, fromUserId: p.from, candidate })));
+        });
         // WS接続だけではオンラインにしない（chat_openイベントで明示的にオンラインにする）
         return;
       }
@@ -333,10 +377,22 @@ function initWebSocketServer(server) {
           isVideo: !!data.isVideo,
         });
 
-        // 相手がWS未接続(アプリを閉じている)なら、発信者にすぐ「不在」を返す
-        // （オフラインキューには積まない = 電話はリアルタイム性が命）
+        // 相手がWS未接続でも即「不在」にはしない。プッシュで相手の端末を鳴らし、
+        // 相手がアプリを開いたら offer を再配送する。RING_TIMEOUT_MS 内に応答が無ければ不在扱い。
+        clearPendingCall(data.callId);
+        const pending = {
+          from: userId, to: data.recipientId, sdp: data.sdp, isVideo: !!data.isVideo,
+          ice: [], ts: Date.now(), timer: null,
+        };
+        pending.timer = setTimeout(() => {
+          if (!pendingCalls.has(data.callId)) return;
+          clearPendingCall(data.callId);
+          broadcastToUser(userId, { type: 'call_unavailable', callId: data.callId, reason: 'no_answer' });
+          cancelRinging(data.recipientId, data.callId);
+        }, RING_TIMEOUT_MS);
+        pendingCalls.set(data.callId, pending);
         if (!delivered) {
-          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId }));
+          ws.send(JSON.stringify({ type: 'call_waiting', callId: data.callId }));
         }
 
         // WS配達の成否にかかわらず、Push通知は常に送る
@@ -367,7 +423,7 @@ function initWebSocketServer(server) {
           // FCM Push（Capacitorアプリ用）
           try {
             const fcm = require('../utils/fcm');
-            fcm.sendCallNotification(data.recipientId, userId, callerName, callerPic || '', data.callId);
+            fcm.sendCallNotification(data.recipientId, userId, callerName, callerPic || '', data.callId, !!data.isVideo);
           } catch (fcmErr) {
             console.error('[fcm] call push failed:', fcmErr.message);
           }
@@ -380,6 +436,8 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_answer') {
         // data: { recipientId, callId, sdp }
+        clearPendingCall(data.callId);
+        cancelRinging(userId, data.callId); // 応答した本人の他端末(APK等)の着信音を止める
         broadcastToUser(data.recipientId, {
           type: 'call_answer',
           callId: data.callId,
@@ -391,6 +449,10 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_ice') {
         // data: { recipientId, callId, candidate }
+        const pendingIce = pendingCalls.get(data.callId);
+        if (pendingIce && pendingIce.from === userId && pendingIce.ice.length < 100) {
+          pendingIce.ice.push(data.candidate);
+        }
         broadcastToUser(data.recipientId, {
           type: 'call_ice',
           callId: data.callId,
@@ -408,9 +470,10 @@ function initWebSocketServer(server) {
           fromUserId: userId,
           reason: data.reason || 'declined',
         });
-        // バックグラウンドで表示中の着信通知があれば消す
-        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
-          .catch(err => console.error('[push] call_reject cancel push failed:', err.message));
+        clearPendingCall(data.callId);
+        // 拒否した本人の他端末と、相手側に残っている着信通知を消す
+        cancelRinging(userId, data.callId);
+        cancelRinging(data.recipientId, data.callId);
         return;
       }
 
@@ -421,9 +484,9 @@ function initWebSocketServer(server) {
           callId: data.callId,
           fromUserId: userId,
         });
-        // 呼び出し中に発信者が切った場合など、バックグラウンド通知が残っていれば消す
-        sendPushToUser(data.recipientId, { type: 'call_cancelled', callId: data.callId }, { ttl: 30 })
-          .catch(err => console.error('[push] call_end cancel push failed:', err.message));
+        clearPendingCall(data.callId);
+        // 呼び出し中に発信者が切った場合など、相手の端末で鳴っている着信を止める
+        cancelRinging(data.recipientId, data.callId);
         ['mic', 'remote'].forEach(track => {
           if (callAssistSessions[track]) {
             callAssist.stopSession(callAssistSessions[track]);
@@ -498,4 +561,4 @@ function initWebSocketServer(server) {
   return wss;
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, rejectPendingCall };
