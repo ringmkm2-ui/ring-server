@@ -27,40 +27,34 @@ body.has-custom-bg .pc{background:transparent}
 .ahdr{position:fixed;left:0;right:0;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:60;padding:0;pointer-events:none;
   transform-origin:center bottom;transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out),opacity .25s ease}
 .ahdr > .sc,.ahdr > .tb26{pointer-events:auto}
-/* ===== iOS 26 ファイルApp のタブバーを再現 =====
-   普段: 不透明寄りのカプセル + 選択中は薄いピル。
-   触る/ドラッグ: バー全体がスプリングで膨らんで透明なガラスになり、選択ピルが大きな
-   レンズになって指に付いてくる(下のアイコンが拡大して見える)。離すと一番近いタブへスプリングで吸着。
-   動かすのは transform だけ(以前のSVG屈折フィルター+left/widthアニメがカクつきの原因)。 */
-.tb26{position:relative;display:grid;grid-template-columns:repeat(3,78px);padding:4px;border-radius:999px;
-  background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
-  box-shadow:0 8px 28px rgba(15,23,42,.16),inset 0 0 0 .5px rgba(255,255,255,.9);
-  transform-origin:center;transition:transform .45s var(--spring-bouncy,ease-out),background-color .25s ease,box-shadow .25s ease;
+/* ===== PC版(幅900px以上) ===== */
+#pcChatPane{display:none}
+@media (min-width:900px){
+  .pc{width:400px!important;right:auto;border-right:1px solid rgba(15,23,42,.08)}
+  .ahdr{width:400px;right:auto}
+  #pcChatPane{display:block;position:fixed;top:0;left:400px;right:0;bottom:0;width:calc(100vw - 400px);height:100dvh;border:none;background:#fdfaf6;z-index:9998}
+  body:not(.pc-has-chat)::after{content:"トークを選んでください";position:fixed;left:400px;right:0;top:50%;text-align:center;color:#94a3b8;font-size:15px;z-index:9997}
+  .ti.pc-selected{background:rgba(10,132,255,.1)}
+  body:not(.pc-has-chat) #pcChatPane{visibility:hidden}
+}
+.tb26{position:relative;display:grid;grid-template-columns:repeat(3,80px);gap:6px;padding:8px 10px;border-radius:999px;
+  background:var(--panel-soft);box-shadow:14px 14px 36px var(--shadow-dark),-14px -14px 36px var(--shadow-light);
   touch-action:none;user-select:none;-webkit-user-select:none}
-.tb26.active-touch{transform:scale(1.07);background:rgba(255,255,255,.34);
-  box-shadow:0 14px 36px rgba(15,23,42,.2),inset 0 0 0 1px rgba(255,255,255,.75),inset 0 1px 0 rgba(255,255,255,.9)}
-.tb26-lens{position:absolute;left:4px;top:4px;width:78px;height:calc(100% - 8px);border-radius:999px;pointer-events:none;z-index:0;
-  background:rgba(15,23,42,.07);will-change:transform;
-  transition:background-color .25s ease,box-shadow .25s ease,border-color .25s ease;border:1px solid transparent}
-.tb26-lens{transition:background-color .25s ease,box-shadow .25s ease,border-color .25s ease,height .01s}
-.tb26-lens::after{content:"";position:absolute;inset:0;border-radius:inherit;transform:scale(1);opacity:0;
-  transition:transform .5s var(--spring-bouncy,ease-out),opacity .2s ease;
-  background:radial-gradient(120% 90% at 30% 20%,rgba(255,255,255,.75),rgba(255,255,255,.15) 45%,rgba(255,255,255,.05) 70%);
-  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95),inset 0 -8px 16px rgba(255,255,255,.35),0 10px 30px rgba(15,23,42,.25)}
-/* 触った瞬間、レンズがバーから飛び出すように大きく膨らむ(以前のLiquid Glassの挙動) */
-.tb26.active-touch .tb26-lens::after{transform:scale(1.45,1.5);opacity:1}
-.tb26.active-touch .tb26-lens{background:rgba(255,255,255,.28);border-color:rgba(255,255,255,.95);
-  box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -6px 12px rgba(255,255,255,.35),0 6px 18px rgba(15,23,42,.18)}
-.tb26-item{position:relative;z-index:1;height:52px;border:none;background:transparent;border-radius:999px;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#1c1c1e;
-  font-size:10.5px;font-weight:600;letter-spacing:.01em;padding:0;will-change:transform;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
-.tb26-item svg{width:24px;height:24px}
-.tb26-item.active,.tb26-item.under-lens{color:#0a84ff}
-html.dark-mode .tb26{background:rgba(28,28,30,.78);box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.14)}
-html.dark-mode .tb26.active-touch{background:rgba(40,40,44,.34)}
-html.dark-mode .tb26-lens{background:rgba(255,255,255,.1)}
-html.dark-mode .tb26-item{color:#f2f2f7}
-html.dark-mode .tb26-item.active,html.dark-mode .tb26-item.under-lens{color:#0a84ff}
+/* 選択中のピル。動かすのは transform だけ(以前のSVG屈折フィルターとleft/widthアニメがカクつきの原因) */
+.tb26-lens{position:absolute;left:10px;top:8px;width:80px;height:calc(100% - 16px);border-radius:999px;pointer-events:none;z-index:0;
+  background:rgba(255,255,255,.22);will-change:transform;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.46),10px 10px 24px var(--shadow-dark),-8px -8px 20px var(--shadow-light)}
+/* 触るとピルがバーから飛び出すように1.5倍に膨らむガラス(以前のLiquid Glassの見た目)。::afterだけを拡大するので位置の計算は崩れない */
+.tb26-lens::after{content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;transform:scale(1);
+  transition:transform .5s var(--spring-bouncy,ease-out),opacity .18s ease;
+  background:radial-gradient(120% 90% at 30% 22%,rgba(255,255,255,.7),rgba(255,255,255,.14) 46%,rgba(255,255,255,.04) 72%);
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95),inset 0 -8px 16px rgba(255,255,255,.3),0 12px 30px rgba(15,23,42,.22)}
+.tb26.active-touch .tb26-lens::after{transform:scale(1.5);opacity:1}
+.tb26.active-touch .tb26-lens{background:rgba(255,255,255,.16)}
+.tb26-item{position:relative;z-index:1;height:44px;border:none;background:transparent;border-radius:999px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;color:var(--muted,#3d434e);font-weight:600;font-size:14px;letter-spacing:.01em;
+  padding:0;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
+.tb26-item.active,.tb26-item.under-lens{color:var(--accent)}
 .ahdr.tab-min .tb26-item:not(.active){opacity:.55}
 .ahdr.tab-min{transform:translateY(6px) scale(.8)}
 .ahdr.tab-min .sbtn:not(.active){opacity:.55}
@@ -189,6 +183,31 @@ html.dark-mode{
 .mov.open{opacity:1;pointer-events:auto}
 .mc{width:100%;max-width:500px;max-height:90vh;overflow-y:auto;background:rgba(255,255,255,.9);border-radius:32px 32px 0 0;padding:24px;box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.15);transform:translateY(100%);transition:transform .3s cubic-bezier(.25,1,.5,1)}
 .mov.open .mc{transform:translateY(0)}
+/* 設定は独立したページ(右からスライドイン、iOSの設定Appのようなグループ表示) */
+#settingsMov{align-items:stretch;justify-content:stretch;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;opacity:1;
+  transform:translateX(100%);transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out)}
+#settingsMov.open{transform:none}
+#settingsMov .mc{max-width:none;max-height:none;height:100%;border-radius:0;transform:none;background:#f2f2f7;
+  padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:none}
+@media (min-width:900px){#settingsMov .mc{max-width:720px;margin:0 auto}}
+html.dark-mode #settingsMov .mc{background:#000}
+.set-page-head{position:sticky;top:calc(-12px - env(safe-area-inset-top,0px));z-index:2;display:flex;align-items:center;gap:8px;margin:-12px -16px 8px;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 10px;
+  background:rgba(242,242,247,.85);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+html.dark-mode .set-page-head{background:rgba(0,0,0,.8)}
+.set-page-head button{width:36px;height:36px;border-radius:50%;border:none;background:rgba(120,120,128,.14);display:flex;align-items:center;justify-content:center;color:inherit}
+.set-page-head h2{font-size:20px;font-weight:800;margin:0}
+.set-section-title{font-size:13px;color:#8e8e93;margin:18px 6px 6px;text-transform:uppercase;letter-spacing:.02em}
+.set-group{background:#fff;border-radius:14px;overflow:hidden}
+html.dark-mode .set-group{background:#1c1c1e}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:0 14px;font-size:15px;color:inherit;border:none;background:transparent;text-align:left;border-bottom:.5px solid rgba(60,60,67,.18);box-sizing:border-box}
+.set-row:last-child{border-bottom:none}
+.set-btn:active{background:rgba(120,120,128,.12)}
+.set-val{color:#8e8e93;font-size:14px;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-row select{border:none;background:transparent;color:#8e8e93;font-size:14px;text-align:right}
+.ios-switch{appearance:none;-webkit-appearance:none;width:51px;height:31px;border-radius:999px;background:rgba(120,120,128,.3);position:relative;transition:background .25s ease;flex:none;margin:0}
+.ios-switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .45s var(--spring-bouncy,ease-out)}
+.ios-switch:checked{background:#34c759}
+.ios-switch:checked::after{transform:translateX(20px)}
 .mtitle{font-size:18px;font-weight:800;color:#0f172a;text-align:center;margin:0 0 20px 0}
 .sg{margin-bottom:20px}
 .sgrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
@@ -341,18 +360,9 @@ window.ensureGroupCrypto = (function () {
     <header class="ahdr">
       <nav class="tb26" id="tabSegment" aria-label="タブ">
         <div class="tb26-lens" id="slider"></div>
-        <button class="tb26-item active" id="btnTalk" type="button">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.9 3 3 6.5 3 10.9c0 2.5 1.3 4.7 3.3 6.2-.1 1.2-.6 2.5-1.6 3.4-.3.3-.1.8.3.8 2 0 3.6-.8 4.6-1.6.8.2 1.6.3 2.4.3 5.1 0 9-3.5 9-7.9S17.1 3 12 3z"/></svg>
-          <span data-i18n="talk">トーク</span>
-        </button>
-        <button class="tb26-item" id="btnHome" type="button">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l8 7.6c.6.6.2 1.6-.7 1.6H19v7a1.5 1.5 0 0 1-1.5 1.5H15v-5.5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1V21H6.5A1.5 1.5 0 0 1 5 19.5v-7H4c-.9 0-1.3-1-.7-1.6l8-7.6z"/></svg>
-          <span data-i18n="home">ホーム</span>
-        </button>
-        <button class="tb26-item" id="btnPosts" type="button">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4h9.2l-2 2H5v13h13v-7.2l2-2V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm13.6-1.4a1.9 1.9 0 0 1 2.8 2.8l-8.3 8.3-3.6.8.8-3.6 8.3-8.3z"/></svg>
-          <span data-i18n="post">投稿</span>
-        </button>
+        <button class="tb26-item active" id="btnTalk" type="button"><span data-i18n="talk">トーク</span></button>
+        <button class="tb26-item" id="btnHome" type="button"><span data-i18n="home">ホーム</span></button>
+        <button class="tb26-item" id="btnPosts" type="button"><span data-i18n="post">投稿</span></button>
       </nav>
     </header>
     <main class="tc">
@@ -468,13 +478,17 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.89 beta</div>
+  <div class="version-badge">Bro Chat v1.28.90 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
 <div class="mov" id="settingsMov">
   <div class="mc">
-    <h3 class="mtitle" data-i18n="edit_profile">プロフィールの編集</h3>
+    <div class="set-page-head">
+      <button type="button" id="settingsBack" aria-label="戻る"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <h2 data-i18n="settings">設定</h2>
+    </div>
+    <div class="set-section-title" data-i18n="edit_profile">プロフィールの編集</div>
     <div class="sg"><label data-i18n="display_name">表示名</label><input type="text" id="inName" value="マイネーム"></div>
     <div class="sg">
       <label data-i18n="profile_image">プロフィール画像</label>
@@ -567,6 +581,24 @@ window.ensureGroupCrypto = (function () {
           <option value="ko">한국어</option>
         </select>
       </div>
+    </div>
+    <div class="set-section-title" data-i18n="basic_settings">基本設定</div>
+    <div class="set-group">
+      <label class="set-row"><span data-i18n="font_size">文字サイズ</span>
+        <select id="setFontScale"><option value="0.9" data-i18n="size_small">小</option><option value="1" data-i18n="size_normal">標準</option><option value="1.12" data-i18n="size_large">大</option><option value="1.25" data-i18n="size_xlarge">特大</option></select></label>
+      <label class="set-row"><span data-i18n="enter_to_send">Enterで送信</span>
+        <select id="setEnterToSend"><option value="auto" data-i18n="enter_auto">自動(PCのみ)</option><option value="on" data-i18n="on">オン</option><option value="off" data-i18n="off">オフ</option></select></label>
+      <label class="set-row"><span data-i18n="haptics">触覚フィードバック</span><input type="checkbox" class="ios-switch" id="setHaptics"></label>
+      <button type="button" class="set-row set-btn" id="setNotif"><span data-i18n="notifications">通知</span><span class="set-val" id="setNotifVal"></span></button>
+    </div>
+    <div class="set-section-title" data-i18n="storage">ストレージ</div>
+    <div class="set-group">
+      <button type="button" class="set-row set-btn" id="setClearCache"><span data-i18n="clear_cache">キャッシュを削除</span><span class="set-val" id="setCacheSize"></span></button>
+    </div>
+    <div class="set-section-title" data-i18n="about">情報</div>
+    <div class="set-group">
+      <div class="set-row"><span data-i18n="version">バージョン</span><span class="set-val" id="setVersion"></span></div>
+      <button type="button" class="set-row set-btn" id="setCopyId"><span data-i18n="my_id">自分のID</span><span class="set-val" id="setMyId"></span></button>
     </div>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="saveSettings" type="button" data-i18n="apply_and_close">変更を適用して閉じる</button>
     <button onclick="logout()" class="glass-clear glass-interactive lg-no-scale" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="logout">ログアウト</button>
@@ -990,6 +1022,30 @@ function bindTalkNavSwitcher(){
   window.addEventListener('resize',()=>snapToIndex(active,false));
 }
 
+// ===== PC版: 画面が広い時は左にトーク一覧、右にチャットの2列 =====
+const isWideLayout = () => window.matchMedia('(min-width: 900px)').matches;
+function openChatPage(url) {
+  if (!isWideLayout()) { location.href = url; return; }
+  let pane = document.getElementById('pcChatPane');
+  if (!pane) {
+    pane = document.createElement('iframe');
+    pane.id = 'pcChatPane';
+    pane.title = 'チャット';
+    pane.setAttribute('allow', 'camera; microphone; autoplay; clipboard-write; display-capture');
+    document.body.appendChild(pane);
+  }
+  document.body.classList.add('pc-has-chat');
+  pane.src = url + (url.includes('?') ? '&' : '?') + 'embed=1';
+  document.querySelectorAll('.ti.pc-selected').forEach(el => el.classList.remove('pc-selected'));
+  const m = /userId=([^&]+)/.exec(url);
+  if (m) { const row = document.querySelector(`.ti[data-user-id="${CSS.escape(decodeURIComponent(m[1]))}"]`); if (row) row.classList.add('pc-selected'); }
+}
+window.addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'pc-close-chat') { document.body.classList.remove('pc-has-chat'); const p = document.getElementById('pcChatPane'); if (p) p.src = 'about:blank'; }
+  if (e.data.type === 'pc-refresh-talks') loadTalks();
+});
+
 // ===== iOS 26 タブバー =====
 // onSelect: タブを開いた時に中身を読み込む。書き直しの時にこれを落としていて「投稿」が空のまま動かなかった
 const TB_PAGES = () => [
@@ -999,7 +1055,7 @@ const TB_PAGES = () => [
 ];
 let tbIndex = 0, tbLensX = 0, tbAnim = null;
 
-function tbItemX(i) { const it = TB_PAGES()[i].el; return it.offsetLeft - 4; } // レンズはleft:4px基準
+function tbItemX(i) { const it = TB_PAGES()[i].el; return it.offsetLeft - 10; } // レンズはleft:10px基準
 function tbSetLens(x, stretch = 1) {
   tbLensX = x;
   document.getElementById('slider').style.transform = `translateX(${x}px) scaleX(${stretch})`;
@@ -1053,12 +1109,11 @@ function switchTab(activeBtnId) {
 
   // レンズの下にあるアイコンを虫眼鏡のように拡大
   function magnify(active) {
-    const center = tbLensX + 4 + lens.offsetWidth / 2;
+    const center = tbLensX + 10 + lens.offsetWidth / 2;
     items.forEach(el => {
       const c = el.offsetLeft + el.offsetWidth / 2;
       const d = Math.abs(c - center) / el.offsetWidth;
       const k = active ? Math.max(0, 1 - d) : 0;
-      el.style.transform = k ? `scale(${1 + 0.22 * k})` : '';
       el.classList.toggle('under-lens', active && d < 0.5);
     });
   }
@@ -1291,6 +1346,7 @@ function renderTalkList(merged, animate) {
     merged.forEach((t, idx) => {
       const item = document.createElement('div');
       item.className = animate ? 'ti glass-materialize-light' : 'ti';
+      if (t.userId) item.dataset.userId = t.userId;
       if (animate) item.style.animationDelay = Math.min(idx * 30, 300) + 'ms';
 
       const av = document.createElement('div');
@@ -1403,7 +1459,7 @@ function setAvatarBackground(el, picValue, initial) {
 }
 
 function openGroupChat(groupId, name) {
-  location.href = `/groupchat.html?groupId=${encodeURIComponent(groupId)}&name=${encodeURIComponent(name)}`;
+  openChatPage(`/groupchat.html?groupId=${encodeURIComponent(groupId)}&name=${encodeURIComponent(name)}`);
 }
 
 // キャッシュマネージャーの初期化と復元
@@ -1503,6 +1559,10 @@ function renderFriends(friends) {
 
 function renderGroups(groups) {
   const list = document.getElementById('groupList');
+  // 4秒ごとの自動更新で毎回作り直していて、裏で読み込むたびにグループ欄がチラついていた
+  const fp = JSON.stringify(groups || []);
+  if (fp === window.__lastGroupsFingerprint && list.childElementCount) return;
+  window.__lastGroupsFingerprint = fp;
   if (!Array.isArray(groups) || groups.length === 0) {
     list.textContent = '';
     return;
@@ -1590,7 +1650,7 @@ function openChat(userId, name, pic) {
   }
   // 注意: picにはBase64画像データが入りうるため、URLに含めるとリクエストヘッダが
   // 肥大化し431エラーの原因になる。画像はadmin.html側でAPI経由取得する。
-  location.href = `/admin.html?userId=${userId}&name=${encodeURIComponent(name)}`;
+  openChatPage(`/admin.html?userId=${userId}&name=${encodeURIComponent(name)}`);
 }
 
 // 友達追加モーダル（下から上にスライドアニメーション）
@@ -1752,9 +1812,49 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('toggleChatBgBlur').checked = localStorage.getItem('chatBgBlur') === '1';
   document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
   document.getElementById('langSelectSettings').value = (window.i18n ? i18n.getLang() : 'ja');
+  // 基本設定
+  document.getElementById('setFontScale').value = localStorage.getItem('fontScale') || '1';
+  document.getElementById('setEnterToSend').value = localStorage.getItem('enterToSend') || 'auto';
+  document.getElementById('setHaptics').checked = localStorage.getItem('haptics') !== '0';
+  document.getElementById('setNotifVal').textContent = !('Notification' in window) ? (window.Capacitor ? t2('managed_by_app','アプリで管理') : '-')
+    : Notification.permission === 'granted' ? t2('on','オン') : Notification.permission === 'denied' ? t2('blocked','ブロック中') : t2('tap_to_enable','タップで許可');
+  let bytes = 0;
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_)/.test(k)) bytes += (localStorage.getItem(k) || '').length * 2; }
+  document.getElementById('setCacheSize').textContent = (bytes / 1024).toFixed(0) + ' KB';
+  const vb = document.querySelector('.version-badge');
+  document.getElementById('setVersion').textContent = vb ? vb.textContent.replace('Bro Chat ', '') : '';
+  document.getElementById('setMyId').textContent = localStorage.getItem('ring_userIdCode') || (document.getElementById('myIdCode') || {}).textContent || '';
   settingsMov.classList.add('open');
+  history.pushState({ settings: 1 }, '');
 };
-settingsMov.onclick=e=>{if(e.target===settingsMov)settingsMov.classList.remove('open');};
+function t2(k, fb) { return window.i18n ? i18n.t(k, fb) : fb; }
+// 設定はページなので、端末の「戻る」で閉じる
+window.addEventListener('popstate', () => { if (settingsMov.classList.contains('open')) settingsMov.classList.remove('open'); });
+window.__broHandleBack = () => { if (settingsMov.classList.contains('open')) { history.back(); return true; } return false; };
+document.getElementById('settingsBack').addEventListener('click', () => history.back());
+document.getElementById('setFontScale').addEventListener('change', e => {
+  localStorage.setItem('fontScale', e.target.value);
+  document.documentElement.style.setProperty('--bc-fs', e.target.value);
+});
+document.getElementById('setEnterToSend').addEventListener('change', e => localStorage.setItem('enterToSend', e.target.value));
+document.getElementById('setHaptics').addEventListener('change', e => localStorage.setItem('haptics', e.target.checked ? '1' : '0'));
+document.getElementById('setNotif').addEventListener('click', async () => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch (e) {}
+    document.getElementById('setNotifVal').textContent = Notification.permission === 'granted' ? t2('on','オン') : t2('blocked','ブロック中');
+  }
+});
+document.getElementById('setClearCache').addEventListener('click', () => {
+  const del = [];
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_)/.test(k)) del.push(k); }
+  del.forEach(k => localStorage.removeItem(k));
+  document.getElementById('setCacheSize').textContent = '0 KB';
+});
+document.getElementById('setCopyId').addEventListener('click', () => {
+  const v = document.getElementById('setMyId').textContent;
+  if (v && navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
+});
+settingsMov.onclick=e=>{if(e.target===settingsMov)history.back();};
 
 // 各トグルは変更した瞬間に即座に反映する(保存ボタンを待たずに体感できた方が良いため)
 // Tactile Switchがchange eventを発火するのでそれを受け取る
@@ -1948,7 +2048,7 @@ document.getElementById('saveSettings').onclick=async ()=>{
     document.documentElement.style.backgroundAttachment='fixed';
     document.body.classList.add('has-custom-bg');
   }
-  settingsMov.classList.remove('open');
+  (settingsMov.classList.contains('open') && history.back());
 };
 
 // グループ作成

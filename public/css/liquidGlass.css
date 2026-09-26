@@ -735,3 +735,6 @@ body.chat-bg-dark .reply-preview{background:rgba(30,30,34,.7)} body.chat-bg-dark
 .share-row{display:flex;align-items:center;gap:12px;border:none;background:transparent;padding:10px 6px;border-radius:14px;font-size:15px;font-weight:600;color:#111;text-align:left}
 .share-row:active{background:rgba(120,120,128,.14)}
 .share-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#60a5fa,#a78bfa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+/* 設定の文字サイズ */
+.bubble .msg-text{font-size:calc(1em * var(--bc-fs,1))}
+.txt-form textarea{font-size:calc(16px * var(--bc-fs,1))}

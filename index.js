@@ -107,7 +107,7 @@ async function main() {
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
-        frameAncestors: ["'none'"],    // クリックジャッキング防止
+        frameAncestors: ["'self'"],    // クリックジャッキング防止(他サイトからの埋め込みは禁止。PC版の2列表示で自分自身の埋め込みだけ許可)
       },
     },
     crossOriginEmbedderPolicy: false,

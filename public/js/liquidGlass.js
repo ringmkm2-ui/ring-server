@@ -230,6 +230,7 @@
   };
   function haptic(type) {
     if (!('vibrate' in navigator)) return;
+    if (localStorage.getItem('haptics') === '0') return; // 設定で触覚フィードバックをオフ
     const pattern = HAPTIC_PATTERNS[type] || HAPTIC_PATTERNS.light;
     try { navigator.vibrate(pattern); } catch(e) {}
   }

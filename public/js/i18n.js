@@ -8,6 +8,33 @@
 (function () {
   const DICT = {
     // ---------- Common / nav ----------
+    about: { ja: "情報", en: "About", "zh-CN": "关于", ko: "정보" },
+    basic_settings: { ja: "基本設定", en: "General", "zh-CN": "常规", ko: "일반" },
+    blocked: { ja: "ブロック中", en: "Blocked", "zh-CN": "已阻止", ko: "차단됨" },
+    call_note: { ja: "通話メモ", en: "Call notes", "zh-CN": "通话笔记", ko: "통화 메모" },
+    clear_cache: { ja: "キャッシュを削除", en: "Clear cache", "zh-CN": "清除缓存", ko: "캐시 삭제" },
+    enter_auto: { ja: "自動(PCのみ)", en: "Auto (PC only)", "zh-CN": "自动(仅电脑)", ko: "자동(PC만)" },
+    enter_to_send: { ja: "Enterで送信", en: "Enter to send", "zh-CN": "回车发送", ko: "Enter로 전송" },
+    font_size: { ja: "文字サイズ", en: "Text size", "zh-CN": "字体大小", ko: "글자 크기" },
+    haptics: { ja: "触覚フィードバック", en: "Haptics", "zh-CN": "触感反馈", ko: "햅틱" },
+    live_translate: { ja: "ライブ翻訳", en: "Live translate", "zh-CN": "实时翻译", ko: "실시간 번역" },
+    managed_by_app: { ja: "アプリで管理", en: "Managed by app", "zh-CN": "由应用管理", ko: "앱에서 관리" },
+    my_id: { ja: "自分のID", en: "My ID", "zh-CN": "我的ID", ko: "내 ID" },
+    notifications: { ja: "通知", en: "Notifications", "zh-CN": "通知", ko: "알림" },
+    off: { ja: "オフ", en: "Off", "zh-CN": "关", ko: "끔" },
+    on: { ja: "オン", en: "On", "zh-CN": "开", ko: "켬" },
+    photo_label: { ja: "[画像]", en: "[Photo]", "zh-CN": "[图片]", ko: "[사진]" },
+    reply_original_unavailable: { ja: "元のメッセージ", en: "Original message", "zh-CN": "原消息", ko: "원본 메시지" },
+    settings: { ja: "設定", en: "Settings", "zh-CN": "设置", ko: "설정" },
+    size_large: { ja: "大", en: "Large", "zh-CN": "大", ko: "크게" },
+    size_normal: { ja: "標準", en: "Default", "zh-CN": "标准", ko: "기본" },
+    size_small: { ja: "小", en: "Small", "zh-CN": "小", ko: "작게" },
+    size_xlarge: { ja: "特大", en: "Extra large", "zh-CN": "特大", ko: "아주 크게" },
+    storage: { ja: "ストレージ", en: "Storage", "zh-CN": "存储", ko: "저장공간" },
+    tap_to_enable: { ja: "タップで許可", en: "Tap to enable", "zh-CN": "点按以允许", ko: "탭하여 허용" },
+    version: { ja: "バージョン", en: "Version", "zh-CN": "版本", ko: "버전" },
+    video_label: { ja: "[動画]", en: "[Video]", "zh-CN": "[视频]", ko: "[동영상]" },
+    you: { ja: "あなた", en: "You", "zh-CN": "你", ko: "나" },
     home: { ja: "ホーム", en: "Home", "zh-CN": "主页", ko: "홈" },
     talk_list: { ja: "トーク一覧", en: "Chats", "zh-CN": "聊天列表", ko: "채팅 목록" },
     talk: { ja: "トーク", en: "Chat", "zh-CN": "聊天", ko: "채팅" },
@@ -172,7 +199,61 @@
     });
   }
 
-  window.i18n = { t, getLang, setLang, applyI18n, SUPPORTED, DICT };
+  // ---------- 直書きの日本語の自動翻訳 ----------
+  // data-i18n を付けていない(JSで直接入れている)日本語の表示文言を、日本語以外の時に置き換える。
+  // 中国語・韓国語は個別訳が無い文言は英語で出す(日本語のまま残るよりは読める)。
+  const AUTO_EN = {"設定した背景画像をチャット画面でぼかして表示します": "Blur the background image in chats", "システム設定に連動 (手動で切替も可能)": "Follows system setting (can be changed manually)", "モバイル回線を自動検出して画質を下げます": "Lowers media quality on mobile data", "バッテリーセーバー時のアニメーション軽減": "Reduce animations in battery saver", "オンにすると、装飾アニメーションを常に無効化します": "Always turn off decorative animations", "全体の背景画像": "App background image", "背景画像を選択する": "Choose background image", "画像を選択する": "Choose image", "プロフィール画像": "Profile photo", "チャット背景をぼかす": "Blur chat background", "ダークモード": "Dark mode", "モバイルデータ節約": "Mobile data saver", "言語設定": "Language","(メディアの復号に失敗しました)": "(Couldn't decrypt media)", "(復号に失敗しました)": "(Couldn't decrypt)", "(編集済)": "(edited)", "+ チャンネルを追加": "+ Add channel", "ID: 読み込み中...": "ID: Loading...", "[動画]": "[Video]", "[画像]": "[Photo]", "この投稿を削除しますか？": "Delete this post?", "そのユーザーは見つかりません": "User not found", "たった今": "Just now", "なし": "None", "に参加しました！": " joined!", "はじめる": "Start", "または": "or", "まだ投稿がありません": "No posts yet", "ようこそ": "Welcome", "オーロラ": "Aurora", "カメラ/マイクにアクセスできません": "Can't access camera/microphone", "カラー": "Color", "キャンセル": "Cancel", "グループ": "Group", "グループチャット": "Group chat", "コミュニティ": "Community", "コミュニティが見つかりません": "Community not found", "コミュニティの作成に失敗しました": "Couldn't create community", "コミュニティを作成": "Create community", "コメントの読み込みに失敗しました": "Couldn't load comments", "コメントを追加...": "Add a comment...", "ダウンロード": "Download", "トーク": "Chat", "トークがまだありません": "No chats yet", "トークを検索...": "Search chats...", "トークを選んでください": "Select a chat", "トーク一覧": "Chats", "バブル": "Bubbles", "パスワード": "Password", "パスワード（6文字以上）": "Password (8+ characters)", "ビデオ着信中...": "Incoming video call...", "ホーム": "Home", "マイクにアクセスできません": "Can't access microphone", "メッセージが取り消されました": "Message unsent", "メッセージを入力": "Message", "メッセージを入力...": "Message...", "メディア": "Media", "メンバー": "Members", "メンバー削除": "Remove member", "メールアドレス": "Email", "モノクロ": "Monochrome", "ユーザー名": "Username", "ログイン": "Log in", "ログインに失敗しました": "Login failed", "ログイン成功！": "Logged in!", "不明": "Unknown", "今なにしてる？": "What's happening?", "位置情報がサポートされていません": "Location isn't supported", "位置情報の権限が拒否されました": "Location permission denied", "位置情報エラー": "Location error", "写真": "Photo", "写真を送る": "Send photo", "写真を選び直す": "Choose another photo", "削除": "Delete", "動画": "Video", "参加に失敗しました。招待コードを確認してください": "Couldn't join. Check the invite code", "友達ではないため発信できません": "You can only call friends", "友達を追加": "Add friend", "友達リクエスト": "Friend requests", "取り消す": "Undo", "呼び出し中...": "Calling...", "夕焼け": "Sunset", "宇宙": "Cosmos", "安全なチャットアプリ": "Secure chat app", "完了": "Done", "応答がありません": "No answer", "応答がありませんでした": "No answer", "戻る": "Back", "投稿": "Post", "投稿する": "Post", "投稿に失敗しました": "Couldn't post", "投稿中...": "Posting...", "接続できませんでした": "Couldn't connect", "接続中...": "Connecting...", "新しいグループを作成": "New group", "新規登録": "Sign up", "画像": "Photo", "画像を読み込めませんでした": "Couldn't load image", "発信中...": "Calling...", "登録": "Sign up", "登録に失敗しました": "Sign up failed", "登録成功！ログイン中...": "Signed up! Logging in...", "相手": "Them", "相手はオフラインです": "They're offline", "着信中...": "Incoming call...", "管理者": "Admin", "背景": "Background", "背景画像が大きすぎて保存できませんでした": "Background image is too large to save", "自分": "Me", "表示名": "Display name", "読み込みに失敗しました": "Couldn't load", "読み込み中...": "Loading...", "送信": "Send", "送信先": "Send to", "送信取り消し": "Unsend", "通話中です": "On a call", "通話終了": "Call ended", "（自分）": "(You)", "リプライ中:": "Replying to:", "リアクション": "React", "リプライ": "Reply", "コピー": "Copy", "編集する": "Edit", "ピン留め": "Pin", "通話": "Call", "ビデオ通話": "Video call", "音声通話": "Voice call", "メッセージが届きました": "New message", "トークリストが空です": "No chats yet", "友達を追加してメッセージしよう！": "Add a friend to start chatting!", "見つかりませんでした": "No results", "まだメッセージがありません": "No messages yet", "（送信取り消し済み）": "(Unsent)", "オンライン": "Online", "オフライン": "Offline", "既読": "Read", "画像読み込み中...": "Loading photo...", "動画読み込み中...": "Loading video...", "今日": "Today", "昨日": "Yesterday", "キャッシュを削除": "Clear cache", "設定": "Settings", "変更を適用して閉じる": "Apply and close", "ログアウト": "Log out", "プロフィールの編集": "Edit profile", "位置とズームをリセット": "Reset position and zoom", "作成する": "Create", "参加する": "Join", "招待コード": "Invite code", "説明 (任意)": "Description (optional)", "コミュニティ名": "Community name", "ファイルを送信": "Send file", "動画を送る": "Send video", "位置情報を送信": "Send location", "ここに未読メッセージがあります": "Unread messages"};
+  const JP = /[\u3040-\u30ff\u4e00-\u9fff]/;
+  function autoTr(str) {
+    if (!str || getLang() === "ja" || !JP.test(str)) return null;
+    const k = str.trim();
+    if (AUTO_EN[k] !== undefined) return str.replace(k, AUTO_EN[k]);
+    let m;
+    if ((m = /^メンバー\s*(\d+)\s*人$/.exec(k))) return m[1] + " members";
+    if ((m = /^(\d+)分前$/.exec(k))) return m[1] + "m ago";
+    if ((m = /^(\d+)時間前$/.exec(k))) return m[1] + "h ago";
+    if ((m = /^(\d+)日前$/.exec(k))) return m[1] + "d ago";
+    return null;
+  }
+  function autoTranslate(root) {
+    if (getLang() === "ja" || !root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => (n.parentNode && /^(SCRIPT|STYLE|TEXTAREA)$/.test(n.parentNode.nodeName)) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(n => { const r = autoTr(n.nodeValue); if (r !== null) n.nodeValue = r; });
+    const els = root.querySelectorAll ? root.querySelectorAll("[placeholder],[title],[aria-label]") : [];
+    els.forEach(el => ["placeholder", "title", "aria-label"].forEach(a => {
+      const v = el.getAttribute(a); const r = autoTr(v); if (r !== null) el.setAttribute(a, r);
+    }));
+  }
+  function startAutoTranslate() {
+    if (getLang() === "ja") return;
+    autoTranslate(document.body);
+    let queued = new Set(), scheduled = false;
+    new MutationObserver(ms => {
+      ms.forEach(m => {
+        if (m.type === "characterData") queued.add(m.target.parentNode);
+        m.addedNodes.forEach(n => queued.add(n.nodeType === 3 ? n.parentNode : n));
+      });
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          const list = queued; queued = new Set();
+          list.forEach(n => n && n.isConnected && autoTranslate(n));
+        });
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    const _alert = window.alert.bind(window), _confirm = window.confirm.bind(window);
+    window.alert = msg => _alert(autoTr(String(msg)) || msg);
+    window.confirm = msg => _confirm(autoTr(String(msg)) || msg);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startAutoTranslate);
+  else startAutoTranslate();
+
+  window.i18n = { t, getLang, setLang, applyI18n, SUPPORTED, DICT, autoTranslate };
   window.applyI18n = applyI18n;
 
   // Auto-apply on load

@@ -1,6 +1,12 @@
 // spring.js — Core Animation (CASpringAnimation) と同じ物理のスプリング。
 //   mass / stiffness / damping で動きを決め、途中で掴み直されても速度を引き継ぐ(Fluid)。
 //   全て transform / opacity だけを動かす前提。
+// 設定の「文字サイズ」を全ページに反映(--bc-fs を倍率として使う)
+(function () {
+  const fs = parseFloat(localStorage.getItem('fontScale') || '1') || 1;
+  document.documentElement.style.setProperty('--bc-fs', String(fs));
+})();
+
 (function () {
   const PRESETS = {
     bouncy: { stiffness: 300, damping: 18, mass: 1 },

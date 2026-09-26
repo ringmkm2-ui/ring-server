@@ -305,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.89 beta</div>
+  <div class="version-badge">Bro Chat v1.28.90 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1101,7 +1101,9 @@ async function sendMediaViaCloudinary(f, t) {
   window.fitMsgInput = fit;
   const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
   ta.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !coarse) {
+    const pref = localStorage.getItem('enterToSend') || 'auto'; // auto: PCだけEnter送信
+    const enterSends = pref === 'on' || (pref === 'auto' && !coarse);
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && enterSends) {
       e.preventDefault();
       document.getElementById('chatForm').requestSubmit();
     }
@@ -3691,6 +3693,8 @@ window.addEventListener('pagehide', () => {
 document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
   a.addEventListener('click', e => {
     e.preventDefault();
+    // PC版(トーク一覧の右側に埋め込み表示中)なら、右側を閉じるだけ
+    if (window.parent !== window) { window.parent.postMessage({ type: 'pc-close-chat' }, location.origin); return; }
     let fromList = false;
     try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
     if (fromList && history.length > 1) history.back();
