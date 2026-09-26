@@ -101,5 +101,72 @@
     });
   }
 
-  window.BroSpring = { PRESETS, animate, velocityTracker, fuse };
+  /**
+   * OriginOS 7 風: メニューが「押した物の形」から伸びて広がる(Albumsの⋮ボタン→メニューの変形)。
+   * clip-path で押した物の矩形から切り抜きを広げていく。レイアウトは動かさない。
+   */
+  function morphOpen(menu, fromRect, opts = {}) {
+    if (!menu || !fromRect || reduce()) return;
+    const to = menu.getBoundingClientRect();
+    if (!to.width) return;
+    const r0 = opts.radius0 != null ? opts.radius0 : Math.min(fromRect.height / 2, 22);
+    const r1 = opts.radius1 != null ? opts.radius1 : 24;
+    // メニュー座標系での開始矩形(はみ出しは0に丸める)
+    const top0 = Math.max(0, fromRect.top - to.top), left0 = Math.max(0, fromRect.left - to.left);
+    const right0 = Math.max(0, to.right - fromRect.right), bottom0 = Math.max(0, to.bottom - fromRect.bottom);
+    menu.style.willChange = 'clip-path';
+    animate({
+      spring: opts.spring || 'smooth', from: 1, to: 0,
+      onUpdate: k => {
+        const kk = Math.max(0, k); // 行き過ぎ(負)で切り抜きが反転しないように
+        menu.style.clipPath = `inset(${top0 * kk}px ${right0 * kk}px ${bottom0 * kk}px ${left0 * kk}px round ${r1 + (r0 - r1) * kk}px)`;
+      },
+      onComplete: () => { menu.style.clipPath = ''; menu.style.willChange = ''; },
+    });
+  }
+
+  /**
+   * OriginOS 7 風: 押したボタンの上にガラスの球がぷくっと膨らみ、離すとスプリングで縮んで消える。
+   * 球は pointer-events:none の別要素なので、ボタン自体の当たり判定は変わらない
+   * (通話ボタンを拡大すると touchend が別要素で発火する問題を避けられる)。
+   */
+  const SPHERE_SEL = '.glass-icon-btn, .glass-plus-btn, .glass-send-btn, .plus-btn, .sibtn, .action-btn, .hbtn, .cbtn, .pbtn, .back-link, .back, .call-control-btn, .end-btn, .phone-btn, .call-assist-btn, .mm-close';
+  function attachGlassSphere() {
+    document.addEventListener('pointerdown', e => {
+      if (reduce()) return;
+      const btn = e.target.closest && e.target.closest(SPHERE_SEL);
+      if (!btn || btn.disabled) return;
+      const r = btn.getBoundingClientRect();
+      if (r.width > 120 || r.height > 120) return; // 全幅ボタンは明るさのみ(ルール通り)
+      const d = Math.max(r.width, r.height);
+      const s = document.createElement('div');
+      s.className = 'bc-sphere';
+      s.style.cssText = `left:${r.left + r.width / 2 - d / 2}px;top:${r.top + r.height / 2 - d / 2}px;width:${d}px;height:${d}px`;
+      document.body.appendChild(s);
+      let cur = 0.7, grow = animate({
+        spring: 'bouncy', from: 0.7, to: 1.35,
+        onUpdate: v => { cur = v; s.style.transform = `scale(${v})`; },
+      });
+      s.style.opacity = '1';
+      const release = () => {
+        document.removeEventListener('pointerup', release, true);
+        document.removeEventListener('pointercancel', release, true);
+        const st = grow.stop();
+        s.style.transition = 'opacity .28s ease';
+        s.style.opacity = '0';
+        animate({
+          spring: 'snappy', from: st.value, to: 0.85, velocity: st.velocity,
+          onUpdate: v => { s.style.transform = `scale(${v})`; },
+          onComplete: () => s.remove(),
+        });
+        setTimeout(() => s.remove(), 600);
+      };
+      document.addEventListener('pointerup', release, true);
+      document.addEventListener('pointercancel', release, true);
+    }, { passive: true, capture: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attachGlassSphere);
+  else attachGlassSphere();
+
+  window.BroSpring = { PRESETS, animate, velocityTracker, fuse, morphOpen };
 })();

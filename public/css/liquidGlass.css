@@ -628,3 +628,14 @@
 @media (prefers-reduced-motion: reduce) {
   .bubble.bc-lift, .bc-badge-pop, #talkList > .ti { animation: none !important; }
 }
+
+/* ===== OriginOS 7 風 (v1.28.86) ===== */
+/* 押した時に膨らむガラスの球。中心は薄く、縁と左上にハイライトが乗る(下のアイコンが透ける) */
+.bc-sphere {
+  position: fixed; z-index: 9999; pointer-events: none; border-radius: 50%;
+  opacity: 0; transform: scale(.7); will-change: transform, opacity;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,.9) 0, rgba(255,255,255,.35) 18%, rgba(255,255,255,0) 38%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.06) 0, rgba(255,255,255,.12) 58%, rgba(255,255,255,.55) 72%, rgba(255,255,255,0) 74%);
+  box-shadow: inset 0 -8px 16px rgba(0,0,0,.10), inset 0 2px 3px rgba(255,255,255,.8), 0 10px 26px rgba(0,0,0,.16);
+}

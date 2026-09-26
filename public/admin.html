@@ -302,7 +302,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.85 beta</div>
+  <div class="version-badge">Bro Chat v1.28.86 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2362,7 +2362,17 @@ function showMenu(msgDiv, wrap, bubble, x, y, own) {
   bubble.classList.add('bc-lift');
   setTimeout(() => bubble.classList.remove('bc-lift'), 420);
   document.getElementById('menuOv').classList.add('show');
-  ctx.classList.add('show');
+  if (window.BroSpring && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    // OriginOS 7 風: 押した吹き出しの形からメニューが伸びて広がる
+    ctx.style.transition = 'opacity .16s ease';
+    ctx.style.transform = 'none';
+    ctx.classList.add('show');
+    BroSpring.morphOpen(ctx, bubble.getBoundingClientRect(), { radius0: 18, radius1: 24 });
+  } else {
+    ctx.style.transition = '';
+    ctx.style.transform = '';
+    ctx.classList.add('show');
+  }
 }
 
 function hideMenu() {
