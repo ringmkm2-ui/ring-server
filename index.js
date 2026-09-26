@@ -73,6 +73,11 @@ async function main() {
           "https://accounts.google.com",
           "https://cdnjs.cloudflare.com",
         ],
+        // helmetはデフォルトで script-src-attr 'none' を足してくる。これが有効だと
+        // onclick="..." 等のインラインイベントハンドラが全ページで一切動かなくなる
+        // (v1.28.74でwelcome.htmlの「はじめる」を押しても無反応になった原因)。
+        // インラインハンドラが各ページに残っている間はここで許可しておく。
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
           "'self'",
           "'unsafe-inline'",          // 既存インラインstyle互換
