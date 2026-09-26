@@ -411,7 +411,7 @@
 
         showSuccess('ログイン成功！');
         setTimeout(() => {
-          window.location.href = '/talklist.html';
+          window.location.replace('/talklist.html');
         }, 1000);
       } catch (error) {
         showError(error.message);
@@ -447,7 +447,7 @@
 
         showSuccess('登録成功！ログイン中...');
         setTimeout(() => {
-          window.location.href = '/talklist.html';
+          window.location.replace('/talklist.html');
         }, 1000);
       } catch (error) {
         showError(error.message);
@@ -468,7 +468,7 @@
             localStorage.setItem('ring_token', data.token);
             localStorage.setItem('ring_userId', data.userId);
             localStorage.setItem('ring_username', data.username);
-            window.location.href = '/talklist.html';
+            window.location.replace('/talklist.html');
           } else {
             showError(data.error || 'ログインに失敗しました');
           }
@@ -492,7 +492,7 @@
       const token = localStorage.getItem('ring_token');
       if (token) {
         // 既にログイン済み
-        window.location.href = '/talklist.html';
+        window.location.replace('/talklist.html');
         return;
       }
 

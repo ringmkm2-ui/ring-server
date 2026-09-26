@@ -301,14 +301,14 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.78 beta</div>
+  <div class="version-badge">Bro Chat v1.28.79 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
 
   <div class="app-header-container">
     <div class="app-header-bar">
-      <a href="talklist.html" class="back-link">←</a>
+      <a href="talklist.html" class="back-link" data-back-to-talklist aria-label="戻る"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></a>
       <div class="partner-avatar" id="partnerAv"></div>
       <div style="flex:1;min-width:0">
         <div class="name" id="partnerName">ユーザー名</div>
@@ -2791,6 +2791,11 @@ function createPeerConnection() {
 }
 
 function cleanupCall() {
+  // APK: OS側の「通話中」状態を終わらせる(残ると次の着信がビジー扱いになる)
+  try {
+    const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall;
+    if (bc) bc.callEnded();
+  } catch (e) {}
   // currentCallIdがリセットされる前に、字幕停止と要約リクエストを済ませておく
   if (typeof deepgramRecognizer !== 'undefined' && deepgramRecognizer && typeof isCallAssistActive !== 'undefined' && isCallAssistActive) {
     deepgramRecognizer.stopStream();
@@ -3505,6 +3510,21 @@ window.addEventListener('pagehide', () => {
   }
 });
 
+</script>
+
+<script>
+// 戻る: トーク一覧から来たなら履歴を戻る。毎回 talklist.html へ href で飛ぶと
+// 履歴が 一覧→チャット→一覧→チャット… と積み上がり、Androidの「戻る」で
+// さっきのチャットに戻ってしまうため。
+document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    let fromList = false;
+    try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
+    if (fromList && history.length > 1) history.back();
+    else location.replace('/talklist.html');
+  });
+});
 </script>
 </body>
 </html>

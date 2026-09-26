@@ -195,14 +195,14 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.78 beta</div>
+  <div class="version-badge">Bro Chat v1.28.79 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
 
   <div class="hdr-wrap">
     <div class="hdr">
-      <a href="talklist.html" class="back">←</a>
+      <a href="talklist.html" class="back" data-back-to-talklist aria-label="戻る"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></a>
       <div class="gav" id="gavEl" onclick="openGS()"></div>
       <div class="hinfo" id="hinfoEl">
         <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
@@ -1383,6 +1383,21 @@ function connectGroupWS(){
   };
   groupWs.onerror=err=>{console.error('WebSocketエラー:',err);};
 }
+</script>
+
+<script>
+// 戻る: トーク一覧から来たなら履歴を戻る。毎回 talklist.html へ href で飛ぶと
+// 履歴が 一覧→チャット→一覧→チャット… と積み上がり、Androidの「戻る」で
+// さっきのチャットに戻ってしまうため。
+document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    let fromList = false;
+    try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
+    if (fromList && history.length > 1) history.back();
+    else location.replace('/talklist.html');
+  });
+});
 </script>
 </body>
 </html>
