@@ -14,6 +14,7 @@ router.post('/reject', verifyToken, asyncHandler(async (req, res) => {
   }
   const { rejectPendingCall } = require('../ws/wsServer');
   const ok = rejectPendingCall(req.userId, callId);
+  console.log(`[calls] native reject callId=${callId} user=${req.userId} -> ${ok ? 'rejected' : 'no pending call'}`);
   res.json({ ok });
 }));
 

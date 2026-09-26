@@ -60,6 +60,7 @@ router.post('/fcm-register', auth, async (req, res) => {
     if (!token) return res.status(400).json({ error: 'token required' });
     const fcm = require('../utils/fcm');
     await fcm.saveToken(req.userId, token);
+    console.log(`[FCM] token registered user=${req.userId} ua=${(req.get('user-agent') || '').slice(0, 40)}`);
     res.json({ success: true });
   } catch (e) {
     sendServerError(res, e);
