@@ -4,6 +4,29 @@ const db = require('../db/db');
 
 let initialized = false;
 
+// 環境変数の中身を寛容に読む。Base64でも生JSONでもよく、貼り付け時に後ろへ
+// ゴミ(二重貼り付け・古い値の残り等)が付いていても、先頭の完全なJSONだけを使う。
+function parseServiceAccount(raw) {
+  const text = raw.trim();
+  const candidates = [text];
+  try { candidates.push(Buffer.from(text, 'base64').toString('utf8').trim()); } catch {}
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch {}
+    const start = c.indexOf('{');
+    if (start < 0) continue;
+    for (let i = c.indexOf('}', start); i >= 0; i = c.indexOf('}', i + 1)) {
+      try {
+        const obj = JSON.parse(c.slice(start, i + 1));
+        if (obj && obj.private_key && obj.client_email) {
+          if (i + 1 < c.trim().length) console.warn('[FCM] FIREBASE_SERVICE_ACCOUNT の末尾に余計な文字があったので無視しました');
+          return obj;
+        }
+      } catch {}
+    }
+  }
+  throw new Error('FIREBASE_SERVICE_ACCOUNT をJSONとして読めません');
+}
+
 function initFirebase() {
   if (initialized) return;
   
@@ -14,13 +37,7 @@ function initFirebase() {
   }
 
   try {
-    let credential;
-    // Base64エンコードされたJSON or 生JSON
-    try {
-      credential = JSON.parse(Buffer.from(credJson, 'base64').toString('utf8'));
-    } catch {
-      credential = JSON.parse(credJson);
-    }
+    const credential = parseServiceAccount(credJson);
 
     admin.initializeApp({
       credential: admin.credential.cert(credential)
