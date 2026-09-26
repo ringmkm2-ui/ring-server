@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.74 beta</div>
+  <div class="version-badge">Bro Chat v1.28.75 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1962,7 +1962,15 @@ setInterval(() => {
 }, 4000);
 
 function logout() {
+  // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
+  // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)
+  const keep = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_)/.test(k)) keep[k] = localStorage.getItem(k);
+  }
   localStorage.clear();
+  for (const k in keep) localStorage.setItem(k, keep[k]);
   window.location.href = '/auth.html';
 }
 

@@ -12,7 +12,20 @@ async function getOrCreateMyKeyPair() {
   }
 
   const keyStorageName = `e2e_keypair_${window.myUserId}`;
+  const keyringName = `e2e_keyring_${window.myUserId}`;
   let keyStr = localStorage.getItem(keyStorageName);
+
+  // keypair本体が消えていても keyring に過去の鍵が残っていれば復活させる
+  // (新しい鍵を作ると過去メッセージが全滅するので最終手段にする)
+  if (!keyStr) {
+    try {
+      const ring = JSON.parse(localStorage.getItem(keyringName) || '[]');
+      if (ring.length) {
+        keyStr = JSON.stringify(ring[0]);
+        localStorage.setItem(keyStorageName, keyStr);
+      }
+    } catch (e) {}
+  }
 
   if (!keyStr) {
     // 新規鍵ペア生成（Curve25519）
@@ -51,6 +64,17 @@ async function getOrCreateMyKeyPair() {
     } catch (err) {
       console.error('[e2eKeys] Public key verification error:', err);
     }
+  }
+
+  // 全世代の鍵を keyring に残す(admin.html の復号で過去の鍵も試すため)
+  try {
+    const pub = Array.from(myKeyPair.publicKey);
+    const ring = JSON.parse(localStorage.getItem(keyringName) || '[]')
+      .filter(k => JSON.stringify(k.publicKey) !== JSON.stringify(pub));
+    ring.unshift({ publicKey: pub, secretKey: Array.from(myKeyPair.secretKey) });
+    localStorage.setItem(keyringName, JSON.stringify(ring.slice(0, 20)));
+  } catch (e) {
+    console.error('[e2eKeys] keyring save error:', e);
   }
 
   return myKeyPair;

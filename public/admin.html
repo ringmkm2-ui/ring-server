@@ -286,7 +286,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.74 beta</div>
+  <div class="version-badge">Bro Chat v1.28.75 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -582,50 +582,98 @@ async function api(path, opts = {}) {
 }
 
 // E2E暗号化用：鍵ペア生成・登録・暗号化・復号化
+//
+// 復号が失敗し続けていた原因:
+//  1. ログアウトで localStorage.clear() → 秘密鍵が消える → 再ログインで新しい鍵が
+//     生成・登録され、それ以前のメッセージは(自分宛ても相手宛ても)二度と開けなくなる
+//  2. 復号時に「いまサーバーに登録されている相手の公開鍵」と「いまの自分の秘密鍵」
+//     しか試していなかった。どちらかが一度でも鍵を作り直すと過去分は全滅する
+//  3. 自分が送ったメッセージはローカルの平文控えが無いと表示できなかった
+//     (box は双方向なので、相手の公開鍵 + 自分の秘密鍵で普通に開ける)
+//
+// 対策:
+//  - 自分の鍵は全世代を keyring に残す(ログアウトでも消さない)
+//  - 相手の公開鍵も見たことがある世代を全部覚えておく
+//  - 新形式の暗号文には送信時に使った両者の公開鍵を埋め込む (e2:<送信者>:<受信者>:<本体>)
+//  - 復号は「埋め込み鍵 → 過去に見た鍵 → サーバー最新」の順に総当たり
 let myKeyPair = null;
 const publicKeyCache = new Map(); // userId -> Uint8Array公開鍵（メモリキャッシュ）
+const E2E_PREFIX = 'e2:';
+
+function keyringName() { return `e2e_keyring_${myUserId}`; }
+function peerKeysName(peerId) { return `e2e_peerkeys_${myUserId}_${peerId}`; }
+
+// 自分の鍵の全世代 [{publicKey:Uint8Array, secretKey:Uint8Array}]（新しい順）
+function loadMyKeyring() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(keyringName()) || '[]');
+    return arr.map(k => ({ publicKey: new Uint8Array(k.publicKey), secretKey: new Uint8Array(k.secretKey) }));
+  } catch (e) {
+    return [];
+  }
+}
+
+function addToMyKeyring(kp) {
+  try {
+    const b64 = nacl.util.encodeBase64(kp.publicKey);
+    const arr = JSON.parse(localStorage.getItem(keyringName()) || '[]')
+      .filter(k => nacl.util.encodeBase64(new Uint8Array(k.publicKey)) !== b64);
+    arr.unshift({ publicKey: Array.from(kp.publicKey), secretKey: Array.from(kp.secretKey) });
+    localStorage.setItem(keyringName(), JSON.stringify(arr.slice(0, 20)));
+  } catch (e) {
+    console.error('keyring保存エラー:', e);
+  }
+}
+
+// 相手の公開鍵の履歴(Base64, 新しい順)
+function loadPeerKeys(peerId) {
+  try { return JSON.parse(localStorage.getItem(peerKeysName(peerId)) || '[]'); } catch (e) { return []; }
+}
+
+function rememberPeerKey(peerId, b64) {
+  if (!peerId || !b64) return;
+  try {
+    const arr = loadPeerKeys(peerId).filter(k => k !== b64);
+    arr.unshift(b64);
+    localStorage.setItem(peerKeysName(peerId), JSON.stringify(arr.slice(0, 20)));
+  } catch (e) {}
+}
 
 // 自分の鍵ペアを取得（なければ生成してサーバーに公開鍵を登録）
 async function getOrCreateMyKeyPair() {
   if (myKeyPair) return myKeyPair;
 
   const keyStorageName = `e2e_keypair_${myUserId}`;
-  let keyStr = localStorage.getItem(keyStorageName);
+  const keyStr = localStorage.getItem(keyStorageName);
 
-  if (!keyStr) {
-    // 新規鍵ペア生成（Curve25519）
-    myKeyPair = nacl.box.keyPair();
-    keyStr = JSON.stringify({
-      publicKey: Array.from(myKeyPair.publicKey),
-      secretKey: Array.from(myKeyPair.secretKey)
-    });
-    localStorage.setItem(keyStorageName, keyStr);
-    await registerMyPublicKey(myKeyPair);
-  } else {
+  if (keyStr) {
     const keyObj = JSON.parse(keyStr);
     myKeyPair = {
       publicKey: new Uint8Array(keyObj.publicKey),
       secretKey: new Uint8Array(keyObj.secretKey)
     };
+  } else {
+    // keypair本体が無くても keyring に残っていればそれを復活させる
+    // (旧バージョンのログアウト等で片方だけ残ったケース)
+    const ring = loadMyKeyring();
+    myKeyPair = ring.length ? ring[0] : nacl.box.keyPair();
+    localStorage.setItem(keyStorageName, JSON.stringify({
+      publicKey: Array.from(myKeyPair.publicKey),
+      secretKey: Array.from(myKeyPair.secretKey)
+    }));
+  }
+  addToMyKeyring(myKeyPair);
 
-    // 重要: サーバー側に保存されている公開鍵と、ローカルの鍵ペアが
-    // 本当に一致しているかを毎回確認する。
-    // これが無いと、サーバーのDBがリセットされたりユーザーレコードが
-    // 作り直された場合、ローカルには「古い」鍵ペアが残ったまま
-    // サーバー側は「この人の公開鍵を知らない」状態になり、
-    // 以降このユーザーが関わる全ての暗号化メッセージで復号が
-    // 必ず失敗するという致命的な不整合が、ユーザーが気づく手段もなく
-    // 永続してしまう。
-    try {
-      const myLocalPublicKeyB64 = nacl.util.encodeBase64(myKeyPair.publicKey);
-      const me = await api('/api/friends/me');
-      if (!me || me.publicKey !== myLocalPublicKeyB64) {
-        console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
-        await registerMyPublicKey(myKeyPair);
-      }
-    } catch (err) {
-      console.error('公開鍵の整合性チェックに失敗しました:', err);
+  // サーバー側の公開鍵とローカルの鍵が一致しているか確認し、違えば登録し直す
+  try {
+    const myLocalPublicKeyB64 = nacl.util.encodeBase64(myKeyPair.publicKey);
+    const me = await api('/api/friends/me');
+    if (!me || me.publicKey !== myLocalPublicKeyB64) {
+      console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
+      await registerMyPublicKey(myKeyPair);
     }
+  } catch (err) {
+    console.error('公開鍵の整合性チェックに失敗しました:', err);
   }
   return myKeyPair;
 }
@@ -642,8 +690,7 @@ async function registerMyPublicKey(keyPair) {
 }
 
 // 相手の公開鍵を取得（キャッシュ優先、なければサーバーから取得）
-// forceRefresh=trueの場合、メモリキャッシュを無視して必ずサーバーから
-// 最新の公開鍵を取得する(相手が鍵を再登録した直後などに使う)
+// forceRefresh=trueの場合、メモリキャッシュを無視して必ずサーバーから取得する
 async function getRecipientPublicKey(userId, forceRefresh = false) {
   if (!forceRefresh && publicKeyCache.has(userId)) {
     return publicKeyCache.get(userId);
@@ -654,6 +701,7 @@ async function getRecipientPublicKey(userId, forceRefresh = false) {
     if (data.publicKey) {
       const keyBytes = nacl.util.decodeBase64(data.publicKey);
       publicKeyCache.set(userId, keyBytes);
+      rememberPeerKey(userId, data.publicKey);
       return keyBytes;
     }
   } catch (err) {
@@ -665,10 +713,11 @@ async function getRecipientPublicKey(userId, forceRefresh = false) {
 // メッセージ内容を暗号化（自分の秘密鍵 + 相手の公開鍵）
 async function encryptMessage(plaintext, recipientId) {
   const myKeys = await getOrCreateMyKeyPair();
-  const recipientPublicKey = await getRecipientPublicKey(recipientId);
+  // 送信時は毎回サーバーの最新鍵を取りに行く。古いキャッシュで暗号化すると
+  // 相手が鍵を作り直していた場合に相手側で絶対に開けない
+  const recipientPublicKey = (await getRecipientPublicKey(recipientId, true)) || (await getRecipientPublicKey(recipientId));
 
   if (!recipientPublicKey) {
-    // 相手がまだ公開鍵を登録していない場合は平文のまま送る（フォールバック）
     console.warn('相手の公開鍵が見つかりません。暗号化なしで送信します。');
     return { encrypted: false, content: plaintext };
   }
@@ -677,52 +726,106 @@ async function encryptMessage(plaintext, recipientId) {
   const message = nacl.util.decodeUTF8(plaintext);
   const encryptedBytes = nacl.box(message, nonce, recipientPublicKey, myKeys.secretKey);
 
-  // nonce + 暗号化データをBase64エンコード
   const full = new Uint8Array(nonce.length + encryptedBytes.length);
   full.set(nonce);
   full.set(encryptedBytes, nonce.length);
 
-  return { encrypted: true, content: nacl.util.encodeBase64(full) };
+  const content = E2E_PREFIX
+    + nacl.util.encodeBase64(myKeys.publicKey) + ':'
+    + nacl.util.encodeBase64(recipientPublicKey) + ':'
+    + nacl.util.encodeBase64(full);
+  return { encrypted: true, content };
 }
 
-// メッセージ内容を復号化（自分の秘密鍵 + 送信者の公開鍵）
-async function decryptMessage(encryptedBase64, senderId) {
-  const myKeys = await getOrCreateMyKeyPair();
-  const senderPublicKey = await getRecipientPublicKey(senderId);
+// 暗号文をパース。旧形式(Base64のみ)なら埋め込み鍵は null
+function parseCipher(str) {
+  if (typeof str === 'string' && str.startsWith(E2E_PREFIX)) {
+    const parts = str.slice(E2E_PREFIX.length).split(':');
+    if (parts.length === 3) return { senderPub: parts[0], recipientPub: parts[1], body: parts[2] };
+  }
+  return { senderPub: null, recipientPub: null, body: str };
+}
 
-  if (!senderPublicKey) {
-    console.warn('送信者の公開鍵が見つかりません');
+// 試す鍵の組み合わせ候補を作る。ordered: 優先度順, 重複排除済み
+function uniqB64(list) {
+  const seen = new Set();
+  return list.filter(k => k && !seen.has(k) && seen.add(k));
+}
+
+// メッセージ内容を復号化
+// senderId が自分なら「自分が送ったメッセージ」なので、相手の公開鍵で開く
+async function decryptMessage(encryptedString, senderId) {
+  await getOrCreateMyKeyPair();
+  const iAmSender = String(senderId) === String(myUserId);
+  const peerId = iAmSender ? otherId : senderId;
+  const parsed = parseCipher(encryptedString);
+
+  let full, nonce, box;
+  try {
+    full = nacl.util.decodeBase64(parsed.body);
+    nonce = full.slice(0, nacl.box.nonceLength);
+    box = full.slice(nacl.box.nonceLength);
+    if (box.length < nacl.box.overheadLength) throw new Error('too short');
+  } catch (e) {
+    console.error('暗号文のデコードに失敗:', e);
     return null;
   }
 
-  const tryDecrypt = (pubKey) => {
-    try {
-      const full = nacl.util.decodeBase64(encryptedBase64);
-      const nonce = full.slice(0, nacl.box.nonceLength);
-      const encryptedBytes = full.slice(nacl.box.nonceLength);
-      const decrypted = nacl.box.open(encryptedBytes, nonce, pubKey, myKeys.secretKey);
-      return decrypted ? nacl.util.encodeUTF8(decrypted) : null;
-    } catch (e) {
-      console.error('復号化エラー:', e);
-      return null;
+  const myEmbedded = iAmSender ? parsed.senderPub : parsed.recipientPub;
+  const peerEmbedded = iAmSender ? parsed.recipientPub : parsed.senderPub;
+
+  // 自分の秘密鍵候補: 埋め込み公開鍵に一致する世代を先頭に
+  const ring = loadMyKeyring();
+  if (myEmbedded) {
+    ring.sort((a, b) => (nacl.util.encodeBase64(b.publicKey) === myEmbedded) - (nacl.util.encodeBase64(a.publicKey) === myEmbedded));
+  }
+
+  const tryWith = (peerB64List) => {
+    for (const peerB64 of peerB64List) {
+      let peerKey;
+      try { peerKey = nacl.util.decodeBase64(peerB64); } catch (e) { continue; }
+      if (peerKey.length !== nacl.box.publicKeyLength) continue;
+      for (const mine of ring) {
+        let opened = null;
+        try { opened = nacl.box.open(box, nonce, peerKey, mine.secretKey); } catch (e) {}
+        if (opened) {
+          rememberPeerKey(peerId, peerB64);
+          return nacl.util.encodeUTF8(opened);
+        }
+      }
     }
+    return null;
   };
 
-  let result = tryDecrypt(senderPublicKey);
+  const cached = publicKeyCache.get(peerId);
+  let result = tryWith(uniqB64([
+    peerEmbedded,
+    cached ? nacl.util.encodeBase64(cached) : null,
+    ...loadPeerKeys(peerId)
+  ]));
   if (result !== null) return result;
 
-  // 初回の復号に失敗した場合、キャッシュされた送信者の公開鍵が
-  // 古い(相手が鍵を再登録した後だった等)可能性があるため、
-  // キャッシュを無視して強制的にサーバーから最新の公開鍵を取得し
-  // もう一度だけ復号を試みる。
-  console.warn('復号化に失敗しました。送信者の公開鍵を再取得して再試行します。');
-  const freshPublicKey = await getRecipientPublicKey(senderId, true);
-  if (freshPublicKey) {
-    result = tryDecrypt(freshPublicKey);
-  }
+  // 最後にサーバーから最新の相手鍵を取り直して再挑戦
+  const fresh = await getRecipientPublicKey(peerId, true);
+  if (fresh) result = tryWith([nacl.util.encodeBase64(fresh)]);
+  if (result === null) console.warn('復号化に失敗しました(全ての鍵の組み合わせで不一致):', { senderId, iAmSender, hasEmbedded: !!parsed.senderPub });
   return result;
 }
 
+// Cloudinaryメディア用: 共有鍵の候補を全部返す(新しい鍵から順に)
+async function candidateSharedKeys() {
+  await getOrCreateMyKeyPair();
+  const fresh = await getRecipientPublicKey(otherId);
+  const peers = uniqB64([fresh ? nacl.util.encodeBase64(fresh) : null, ...loadPeerKeys(otherId)]);
+  const out = [];
+  for (const p of peers) {
+    let pk;
+    try { pk = nacl.util.decodeBase64(p); } catch (e) { continue; }
+    if (pk.length !== nacl.box.publicKeyLength) continue;
+    for (const mine of loadMyKeyring()) out.push(nacl.box.before(pk, mine.secretKey));
+  }
+  return out;
+}
 // メッセージのcontentを復号する共通ヘルパー。
 // テキストメッセージ: content自体が暗号化Base64 → そのままdecryptMessageにかける。
 // メディアメッセージ: content は平文JSON `{text, media, mediaType}` で、
@@ -1017,13 +1120,19 @@ async function loadLazyMedia(placeholder) {
 
   if (mediaSrc && mediaSrc.startsWith('cloudinary:') && placeholder._cloudinaryMedia) {
     try {
-      const myKeys = await getOrCreateMyKeyPair();
-      const recipientPublicKey = await getRecipientPublicKey(otherId);
-      if (!recipientPublicKey) throw new Error('相手の公開鍵が見つかりません');
-      const sharedKey = nacl.box.before(recipientPublicKey, myKeys.secretKey);
+      const keys = await candidateSharedKeys();
+      if (!keys.length) throw new Error('相手の公開鍵が見つかりません');
 
+      // 鍵の世代が変わっていても開けるよう、候補を順に試す
       const { mediaUrl, encryptedMetadata } = placeholder._cloudinaryMedia;
-      const blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(mediaUrl, encryptedMetadata, sharedKey);
+      let blob = null, lastErr = null;
+      for (const sharedKey of keys) {
+        try {
+          blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(mediaUrl, encryptedMetadata, sharedKey);
+          if (blob) break;
+        } catch (e) { lastErr = e; }
+      }
+      if (!blob) throw lastErr || new Error('全ての鍵で復号できませんでした');
       mediaSrc = URL.createObjectURL(blob);
     } catch (e) {
       console.error('[lazyLoadMedia] decrypt error:', e);
@@ -1517,7 +1626,8 @@ async function syncMessages() {
       if (msg.encrypted && !msg.deletedAt) {
         if (msg.senderId === myUserId) {
           const cached = getOwnPlaintext(msg.id);
-          displayContent = cached !== null ? cached : '(このデバイスでは表示できません)';
+          const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+          displayContent = own !== null ? own : '(このデバイスでは表示できません)';
         } else {
           const decrypted = await decryptMessageContent(msg.content, msg.senderId);
           displayContent = decrypted !== null ? decrypted : '(復号化に失敗しました)';
@@ -1679,7 +1789,8 @@ function connectRealWS() {
             // 他の受信箇所(syncMessages等)と同様、自分のプレーンテキストの
             // 控えをローカルキャッシュから取得する。
             const cached = getOwnPlaintext(data.messageId);
-            if (cached !== null) newContent = cached;
+            const own = cached !== null ? cached : await decryptMessageContent(data.content, myUserId);
+            if (own !== null) newContent = own;
           }
           msg.content = newContent;
           msg.editedAt = data.editedAt;
@@ -1905,7 +2016,8 @@ async function initialLoadHistory() {
       } else if (msg.encrypted && msg.senderId === myUserId) {
         // 自分が送った暗号化メッセージはローカルキャッシュから復元
         const cached = getOwnPlaintext(msg.id);
-        displayContent = cached !== null ? cached : '(このデバイスでは表示できません)';
+        const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+        displayContent = own !== null ? own : '(このデバイスでは表示できません)';
       }
       const displayMsg = { ...msg, content: displayContent };
       addRealMessage(displayMsg);
