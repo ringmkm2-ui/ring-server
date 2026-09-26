@@ -89,7 +89,9 @@ async function sendCallNotification(recipientId, callerId, callerName, callerAva
       type: 'incoming_call',
       call_id: callId || '',
       caller_name: callerName || '不明',
-      caller_avatar: callerAvatar || '',
+      // プロフィール画像がdata:URL(Base64)だとFCMの上限4KBを超えて着信プッシュ自体が送れなかった。
+      // ネイティブ側は画像を使っていないので、短いURLの時だけ載せる
+      caller_avatar: (callerAvatar && !String(callerAvatar).startsWith('data:') && String(callerAvatar).length < 512) ? callerAvatar : '',
       caller_id: callerId || '',
       is_video: isVideo ? '1' : '0',
     },

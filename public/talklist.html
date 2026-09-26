@@ -482,7 +482,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.91 beta</div>
+  <div class="version-badge">Bro Chat v1.28.92 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3328,8 +3328,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('fcm_token');
     const authToken = localStorage.getItem('ring_token');
     if (!token || !authToken) return;
-    // 毎回送る(サーバーはupsert)。以前は「登録済み」を覚えて送らなかったため、
-    // サーバー側で無効トークンとして消された後も二度と登録されなかった
+    // 起動(セッション)ごとに1回だけ送る。サーバーから消された場合も次の起動で復活する。
+    // (APKはネイティブ側でも登録しているので、ここは古いAPK向けの保険)
+    if (sessionStorage.getItem('fcm_sent') === token) return;
+    sessionStorage.setItem('fcm_sent', token);
     try {
       const res = await fetch('/api/push/fcm-register', {
         method: 'POST',
