@@ -645,3 +645,74 @@ html.dark-mode .bc-touch-light { mix-blend-mode: screen; }
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%);
           mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 14px), transparent 100%);
 }
+
+/* ===== iOS 26 メッセージの「背景」 (chatBg.js) ===== */
+.cbg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+body.chat-bg-on .bg-orb, body.chat-bg-on .phone-container::before{display:none}
+body.chat-bg-on .chat-screen{background:transparent}
+body.chat-bg-dark .incoming .bubble{background:rgba(38,38,44,.62);color:#f5f5f7;border-color:rgba(255,255,255,.1)}
+body.chat-bg-dark .chat-screen .msg-time, body.chat-bg-dark .chat-screen .read-status{color:rgba(255,255,255,.7)}
+.cbg-l{position:absolute;display:block;will-change:transform}
+/* オーロラ: 大きい光の帯がゆっくり揺れる */
+.cbg-aurora{background:linear-gradient(180deg,#010814 0%,#021526 55%,#04303a 100%)}
+.cbg-aurora .cbg-l{width:160%;height:70%;left:-30%;border-radius:50%;opacity:.8}
+.cbg-aurora .cbg-l0{top:5%;background:radial-gradient(ellipse at 50% 60%,rgba(63,240,200,.75),rgba(63,240,200,0) 60%);animation:cbgSway 11s ease-in-out infinite alternate}
+.cbg-aurora .cbg-l1{top:25%;background:radial-gradient(ellipse at 40% 50%,rgba(56,189,248,.65),rgba(56,189,248,0) 60%);animation:cbgSway 15s ease-in-out -4s infinite alternate-reverse}
+.cbg-aurora .cbg-l2{top:40%;background:radial-gradient(ellipse at 60% 40%,rgba(168,85,247,.45),rgba(168,85,247,0) 60%);animation:cbgSway 19s ease-in-out -8s infinite alternate}
+@keyframes cbgSway{0%{transform:translate3d(-8%,0,0) rotate(-6deg) scaleY(.9)}100%{transform:translate3d(8%,-6%,0) rotate(6deg) scaleY(1.15)}}
+/* 宇宙 */
+.cbg-cosmos{background:radial-gradient(circle at 50% 120%,#1e1b4b 0%,#0b0620 60%,#05030f 100%)}
+.cbg-cosmos .cbg-l{inset:-50%;width:auto;height:auto;border-radius:50%}
+.cbg-cosmos .cbg-l0{background:radial-gradient(circle at 30% 30%,rgba(139,92,246,.55),transparent 40%);animation:cbgSpin 60s linear infinite}
+.cbg-cosmos .cbg-l1{background:radial-gradient(circle at 70% 60%,rgba(236,72,153,.4),transparent 38%);animation:cbgSpin 90s linear infinite reverse}
+.cbg-cosmos .cbg-l2{background-image:radial-gradient(1.5px 1.5px at 20% 30%,#fff,transparent),radial-gradient(1px 1px at 60% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 80% 20%,#fff,transparent),radial-gradient(1px 1px at 35% 80%,#fff,transparent),radial-gradient(1px 1px at 90% 55%,#fff,transparent);background-size:220px 220px;opacity:.8;animation:cbgSpin 240s linear infinite}
+@keyframes cbgSpin{to{transform:rotate(360deg)}}
+/* バブル: 光る泡がゆっくり昇る */
+.cbg-bubbles{background:linear-gradient(180deg,#0c1a3a,#0a2e52)}
+.cbg-bubbles .cbg-l{bottom:-200px;border-radius:50%;background:radial-gradient(circle at 32% 28%,rgba(255,255,255,.55),rgba(125,211,252,.18) 45%,rgba(125,211,252,.05) 70%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);animation:cbgRise linear infinite}
+@keyframes cbgRise{0%{transform:translate3d(0,0,0)}50%{transform:translate3d(18px,-60vh,0)}100%{transform:translate3d(-12px,-125vh,0)}}
+/* 水面 */
+.cbg-water{background:linear-gradient(180deg,#cffafe 0%,#7dd3fc 45%,#0284c7 100%)}
+.cbg-water .cbg-l{width:200%;height:40%;left:-50%;border-radius:45%;background:rgba(255,255,255,.18)}
+.cbg-water .cbg-l0{top:30%;animation:cbgWave 9s ease-in-out infinite alternate}
+.cbg-water .cbg-l1{top:48%;background:rgba(255,255,255,.12);animation:cbgWave 13s ease-in-out -3s infinite alternate-reverse}
+.cbg-water .cbg-l2{top:66%;background:rgba(2,132,199,.25);animation:cbgWave 17s ease-in-out -6s infinite alternate}
+@keyframes cbgWave{0%{transform:translate3d(-6%,0,0) rotate(-3deg)}100%{transform:translate3d(6%,-4%,0) rotate(3deg)}}
+/* 夕焼け */
+.cbg-sunset{background:linear-gradient(180deg,#fda4af 0%,#fb923c 55%,#f59e0b 100%)}
+.cbg-sunset .cbg-l{width:120%;height:60%;left:-10%;border-radius:50%}
+.cbg-sunset .cbg-l0{top:-10%;background:radial-gradient(circle,rgba(255,255,255,.45),transparent 60%);animation:cbgSway 16s ease-in-out infinite alternate}
+.cbg-sunset .cbg-l1{top:45%;background:radial-gradient(circle,rgba(236,72,153,.35),transparent 60%);animation:cbgSway 21s ease-in-out -5s infinite alternate-reverse}
+.cbg-sunset .cbg-l2{display:none}
+@media (prefers-reduced-motion: reduce){.cbg-l{animation:none!important}}
+
+/* 選択シート */
+.cbs-scrim{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .3s ease}
+.cbs-scrim.show{opacity:1;pointer-events:auto}
+.cbs{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:10001;border-radius:34px;padding:8px 16px 18px;
+  background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);
+  box-shadow:0 20px 60px rgba(0,0,0,.25),inset 0 0 0 .5px rgba(255,255,255,.9);
+  transform:translateY(calc(100% + 30px));transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out)}
+.cbs.show{transform:none}
+.cbs-grab{width:36px;height:5px;border-radius:3px;background:rgba(60,60,67,.3);margin:2px auto 8px}
+.cbs-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cbs-title{font-weight:700;font-size:17px;color:#111}
+.cbs-cancel,.cbs-done{border:none;background:rgba(120,120,128,.14);border-radius:999px;padding:8px 14px;font-size:15px;color:#111;font-weight:600}
+.cbs-done{background:#0a84ff;color:#fff}
+.cbs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px}
+.cbs-item{border:none;background:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0;color:#111}
+.cbs-thumb{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.12);transition:transform .45s var(--spring-bouncy,ease-out)}
+.cbs-item:active .cbs-thumb{transform:scale(.92)}
+.cbs-item.sel .cbs-thumb{box-shadow:0 0 0 3px #fff,0 0 0 5.5px #0a84ff}
+.cbs-label{font-size:12px;font-weight:600}
+.cbs-photo-opts{display:none;align-items:center;justify-content:space-between;margin-top:16px;font-size:14px;color:#111}
+.cbs-photo-opts button{border:none;background:rgba(120,120,128,.14);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600}
+html.dark-mode .cbs{background:rgba(30,30,32,.82)}
+html.dark-mode .cbs-title,html.dark-mode .cbs-item,html.dark-mode .cbs-photo-opts,html.dark-mode .cbs-cancel{color:#f2f2f7}
+/* 背景レイヤー(.cbg, z-index:0)より手前に中身を出す */
+body.chat-bg-on .app-header-container, body.chat-bg-on .pin-banner, body.chat-bg-on .chat-screen, body.chat-bg-on .input-bar-container{position:relative;z-index:1}
+body.chat-bg-on .phone-container{background:transparent}
+body.chat-bg-dark .app-header-bar{background:rgba(30,30,34,.45)}
+body.chat-bg-dark .app-header-bar .name{color:#fff}
+body.chat-bg-dark .app-header-bar .status{color:rgba(255,255,255,.7)!important}
+body.chat-bg-dark .input-bar-container input{color:#fff}

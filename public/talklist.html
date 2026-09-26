@@ -26,7 +26,35 @@ body.has-custom-bg .pc{background:transparent}
    上へ戻すか触ると元に戻る(戻りはCore Animationスプリング) */
 .ahdr{position:fixed;left:0;right:0;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:60;padding:0;pointer-events:none;
   transform-origin:center bottom;transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out),opacity .25s ease}
-.ahdr > .sc{pointer-events:auto}
+.ahdr > .sc,.ahdr > .tb26{pointer-events:auto}
+/* ===== iOS 26 ファイルApp のタブバーを再現 =====
+   普段: 不透明寄りのカプセル + 選択中は薄いピル。
+   触る/ドラッグ: バー全体がスプリングで膨らんで透明なガラスになり、選択ピルが大きな
+   レンズになって指に付いてくる(下のアイコンが拡大して見える)。離すと一番近いタブへスプリングで吸着。
+   動かすのは transform だけ(以前のSVG屈折フィルター+left/widthアニメがカクつきの原因)。 */
+.tb26{position:relative;display:grid;grid-template-columns:repeat(3,78px);padding:4px;border-radius:999px;
+  background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+  box-shadow:0 8px 28px rgba(15,23,42,.16),inset 0 0 0 .5px rgba(255,255,255,.9);
+  transform-origin:center;transition:transform .45s var(--spring-bouncy,ease-out),background-color .25s ease,box-shadow .25s ease;
+  touch-action:none;user-select:none;-webkit-user-select:none}
+.tb26.active-touch{transform:scale(1.07);background:rgba(255,255,255,.34);
+  box-shadow:0 14px 36px rgba(15,23,42,.2),inset 0 0 0 1px rgba(255,255,255,.75),inset 0 1px 0 rgba(255,255,255,.9)}
+.tb26-lens{position:absolute;left:4px;top:4px;width:78px;height:calc(100% - 8px);border-radius:999px;pointer-events:none;z-index:0;
+  background:rgba(15,23,42,.07);will-change:transform;
+  transition:background-color .25s ease,box-shadow .25s ease,border-color .25s ease;border:1px solid transparent}
+.tb26.active-touch .tb26-lens{background:rgba(255,255,255,.28);border-color:rgba(255,255,255,.95);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -6px 12px rgba(255,255,255,.35),0 6px 18px rgba(15,23,42,.18)}
+.tb26-item{position:relative;z-index:1;height:52px;border:none;background:transparent;border-radius:999px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#1c1c1e;
+  font-size:10.5px;font-weight:600;letter-spacing:.01em;padding:0;will-change:transform;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
+.tb26-item svg{width:24px;height:24px}
+.tb26-item.active,.tb26-item.under-lens{color:#0a84ff}
+html.dark-mode .tb26{background:rgba(28,28,30,.78);box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.14)}
+html.dark-mode .tb26.active-touch{background:rgba(40,40,44,.34)}
+html.dark-mode .tb26-lens{background:rgba(255,255,255,.1)}
+html.dark-mode .tb26-item{color:#f2f2f7}
+html.dark-mode .tb26-item.active,html.dark-mode .tb26-item.under-lens{color:#0a84ff}
+.ahdr.tab-min .tb26-item:not(.active){opacity:.55}
 .ahdr.tab-min{transform:translateY(6px) scale(.8)}
 .ahdr.tab-min .sbtn:not(.active){opacity:.55}
 .tc{padding-top:14px!important;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important;
@@ -303,13 +331,21 @@ window.ensureGroupCrypto = (function () {
   <div class="bgo"></div>
   <div class="tp">
     <header class="ahdr">
-      <div class="sc lg-segment" id="tabSegment">
-        <div class="nav-glow" id="navGlow"></div>
-        <div class="sslider lg-segment-slider" id="slider"></div>
-        <button class="sbtn lg-segment-btn active" id="btnTalk" type="button" data-i18n="talk">トーク</button>
-        <button class="sbtn lg-segment-btn" id="btnHome" type="button" data-i18n="home">ホーム</button>
-        <button class="sbtn lg-segment-btn" id="btnPosts" type="button" data-i18n="post">投稿</button>
-      </div>
+      <nav class="tb26" id="tabSegment" aria-label="タブ">
+        <div class="tb26-lens" id="slider"></div>
+        <button class="tb26-item active" id="btnTalk" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.9 3 3 6.5 3 10.9c0 2.5 1.3 4.7 3.3 6.2-.1 1.2-.6 2.5-1.6 3.4-.3.3-.1.8.3.8 2 0 3.6-.8 4.6-1.6.8.2 1.6.3 2.4.3 5.1 0 9-3.5 9-7.9S17.1 3 12 3z"/></svg>
+          <span data-i18n="talk">トーク</span>
+        </button>
+        <button class="tb26-item" id="btnHome" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l8 7.6c.6.6.2 1.6-.7 1.6H19v7a1.5 1.5 0 0 1-1.5 1.5H15v-5.5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1V21H6.5A1.5 1.5 0 0 1 5 19.5v-7H4c-.9 0-1.3-1-.7-1.6l8-7.6z"/></svg>
+          <span data-i18n="home">ホーム</span>
+        </button>
+        <button class="tb26-item" id="btnPosts" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4h9.2l-2 2H5v13h13v-7.2l2-2V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm13.6-1.4a1.9 1.9 0 0 1 2.8 2.8l-8.3 8.3-3.6.8.8-3.6 8.3-8.3z"/></svg>
+          <span data-i18n="post">投稿</span>
+        </button>
+      </nav>
     </header>
     <main class="tc">
       <section id="pageTalk" class="lg-page-enter">
@@ -424,7 +460,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.87 beta</div>
+  <div class="version-badge">Bro Chat v1.28.88 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -946,38 +982,121 @@ function bindTalkNavSwitcher(){
   window.addEventListener('resize',()=>snapToIndex(active,false));
 }
 
-// switchTab: 外部(ログイン後の初期表示など)から呼ばれる互換関数として維持
-function switchTab(activeBtnId){
-  const idx=activeBtnId==='btnTalk'?0:activeBtnId==='btnHome'?1:2;
-  const items=[
-    {el:document.getElementById('btnTalk'), page:pageTalk},
-    {el:document.getElementById('btnHome'), page:pageHome},
-    {el:document.getElementById('btnPosts'), page:pagePosts},
-  ];
-  // 現在表示中のページ位置を調べて、移動方向を決める
+// ===== iOS 26 タブバー =====
+const TB_PAGES = () => [
+  { el: document.getElementById('btnTalk'), page: pageTalk },
+  { el: document.getElementById('btnHome'), page: pageHome },
+  { el: document.getElementById('btnPosts'), page: pagePosts },
+];
+let tbIndex = 0, tbLensX = 0, tbAnim = null;
+
+function tbItemX(i) { const it = TB_PAGES()[i].el; return it.offsetLeft - 4; } // レンズはleft:4px基準
+function tbSetLens(x, stretch = 1) {
+  tbLensX = x;
+  document.getElementById('slider').style.transform = `translateX(${x}px) scaleX(${stretch})`;
+}
+function tbShowPage(idx) {
+  const items = TB_PAGES();
   let prevIdx = items.findIndex(it => it.page.style.display !== 'none');
   if (prevIdx < 0) prevIdx = idx;
   const dirClass = idx > prevIdx ? 'lg-page-enter-right' : (idx < prevIdx ? 'lg-page-enter-left' : 'lg-page-enter');
-  items.forEach((it,i)=>{
-    it.el.classList.toggle('active',i===idx);
-    const wasHidden = it.page.style.display==='none';
-    it.page.style.display=i===idx?'block':'none';
-    if(i===idx && wasHidden){
-      it.page.classList.remove('lg-page-enter','lg-page-enter-right','lg-page-enter-left');
+  items.forEach((it, i) => {
+    it.el.classList.toggle('active', i === idx);
+    const wasHidden = it.page.style.display === 'none';
+    it.page.style.display = i === idx ? 'block' : 'none';
+    if (i === idx && wasHidden) {
+      it.page.classList.remove('lg-page-enter', 'lg-page-enter-right', 'lg-page-enter-left');
       void it.page.offsetWidth;
       it.page.classList.add(dirClass);
     }
   });
-  const btn=items[idx].el, seg=document.getElementById('tabSegment'), slider=document.getElementById('slider');
-  if(btn&&seg&&slider){
-    const btnRect=btn.getBoundingClientRect(), segRect=seg.getBoundingClientRect();
-    slider.style.left=(btnRect.left-segRect.left)+'px';
-    slider.style.width=btnRect.width+'px';
-  }
+  tbIndex = idx;
+}
+function tbGoTo(idx, velocity = 0) {
+  const target = tbItemX(idx);
+  if (tbAnim) tbAnim.stop();
+  if (window.BroSpring) {
+    tbAnim = BroSpring.animate({
+      spring: 'bouncy', from: tbLensX, to: target, velocity,
+      onUpdate: (x, v) => tbSetLens(x, 1 + Math.min(Math.abs(v || 0) / 2600, 0.22)),
+      onComplete: () => { tbSetLens(target); tbAnim = null; },
+    });
+  } else tbSetLens(target);
+  if (idx !== tbIndex || TB_PAGES()[idx].page.style.display === 'none') tbShowPage(idx);
 }
 
-// 初期化: レイアウト確定後にドラッグ機構をバインド
-requestAnimationFrame(()=>{ bindTalkNavSwitcher(); });
+// switchTab: 外部(ログイン後の初期表示など)から呼ばれる互換関数として維持
+function switchTab(activeBtnId) {
+  tbGoTo(activeBtnId === 'btnTalk' ? 0 : activeBtnId === 'btnHome' ? 1 : 2);
+}
+
+(function bindTabBar26() {
+  const nav = document.getElementById('tabSegment');
+  const lens = document.getElementById('slider');
+  const items = TB_PAGES().map(i => i.el);
+  const vt = window.BroSpring ? BroSpring.velocityTracker() : null;
+  let down = null, dragging = false;
+  requestAnimationFrame(() => tbSetLens(tbItemX(tbIndex)));
+
+  // レンズの下にあるアイコンを虫眼鏡のように拡大
+  function magnify(active) {
+    const center = tbLensX + 4 + lens.offsetWidth / 2;
+    items.forEach(el => {
+      const c = el.offsetLeft + el.offsetWidth / 2;
+      const d = Math.abs(c - center) / el.offsetWidth;
+      const k = active ? Math.max(0, 1 - d) : 0;
+      el.style.transform = k ? `scale(${1 + 0.22 * k})` : '';
+      el.classList.toggle('under-lens', active && d < 0.5);
+    });
+  }
+
+  nav.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const hit = e.target.closest('.tb26-item');
+    down = { x: e.clientX, lensX: tbLensX, idx: hit ? items.indexOf(hit) : tbIndex, t: performance.now() };
+    dragging = false;
+    if (tbAnim) { tbAnim.stop(); tbAnim = null; }
+    if (vt) vt.reset();
+    nav.setPointerCapture(e.pointerId);
+    nav.classList.add('active-touch');
+    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+  });
+  nav.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - down.x;
+    if (!dragging && Math.abs(dx) < 6) return;
+    dragging = true;
+    const min = 0, max = tbItemX(items.length - 1);
+    let x = down.lensX + dx;
+    // 端を越えるとゴムのように抵抗
+    if (x < min) x = min - Math.pow(min - x, 0.7);
+    if (x > max) x = max + Math.pow(x - max, 0.7);
+    if (vt) vt.add(x);
+    const v = vt ? vt.get() : 0;
+    tbSetLens(x, 1 + Math.min(Math.abs(v) / 2600, 0.22));
+    magnify(true);
+  });
+  const end = () => {
+    if (!down) return;
+    let idx = down.idx;
+    const v = vt ? vt.get() : 0;
+    if (dragging) {
+      // 離した位置 + 勢いの先で一番近いタブへ
+      const projected = tbLensX + v * 0.12;
+      idx = 0;
+      let best = Infinity;
+      items.forEach((_, i) => { const d = Math.abs(tbItemX(i) - projected); if (d < best) { best = d; idx = i; } });
+    }
+    down = null;
+    nav.classList.remove('active-touch');
+    tbGoTo(idx, dragging ? v : 0);
+    magnify(false);
+    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+  };
+  nav.addEventListener('pointerup', end);
+  nav.addEventListener('pointercancel', end);
+  window.addEventListener('resize', () => tbSetLens(tbItemX(tbIndex)));
+})();
 
 // iOS 26: スクロールでタブバーを縮める/戻す。縮んでいる時に触ったら、まず元のサイズに戻すだけ
 // (位置計算がずれないよう、戻り切ってから次の操作を受け付ける)
