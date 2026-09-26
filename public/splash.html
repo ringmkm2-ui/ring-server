@@ -280,7 +280,13 @@
       }
 
       // 開始
-      checkServer();
+      // ログイン済みならサーバーの起床を待たずに即トーク一覧へ(一覧は前回の内容を即表示し、
+      // 裏で最新化する)。以前は最低2秒+サーバー応答待ちで毎回待たされていた。
+      if (token) {
+        window.location.replace(destination);
+      } else {
+        checkServer();
+      }
 
       // Service Worker
       if ('serviceWorker' in navigator) {

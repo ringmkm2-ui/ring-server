@@ -242,9 +242,29 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
-<script src="/js/libsodium-wrappers.min.js"></script>
-<script src="/js/signalkeymanager.js"></script>
-<script src="/js/groupE2E.js"></script>
+<script>
+// libsodium(1.8MB)はグループ作成の時しか使わないのに、トーク一覧を開くたびに同期で
+// 読み込み・解析していて、Galaxy A25クラスの端末だと表示が数百ms止まっていた。
+// 必要になった時に初めて読み込む。
+window.ensureGroupCrypto = (function () {
+  let p = null;
+  const load = src => new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('load failed: ' + src));
+    document.head.appendChild(s);
+  });
+  return function () {
+    if (!p) {
+      p = load('/js/libsodium-wrappers.min.js')
+        .then(() => load('/js/signalkeymanager.js'))
+        .then(() => load('/js/groupE2E.js'))
+        .then(() => window.sodium.ready)
+        .catch(e => { p = null; throw e; });
+    }
+    return p;
+  };
+})();
+</script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
@@ -285,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
         <div class="card">
           <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
           <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
-          <div id="talkList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
+          <div id="talkList"></div>
         </div>
         <div class="card">
           <div class="slabel" data-i18n="group">グループ</div>
@@ -393,7 +413,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.83 beta</div>
+  <div class="version-badge">Bro Chat v1.28.84 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -988,12 +1008,28 @@ async function loadProfile(){
 loadProfile();
 
 // トークリスト読み込み
+// トーク一覧は前回の内容を端末に持っておき、開いた瞬間にそれを出す(LINE方式)。
+// 「読み込み中...」は出さず、裏で最新を取ってきて差分があれば入れ替える。
+const TALK_CACHE_KEY = 'talk_cache_' + (localStorage.getItem('ring_userId') || '');
+
+function renderTalksFromCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(TALK_CACHE_KEY) || 'null');
+    if (!c || !Array.isArray(c.merged)) return false;
+    if (Array.isArray(c.groups)) renderGroups(c.groups);
+    renderTalkList(c.merged, true);
+    return true;
+  } catch (e) { return false; }
+}
+
 async function loadTalks(animate = false) {
   try {
-    const talks = await api('/api/messages/talks');
-    const friends = await api('/api/friends/list');
-    const groupsData = await api('/api/groups/list');
-    const list = document.getElementById('talkList');
+    // 3本のAPIを直列で待っていたのを並列に(体感で2〜3倍速い)
+    const [talks, friends, groupsData] = await Promise.all([
+      api('/api/messages/talks'),
+      api('/api/friends/list'),
+      api('/api/groups/list'),
+    ]);
     
     // トークリストのユーザーIDセット
     const talkUserIds = new Set(Array.isArray(talks) ? talks.map(t => t.userId) : []);
@@ -1035,6 +1071,21 @@ async function loadTalks(animate = false) {
       return new Date(b.lastTime) - new Date(a.lastTime);
     });
 
+    try {
+      localStorage.setItem(TALK_CACHE_KEY, JSON.stringify({
+        merged,
+        groups: groupsData && Array.isArray(groupsData.groups) ? groupsData.groups : null,
+      }));
+    } catch (e) {}
+    // キャッシュから描画済みなら出現アニメーションを二重にかけない
+    renderTalkList(merged, animate && !window.__talksRenderedFromCache);
+    window.__talksRenderedFromCache = false;
+  } catch(e) { console.error('loadTalks:', e); }
+}
+
+function renderTalkList(merged, animate) {
+  const list = document.getElementById('talkList');
+  {
     // 4秒ごとの自動更新は「変化があった時だけ」DOMを再構築する。
     // タブ切り替え等の明示的な操作(animate=true)は毎回きちんと
     // アニメーション付きで再描画したいので、差分チェックは自動更新時のみ行う。
@@ -1064,6 +1115,10 @@ async function loadTalks(animate = false) {
     // addEventListenerとtextContentを使うDOM構築方式は、ユーザー文字列が
     // 一切HTML/JSソースとして再解釈されないため、この種の攻撃が構造的に成立しない。
     list.textContent = '';
+    const prevTalkState = window.__prevTalkState || new Map();
+    const nextTalkState = new Map();
+    // 初回描画(キャッシュ含む)では光らせない
+    if (!window.__prevTalkState) prevTalkState.clear();
     merged.forEach((t, idx) => {
       const item = document.createElement('div');
       item.className = animate ? 'ti glass-materialize-light' : 'ti';
@@ -1129,12 +1184,18 @@ async function loadTalks(animate = false) {
         item.appendChild(av);
         item.appendChild(body);
 
+        const prev = prevTalkState.get(t.userId);
         if (t.unreadCount > 0) {
           const badge = document.createElement('div');
-          badge.style.cssText = 'background:rgba(255,255,255,.3);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);color:#0f172a;border:1px solid rgba(255,255,255,.5);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
+          // 行ごとにbackdrop-filterを掛けると未読が多い時に重いので単色にする
+          badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
           badge.textContent = String(t.unreadCount);
+          if (prev && t.unreadCount > (prev.unread || 0)) badge.classList.add('bc-badge-pop');
           item.appendChild(badge);
         }
+        // 新着でこの行の最終メッセージ時刻が進んだら軽く光らせる
+        if (prev && t.lastTime && prev.lastTime !== t.lastTime) item.classList.add('bc-row-flash');
+        nextTalkState.set(t.userId, { unread: t.unreadCount || 0, lastTime: t.lastTime || null });
 
         // クリックされたアバターをチャット画面のヘッダーアバター位置へ
         // 実際に飛ばしてから遷移する(FLIP方式のShared Element Transition)。
@@ -1149,7 +1210,8 @@ async function loadTalks(animate = false) {
 
       list.appendChild(item);
     });
-  } catch(e) { console.error('loadTalks:', e); }
+    window.__prevTalkState = nextTalkState;
+  }
 }
 
 // アバター画像を安全に背景として設定する共通ヘルパー。
@@ -1204,7 +1266,8 @@ async function initializeWithCache() {
 
 async function refreshFromServer() {
   try {
-    const token = localStorage.getItem('jwt');
+    // 'jwt' という存在しないキーを読んでいて常に未認証→401で何も更新されていなかった
+    const token = localStorage.getItem('ring_token');
     const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
 
     // 友達情報を取得
@@ -1809,6 +1872,7 @@ document.getElementById('ngCreate').onclick = async () => {
     const allMemberIds = [window.myUserId, ...memberIds];
     let encryptedKeysForMembers = [];
     try {
+      await window.ensureGroupCrypto();
       const dist = await groupE2E.createInitialGroupKeyDistribution(allMemberIds);
       encryptedKeysForMembers = dist.distributions;
     } catch (e) {
@@ -1921,7 +1985,13 @@ async function acceptFriendRequest(friendshipId, btn) {
   }
 }
 
-// 初期読み込み
+// 裏から戻ってきた瞬間に最新化(ポーリングを待たない)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && document.getElementById('pageTalk').style.display !== 'none') loadTalks();
+});
+
+// 初期読み込み: まず前回の一覧を即表示 → 裏で最新化
+window.__talksRenderedFromCache = renderTalksFromCache();
 loadTalks(true);
 loadPendingRequests(true);
 
@@ -1955,6 +2025,8 @@ function sendNotification(title, options = {}) {
 
 // 自動更新: トークリストと友達リクエストを定期的に最新化
 setInterval(() => {
+  // 画面が裏に回っている間は通信しない(電池と、戻った時のカクつき対策)
+  if (document.hidden) return;
   const talkVisible = document.getElementById('pageTalk').style.display !== 'none';
   const homeVisible = document.getElementById('pageHome').style.display !== 'none';
   if (talkVisible) loadTalks();

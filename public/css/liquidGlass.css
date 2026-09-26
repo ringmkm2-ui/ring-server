@@ -7,7 +7,7 @@
 
 :root {
   --glass-blur-regular: 20px;
-  --glass-blur-clear: 28px;
+  --glass-blur-clear: 20px;
   --glass-saturate: 180%;
 
   --glass-regular-bg: rgba(255, 255, 255, 0.28);
@@ -550,4 +550,41 @@
   background: rgba(40, 52, 70, 0.55);
   border-color: rgba(255, 255, 255, 0.18);
   color: #f1f5f9;
+}
+
+/* ===== 追加アニメーション (v1.28.84) =====
+   どれも transform / opacity だけで動かす(レイアウトや再描画を起こさないので
+   Galaxy A25 クラスでも60fpsを保てる)。 */
+
+/* ページを開いたときのふわっと出現。コンテナ自体にtransformを掛けると中のposition:fixed
+   (通話画面など)の基準がずれるので、opacityだけにする */
+@keyframes bcPageIn { from { opacity: 0; } to { opacity: 1; } }
+.phone-container, .pc { animation: bcPageIn .22s ease-out both; }
+
+/* トーク一覧: 押した瞬間に行がうっすら沈む */
+.ti { transition: background-color .18s ease, opacity .18s ease; border-radius: 12px; }
+.ti:active { background-color: rgba(15, 23, 42, .06); }
+
+/* 未読バッジがポンと出る */
+@keyframes bcBadgePop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.bc-badge-pop { animation: bcBadgePop .36s cubic-bezier(.34, 1.56, .64, 1) both; }
+
+/* 新着でトーク一覧の行が一番上に来たとき、軽く光らせる */
+@keyframes bcRowFlash {
+  0% { background-color: rgba(59, 130, 246, .14); }
+  100% { background-color: transparent; }
+}
+.bc-row-flash { animation: bcRowFlash .9s ease-out both; }
+
+/* チャット: メッセージの吹き出し内の画像がふわっと出る */
+@keyframes bcFadeScale { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.bubble img, .bubble video { animation: bcFadeScale .28s ease-out both; }
+
+/* 動きを減らす設定の人には出さない */
+@media (prefers-reduced-motion: reduce) {
+  .phone-container, .pc, .bc-badge-pop, .bc-row-flash, .bubble img, .bubble video { animation: none !important; }
 }

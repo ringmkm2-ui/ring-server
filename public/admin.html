@@ -19,12 +19,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#fdfaf6;font-family:
 body.has-custom-bg{background:transparent}
 .phone-container{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#fdfaf6;z-index:9999}
 body.has-custom-bg .phone-container{background:transparent}
-.bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;filter:blur(60px);z-index:0;opacity:.5}
+.bg-orb{position:absolute;border-radius:40% 60% 70% 30%/40% 50% 60% 50%;z-index:0;opacity:.5}
 body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:none}
 .orb-1{width:90vw;height:90vw;background:radial-gradient(circle,#fde3cf 0%,rgba(253,227,207,0) 70%);top:-20%;left:-20%}
 .orb-2{width:100vw;height:100vw;background:radial-gradient(circle,#d1fae5 0%,rgba(209,250,229,0) 70%);bottom:-10%;right:-25%}
 .orb-3{width:80vw;height:80vw;background:radial-gradient(circle,#fce7f3 0%,rgba(252,231,243,0) 70%);bottom:-20%;left:-10%}
-.phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;filter:blur(50px);z-index:0;opacity:.4}
+.phone-container::before{content:'';position:absolute;width:70vw;height:70vw;background:radial-gradient(circle,#e0f2fe 0%,rgba(224,242,254,0) 70%);top:15%;right:-10%;z-index:0;opacity:.4}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes rchipPop{0%{transform:scale(0)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
 .pending-send .bubble{animation:pendingPulse 1.1s ease-in-out infinite}
@@ -37,10 +37,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .msg-slide-left{animation:msgSlideLeft .38s cubic-bezier(.34,1.56,.64,1) both}
 .app-header-container,.chat-screen,.input-bar-container{position:relative;z-index:10}
 .app-header-container{padding:14px 16px}
-.app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
+.app-header-bar{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.25);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,.4);border-top:1px solid rgba(255,255,255,.8);border-left:1px solid rgba(255,255,255,.8);box-shadow:0 10px 30px rgba(0,0,0,.05);padding:10px 14px;border-radius:24px;width:100%}
 .back-link{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.6);color:#0f172a;font-weight:700;text-decoration:none;flex-shrink:0}
 /* partner-avatar: ヘッダー内のアバター。親の.app-header-barが既に
-   backdrop-filter:blur(30px)を持つため、入れ子backdrop-filterを外す。
+   backdrop-filter:blur(20px)を持つため、入れ子backdrop-filterを外す。
    画像で背景を覆うため、そもそもここのblurはほぼ視認されていなかった。 */
 .partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
 .name{font-weight:700;font-size:15px;color:#1e293b}
@@ -48,7 +48,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 /* phone-btn: 発信ボタン。liquidGlass.cssの.glass-clearに背景/ぼかし/縁は任せ、
    ここでは形状(円形・サイズ)のみ定義する。 */
 /* phone-btn: ヘッダー内の通話ボタン。親の.app-header-barが既に
-   backdrop-filter:blur(30px)を持つため、入れ子backdrop-filterを避ける。 */
+   backdrop-filter:blur(20px)を持つため、入れ子backdrop-filterを避ける。 */
 .phone-btn{
   border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;
   width:38px;height:38px;
@@ -102,7 +102,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .rbadge{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:999px;padding:3px 8px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .15s ease}
 .rbadge.active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3)}
 .input-bar-container{padding:10px 16px 14px;width:100%}
-.input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(35px) saturate(200%);-webkit-backdrop-filter:blur(35px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
+.input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(20px) saturate(200%);-webkit-backdrop-filter:blur(20px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
 .input-floating-bar.media-open{max-height:230px;border-radius:22px}
 .input-main-row{display:flex;align-items:center;width:100%;height:34px;min-width:0}
 /* plus-btn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
@@ -119,7 +119,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .txt-form input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
 .txt-form input::placeholder{color:rgba(15,23,42,.4)}
 /* glass-send-btn: 送信ボタン。
-   親の.input-floating-barが既にbackdrop-filter:blur(35px)を持っているため、
+   親の.input-floating-barが既にbackdrop-filter:blur(20px)を持っているため、
    ここで入れ子のbackdrop-filterを重ねない(ctx-menu>ctx-btnと同じ問題を回避)。
    代わりに不透明度の高い背景色だけでコントラストを出す。 */
 .glass-send-btn{
@@ -153,7 +153,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .mopt span{font-size:14px;font-weight:600;color:#1e293b}
 .menu-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.08);opacity:0;pointer-events:none;transition:all .3s ease;z-index:150}
 .menu-overlay.show{opacity:1;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
-.ctx-menu{position:absolute;background:rgba(255,255,255,.6);backdrop-filter:blur(40px) saturate(200%);-webkit-backdrop-filter:blur(40px) saturate(200%);border:1px solid rgba(255,255,255,.7);border-top:1px solid rgba(255,255,255,1);border-left:1px solid rgba(255,255,255,1);box-shadow:0 20px 50px rgba(0,0,0,.12);min-width:190px;z-index:200;pointer-events:none;border-radius:24px;transform:scale(.4) translateY(30px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .2s ease;overflow:hidden}
+.ctx-menu{position:absolute;background:rgba(255,255,255,.6);backdrop-filter:blur(20px) saturate(200%);-webkit-backdrop-filter:blur(20px) saturate(200%);border:1px solid rgba(255,255,255,.7);border-top:1px solid rgba(255,255,255,1);border-left:1px solid rgba(255,255,255,1);box-shadow:0 20px 50px rgba(0,0,0,.12);min-width:190px;z-index:200;pointer-events:none;border-radius:24px;transform:scale(.4) translateY(30px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .2s ease;overflow:hidden}
 .ctx-menu.show{pointer-events:auto;transform:scale(1) translateY(0);opacity:1}
 .ctx-menu.show .ctx-btn{animation:ctxBtnIn .32s cubic-bezier(.34,1.56,.64,1) both}
 .ctx-menu.show .ctx-btn:nth-of-type(1){animation-delay:.04s}
@@ -163,7 +163,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .ctx-menu.show .ctx-btn:nth-of-type(5){animation-delay:.2s}
 .ctx-menu.show .ctx-btn:nth-of-type(6){animation-delay:.24s}
 @keyframes ctxBtnIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-/* NOTE: 親の.ctx-menuが既にbackdrop-filter:blur(40px)をかけているため、
+/* NOTE: 親の.ctx-menuが既にbackdrop-filter:blur(20px)をかけているため、
    ここで入れ子のbackdrop-filterを重ねてはいけない。
    入れ子のbackdrop-filterはモバイルで極端に重く、描画がズレて
    白い矩形が浮いて見える表示崩れの原因になっていた。 */
@@ -189,7 +189,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 }
 .ctx-edit{color:#007aff}.ctx-pin{color:#8b5cf6}.ctx-del{color:#ff3b30}.ctx-react{color:#f59e0b}
 .ctx-div{height:1px;background:rgba(0,0,0,.05);margin:0 12px}
-.react-picker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.34,1.56,.64,1);transform:scale(.8) translateY(10px)}
+.react-picker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.34,1.56,.64,1);transform:scale(.8) translateY(10px)}
 .react-picker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
 .rp-btn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
 .react-picker.show .rp-btn{animation:rpBtnPop .32s cubic-bezier(.34,1.56,.64,1) both}
@@ -225,7 +225,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
    高さも100vh(静的なビューポート高さ)ではなく100dvh(動的ビューポート高さ)を
    優先させ、モバイルブラウザのアドレスバー表示/非表示による実効高さの変動にも
    追従できるようにする(100dvh非対応の古いブラウザ向けに100vhもフォールバックとして残す)。 */
-.call-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;background:rgba(20,22,30,.55);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
+.call-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;background:rgba(20,22,30,.55);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);z-index:500;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:env(safe-area-inset-top,48px) 0 env(safe-area-inset-bottom,32px);opacity:0;pointer-events:none;transition:opacity .4s var(--glass-ease, ease)}
 .call-overlay.show{opacity:1;pointer-events:auto}
 /* call-cardはヘッダー(名前/ステータス)+アバターを縦に並べる領域。
    ネイティブ風にするため背景・ガラス質感は持たせず(映像の上に直接文字を置く)、
@@ -301,7 +301,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.83 beta</div>
+  <div class="version-badge">Bro Chat v1.28.84 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -677,17 +677,21 @@ async function getOrCreateMyKeyPair() {
   }
   addToMyKeyring(myKeyPair);
 
-  // サーバー側の公開鍵とローカルの鍵が一致しているか確認し、違えば登録し直す
-  try {
-    const myLocalPublicKeyB64 = nacl.util.encodeBase64(myKeyPair.publicKey);
-    const me = await api('/api/friends/me');
-    if (!me || me.publicKey !== myLocalPublicKeyB64) {
-      console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
-      await registerMyPublicKey(myKeyPair);
+  // サーバー側の公開鍵とローカルの鍵が一致しているか確認し、違えば登録し直す。
+  // 履歴の読み込みをこの往復で待たせないよう裏で行う(ローカルの鍵はもう使える)
+  const kp = myKeyPair;
+  (async () => {
+    try {
+      const myLocalPublicKeyB64 = nacl.util.encodeBase64(kp.publicKey);
+      const me = await api('/api/friends/me');
+      if (!me || me.publicKey !== myLocalPublicKeyB64) {
+        console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
+        await registerMyPublicKey(kp);
+      }
+    } catch (err) {
+      console.error('公開鍵の整合性チェックに失敗しました:', err);
     }
-  } catch (err) {
-    console.error('公開鍵の整合性チェックに失敗しました:', err);
-  }
+  })();
   return myKeyPair;
 }
 
@@ -1276,10 +1280,15 @@ function getOwnPlaintext(msgId) {
   }
 }
 
+let chatCacheTimer = null;
 function addRealMessage(msg) {
   const idx = realMessages.findIndex(m => m.id === msg.id);
   if (idx === -1) realMessages.push(msg);
   else realMessages[idx] = msg;
+  if (!isBulkHistoryLoad) {
+    clearTimeout(chatCacheTimer);
+    chatCacheTimer = setTimeout(saveChatCache, 1500);
+  }
 }
 
 // メッセージ内容をパースして { displayText, mediaType, mediaSrc } を返す
@@ -1332,8 +1341,10 @@ let isBulkHistoryLoad = false;
 // ヌルッと滑らかにスクロールさせて、コンテンツが「ジャンプ」して見えないようにする。
 function scrollChatToBottom(cs, force) {
   if (!cs) return;
-  if (isBulkHistoryLoad && !force) {
-    cs.scrollTop = cs.scrollHeight;
+  if (isBulkHistoryLoad) {
+    // 一括描画中は1件ごとにscrollHeightを読む(=強制レイアウト)と数百回レイアウトが走るので、
+    // 最後に1回だけ force で呼ぶ
+    if (force) cs.scrollTop = cs.scrollHeight;
     return;
   }
   const target = cs.scrollHeight - cs.clientHeight;
@@ -2005,14 +2016,49 @@ function insertUnreadDivider(beforeId, count) {
   requestAnimationFrame(tryInsert);
 }
 
+// 前回開いた時の直近メッセージを端末に持っておき、開いた瞬間に出す(LINE方式)。
+// 画像等の巨大なBase64は入れない。
+const CHAT_CACHE_KEY = `chat_cache_${myUserId}_${otherId}`;
+let chatRenderedFromCache = false;
+
+function saveChatCache() {
+  try {
+    const recent = realMessages
+      .filter(m => m && m.id && !String(m.id).startsWith('temp-') && typeof m.content === 'string' && m.content.length < 4000)
+      .slice(-60);
+    localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(recent));
+  } catch (e) {}
+}
+
+function renderChatFromCache() {
+  try {
+    const list = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || '[]');
+    if (!Array.isArray(list) || list.length === 0) return;
+    isBulkHistoryLoad = true;
+    list.forEach(m => { addRealMessage(m); renderMessageImpl(m); });
+    scrollChatToBottom(document.getElementById('chatScreen'), true);
+    chatRenderedFromCache = true;
+  } catch (e) {
+  } finally {
+    isBulkHistoryLoad = false;
+  }
+}
+
+function clearRenderedMessages() {
+  msgDOMCache.forEach(el => el.remove());
+  msgDOMCache.clear();
+  realMessages.length = 0;
+}
+
 async function initialLoadHistory() {
-  // 履歴の一括読み込み中は、メッセージ1件ごとの出現アニメーション(materialize)を
-  // 抑制する。何十件も同時にアニメーションさせると視覚的にうるさく、
-  // 低スペック端末では描画負荷にもなるため、リアルタイム受信時のみ演出する。
-  isBulkHistoryLoad = true;
   try {
     const data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
+    // 以前は描画をrAFキューに積んだ直後に isBulkHistoryLoad=false に戻していたため、
+    // 実際の描画時には「リアルタイム受信」扱いになり、履歴の全件に出現アニメーションと
+    // 滑らかスクロールが走って低スペック端末で重くなっていた。
+    // ここでは復号→同期で一括描画→最後に1回だけスクロール、の順にする。
+    isBulkHistoryLoad = true;
 
     // 未読区切り線: 開いた時点で未読だった受信メッセージの先頭位置を記録
     const unreadIncoming = data.filter(m => m.senderId !== myUserId && !m.readAt && !m.deletedAt);
@@ -2020,6 +2066,7 @@ async function initialLoadHistory() {
     const firstUnreadId = unreadDividerCount > 0 ? unreadIncoming[0].id : null;
 
     // 復号化してから保持・描画（自分が送ったメッセージは復号化不要、相手からのみ復号化）
+    const displayList = [];
     for (const msg of data) {
       let displayContent = msg.content;
       if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
@@ -2032,12 +2079,15 @@ async function initialLoadHistory() {
         const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
         displayContent = own !== null ? own : '(このデバイスでは表示できません)';
       }
-      const displayMsg = { ...msg, content: displayContent };
-      addRealMessage(displayMsg);
-      renderMessage(displayMsg);
+      displayList.push({ ...msg, content: displayContent });
     }
 
+    // キャッシュで仮表示していたものは同じ処理内で入れ替える(描画は処理の後なのでチラつかない)
+    if (chatRenderedFromCache) { clearRenderedMessages(); chatRenderedFromCache = false; }
+    displayList.forEach(m => { addRealMessage(m); renderMessageImpl(m); });
     if (firstUnreadId) insertUnreadDivider(firstUnreadId, unreadDividerCount);
+    scrollChatToBottom(document.getElementById('chatScreen'), true);
+    saveChatCache();
   } catch (err) {
     console.error('initialLoadHistory error:', err);
   } finally {
@@ -2161,6 +2211,8 @@ if (otherId) {
     }
   }
 
+  // 前回の会話を即表示(サーバー応答や鍵の初期化を待たない)
+  renderChatFromCache();
   // プロフィール(名前・画像)の最新化は鍵生成を待つ必要がないため独立して即座に実行
   refreshPartnerProfile();
   // E2E暗号化の鍵ペア初期化（初回のみサーバーに公開鍵を登録）
