@@ -137,6 +137,15 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // オンラインならWS経由で既にリアルタイム表示されるため、二重通知を避ける。
     // NOTE: E2E暗号化のためcontentは復号できない。通知本文には出さず、
     // 「メッセージが届いた」ことと送信者名だけを載せる(プライバシー配慮)。
+    // APK(FCM)には常に送る。アプリが裏にいてもWebSocketが一時的に生きていることがあり、
+    // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
+    if (!req.body.noPush) {
+      db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]).then(sender => {
+        const preview = mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました';
+        require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm', { senderId: req.userId })
+          .catch(err => console.error('[fcm] new_message failed:', err.message));
+      }).catch(() => {});
+    }
     if (!isUserOnline(recipientId) && !req.body.noPush) {
       const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]);
       const { sendPushToUser } = require('../utils/webPush');

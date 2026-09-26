@@ -42,6 +42,13 @@ body.has-custom-bg .pc{background:transparent}
 .tb26-lens{position:absolute;left:4px;top:4px;width:78px;height:calc(100% - 8px);border-radius:999px;pointer-events:none;z-index:0;
   background:rgba(15,23,42,.07);will-change:transform;
   transition:background-color .25s ease,box-shadow .25s ease,border-color .25s ease;border:1px solid transparent}
+.tb26-lens{transition:background-color .25s ease,box-shadow .25s ease,border-color .25s ease,height .01s}
+.tb26-lens::after{content:"";position:absolute;inset:0;border-radius:inherit;transform:scale(1);opacity:0;
+  transition:transform .5s var(--spring-bouncy,ease-out),opacity .2s ease;
+  background:radial-gradient(120% 90% at 30% 20%,rgba(255,255,255,.75),rgba(255,255,255,.15) 45%,rgba(255,255,255,.05) 70%);
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95),inset 0 -8px 16px rgba(255,255,255,.35),0 10px 30px rgba(15,23,42,.25)}
+/* 触った瞬間、レンズがバーから飛び出すように大きく膨らむ(以前のLiquid Glassの挙動) */
+.tb26.active-touch .tb26-lens::after{transform:scale(1.45,1.5);opacity:1}
 .tb26.active-touch .tb26-lens{background:rgba(255,255,255,.28);border-color:rgba(255,255,255,.95);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -6px 12px rgba(255,255,255,.35),0 6px 18px rgba(15,23,42,.18)}
 .tb26-item{position:relative;z-index:1;height:52px;border:none;background:transparent;border-radius:999px;cursor:pointer;
@@ -309,6 +316,7 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/spring.js"></script>
+<script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cacheManager.js"></script>
@@ -460,7 +468,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.88 beta</div>
+  <div class="version-badge">Bro Chat v1.28.89 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -983,10 +991,11 @@ function bindTalkNavSwitcher(){
 }
 
 // ===== iOS 26 タブバー =====
+// onSelect: タブを開いた時に中身を読み込む。書き直しの時にこれを落としていて「投稿」が空のまま動かなかった
 const TB_PAGES = () => [
-  { el: document.getElementById('btnTalk'), page: pageTalk },
-  { el: document.getElementById('btnHome'), page: pageHome },
-  { el: document.getElementById('btnPosts'), page: pagePosts },
+  { el: document.getElementById('btnTalk'), page: pageTalk, onSelect: () => loadTalks(true) },
+  { el: document.getElementById('btnHome'), page: pageHome, onSelect: () => loadPendingRequests(true) },
+  { el: document.getElementById('btnPosts'), page: pagePosts, onSelect: () => loadPosts() },
 ];
 let tbIndex = 0, tbLensX = 0, tbAnim = null;
 
@@ -1022,7 +1031,11 @@ function tbGoTo(idx, velocity = 0) {
       onComplete: () => { tbSetLens(target); tbAnim = null; },
     });
   } else tbSetLens(target);
-  if (idx !== tbIndex || TB_PAGES()[idx].page.style.display === 'none') tbShowPage(idx);
+  const pages = TB_PAGES();
+  if (idx !== tbIndex || pages[idx].page.style.display === 'none') {
+    tbShowPage(idx);
+    try { pages[idx].onSelect && pages[idx].onSelect(); } catch (e) { console.error(e); }
+  }
 }
 
 // switchTab: 外部(ログイン後の初期表示など)から呼ばれる互換関数として維持

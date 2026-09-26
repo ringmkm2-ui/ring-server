@@ -716,3 +716,22 @@ body.chat-bg-dark .app-header-bar{background:rgba(30,30,34,.45)}
 body.chat-bg-dark .app-header-bar .name{color:#fff}
 body.chat-bg-dark .app-header-bar .status{color:rgba(255,255,255,.7)!important}
 body.chat-bg-dark .input-bar-container input{color:#fff}
+.ctx-menu{max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
+/* リプライ */
+.reply-preview{display:flex;align-items:center;gap:10px;margin:0 6px 8px;padding:8px 8px 8px 12px;border-radius:16px;
+  background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  box-shadow:inset 3px 0 0 #0a84ff,0 4px 14px rgba(15,23,42,.1);transition:opacity .2s ease;font-size:13px}
+.rp-body{flex:1;min-width:0}
+.rp-label{font-weight:700;color:#0a84ff;font-size:12px;margin-bottom:1px}
+.rp-text{color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-close{flex:none;width:30px;height:30px;border-radius:50%;border:none;background:rgba(120,120,128,.16);color:#475569;display:flex;align-items:center;justify-content:center}
+.reply-quote{border-left:3px solid #0a84ff;background:rgba(10,132,255,.09);padding:5px 8px;margin-bottom:6px;border-radius:8px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;max-width:100%}
+.reply-quote b{color:#0a84ff;margin-right:6px}
+@keyframes replyFlash{0%{background:rgba(10,132,255,.22)}100%{background:transparent}}
+.reply-jump-flash{animation:replyFlash 1.2s ease-out;border-radius:18px}
+body.chat-bg-dark .reply-preview{background:rgba(30,30,34,.7)} body.chat-bg-dark .rp-text{color:#cbd5e1}
+.msg-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.share-list{display:flex;flex-direction:column;gap:4px}
+.share-row{display:flex;align-items:center;gap:12px;border:none;background:transparent;padding:10px 6px;border-radius:14px;font-size:15px;font-weight:600;color:#111;text-align:left}
+.share-row:active{background:rgba(120,120,128,.14)}
+.share-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#60a5fa,#a78bfa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}

@@ -126,7 +126,7 @@ async function sendCallCancelled(recipientId, callId) {
 /**
  * メッセージ通知を送信
  */
-async function sendMessageNotification(recipientId, senderName, content, chatType) {
+async function sendMessageNotification(recipientId, senderName, content, chatType, extra = {}) {
   if (!initialized) { initFirebase(); }
   if (!initialized) return;
 
@@ -144,18 +144,12 @@ async function sendMessageNotification(recipientId, senderName, content, chatTyp
       sender_name: senderName || '不明',
       content: body,
       chat_type: chatType || 'dm',
+      sender_id: String(extra.senderId || ''),
+      chat_id: String(extra.chatId || ''),
     },
-    notification: {
-      title: senderName || '新しいメッセージ',
-      body: body,
-    },
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'brochat_messages',
-        sound: 'default',
-      },
-    },
+    // data専用メッセージにする。notification を付けるとアプリが裏にいる時にOSが勝手に表示し、
+    // 「そのトークを開いている時は出さない」「タップでそのトークを開く」がネイティブ側で出来なかった
+    android: { priority: 'high', ttl: 24 * 3600 * 1000 },
   };
 
   await sendToTokens(tokens, message, recipientId);

@@ -284,6 +284,12 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
     // 自分自身はスキップ(送信元端末には既に表示済み)、Push通知も不要
     if (isSelf) return;
 
+    require('../utils/fcm').sendMessageNotification(
+      m.user_id, `${sender?.display_name || 'ユーザー'} (${group.name})`,
+      mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+      'group', { senderId: req.userId, chatId: groupId }
+    ).catch(err => console.error('[fcm] group message failed:', err.message));
+
     // オフラインのメンバーにはPush通知。E2E暗号化のためcontentは復号できないので、
     // 通知には「誰から・どのグループに届いたか」だけを載せる。
     if (!isUserOnline(m.user_id)) {

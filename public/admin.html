@@ -116,8 +116,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 }
 .input-floating-bar.media-open .plus-btn{transform:rotate(45deg)}
 .txt-form{flex:1;display:flex;align-items:center;gap:8px;margin-left:10px;min-width:0}
-.txt-form input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0}
-.txt-form input::placeholder{color:rgba(15,23,42,.4)}
+.txt-form input,.txt-form textarea{flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:16px;color:#0f172a;padding:6px 0;font-family:inherit;line-height:1.35;resize:none;max-height:calc(1.35em * 6 + 12px);overflow-y:auto;display:block}
+.txt-form{align-items:flex-end}
+.txt-form input::placeholder,.txt-form textarea::placeholder{color:rgba(15,23,42,.4)}
 /* glass-send-btn: 送信ボタン。
    親の.input-floating-barが既にbackdrop-filter:blur(20px)を持っているため、
    ここで入れ子のbackdrop-filterを重ねない(ctx-menu>ctx-btnと同じ問題を回避)。
@@ -282,6 +283,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/spring.js"></script>
+<script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/chatBg.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
@@ -303,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.88 beta</div>
+  <div class="version-badge">Bro Chat v1.28.89 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -332,10 +334,14 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   <div class="chat-screen" id="chatScreen"></div>
 
   <div class="input-bar-container">
-    <div id="replyPreview" style="background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;padding:8px 12px;margin-bottom:8px;border-radius:6px;display:none;font-size:13px;opacity:0;transition:opacity 0.2s;max-height:60px;overflow-y:auto;">
-      <div style="font-weight:600;color:#1e293b;margin-bottom:3px;" data-i18n="replying_to">リプライ中:</div>
-      <div id="replyText" style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-      <button type="button" onclick="cancelReply()" style="background:none;border:none;color:#64748b;cursor:pointer;padding:3px;margin-top:3px;font-size:12px;" data-i18n="cancel">キャンセル</button>
+    <div id="replyPreview" class="reply-preview" style="display:none;opacity:0">
+      <div class="rp-body">
+        <div class="rp-label" data-i18n="replying_to">リプライ中:</div>
+        <div id="replyText" class="rp-text"></div>
+      </div>
+      <button type="button" class="rp-close" id="replyCancelBtn" aria-label="キャンセル">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
@@ -343,7 +349,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <form class="txt-form" id="chatForm">
-          <input type="text" id="msgInput" placeholder="メッセージを入力" autocomplete="off">
+          <textarea id="msgInput" rows="1" placeholder="メッセージを入力" autocomplete="off" enterkeyhint="enter"></textarea>
           <button type="submit" class="glass-send-btn glass-interactive" id="sendBtn" data-no-auto-haptic="1">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
@@ -398,8 +404,8 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </div>
 
   <div class="call-overlay" id="callOv">
-    <video id="remoteVideo" autoplay playsinline style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0"></video>
-    <video id="localVideo" autoplay playsinline muted style="display:none;position:absolute;top:16px;right:16px;width:100px;height:140px;border-radius:12px;object-fit:cover;background:#000;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.6)"></video>
+    <video id="remoteVideo" autoplay playsinline style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:0"></video>
+    <video id="localVideo" autoplay playsinline muted style="display:none;position:absolute;top:16px;right:16px;width:100px;height:140px;border-radius:12px;object-fit:contain;background:#000;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.6)"></video>
 
     <!-- 上部: アバター・名前・ステータス(ネイティブ電話アプリの発信/着信/通話中画面と同じ配置) -->
     <div class="call-card" id="callCard">
@@ -1086,12 +1092,29 @@ async function sendMediaViaCloudinary(f, t) {
   }
 }
 
+// 長い文章は自動で2段、3段…と伸びる(最大6行、それ以上はスクロール)。
+// スマホのEnterは改行、PC(物理キーボード)はEnterで送信・Shift+Enterで改行。
+(function () {
+  const ta = document.getElementById('msgInput');
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 6 * 21.6 + 12) + 'px'; };
+  ta.addEventListener('input', fit);
+  window.fitMsgInput = fit;
+  const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !coarse) {
+      e.preventDefault();
+      document.getElementById('chatForm').requestSubmit();
+    }
+  });
+})();
+
 document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   document.getElementById('msgInput').value = '';
+  if (window.fitMsgInput) fitMsgInput();
   document.getElementById('inputBar').classList.remove('media-open');
 
   if (isEditing) {
@@ -1191,7 +1214,10 @@ const msgDOMCache = new Map(); // msgId -> DOM要素（querySelector高速化用
 async function sendRealMessage(content) {
   // 楽観的更新: 送信中でも即座に画面へ反映する
   const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
-  const optimisticMsg = { id: tempId, senderId: myUserId, recipientId: otherId, content, createdAt: new Date().toISOString(), isRead: false };
+  // リプライ対象は送信開始の瞬間に確定してすぐ入力欄の表示を消す(送信中に別の操作をしても混ざらない)
+  const replyTarget = replyingTo;
+  if (replyTarget) cancelReply();
+  const optimisticMsg = { id: tempId, senderId: myUserId, recipientId: otherId, content, createdAt: new Date().toISOString(), isRead: false, repliedToId: replyTarget || null };
   addRealMessage(optimisticMsg);
   renderMessage(optimisticMsg);
 
@@ -1202,8 +1228,8 @@ async function sendRealMessage(content) {
       content: sendContent,
       encrypted,
     };
-    if (replyingTo) {
-      payload.repliedToId = replyingTo;
+    if (replyTarget) {
+      payload.repliedToId = replyTarget;
     }
     const data = await api('/api/messages/send', {
       method: 'POST',
@@ -1217,8 +1243,6 @@ async function sendRealMessage(content) {
       const displayMsg = { ...data.message, content: content };
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
-      // リプライ表示をクリア
-      cancelReply();
     } else {
       console.error('send response missing message:', data);
     }
@@ -1529,17 +1553,31 @@ function renderMessageImpl(msg) {
   // リプライ対象メッセージの表示
   if (msg.repliedToId) {
     const repliedMsg = realMessages.find(m => m.id === msg.repliedToId);
+    const replyQuote = document.createElement('div');
+    replyQuote.className = 'reply-quote';
+    const t = (k, fb) => (window.i18n ? i18n.t(k, fb) : fb);
     if (repliedMsg) {
-      const replyQuote = document.createElement('div');
-      replyQuote.style.cssText = 'background:rgba(59,130,246,.08);border-left:3px solid #3b82f6;padding:6px 8px;margin-bottom:6px;border-radius:4px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-      const senderName = repliedMsg.senderId === myUserId ? 'あなた' : partnerName;
+      const senderName = repliedMsg.senderId === myUserId ? t('you', 'あなた') : partnerName;
       const { displayText: repliedText, mediaType: repliedMediaType } = parseMsgContent(repliedMsg.content);
-      const repliedPreview = repliedMediaType === 'image' ? '[画像]'
-        : repliedMediaType === 'video' ? '[動画]'
-        : repliedText.substring(0, 50);
-      replyQuote.textContent = `${senderName}: ${repliedPreview}`;
-      bubble.appendChild(replyQuote);
+      const repliedPreview = repliedMediaType === 'image' ? t('photo_label', '[画像]')
+        : repliedMediaType === 'video' ? t('video_label', '[動画]')
+        : repliedText.substring(0, 80);
+      replyQuote.innerHTML = '<b></b><span></span>';
+      replyQuote.firstChild.textContent = senderName;
+      replyQuote.lastChild.textContent = repliedPreview;
+    } else {
+      // 元のメッセージがまだ読み込まれていない/削除済みでも「何かへの返信」であることは出す
+      replyQuote.textContent = t('reply_original_unavailable', '元のメッセージ');
     }
+    // タップで元のメッセージまでスクロールして光らせる
+    replyQuote.addEventListener('click', e => {
+      e.stopPropagation();
+      const target = msgDOMCache.get(msg.repliedToId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.remove('reply-jump-flash'); void target.offsetWidth; target.classList.add('reply-jump-flash');
+    });
+    bubble.appendChild(replyQuote);
   }
 
   if (mediaSrc) {
@@ -2354,8 +2392,14 @@ function showMenu(msgDiv, wrap, bubble, x, y, own) {
   document.getElementById('editBtn').style.display = own && hasText ? 'flex' : 'none';
   document.getElementById('delBtn').style.display = own ? 'flex' : 'none';
   const ctx = document.getElementById('ctxMenu');
-  const left = Math.max(10, Math.min(x-95, innerWidth-210));
-  const top = Math.max(10, Math.min(y-70, innerHeight-220));
+  // メニューの実際の高さで画面内に収める(以前は高さ220px固定で計算していて、
+  // 項目が多いと下が画面外に切れていた)
+  const mh = ctx.offsetHeight || 320, mw = ctx.offsetWidth || 200;
+  const vh = (window.visualViewport ? visualViewport.height : innerHeight);
+  const left = Math.max(10, Math.min(x - mw / 2, innerWidth - mw - 10));
+  let top = y - 70;
+  if (top + mh > vh - 16) top = y - mh - 12;       // 下に入らなければ指の上に出す
+  top = Math.max(10, Math.min(top, vh - mh - 16));
   ctx.style.left = `${left}px`;
   ctx.style.top  = `${top}px`;
   // 指で押した点からメニューが湧き出すように(押した吹き出しと溶け合って見える)
@@ -2421,7 +2465,8 @@ document.getElementById('copyBtn').onclick = async () => {
 // コンテキストメニューの「リプライ」ボタンと、吹き出しの横スワイプの
 // 両方からこの関数を呼ぶ。
 function startReplyTo(msgId) {
-  if (!msgId) return;
+  // 送信中(サーバー未確定)のメッセージにはリプライできない(サーバーがIDを知らないため)
+  if (!msgId || String(msgId).startsWith('temp-')) return;
   const msg = realMessages.find(m => m.id === msgId);
   if (!msg) return;
   replyingTo = msgId;
@@ -2431,7 +2476,7 @@ function startReplyTo(msgId) {
     : rMediaType === 'video' ? '[動画]'
     : rText.substring(0, 100);
   document.getElementById('replyText').textContent = rPreview;
-  preview.style.display = 'block';
+  preview.style.display = 'flex';
   setTimeout(() => { preview.style.opacity = '1'; }, 0);
   document.getElementById('msgInput').focus();
 }
@@ -2442,6 +2487,8 @@ document.getElementById('replyBtn').onclick = () => {
   startReplyTo(activeMsg ? activeMsg.dataset.msgId : null);
   hideMenu();
 };
+
+document.getElementById('replyCancelBtn').addEventListener('click', () => cancelReply());
 
 function cancelReply() {
   replyingTo = null;
@@ -2467,6 +2514,7 @@ document.getElementById('editBtn').onclick = () => {
   hideMenu();
   isEditing = true; editNode = sp; editMeta = meta; editMsgId = activeMsg.dataset.msgId;
   document.getElementById('msgInput').value = sp.textContent;
+  if (window.fitMsgInput) fitMsgInput();
   document.getElementById('msgInput').focus();
   document.getElementById('sendBtn').innerHTML = checkSvg;
 };
@@ -2793,8 +2841,9 @@ async function getMediaStream(isVideo) {
       },
       video: isVideo ? {
         facingMode: currentFacingMode,
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 720 },
+        // 1080p。縦持ちでも横持ちでもカメラの向きのまま撮れるよう、幅/高さは上限だけ指定
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1920 },
         frameRate: { ideal: 30, max: 30 },
       } : false,
     };
@@ -2820,7 +2869,9 @@ function createPeerConnection() {
         params.encodings = [{}];
       }
       // 720p30fps相当を想定し、余裕を持って2.5Mbpsを上限にする
-      params.encodings[0].maxBitrate = 2500000;
+      params.encodings[0].maxBitrate = 4500000; // 1080pに見合う上限
+      params.encodings[0].scaleResolutionDownBy = 1;
+      params.degradationPreference = 'maintain-resolution';
       await sender.setParameters(params);
     } catch (e) {
       console.warn('[webrtc] ビットレート設定に失敗:', e.message);
@@ -2897,6 +2948,19 @@ function createPeerConnection() {
 
   return conn;
 }
+
+// 自分のカメラの小窓は映像の縦横比に合わせる(トリミングしない)
+(function () {
+  const lv = document.getElementById('localVideo');
+  const fit = () => {
+    if (!lv.videoWidth) return;
+    const r = lv.videoWidth / lv.videoHeight, max = 140;
+    if (r >= 1) { lv.style.width = max + 'px'; lv.style.height = Math.round(max / r) + 'px'; }
+    else { lv.style.height = max + 'px'; lv.style.width = Math.round(max * r) + 'px'; }
+  };
+  lv.addEventListener('loadedmetadata', fit);
+  lv.addEventListener('resize', fit);
+})();
 
 function cleanupCall() {
   // APK: OS側の「通話中」状態を終わらせる(残ると次の着信がビジー扱いになる)
@@ -3241,7 +3305,7 @@ async function flipCamera() {
   try {
     const newStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: currentFacingMode, width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+      video: { facingMode: currentFacingMode, width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1920 }, frameRate: { ideal: 30, max: 30 } },
     });
     const newVideoTrack = newStream.getVideoTracks()[0];
     const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
