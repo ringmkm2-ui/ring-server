@@ -160,7 +160,8 @@ async function sendToTokens(tokens, messageTemplate, userId) {
         await db.run('DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?', [userId, token]);
         console.log('[FCM] Removed invalid token for', userId);
       } else {
-        console.error('[FCM] Send error:', e.code || e.message);
+        // codeだけだと原因が分からない(invalid-credentialの中身が鍵の失効なのか形式ミスなのか等)ので本文も出す
+        console.error('[FCM] Send error:', e.code, '-', e.message);
       }
     }
   }
