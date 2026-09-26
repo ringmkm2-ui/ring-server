@@ -95,7 +95,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 @keyframes checkPop{0%{transform:scale(.4)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
 .status{transition:color .35s ease,opacity .35s ease}
 .online-dot{display:none;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px;vertical-align:middle}
-.online-dot.on{display:inline-block;animation:onlineDotPulse 1.8s ease-in-out infinite}
+.online-dot.on{display:inline-block}
 @keyframes onlineDotPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)}}
 .cancel-notice{text-align:center;font-size:12px;color:#94a3b8;padding:6px 20px;font-weight:500;width:100%}
 .reaction-bar{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
@@ -305,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.90 beta</div>
+  <div class="version-badge">Bro Chat v1.28.91 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2242,6 +2242,7 @@ if ('serviceWorker' in navigator) {
 
 // Service Worker キープアライブ（バックグラウンド着信を確実に受け取る）
 setInterval(() => {
+  if (window.Capacitor || document.hidden) return; // APKはFCMで起こされるので不要。電池節約
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     try {
       const channel = new MessageChannel();

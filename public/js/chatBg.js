@@ -77,7 +77,23 @@
       }
       el.appendChild(d);
     }
+    runForAWhile();
   }
+
+  // 動く背景はずっと動かすとGPUが休めず電池と発熱に響く。開いてから12秒だけ動かして止める。
+  // 画面が裏に回ったら即停止。バッテリーセーバー設定がオンなら最初から止める。
+  let pauseTimer = null;
+  function runForAWhile() {
+    if (!layer) return;
+    layer.classList.remove('cbg-paused');
+    clearTimeout(pauseTimer);
+    if (localStorage.getItem('batterySaverAnimations') === '1') { layer.classList.add('cbg-paused'); return; }
+    pauseTimer = setTimeout(() => layer && layer.classList.add('cbg-paused'), 12000);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!layer) return;
+    if (document.hidden) layer.classList.add('cbg-paused'); else runForAWhile();
+  });
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
   function save(cfg) {

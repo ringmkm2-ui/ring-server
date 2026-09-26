@@ -295,8 +295,10 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 /* btn-glass: liquidGlass.cssに集約 */
 /* glass-plus-btn: 友達追加ボタン。素材はliquidGlass.cssの.glass-clearに統一し、
    ここでは形状と「+」アイコン(::before/::after の十字線)のみ定義する。 */
+.search-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.search-row input{min-width:0}
 .glass-plus-btn{
-  position:absolute;right:20px;top:70px;width:40px;height:40px;border-radius:50%;
+  position:relative;width:40px;height:40px;border-radius:50%;
   border:none;color:transparent;font-size:0;cursor:pointer;display:grid;place-items:center;
   flex-shrink:0;padding:0;outline:0;
 }
@@ -368,8 +370,10 @@ window.ensureGroupCrypto = (function () {
     <main class="tc">
       <section id="pageTalk" class="lg-page-enter">
         <div class="card">
-          <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-          <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
+          <div class="search-row">
+            <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
+            <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
+          </div>
           <div id="talkList"></div>
         </div>
         <div class="card">
@@ -478,7 +482,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.90 beta</div>
+  <div class="version-badge">Bro Chat v1.28.91 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1023,6 +1027,12 @@ function bindTalkNavSwitcher(){
 }
 
 // ===== PC版: 画面が広い時は左にトーク一覧、右にチャットの2列 =====
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.LiquidGlass || !LiquidGlass.flyAvatarTo) return;
+  const fly = LiquidGlass.flyAvatarTo;
+  // 2列表示ではページ遷移しないので、アバターを飛ばして一覧を沈ませる演出はしない
+  LiquidGlass.flyAvatarTo = (el, cb) => (isWideLayout() ? cb() : fly(el, cb));
+});
 const isWideLayout = () => window.matchMedia('(min-width: 900px)').matches;
 function openChatPage(url) {
   if (!isWideLayout()) { location.href = url; return; }
@@ -1035,6 +1045,12 @@ function openChatPage(url) {
     document.body.appendChild(pane);
   }
   document.body.classList.add('pc-has-chat');
+  pane.onload = () => {
+    // 埋め込みがブロックされた(古いキャッシュのヘッダー等)場合は、普通に画面遷移して開く
+    let ok = false;
+    try { ok = !!(pane.contentWindow && pane.contentWindow.location.pathname && pane.contentDocument && pane.contentDocument.body && pane.contentDocument.body.childElementCount); } catch (e) { ok = false; }
+    if (!ok && pane.src !== 'about:blank') location.href = url;
+  };
   pane.src = url + (url.includes('?') ? '&' : '?') + 'embed=1';
   document.querySelectorAll('.ti.pc-selected').forEach(el => el.classList.remove('pc-selected'));
   const m = /userId=([^&]+)/.exec(url);
@@ -2293,14 +2309,48 @@ function sendNotification(title, options = {}) {
 }
 
 // 自動更新: トークリストと友達リクエストを定期的に最新化
-setInterval(() => {
-  // 画面が裏に回っている間は通信しない(電池と、戻った時のカクつき対策)
+// 更新はWebSocketで「何か起きた時だけ」。以前は4秒ごとにAPIを3本叩き続けていて、
+// 画面を開いているだけで通信とCPUが止まらず、電池の減りと発熱の原因になっていた。
+let talkWs = null, talkWsRetry = 0, talkRefreshTimer = null;
+function scheduleTalkRefresh() {
+  clearTimeout(talkRefreshTimer);
+  talkRefreshTimer = setTimeout(() => {
+    if (document.hidden) return;
+    if (document.getElementById('pageTalk').style.display !== 'none') loadTalks();
+    if (document.getElementById('pageHome').style.display !== 'none') loadPendingRequests();
+  }, 250);
+}
+function connectTalkWs() {
   if (document.hidden) return;
-  const talkVisible = document.getElementById('pageTalk').style.display !== 'none';
-  const homeVisible = document.getElementById('pageHome').style.display !== 'none';
-  if (talkVisible) loadTalks();
-  if (homeVisible) loadPendingRequests();
-}, 4000);
+  try { talkWs = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'); } catch (e) { return; }
+  talkWs.onopen = () => { talkWsRetry = 0; talkWs.send(JSON.stringify({ type: 'auth', token })); };
+  talkWs.onmessage = e => {
+    let d; try { d = JSON.parse(e.data); } catch (_) { return; }
+    if (!d || d.type === 'auth_ok' || d.type === 'presence_update' || d.type === 'pong') return;
+    // ブラウザ版: トーク一覧にいる時の着信はチャット画面に移って出す(APKはネイティブの着信画面が出る)
+    if (d.type === 'call_offer' && !window.Capacitor && d.fromUserId && d.callId) {
+      location.href = `/admin.html?callerId=${encodeURIComponent(d.fromUserId)}&callId=${encodeURIComponent(d.callId)}&isVideo=${d.isVideo ? '1' : '0'}`;
+      return;
+    }
+    if (/^call_/.test(d.type)) return;
+    scheduleTalkRefresh();
+  };
+  talkWs.onclose = () => {
+    talkWs = null;
+    if (document.hidden) return; // 裏にいる間は繋ぎ直さない(戻った時に繋ぐ)
+    setTimeout(connectTalkWs, Math.min(30000, 1000 * Math.pow(2, talkWsRetry++)));
+  };
+}
+connectTalkWs();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (talkWs) { talkWs.onclose = null; talkWs.close(); talkWs = null; } }
+  else if (!talkWs) connectTalkWs();
+});
+// WebSocketが繋がらない時だけの保険(1分に1回)
+setInterval(() => {
+  if (document.hidden || (talkWs && talkWs.readyState === WebSocket.OPEN)) return;
+  scheduleTalkRefresh();
+}, 60000);
 
 function logout() {
   // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
@@ -2331,6 +2381,7 @@ if ('serviceWorker' in navigator) {
 
 // Service Worker キープアライブ（バックグラウンド着信を確実に受け取る）
 setInterval(() => {
+  if (window.Capacitor || document.hidden) return; // APKはFCMで起こされるので不要。電池節約
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     try {
       const channel = new MessageChannel();

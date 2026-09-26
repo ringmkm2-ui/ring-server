@@ -738,3 +738,4 @@ body.chat-bg-dark .reply-preview{background:rgba(30,30,34,.7)} body.chat-bg-dark
 /* 設定の文字サイズ */
 .bubble .msg-text{font-size:calc(1em * var(--bc-fs,1))}
 .txt-form textarea{font-size:calc(16px * var(--bc-fs,1))}
+.cbg-paused .cbg-l{animation-play-state:paused!important}
