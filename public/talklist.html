@@ -393,7 +393,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.81 beta</div>
+  <div class="version-badge">Bro Chat v1.28.82 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2936,8 +2936,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('fcm_token');
     const authToken = localStorage.getItem('ring_token');
     if (!token || !authToken) return;
-    // 既に登録済みなら送らない
-    if (localStorage.getItem('fcm_token_registered') === token) return;
+    // 毎回送る(サーバーはupsert)。以前は「登録済み」を覚えて送らなかったため、
+    // サーバー側で無効トークンとして消された後も二度と登録されなかった
     try {
       const res = await fetch('/api/push/fcm-register', {
         method: 'POST',
