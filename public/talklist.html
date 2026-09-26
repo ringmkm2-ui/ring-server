@@ -22,6 +22,16 @@ body.has-custom-bg .pc{background:transparent}
 .bgo{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:1}
 .tp{position:relative;z-index:2;height:100%;display:flex;flex-direction:column}
 .ahdr{display:flex;justify-content:center;align-items:center;padding:20px 0 10px}
+/* iOS 26: タブバーは画面下に浮かぶカプセル。下へスクロールすると小さく縮み、
+   上へ戻すか触ると元に戻る(戻りはCore Animationスプリング) */
+.ahdr{position:fixed;left:0;right:0;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:60;padding:0;pointer-events:none;
+  transform-origin:center bottom;transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out),opacity .25s ease}
+.ahdr > .sc{pointer-events:auto}
+.ahdr.tab-min{transform:translateY(6px) scale(.8)}
+.ahdr.tab-min .sbtn:not(.active){opacity:.55}
+.tc{padding-top:14px!important;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18px,#000 calc(100% - 70px),transparent 100%);
+          mask-image:linear-gradient(to bottom,transparent 0,#000 18px,#000 calc(100% - 70px),transparent 100%)}
 /* .sc(セグメントコントロールの外枠)と.sslider(選択中インジケータ)は
    素材(背景/ぼかし/縁)をliquidGlass.cssの.glass-clearに統一し、
    ここでは形状・レイアウトのみ定義する。
@@ -414,7 +424,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.86 beta</div>
+  <div class="version-badge">Bro Chat v1.28.87 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -968,6 +978,32 @@ function switchTab(activeBtnId){
 
 // 初期化: レイアウト確定後にドラッグ機構をバインド
 requestAnimationFrame(()=>{ bindTalkNavSwitcher(); });
+
+// iOS 26: スクロールでタブバーを縮める/戻す。縮んでいる時に触ったら、まず元のサイズに戻すだけ
+// (位置計算がずれないよう、戻り切ってから次の操作を受け付ける)
+(function () {
+  const bar = document.querySelector('.ahdr');
+  const sc = document.querySelector('.tc');
+  if (!bar || !sc) return;
+  let lastY = sc.scrollTop, acc = 0;
+  sc.addEventListener('scroll', () => {
+    const y = sc.scrollTop, dy = y - lastY;
+    lastY = y;
+    acc = (Math.sign(dy) === Math.sign(acc)) ? acc + dy : dy;
+    if (y < 40 || acc < -24) bar.classList.remove('tab-min');
+    else if (acc > 36) bar.classList.add('tab-min');
+  }, { passive: true });
+  bar.addEventListener('pointerdown', e => {
+    if (!bar.classList.contains('tab-min')) return;
+    e.stopPropagation(); e.preventDefault();
+    bar.classList.remove('tab-min');
+    bar.dataset.justExpanded = '1';
+    setTimeout(() => { delete bar.dataset.justExpanded; }, 450);
+  }, { capture: true });
+  bar.addEventListener('click', e => {
+    if (bar.dataset.justExpanded) { e.stopPropagation(); e.preventDefault(); }
+  }, { capture: true });
+})();
 
 async function api(path, opts={}) {
   const res = await fetch(path, {

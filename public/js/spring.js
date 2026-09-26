@@ -102,7 +102,7 @@
   }
 
   /**
-   * OriginOS 7 風: メニューが「押した物の形」から伸びて広がる(Albumsの⋮ボタン→メニューの変形)。
+   * iOS 26: メニューが押したボタン/吹き出しの形から溶け出すように伸びて広がる(Liquid Glassのモーフ)。
    * clip-path で押した物の矩形から切り抜きを広げていく。レイアウトは動かさない。
    */
   function morphOpen(menu, fromRect, opts = {}) {
@@ -126,47 +126,48 @@
   }
 
   /**
-   * OriginOS 7 風: 押したボタンの上にガラスの球がぷくっと膨らみ、離すとスプリングで縮んで消える。
-   * 球は pointer-events:none の別要素なので、ボタン自体の当たり判定は変わらない
-   * (通話ボタンを拡大すると touchend が別要素で発火する問題を避けられる)。
+   * iOS 26 Liquid Glass: 押したガラスの中で、指の位置から光がにじむ(指を動かすと光もついてくる)。
+   * 光はボタンの形に合わせた別要素(pointer-events:none)なので当たり判定は変わらない。
+   * ボタン自体の拡大/明るさは各ボタンのCSSのまま(全幅・通話ボタンは拡大しないルールもそのまま)。
    */
-  const SPHERE_SEL = '.glass-icon-btn, .glass-plus-btn, .glass-send-btn, .plus-btn, .sibtn, .action-btn, .hbtn, .cbtn, .pbtn, .back-link, .back, .call-control-btn, .end-btn, .phone-btn, .call-assist-btn, .mm-close';
-  function attachGlassSphere() {
+  const LIGHT_SEL = '.glass-interactive, .glass-icon-btn, .glass-plus-btn, .glass-send-btn, .plus-btn, .sibtn, .action-btn, .hbtn, .cbtn, .pbtn, .back-link, .back, .call-control-btn, .end-btn, .phone-btn, .call-assist-btn, .mm-close, .sbtn, .ctx-btn';
+  function attachTouchLight() {
     document.addEventListener('pointerdown', e => {
       if (reduce()) return;
-      const btn = e.target.closest && e.target.closest(SPHERE_SEL);
+      const btn = e.target.closest && e.target.closest(LIGHT_SEL);
       if (!btn || btn.disabled) return;
-      const r = btn.getBoundingClientRect();
-      if (r.width > 120 || r.height > 120) return; // 全幅ボタンは明るさのみ(ルール通り)
-      const d = Math.max(r.width, r.height);
-      const s = document.createElement('div');
-      s.className = 'bc-sphere';
-      s.style.cssText = `left:${r.left + r.width / 2 - d / 2}px;top:${r.top + r.height / 2 - d / 2}px;width:${d}px;height:${d}px`;
-      document.body.appendChild(s);
-      let cur = 0.7, grow = animate({
-        spring: 'bouncy', from: 0.7, to: 1.35,
-        onUpdate: v => { cur = v; s.style.transform = `scale(${v})`; },
-      });
-      s.style.opacity = '1';
+      const cs = getComputedStyle(btn);
+      const light = document.createElement('div');
+      light.className = 'bc-touch-light';
+      light.style.borderRadius = cs.borderRadius;
+      document.body.appendChild(light);
+      let px = e.clientX, py = e.clientY, alive = true;
+      // ボタンがCSSで膨らんでも光がぴったり重なるよう、押している間は毎フレーム追従
+      (function follow() {
+        if (!alive) return;
+        const r = btn.getBoundingClientRect();
+        light.style.left = r.left + 'px'; light.style.top = r.top + 'px';
+        light.style.width = r.width + 'px'; light.style.height = r.height + 'px';
+        light.style.setProperty('--lx', (px - r.left) + 'px');
+        light.style.setProperty('--ly', (py - r.top) + 'px');
+        requestAnimationFrame(follow);
+      })();
+      requestAnimationFrame(() => { light.style.opacity = '1'; });
+      const move = ev => { px = ev.clientX; py = ev.clientY; };
       const release = () => {
+        document.removeEventListener('pointermove', move, true);
         document.removeEventListener('pointerup', release, true);
         document.removeEventListener('pointercancel', release, true);
-        const st = grow.stop();
-        s.style.transition = 'opacity .28s ease';
-        s.style.opacity = '0';
-        animate({
-          spring: 'snappy', from: st.value, to: 0.85, velocity: st.velocity,
-          onUpdate: v => { s.style.transform = `scale(${v})`; },
-          onComplete: () => s.remove(),
-        });
-        setTimeout(() => s.remove(), 600);
+        light.style.opacity = '0';
+        setTimeout(() => { alive = false; light.remove(); }, 380);
       };
+      document.addEventListener('pointermove', move, { capture: true, passive: true });
       document.addEventListener('pointerup', release, true);
       document.addEventListener('pointercancel', release, true);
     }, { passive: true, capture: true });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attachGlassSphere);
-  else attachGlassSphere();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attachTouchLight);
+  else attachTouchLight();
 
   window.BroSpring = { PRESETS, animate, velocityTracker, fuse, morphOpen };
 })();
