@@ -408,7 +408,9 @@ function initWebSocketServer(server) {
         try {
           const caller = await db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [userId]);
           const callerName = caller?.display_name || caller?.username || '不明なユーザー';
-          const callerPic = caller?.profile_pic || null;
+          // Base64のプロフィール画像はプッシュの上限(約4KB)を超えるので載せない
+          const rawPic = caller?.profile_pic || null;
+          const callerPic = rawPic && !String(rawPic).startsWith('data:') && String(rawPic).length < 512 ? rawPic : null;
 
           // Web Push（ブラウザ用）
           sendPushToUser(data.recipientId, {
