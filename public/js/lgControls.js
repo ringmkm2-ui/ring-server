@@ -123,10 +123,20 @@
     let map = mapCache.get(key);
     if (!map) { map = buildMap(w, h, rad, kind); mapCache.set(key, map); }
     const id = 'lgc-f' + (fid++);
-    const f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
+    const dms = [];
+    let f;
+    if (kind === 'panelh') {
+      // パネル用(軽量): 中身はすりガラスなので色分けせず1回だけ曲げる(RGB3回→1回)
+      f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
+      const fi2 = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
+      fi2.setAttribute('href', map.url);
+      dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'out' }, f));
+      mk('feComposite', { in: 'out', in2: 'SourceGraphic', operator: 'over' }, f);
+      return { id, dms, max: map.max, last: -1, node: f, mono: true };
+    }
+    f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
     const fi = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
     fi.setAttribute('href', map.url);
-    const dms = [];
     {
       ['r', 'g', 'b'].forEach((c, i) => {
         dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
@@ -143,7 +153,7 @@
   function setDisp(f, ds) {
     if (Math.abs(ds - f.last) < 0.05) return;
     f.last = ds;
-    f.dms.forEach((dm, i) => dm.setAttribute('scale', (ds * DISP[i]).toFixed(2)));
+    f.dms.forEach((dm, i) => dm.setAttribute('scale', (ds * (f.mono ? 1.035 : DISP[i])).toFixed(2)));
   }
 
   // ============================================================
@@ -301,11 +311,24 @@
   }
   const hit = (a, R) => a.width > 0 && a.left < R.x + R.w && a.left + a.width > R.x && a.top < R.y + R.h && a.top + a.height > R.y;
   function group() { const g = document.createElement('div'); g.style.cssText = 'position:absolute;inset:0'; return g; }
+  // スクロールする親(これより外側は画面に対して止まっている)
+  function scrollerOf(e) {
+    for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) {
+      const oy = getComputedStyle(p).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+    }
+    return null;
+  }
+  // 複製は2段:
+  //  fixed … 画面に対して止まっている物(背景画像、飾りの玉、スクロール枠より外の親)
+  //  attached … 要素と一緒に動く物(スクロール枠の中の親)
+  // スクロールでは fixed の段を transform でずらすだけ。作り直さないし、余白も最小でいい
   function buildReplica(s) {
     if (!s.comp) return;
     const e = s.e, r = e.getBoundingClientRect();
     if (!r.width) return;
-    const R = { x: r.left - PAD, y: r.top - PAD, w: s.w + PAD * 2, h: s.h + PAD * 2 };
+    const P = s.pad || PAD;
+    const R = { x: r.left - P, y: r.top - P, w: s.w + P * 2, h: s.h + P * 2 };
     const view = { left: 0, top: 0, width: innerWidth, height: innerHeight };
     let cur = group();
     const hcs = getComputedStyle(document.documentElement), bcs = getComputedStyle(document.body);
@@ -315,12 +338,12 @@
       cur.appendChild(paint(view, hcs, R));
       if (hasBg(bcs)) cur.appendChild(paint(document.body.getBoundingClientRect(), bcs, R));
     } else if (hasBg(bcs)) cur.appendChild(paint(view, bcs, R));
+    const near = { x: R.x - 400, y: R.y - 400, w: R.w + 800, h: R.h + 800 };  // スクロールで入ってくる分も拾う
     document.querySelectorAll('.bg-orb,.cbg,.bgo').forEach(d => {
       if (d.contains(e) || d.closest('.lg-comp,.lg-kcomp')) return; // 他のボタンの複製の中身は拾わない
       const q = d.getBoundingClientRect();
-      if (!hit(q, R) || getComputedStyle(d).display === 'none') return;
+      if (!hit(q, near) || getComputedStyle(d).display === 'none') return;
       if (d.classList.contains('bgo')) {
-        // 全面のぼかしオーバーレイ: ここまでをぼかして、その色を重ねる
         const dcs = getComputedStyle(d);
         const bf = dcs.backdropFilter || dcs.webkitBackdropFilter;
         if (bf && bf !== 'none') { cur.style.filter = bf; const up = group(); up.appendChild(cur); cur = up; }
@@ -330,12 +353,16 @@
       const cl = d.cloneNode(true);
       if (cl.classList.contains('cbg')) cl.classList.add('cbg-paused');
       cl.removeAttribute('id');
-      Object.assign(cl.style, { position: 'absolute', left: (q.left - R.x) + 'px', top: (q.top - R.y) + 'px', width: q.width + 'px', height: q.height + 'px', margin: '0', transform: 'none', right: 'auto', bottom: 'auto', inset: 'auto', pointerEvents: 'none' });
+      Object.assign(cl.style, { position: 'absolute', width: q.width + 'px', height: q.height + 'px', margin: '0', transform: 'none', right: 'auto', bottom: 'auto', inset: 'auto', pointerEvents: 'none' });
       cl.style.left = (q.left - R.x) + 'px'; cl.style.top = (q.top - R.y) + 'px';
       cur.appendChild(cl);
     });
+    const sc = scrollerOf(e);
     const chain = [];
     for (let p = e.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) chain.unshift(p);
+    let fixedEl = null;
+    const seal = () => { if (!fixedEl) { fixedEl = cur; const up = group(); up.appendChild(cur); cur = up; } };
+    if (!sc) seal();
     chain.forEach(p => {
       const cs = getComputedStyle(p);
       const bf = cs.backdropFilter || cs.webkitBackdropFilter;
@@ -344,35 +371,36 @@
         const up = group(); up.appendChild(cur); cur = up;
       }
       if (p.classList.contains('lg-panel')) {
-        // 親がガラスのパネル(バー等)なら、そのガラス越しの見え方(ぼかし+色味)を複製する
         cur.style.filter = 'blur(6px)';
         const up = group(); up.appendChild(cur); cur = up;
         const q = p.getBoundingClientRect(), ps = panels.get(p);
-        if (hit(q, R) && ps) {
+        if (hit(q, near) && ps) {
           const d = paint(q, cs, R);
           d.style.backgroundImage = 'none';
           d.style.backgroundColor = getComputedStyle(ps.tintEl).backgroundColor;
           cur.appendChild(d);
         }
-        return;
-      }
-      if (hasBg(cs)) { const q = p.getBoundingClientRect(); if (hit(q, R)) cur.appendChild(paint(q, cs, R)); }
+      } else if (hasBg(cs)) { const q = p.getBoundingClientRect(); if (hit(q, near)) cur.appendChild(paint(q, cs, R)); }
+      if (p === sc) seal();   // ここまでが画面に対して止まっている段
     });
+    seal();
     s.comp.style.width = R.w + 'px'; s.comp.style.height = R.h + 'px';
-    s.comp.style.left = -PAD + 'px'; s.comp.style.top = -PAD + 'px';
+    s.comp.style.left = -P + 'px'; s.comp.style.top = -P + 'px';
     s.comp.replaceChildren(cur);
-    s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0; s.stale = false;
+    s.fixedEl = fixedEl;
+    s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0;
     placeComp(s, 0, 0, 0, 1, 1);
   }
   // 伸び縮みしても中の複製が画面上でズレないよう逆変換(デモと同じ考え方)
   function placeComp(s, tx, ty, th, a, c) {
-    const st = s.comp.style;
-    tx += s.sx || 0; ty += s.sy || 0;   // 作った後にスクロール等で動いた分
-    // 位置は left/top ではなく transform で動かす(レイアウトを起こさない)
-    st.transformOrigin = `${(s.w / 2 + PAD + tx).toFixed(2)}px ${(s.h / 2 + PAD + ty).toFixed(2)}px`;
+    const st = s.comp.style, P = s.pad || PAD;
+    st.transformOrigin = `${(s.w / 2 + P + tx).toFixed(2)}px ${(s.h / 2 + P + ty).toFixed(2)}px`;
     st.transform = th || a !== 1 || c !== 1
       ? `translate(${(-tx).toFixed(2)}px,${(-ty).toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`
-      : `translate(${(-tx).toFixed(2)}px,${(-ty).toFixed(2)}px)`;
+      : (tx || ty ? `translate(${(-tx).toFixed(2)}px,${(-ty).toFixed(2)}px)` : '');
+  }
+  function shiftFixed(s) {
+    if (s.fixedEl) s.fixedEl.style.transform = (s.sx || s.sy) ? `translate(${(-s.sx).toFixed(1)}px,${(-s.sy).toFixed(1)}px)` : '';
   }
   let rebuildT = 0;
   function rebuildAll() {
@@ -394,23 +422,12 @@
     for (let i = 0; i < list.length; i++) rects.push(list[i].e.getBoundingClientRect());   // 読むだけ
     for (let i = 0; i < list.length; i++) {                                              // 書くだけ
       const s = list[i], r = rects[i];
-      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) continue;
-      const dx = r.left - s.rx, dy = r.top - s.ry;
-      if (Math.abs(dx) > PAD * 0.6 || Math.abs(dy) > PAD * 0.6) { s.stale = true; continue; }
-      if (dx !== s.sx || dy !== s.sy) { s.sx = dx; s.sy = dy; s.stale = true; placeComp(s, 0, 0, 0, 1, 1); }
+      if (!r.width || r.bottom < 0 || r.top > innerHeight) continue;
+      const dx = Math.round((r.left - s.rx) * 2) / 2, dy = Math.round((r.top - s.ry) * 2) / 2;
+      if (dx !== s.sx || dy !== s.sy) { s.sx = dx; s.sy = dy; shiftFixed(s); }
     }
   }
-  let settleT = 0;
-  function rebuildStale() {
-    const t = [];
-    rounds.forEach(s => { if (s.stale && s.e.isConnected && !s.e.classList.contains('lg-live')) t.push(s); });
-    visiblePanels.forEach(s => { if (s.stale && s.e.isConnected) t.push(s); });
-    t.forEach(s => { s.stale = false; buildReplica(s); });
-  }
-  document.addEventListener('scroll', () => {
-    if (!scrollRaf) scrollRaf = requestAnimationFrame(followScroll);
-    clearTimeout(settleT); settleT = setTimeout(rebuildStale, 220);
-  }, { capture: true, passive: true });
+  document.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(followScroll); }, { capture: true, passive: true });
   addEventListener('resize', () => rebuildSoon(200));
   addEventListener('storage', ev => { if (ev.key === 'myBgImage') rebuildSoon(100); });
 
@@ -439,6 +456,7 @@
       filter: null, mat: 1, born: 0, started: true, nb: [], lit: false,
     };
     s.step = () => stepRound(s);
+    s.pad = 28;
     s.sweeps = sizeSweeps(fx, w, h);
     s.tintEl = fx.querySelector('.lg-tint');
     s.on = !!mat.tint; s.onColor = mat.tint || null;
@@ -627,9 +645,10 @@
       if (!s) return;
       if (en.isIntersecting) {
         visiblePanels.add(s);
+        s.clip.classList.add('lg-on');
         if (!s.built) { s.built = true; sizePanel(s); }
         else buildReplica(s);
-      } else visiblePanels.delete(s);
+      } else { visiblePanels.delete(s); s.clip.classList.remove('lg-on'); }
     });
   }, { rootMargin: '120px' }) : null;
   const ro = ('ResizeObserver' in window) ? new ResizeObserver(ents => {
@@ -641,7 +660,7 @@
   }) : null;
 
   const Q = 0.5;           // パネルのレンズ解像度
-  const BIG = 60000;       // これより大きい(半解像度で)パネルは縁の屈折を省く(中身のすりガラスはそのまま)
+  const BIG = 400000;      // 実質すべてのパネルで屈折を計算する(極端に巨大な物だけ省く)
   function sizePanel(s) {
     const e = s.e, w = e.offsetWidth, h = e.offsetHeight;
     if (!w || !h) return;
@@ -680,7 +699,7 @@
     fx.setAttribute('aria-hidden', 'true');
     fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens lg-half"><span class="lg-q"><span class="lg-comp lg-frost"></span></span></span><span class="lg-tint"></span></span><span class="lg-bloom"><i class="lg-sweep"></i></span><span class="lg-spec"><i class="lg-sweep"></i></span><span class="lg-rim"></span>';
     e.insertBefore(fx, e.firstChild);
-    const s = { e, fx, w: 0, h: 0, filter: null, built: false, panel: true,
+    const s = { e, fx, clip: fx.querySelector('.lg-fxclip'), w: 0, h: 0, filter: null, built: false, panel: true, pad: 14,
       lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
     panels.set(e, s); allPanels.add(s);
     panelTint(s);

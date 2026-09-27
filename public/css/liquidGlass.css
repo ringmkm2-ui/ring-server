@@ -781,6 +781,8 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
 .lg-lens{position:absolute;inset:0}
 .lg-comp{position:absolute;left:0;top:0;overflow:hidden}
+ /* 画面に出ているパネルのガラス部分だけ別レイヤーに: スクロールで中身が変わっても文字や影を描き直さない */
+.lg-fxclip.lg-on{will-change:transform}
 .lg-lens.lg-half{inset:auto;left:0;top:0;transform-origin:0 0;transform:scale(2)}
 .lg-q{position:absolute;left:0;top:0;transform-origin:0 0;transform:scale(.5)}
 .lg-tint{position:absolute;inset:0;background:var(--tint,rgba(10,10,20,.08));transition:background .35s}
