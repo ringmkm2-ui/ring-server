@@ -200,16 +200,27 @@
   const rounds = new Set();
   const t0 = performance.now();
 
+  // 除外: 入力欄の＋と送信(従来の見た目のまま)、アバター(ボタンではなく写真)
+  const EXCLUDE = '.ts-wrap,.lg-sw,.input-bar-container,.input-floating-bar,.ibc,.ibar,.plus-btn,.glass-send-btn,.glass-btn,.lg-no-lens';
+  const AVATAR = /(^|\s)[a-z-]*(av|avatar)(\s|$)/i;
   function roundSize(e) {
-    if (e.classList.contains('lg-no-lens') || e.closest('.ts-wrap,.lg-sw')) return 0;
+    if (e.closest(EXCLUDE) || AVATAR.test(e.className || '')) { rejected.add(e); return 0; }
     const w = e.offsetWidth, h = e.offsetHeight;
     if (!w || !h) return 0;
     if (w < 22 || h < 22 || w > 120 || h > 120 || Math.abs(w - h) > 2) { rejected.add(e); return 0; }
     const cs = getComputedStyle(e);
     let br = cs.borderTopLeftRadius || '0';
     br = br.endsWith('%') ? parseFloat(br) * w / 100 : parseFloat(br);
-    if (br < w / 2 - 1.5 || cs.visibility === 'hidden') { rejected.add(e); return 0; }
+    if (br < w / 2 - 1.5 || cs.visibility === 'hidden' || (cs.backgroundImage || '').indexOf('url(') >= 0) { rejected.add(e); return 0; }
     return w;
+  }
+  // 親がすでにbackdrop-filterを持っていると入れ子になってチカチカする(learnings)。その場合は屈折を付けない
+  function nestedBackdrop(e) {
+    for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) {
+      const b = getComputedStyle(p).backdropFilter || getComputedStyle(p).webkitBackdropFilter;
+      if (b && b !== 'none') return true;
+    }
+    return false;
   }
   function parseRGB(str) {
     const m = str && str.match(/rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?/);
@@ -259,7 +270,7 @@
     };
     s.step = () => stepRound(s);
     states.set(e, s); rounds.add(s);
-    if (CAN_REFRACT && !mat.photo && !calm()) {
+    if (CAN_REFRACT && !mat.photo && !calm() && !nestedBackdrop(e)) {
       s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
       e.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
       e.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
@@ -429,16 +440,18 @@
 
   function upgradeSwitch(wrap) {
     if (wrap.dataset.lgSw) return;
-    const input = wrap.querySelector('input[type="checkbox"]');
+    const input = wrap.matches('input') ? wrap : wrap.querySelector('input[type="checkbox"]');
     if (!input) return;
+    if (input !== wrap) wrap.querySelectorAll('.ts-track').forEach(n => n.remove());
+    else { wrap = input.parentElement; input.style.display = 'none'; }
     wrap.dataset.lgSw = '1';
-    wrap.querySelectorAll('.ts-track').forEach(n => n.remove());
 
     const root = document.createElement('div');
     root.className = 'lg-sw';
     root.setAttribute('role', 'switch');
     root.tabIndex = 0;
-    const label = wrap.closest('.sgrow') && wrap.closest('.sgrow').querySelector('.sgtitle');
+    const row = wrap.closest('.sgrow');
+    const label = row ? row.querySelector('.sgtitle') : wrap.querySelector('span');
     if (label) root.setAttribute('aria-label', label.textContent.trim());
     root.innerHTML = '<div class="lg-sw-track"><i></i></div>' +
       '<div class="lg-sw-knob"><span class="lg-sw-tint"></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
@@ -487,7 +500,7 @@
         set(v) { nativeChecked.set.call(this, v); if (s.on !== !!v) { s.on = !!v; root.setAttribute('aria-checked', v ? 'true' : 'false'); kick(s); } },
       });
     } catch (e) { /* 古い環境では追従しないだけ */ }
-    input.addEventListener('change', () => { const v = nativeChecked.get.call(input); if (v !== s.on) { s.on = v; kick(s); } });
+    input.addEventListener('change', () => { const v = nativeChecked.get.call(input); if (v !== s.on) { s.on = v; root.setAttribute('aria-checked', v ? 'true' : 'false'); kick(s); } });
 
     s.step = () => {
       const tgt = s.pressed ? s.drag : (s.on ? ONX : OFFX);
@@ -545,7 +558,7 @@
     };
     root.addEventListener('pointerup', up);
     root.addEventListener('pointercancel', up);
-    root.addEventListener('click', ev => ev.stopPropagation());
+    root.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); });
     root.addEventListener('keydown', ev => {
       if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); setOn(!s.on, true); }
     });
@@ -553,7 +566,7 @@
     root.setAttribute('aria-checked', s.on ? 'true' : 'false');
     render();
   }
-  function upgradeSwitches() { document.querySelectorAll('.ts-wrap').forEach(upgradeSwitch); }
+  function upgradeSwitches() { document.querySelectorAll('.ts-wrap, input.ios-switch').forEach(upgradeSwitch); }
 
   function init() {
     upgradeSwitches();

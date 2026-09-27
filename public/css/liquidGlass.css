@@ -797,3 +797,16 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-sw-knob .lg-spec{opacity:var(--so,0)}
 .lg-sw-knob .lg-bloom{opacity:calc(var(--so,0) * .3)}
 .lg-sw.lg-live .lg-sw-knob{will-change:transform}
+
+/* チャットのヘッダー: 「ガラスの上にガラス」をやめる(Apple自身のルール)。
+   バーを素通しにして、戻る/ビデオ/電話の丸ボタンだけが本物のガラスとして浮く */
+.app-header-bar,.hdr{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  border-color:transparent!important;box-shadow:none!important}
+
+/* 明るい背景の上: 白い縁の光は白に溶けて見えないので、レンズの縁の陰りと
+   上側の照り返しを足してガラスの厚みが読めるようにする */
+html:not(.dark-mode) .lg-round:not(.lg-tinted) .lg-rim,
+html:not(.dark-mode) .lg-sw-knob .lg-rim{
+  box-shadow:inset 0 0 0 .5px rgba(0,0,0,.07),inset 0 -2px 4px -1px rgba(0,0,0,.09),inset 0 2px 3px -1px rgba(255,255,255,.95)}
+html:not(.dark-mode) .lg-round:not(.lg-tinted) .lg-fxclip{
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,0) 58%,rgba(120,120,140,.10) 88%,rgba(120,120,140,.03) 100%)}
