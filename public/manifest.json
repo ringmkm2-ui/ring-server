@@ -2,10 +2,10 @@
   "name": "Bro Chat",
   "short_name": "Bro Chat",
   "description": "Bro Chat - プライベートメッセージングアプリ",
-  "start_url": "/talklist.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#1e293b",
   "theme_color": "#1e293b",
   "lang": "ja",
@@ -34,5 +34,6 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "id": "/"
 }

@@ -153,11 +153,17 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     if (!isUserOnline(recipientId) && !req.body.noPush) {
       const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]);
       const { sendPushToUser } = require('../utils/webPush');
+      const wpCipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 2800) ? content : undefined;
+      let senderPub;
+      if (wpCipher) { try { senderPub = (await db.get('SELECT public_key FROM users WHERE id = ?', [req.userId]))?.public_key || undefined; } catch (e) {} }
       sendPushToUser(recipientId, {
         type: 'new_message',
         senderId: req.userId,
         senderName: sender?.display_name || 'ユーザー',
-        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ',
+        // 本文は暗号文のまま。受け取った端末のService Workerの中でだけ復号して表示する
+        cipher: wpCipher,
+        senderPub,
       }).catch(err => console.error('[push] new_message send failed:', err.message));
     }
 

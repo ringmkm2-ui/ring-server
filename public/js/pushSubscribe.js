@@ -13,7 +13,27 @@
     return outputArray;
   }
 
-  async function subscribeForPush() {
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (isIOS && isStandalone) document.documentElement.classList.add('ios-standalone');
+
+  // 通知の本文をService Workerの中で復号できるよう、自分の鍵をIndexedDBにも写しておく(この端末の中だけ)
+  function copyKeyringForSW() {
+    try {
+      const uid = localStorage.getItem('ring_userId') || '';
+      const raw = localStorage.getItem('e2e_keyring_' + uid) || localStorage.getItem('e2e_keypair_' + uid);
+      if (!raw) return;
+      let ring = JSON.parse(raw);
+      if (!Array.isArray(ring)) ring = [ring];
+      const req = indexedDB.open('brochat-e2e', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => { try { req.result.transaction('kv', 'readwrite').objectStore('kv').put(ring, 'keyring'); } catch (e) {} };
+    } catch (e) {}
+  }
+  setTimeout(copyKeyringForSW, 1500);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) copyKeyringForSW(); });
+
+  async function subscribeForPush(fromUserGesture) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       console.log('[push] このブラウザはPush通知に対応していません');
       return;
@@ -27,6 +47,8 @@
 
       // 通知許可をリクエスト（未確認の場合のみ）
       if (Notification.permission === 'default') {
+        // iPhoneはボタンを押した時にしか許可を聞けない(勝手に聞くと無視される)
+        if (isIOS && !fromUserGesture) { showIosNotifPrompt(); return; }
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
           console.log('[push] 通知許可が得られませんでした');
@@ -61,6 +83,36 @@
       console.error('[push] 購読処理エラー:', err);
     }
   }
+
+  window.enablePush = () => subscribeForPush(true);
+
+  // iPhone(ホーム画面アプリ)用: 通知をオンにするボタン
+  function showIosNotifPrompt() {
+    if (!isStandalone || document.getElementById('iosNotifPrompt')) return;
+    if (sessionStorage.getItem('iosNotifDismissed')) return;
+    const bar = document.createElement('div');
+    bar.id = 'iosNotifPrompt';
+    bar.className = 'ios-pwa-banner';
+    bar.innerHTML = '<div class="ipb-text"><b>通知をオンにする</b><span>メッセージと着信を受け取れます</span></div>'
+      + '<button type="button" class="ipb-on">オン</button><button type="button" class="ipb-x" aria-label="閉じる">'
+      + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+    document.body.appendChild(bar);
+    bar.querySelector('.ipb-on').onclick = async () => { bar.remove(); await subscribeForPush(true); };
+    bar.querySelector('.ipb-x').onclick = () => { bar.remove(); sessionStorage.setItem('iosNotifDismissed', '1'); };
+  }
+
+  // iPhoneのSafariで開いている時は「ホーム画面に追加」を案内(追加しないと通知が届かない)
+  function showIosInstallGuide() {
+    if (!isIOS || isStandalone || !localStorage.getItem('ring_token')) return;
+    if (localStorage.getItem('iosInstallDismissed')) return;
+    const bar = document.createElement('div');
+    bar.className = 'ios-pwa-banner ios-install';
+    bar.innerHTML = '<div class="ipb-text"><b>ホーム画面に追加してね</b><span>下の <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> 共有 →「ホーム画面に追加」。アプリとして開くと通知と着信が届きます</span></div>'
+      + '<button type="button" class="ipb-x" aria-label="閉じる"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+    document.body.appendChild(bar);
+    bar.querySelector('.ipb-x').onclick = () => { bar.remove(); localStorage.setItem('iosInstallDismissed', '1'); };
+  }
+  if (location.pathname.endsWith('/talklist.html')) setTimeout(showIosInstallGuide, 1200);
 
   // ページロード後、少し待ってから実行（SW登録完了を待つ・体感速度優先）
   if (document.readyState === 'complete') {

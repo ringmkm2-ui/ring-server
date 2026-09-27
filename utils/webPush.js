@@ -22,8 +22,12 @@ webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 // options: { ttl, urgency } を渡せる。
 // 通話着信は TTL:30(30秒で破棄)、テキスト通知はデフォルト TTL:86400(1日)。
 async function sendPushToUser(userId, payload, options = {}) {
-  const subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
+  let subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
   if (!subs || subs.length === 0) return 0;
+  // iPhone(Safari)は「通知を出さないプッシュ」を繰り返すと購読を取り消すため、
+  // 着信を消すだけの静かなプッシュはApple宛てには送らない
+  if (options.skipApple) subs = subs.filter(sb => !String(sb.endpoint).includes('push.apple.com'));
+  if (subs.length === 0) return 0;
 
   const payloadStr = JSON.stringify(payload);
   let successCount = 0;

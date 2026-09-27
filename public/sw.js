@@ -6,8 +6,51 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.95';
+const CACHE_VERSION = 'v1.28.96';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
+
+// 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
+try { importScripts('/js/nacl.min.js', '/js/nacl-util.min.js'); } catch (e) {}
+function idbGetKeyring() {
+  return new Promise(resolve => {
+    try {
+      const req = indexedDB.open('brochat-e2e', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => {
+        const tx = req.result.transaction('kv', 'readonly');
+        const g = tx.objectStore('kv').get('keyring');
+        g.onsuccess = () => resolve(g.result || null);
+        g.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+}
+async function swDecrypt(cipher, senderPubB64) {
+  try {
+    if (!cipher || !self.nacl || !nacl.util) return null;
+    const ring = await idbGetKeyring();
+    if (!Array.isArray(ring) || !ring.length) return null;
+    let body = cipher, embS = null, embR = null;
+    if (cipher.startsWith('e2:')) { const p = cipher.slice(3).split(':'); if (p.length !== 3) return null; [embS, embR, body] = p; }
+    const full = nacl.util.decodeBase64(body);
+    const nonce = full.slice(0, 24), box = full.slice(24);
+    const peers = [embS, senderPubB64].filter((v, i, a) => v && a.indexOf(v) === i);
+    for (const pb of peers) {
+      const peer = nacl.util.decodeBase64(pb);
+      if (peer.length !== 32) continue;
+      for (const k of ring) {
+        const out = nacl.box.open(box, nonce, peer, new Uint8Array(k.secretKey));
+        if (out) {
+          let t = nacl.util.encodeUTF8(out);
+          if (t.trim().startsWith('{')) { try { const o = JSON.parse(t); if (o && typeof o.text === 'string') t = o.text; } catch (e) {} }
+          return t.length > 200 ? t.slice(0, 200) + '…' : t;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
 const urlsToCache = [
   '/',
   '/splash.html',
@@ -105,17 +148,20 @@ self.addEventListener('push', event => {
 
     // 1対1チャットの新着メッセージ
     if (data.type === 'new_message') {
-      const { senderId, senderName, preview } = data;
+      const { senderId, senderName, preview, cipher, senderPub } = data;
       const title = senderName || 'メッセージ';
+      event.waitUntil((async () => {
+      const text = (await swDecrypt(cipher, senderPub)) || preview || 'メッセージ';
       const options = {
-        body: preview || 'メッセージが届きました',
+        body: text,
         icon: '/images/icons/icon-192.png',
         badge: '/images/icons/icon-192.png',
         tag: `dm-${senderId}`, // 同じ相手からの連続通知はまとめる(通知欄が埋まらないように)
         renotify: true,
         data: { type: 'dm', senderId },
       };
-      event.waitUntil(self.registration.showNotification(title, options));
+      await self.registration.showNotification(title, options);
+      })());
     }
 
     // グループチャットの新着メッセージ
@@ -123,7 +169,7 @@ self.addEventListener('push', event => {
       const { groupId, groupName, senderName, preview } = data;
       const title = groupName || 'グループ';
       const options = {
-        body: `${senderName || 'ユーザー'}: ${preview || 'メッセージが届きました'}`,
+        body: `${senderName || 'ユーザー'}: ${preview || 'メッセージ'}`,
         icon: '/images/icons/icon-192.png',
         badge: '/images/icons/icon-192.png',
         tag: `group-${groupId}`,
@@ -174,6 +220,13 @@ self.addEventListener('notificationclick', event => {
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(clientList => {
         // 既にアプリが開いていたら focus
+        const callUrl = `/admin.html?callId=${callId}&callerId=${callerId}&isVideo=${isVideo ? '1' : '0'}${action === 'accept' ? '&action=accept' : action === 'decline' ? '&action=decline' : ''}`;
+        // 開いている画面があれば、その画面をそのまま着信画面へ移す(iPhoneのホーム画面アプリでも確実に)
+        for (let client of clientList) {
+          if ('navigate' in client && !client.url.includes('callId=' + callId)) {
+            return client.focus().then(c => (c || client).navigate(callUrl)).catch(() => clients.openWindow(callUrl));
+          }
+        }
         for (let client of clientList) {
           if (client.url.includes('/admin.html') || client.url.includes('/talklist.html')) {
             client.focus();

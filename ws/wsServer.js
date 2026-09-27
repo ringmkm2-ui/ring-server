@@ -29,7 +29,7 @@ function clearPendingCall(callId) {
 
 // 着信を鳴らしている全端末(Web Push / APKのFCM)に「もう鳴らさなくていい」を送る
 function cancelRinging(userId, callId) {
-  sendPushToUser(userId, { type: 'call_cancelled', callId }, { ttl: 30 })
+  sendPushToUser(userId, { type: 'call_cancelled', callId }, { ttl: 30, skipApple: true })
     .catch(err => console.error('[push] call_cancelled failed:', err.message));
   try {
     require('../utils/fcm').sendCallCancelled(userId, callId)
