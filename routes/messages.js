@@ -140,9 +140,13 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // APK(FCM)には常に送る。アプリが裏にいてもWebSocketが一時的に生きていることがあり、
     // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
     if (!req.body.noPush) {
-      db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]).then(sender => {
-        const preview = mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました';
-        require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm', { senderId: req.userId })
+      db.get('SELECT display_name, public_key FROM users WHERE id = ?', [req.userId]).then(sender => {
+        const preview = mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ';
+        // 本文は暗号文のまま載せ、相手の端末の中でだけ復号して通知に出す(サーバーは読めないまま)。
+        // FCMの上限4KBに収まる文字メッセージだけ。
+        const cipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 3000) ? content : '';
+        require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm',
+          { senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '' })
           .catch(err => console.error('[fcm] new_message failed:', err.message));
       }).catch(() => {});
     }

@@ -148,6 +148,8 @@ async function sendMessageNotification(recipientId, senderName, content, chatTyp
       chat_type: chatType || 'dm',
       sender_id: String(extra.senderId || ''),
       chat_id: String(extra.chatId || ''),
+      cipher: String(extra.cipher || ''),
+      sender_pub: String(extra.senderPub || ''),
     },
     // data専用メッセージにする。notification を付けるとアプリが裏にいる時にOSが勝手に表示し、
     // 「そのトークを開いている時は出さない」「タップでそのトークを開く」がネイティブ側で出来なかった
