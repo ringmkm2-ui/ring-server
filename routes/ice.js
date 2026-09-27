@@ -25,8 +25,10 @@ const STUN_ONLY = [
 ];
 
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
+  // ?skip=twilio : クライアント側でTwilioのTURNが実際には使えなかった(中継候補が取れない)時に次を試す
+  const skip = String(req.query.skip || '').split(',');
   // 1) Twilio NTS を最優先で試す
-  if (isTwilioConfigured()) {
+  if (isTwilioConfigured() && !skip.includes('twilio')) {
     const twilio = await fetchTwilioIceServers();
     if (twilio && twilio.length > 0) {
       res.json({ iceServers: twilio, provider: 'twilio' });
@@ -35,7 +37,7 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
   }
 
   // 2) Metered.ca にフォールバック
-  if (isMeteredConfigured()) {
+  if (isMeteredConfigured() && !skip.includes('metered')) {
     const metered = await fetchMeteredIceServers();
     if (metered && metered.length > 0) {
       res.json({ iceServers: metered, provider: 'metered' });

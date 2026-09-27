@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.111 beta</div>
+  <div class="version-badge">Bro Chat v1.28.112 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2726,28 +2726,72 @@ let ICE_SERVERS = [
 // TURNが利用可能な場合は常にrelay強制とする。
 let TURN_AVAILABLE = false;
 
-async function refreshIceServers() {
+// TURNの中継候補が本当に取れるかを確かめる。認証情報が返ってきても、
+// 無料枠切れ・障害などで中継が作れないと、relay強制の通話は候補ゼロのまま
+// 「接続中...」で永久に止まる。取れなければ次のプロバイダ、最後は直結も許可する。
+async function probeRelay(servers) {
+  let t = null;
   try {
-    const res = await fetch('/api/ice', {
-      headers: { 'Authorization': 'Bearer ' + token },
+    t = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: 'relay' });
+    t.createDataChannel('probe');
+    let ok = false;
+    const done = new Promise(res => {
+      t.onicecandidate = e => {
+        if (e.candidate && / typ relay /.test(e.candidate.candidate)) { ok = true; res(); }
+        else if (!e.candidate) res();
+      };
+      setTimeout(res, 3500);
     });
-    if (!res.ok) throw new Error('ICE取得APIが失敗: ' + res.status);
-    const data = await res.json();
-    if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
-      ICE_SERVERS = data.iceServers;
-      // turn:/turns: を含むサーバーが実際に含まれているかを確認する。
-      // STUNだけのリストが返ってきた場合にrelay強制すると通話が一切繋がらなくなるため、
-      // TURNの実在を確認できた場合のみ強制モードに入る。
-      TURN_AVAILABLE = ICE_SERVERS.some(s => {
-        const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
-        return urls.some(u => typeof u === 'string' && /^turns?:/i.test(u));
-      });
-      console.log('[ice] ICEサーバー取得完了 (' + ICE_SERVERS.length + '件), TURN利用可: ' + TURN_AVAILABLE);
+    await t.setLocalDescription(await t.createOffer());
+    await done;
+    return ok;
+  } catch (e) { return false; }
+  finally { try { t && t.close(); } catch (e) {} }
+}
+let iceProbeAt = 0, iceProbeRunning = null;
+async function refreshIceServers() {
+  if (iceProbeRunning) return iceProbeRunning;
+  iceProbeRunning = (async () => {
+    const tried = [];
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch('/api/ice' + (tried.length ? '?skip=' + tried.join(',') : ''), {
+          headers: { 'Authorization': 'Bearer ' + token },
+        });
+        if (!res.ok) throw new Error('ICE取得APIが失敗: ' + res.status);
+        const data = await res.json();
+        if (!Array.isArray(data.iceServers) || !data.iceServers.length) break;
+        const hasTurn = data.iceServers.some(s => {
+          const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+          return urls.some(u => typeof u === 'string' && /^turns?:/i.test(u));
+        });
+        ICE_SERVERS = data.iceServers;
+        if (!hasTurn) { TURN_AVAILABLE = false; break; }
+        // 5分以内に同じ所で確認済みなら省略
+        const fresh = Date.now() - iceProbeAt < 300000 && TURN_AVAILABLE && refreshIceServers.lastProvider === data.provider;
+        const ok = fresh || await probeRelay(data.iceServers);
+        if (ok) {
+          TURN_AVAILABLE = true; iceProbeAt = Date.now(); refreshIceServers.lastProvider = data.provider;
+          console.log('[ice] TURN OK (' + data.provider + ')');
+          break;
+        }
+        console.warn('[ice] TURNの中継候補が取れない: ' + data.provider);
+        TURN_AVAILABLE = false;
+        if (!data.provider || data.provider === 'stun-only') break;
+        tried.push(data.provider);
+      } catch (e) {
+        TURN_AVAILABLE = false;
+        console.warn('[ice] ICEサーバー取得に失敗、STUNのみで継続します:', e.message);
+        break;
+      }
     }
-  } catch (e) {
-    TURN_AVAILABLE = false;
-    console.warn('[ice] ICEサーバー取得に失敗、STUNのみで継続します(IPが相手に見える状態):', e.message);
-  }
+    // TURNが全滅していたら、STUNも混ぜて直結(P2P)を許可する(繋がらないよりまし)
+    if (!TURN_AVAILABLE) {
+      const hasStun = ICE_SERVERS.some(s => [].concat(s.urls).some(u => /^stun:/i.test(u)));
+      if (!hasStun) ICE_SERVERS = ICE_SERVERS.concat([{ urls: 'stun:stun.l.google.com:19302' }]);
+    }
+  })();
+  try { await iceProbeRunning; } finally { iceProbeRunning = null; }
 }
 
 // RTCPeerConnectionの設定を組み立てる。
@@ -2941,6 +2985,7 @@ function createPeerConnection() {
   conn.onconnectionstatechange = () => {
     if (!conn) return;
     if (conn.connectionState === 'connected') {
+      clearTimeout(conn.__connectWatchdog);
       callConnected = true;
       setCallStatus('00:00');
       startCallTimer();
@@ -2977,6 +3022,17 @@ function createPeerConnection() {
         setTimeout(endCall, 1200);
       }
     }
+  };
+
+  // 応答後(SDP交換後)に25秒経っても繋がらなければ「接続中...」のまま放置しない
+  conn.__armWatchdog = () => {
+    clearTimeout(conn.__connectWatchdog);
+    conn.__connectWatchdog = setTimeout(() => {
+      if (pc !== conn || callConnected) return;
+      console.warn('[webrtc] 接続タイムアウト ice=' + conn.iceConnectionState + ' gather=' + conn.iceGatheringState);
+      setCallStatus('接続できませんでした');
+      setTimeout(endCall, 1200);
+    }, 25000);
   };
 
   return conn;
@@ -3237,6 +3293,7 @@ async function acceptIncomingCall() {
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   sendSignal('call_answer', { sdp: answer });
+  if (pc && pc.__armWatchdog) pc.__armWatchdog();
 }
 
 function declineIncomingCall() {
@@ -3254,6 +3311,7 @@ async function onCallAnswer(data) {
   }
   pendingRemoteIce = [];
   setCallStatus('接続中...');
+  if (pc.__armWatchdog) pc.__armWatchdog();
 }
 
 async function onCallIce(data) {
