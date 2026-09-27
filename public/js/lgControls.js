@@ -67,7 +67,7 @@
   }
   function buildMap(w, h, rad, kind) {
     const half = Math.min(w, h) / 2;
-    const B = kind === 'lip' ? half : kind === 'panel' ? Math.min(half * 0.62, 18) : half * 0.62;
+    const B = kind === 'lip' ? half : kind === 'panel' ? Math.min(half * 0.62, 18) : kind === 'panelh' ? Math.min(half * 0.62, 9) : half * 0.62;
     const Hh = B * (kind === 'lip' ? 0.8 : 0.75);
     const P = profile(kind === 'lip' ? lip : convex, B, Hh, kind === 'lip' ? 0.15 : 0.2);
     const cv = document.createElement('canvas');
@@ -173,18 +173,24 @@
       laRaf = 0;
       if (Math.abs(lightAng - lastLa) > 0.5) {
         lastLa = lightAng;
-        const v = lightAng.toFixed(1) + 'deg';
-        lightTargets().forEach(el => el.style.setProperty('--la', v));
+        const v = 'rotate(' + lightAng.toFixed(1) + 'deg)';
+        lightTargets().forEach(el => { el.style.transform = v; });
       }
     });
   }
   // 光を当てるのは画面に出ている物だけ
   function lightTargets() {
     const out = [];
-    if (typeof rounds !== 'undefined') rounds.forEach(s => { if (s.e.isConnected && !s.e.classList.contains('lg-live')) out.push(s.e); });
-    if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(s => out.push(s.e));
-    document.querySelectorAll('.lg-sw-knob').forEach(k => out.push(k));
+    if (typeof rounds !== 'undefined') rounds.forEach(s => { if (s.e.isConnected && !s.e.classList.contains('lg-live') && s.sweeps) out.push(...s.sweeps); });
+    if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(s => { if (s.sweeps) out.push(...s.sweeps); });
+    document.querySelectorAll('.lg-sw-knob .lg-sweep').forEach(k => out.push(k));
     return out;
+  }
+  // 光の帯の大きさ: 要素の対角線ぶん(回しても隙間が出ない)
+  function sizeSweeps(root, w, h) {
+    const d = Math.ceil(Math.hypot(w, h)) + 2, list = root.querySelectorAll(':scope .lg-sweep');
+    list.forEach(el => { el.style.width = el.style.height = d + 'px'; el.style.margin = (-d / 2) + 'px 0 0 ' + (-d / 2) + 'px'; el.style.transform = 'rotate(' + lightAng.toFixed(1) + 'deg)'; });
+    return Array.from(list);
   }
   function listenMotion() {
     addEventListener('deviceorientation', e => {
@@ -421,7 +427,7 @@
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
     fx.setAttribute('aria-hidden', 'true');
-    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens"><span class="lg-comp"></span></span><span class="lg-tint"></span><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens"><span class="lg-comp"></span></span><span class="lg-tint"></span><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"><i class="lg-sweep"></i></span><span class="lg-spec"><i class="lg-sweep"></i></span><span class="lg-rim"></span>';
     e.appendChild(fx);
 
     const w = e.offsetWidth, h = e.offsetHeight;
@@ -433,6 +439,7 @@
       filter: null, mat: 1, born: 0, started: true, nb: [], lit: false,
     };
     s.step = () => stepRound(s);
+    s.sweeps = sizeSweeps(fx, w, h);
     s.tintEl = fx.querySelector('.lg-tint');
     s.on = !!mat.tint; s.onColor = mat.tint || null;
     states.set(e, s); rounds.add(s);
@@ -620,10 +627,9 @@
       if (!s) return;
       if (en.isIntersecting) {
         visiblePanels.add(s);
-        s.comp.classList.add('lg-on');
         if (!s.built) { s.built = true; sizePanel(s); }
         else buildReplica(s);
-      } else { visiblePanels.delete(s); s.comp.classList.remove('lg-on'); }
+      } else visiblePanels.delete(s);
     });
   }, { rootMargin: '120px' }) : null;
   const ro = ('ResizeObserver' in window) ? new ResizeObserver(ents => {
@@ -634,18 +640,29 @@
     });
   }) : null;
 
+  const Q = 0.5;           // パネルのレンズ解像度
+  const BIG = 60000;       // これより大きい(半解像度で)パネルは縁の屈折を省く(中身のすりガラスはそのまま)
   function sizePanel(s) {
     const e = s.e, w = e.offsetWidth, h = e.offsetHeight;
     if (!w || !h) return;
-    if (w !== s.w || h !== s.h || !s.filter) {
+    if (w !== s.w || h !== s.h || (!s.filter && !s.flat)) {
       s.w = w; s.h = h;
       if (s.filter && s.filter.node) s.filter.node.remove();
-      const cs = getComputedStyle(e);
-      let rad = parseFloat(cs.borderTopLeftRadius) || 0;
-      if ((cs.borderTopLeftRadius || '').endsWith('%')) rad = Math.min(w, h) / 2;
-      s.filter = getFilter(w, h, Math.round(Math.min(rad, Math.min(w, h) / 2)), 'panel');
-      s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
-      setDisp(s.filter, 2 * s.filter.max * GAIN);
+      s.filter = null;
+      const lw = Math.max(2, Math.ceil(w * Q)), lh = Math.max(2, Math.ceil(h * Q));
+      Object.assign(s.lens.style, { width: lw + 'px', height: lh + 'px' });
+      s.sweeps = sizeSweeps(s.fx, w, h);
+      s.flat = lw * lh > BIG;
+      if (s.flat) s.lens.style.filter = 'saturate(1.5) brightness(1.05)';
+      else {
+        const cs = getComputedStyle(e);
+        let rad = parseFloat(cs.borderTopLeftRadius) || 0;
+        if ((cs.borderTopLeftRadius || '').endsWith('%')) rad = Math.min(w, h) / 2;
+        rad = Math.min(rad, Math.min(w, h) / 2) * Q;
+        s.filter = getFilter(lw, lh, Math.round(rad), 'panelh');
+        s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
+        setDisp(s.filter, 2 * s.filter.max * GAIN);
+      }
     }
     buildReplica(s);
   }
@@ -661,7 +678,7 @@
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
     fx.setAttribute('aria-hidden', 'true');
-    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens"><span class="lg-comp lg-frost"></span></span><span class="lg-tint"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens lg-half"><span class="lg-q"><span class="lg-comp lg-frost"></span></span></span><span class="lg-tint"></span></span><span class="lg-bloom"><i class="lg-sweep"></i></span><span class="lg-spec"><i class="lg-sweep"></i></span><span class="lg-rim"></span>';
     e.insertBefore(fx, e.firstChild);
     const s = { e, fx, w: 0, h: 0, filter: null, built: false, panel: true,
       lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
@@ -728,7 +745,7 @@
     if (label) root.setAttribute('aria-label', label.textContent.trim());
     root.innerHTML = '<div class="lg-sw-track"><i></i></div>' +
       '<div class="lg-sw-knob"><span class="lg-kclip"><span class="lg-klens"><span class="lg-kcomp"><span class="lg-ktrack"><i></i></span></span></span><span class="lg-sw-tint"></span></span>' +
-      '<span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
+      '<span class="lg-bloom"><i class="lg-sweep"></i></span><span class="lg-spec"><i class="lg-sweep"></i></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
     wrap.insertBefore(root, input);
     const trackOn = root.querySelector('.lg-sw-track i');
     const knob = root.querySelector('.lg-sw-knob');
@@ -751,6 +768,7 @@
     }
     kcomp.style.background = surface();
     knob.style.width = KW + 'px'; knob.style.height = KH + 'px';
+    sizeSweeps(knob, KW, KH);
     knob.style.top = ((TH - KH) / 2) + 'px';
 
     const on0 = nativeChecked.get.call(input);

@@ -757,12 +757,14 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
    デモ(Liquid Glass artifact v2.2.0)のCSSをそのまま移植。値は一切変えていない
    ========================================================================== */
 /* 縁の光 */
-.lg-spec,.lg-bloom{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:conic-gradient(from calc(var(--la,315deg) - 70deg),
-    rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
-    rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg);
+.lg-spec,.lg-bloom{position:absolute;inset:0;border-radius:inherit;pointer-events:none;overflow:hidden;
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
+/* 光の帯そのもの。角度は transform:rotate で回す(描き直しなし・合成だけ) */
+.lg-sweep{position:absolute;left:50%;top:50%;width:200%;height:200%;will-change:transform;
+  background:conic-gradient(from -70deg,
+    rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
+    rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg)}
 .lg-spec{padding:1.4px;opacity:var(--so,1)}
 .lg-bloom{padding:8px;opacity:calc(var(--so,1) * .3);filter:blur(2.5px)}
 .lg-rim{position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
@@ -779,7 +781,8 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
 .lg-lens{position:absolute;inset:0}
 .lg-comp{position:absolute;left:0;top:0;overflow:hidden}
-.lg-comp.lg-on{will-change:transform}
+.lg-lens.lg-half{inset:auto;left:0;top:0;transform-origin:0 0;transform:scale(2)}
+.lg-q{position:absolute;left:0;top:0;transform-origin:0 0;transform:scale(.5)}
 .lg-tint{position:absolute;inset:0;background:var(--tint,rgba(10,10,20,.08));transition:background .35s}
 .lg-glow,.lg-nglow{position:absolute;inset:0;mix-blend-mode:screen;pointer-events:none}
 /* グリフ: デモと同じく currentColor で白/黒が切り替わる */
