@@ -768,7 +768,7 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-rim{position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
 
 /* 丸ボタン(= デモの .lg) */
-.lg-round{isolation:isolate;background:none!important;border-color:transparent!important;
+.lg-round{isolation:isolate;background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-color:transparent!important;
   -webkit-tap-highlight-color:transparent;transform-origin:50% 50%;
   color:var(--lg-ink,#fff)!important;transition:color .35s!important;
   box-shadow:0 12px 30px -8px rgba(0,0,0,var(--sh,.3)),0 2px 5px rgba(0,0,0,calc(var(--sh,.3) * .45))!important}
@@ -777,6 +777,8 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1}
 .lg-fxclip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;isolation:isolate;
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
+.lg-lens{position:absolute;inset:0}
+.lg-comp{position:absolute;left:0;top:0;overflow:hidden}
 .lg-tint{position:absolute;inset:0;background:var(--tint,rgba(10,10,20,.08));transition:background .35s}
 .lg-glow,.lg-nglow{position:absolute;inset:0;mix-blend-mode:screen;pointer-events:none}
 /* グリフ: デモと同じく currentColor で白/黒が切り替わる */

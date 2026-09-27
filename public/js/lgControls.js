@@ -252,8 +252,92 @@
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
   }
   // ダークモード切替で全部やり直す
-  new MutationObserver(() => rounds.forEach(s => { if (s.e.isConnected) adapt(s); }))
+  new MutationObserver(() => { rounds.forEach(s => { if (s.e.isConnected) adapt(s); }); if (typeof rebuildSoon === 'function') rebuildSoon(60); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+  // ------------------------------------------------------------
+  // ボタンの下に見えているものの複製(デモの .comp に相当)
+  //  画面の背景(背景画像/グラデ) → 飾りの玉(.bg-orb)・チャット背景(.cbg)
+  //  → 親要素の背景(バー・カード等)。親がぼかしガラスならそこまでをぼかす
+  // ------------------------------------------------------------
+  const PAD = 64;
+  function hasBg(cs) {
+    const c = parseRGB(cs.backgroundColor);
+    return (c && c.a > 0) || (cs.backgroundImage && cs.backgroundImage !== 'none');
+  }
+  function paint(rect, cs, R) {
+    const d = document.createElement('div');
+    Object.assign(d.style, {
+      position: 'absolute', left: (rect.left - R.x) + 'px', top: (rect.top - R.y) + 'px',
+      width: rect.width + 'px', height: rect.height + 'px',
+      backgroundColor: cs.backgroundColor, backgroundImage: cs.backgroundImage,
+      backgroundSize: cs.backgroundSize, backgroundPosition: cs.backgroundPosition, backgroundRepeat: cs.backgroundRepeat,
+      borderRadius: cs.borderRadius, opacity: cs.opacity,
+    });
+    return d;
+  }
+  const hit = (a, R) => a.width > 0 && a.left < R.x + R.w && a.left + a.width > R.x && a.top < R.y + R.h && a.top + a.height > R.y;
+  function group() { const g = document.createElement('div'); g.style.cssText = 'position:absolute;inset:0'; return g; }
+  function buildReplica(s) {
+    if (!s.comp) return;
+    const e = s.e, r = e.getBoundingClientRect();
+    if (!r.width) return;
+    const R = { x: r.left - PAD, y: r.top - PAD, w: s.w + PAD * 2, h: s.h + PAD * 2 };
+    const view = { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    let cur = group();
+    const hcs = getComputedStyle(document.documentElement), bcs = getComputedStyle(document.body);
+    const dark = document.documentElement.classList.contains('dark-mode');
+    const base = group(); base.style.background = dark ? '#000' : '#fff'; cur.appendChild(base);
+    if (hasBg(hcs)) {
+      cur.appendChild(paint(view, hcs, R));
+      if (hasBg(bcs)) cur.appendChild(paint(document.body.getBoundingClientRect(), bcs, R));
+    } else if (hasBg(bcs)) cur.appendChild(paint(view, bcs, R));
+    document.querySelectorAll('.bg-orb,.cbg').forEach(d => {
+      if (d.contains(e) || d.closest('.lg-comp,.lg-kcomp')) return; // 他のボタンの複製の中身は拾わない
+      const q = d.getBoundingClientRect();
+      if (!hit(q, R) || getComputedStyle(d).display === 'none') return;
+      const cl = d.cloneNode(true);
+      cl.removeAttribute('id');
+      Object.assign(cl.style, { position: 'absolute', left: (q.left - R.x) + 'px', top: (q.top - R.y) + 'px', width: q.width + 'px', height: q.height + 'px', margin: '0', transform: 'none', right: 'auto', bottom: 'auto', inset: 'auto', pointerEvents: 'none' });
+      cl.style.left = (q.left - R.x) + 'px'; cl.style.top = (q.top - R.y) + 'px';
+      cur.appendChild(cl);
+    });
+    const chain = [];
+    for (let p = e.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) chain.unshift(p);
+    chain.forEach(p => {
+      const cs = getComputedStyle(p);
+      const bf = cs.backdropFilter || cs.webkitBackdropFilter;
+      if (bf && bf !== 'none' && bf.indexOf('url(') < 0) {
+        cur.style.filter = bf;
+        const up = group(); up.appendChild(cur); cur = up;
+      }
+      if (hasBg(cs)) { const q = p.getBoundingClientRect(); if (hit(q, R)) cur.appendChild(paint(q, cs, R)); }
+    });
+    s.comp.style.width = R.w + 'px'; s.comp.style.height = R.h + 'px';
+    s.comp.replaceChildren(cur);
+    s.rx = r.left; s.ry = r.top;
+    placeComp(s, 0, 0, 0, 1, 1);
+  }
+  // 伸び縮みしても中の複製が画面上でズレないよう逆変換(デモと同じ考え方)
+  function placeComp(s, tx, ty, th, a, c) {
+    const st = s.comp.style;
+    st.left = (-PAD - tx).toFixed(2) + 'px'; st.top = (-PAD - ty).toFixed(2) + 'px';
+    st.transformOrigin = `${(s.w / 2 + PAD + tx).toFixed(2)}px ${(s.h / 2 + PAD + ty).toFixed(2)}px`;
+    st.transform = `rotate(${th.toFixed(2)}deg) scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`;
+  }
+  let rebuildT = 0;
+  function rebuildAll() {
+    rounds.forEach(s => {
+      if (!s.e.isConnected || s.e.classList.contains('lg-live')) return;
+      const r = s.e.getBoundingClientRect();
+      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) return;
+      buildReplica(s);
+    });
+  }
+  function rebuildSoon(ms) { clearTimeout(rebuildT); rebuildT = setTimeout(rebuildAll, ms || 120); }
+  document.addEventListener('scroll', () => rebuildSoon(120), { capture: true, passive: true });
+  addEventListener('resize', () => rebuildSoon(200));
+  addEventListener('storage', ev => { if (ev.key === 'myBgImage') rebuildSoon(100); });
 
   function enhance(e, materialize) {
     if (e.classList.contains('lg-round')) return states.get(e);
@@ -268,7 +352,7 @@
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
     fx.setAttribute('aria-hidden', 'true');
-    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-tint"></span><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens"><span class="lg-comp"></span></span><span class="lg-tint"></span><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
     e.appendChild(fx);
 
     const w = e.offsetWidth, h = e.offsetHeight;
@@ -284,11 +368,11 @@
     s.on = !!mat.tint; s.onColor = mat.tint || null;
     states.set(e, s); rounds.add(s);
     adapt(s);
-    if (CAN_REFRACT && !mat.photo && !calm()) {
-      s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
-      e.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
-      e.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
-    }
+    // デモと同じ方式: レンズの中に「ボタンの下にあるもの」の複製を置いて、SVGフィルタで曲げる
+    s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp');
+    s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
+    s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
+    buildReplica(s);
     // 出現: フェードではなく、屈折を強めながら膨らんで「現れる」(デモと同じ)
     if (materialize && !calm()) {
       s.born = performance.now(); s.mat = 0; s.sc = 0.6; s.ts = 0.6; s.started = false;
@@ -311,6 +395,7 @@
 
   function pressRound(s, ev) {
     const e = s.e;
+    if (!e.classList.contains('lg-live')) buildReplica(s);
     askMotion();
     s.pressed = true; s.pid = ev.pointerId; s.moved = 0;
     s.p0x = ev.clientX; s.p0y = ev.clientY; s.dx = s.dy = 0;
@@ -364,6 +449,7 @@
     } else if (s.noScale) { a = c = 1; }
     const base = e.dataset.lgBase || '';
     e.style.setProperty('transform', `${base} translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${a.toFixed(4)},${c.toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`, 'important');
+    if (s.comp) placeComp(s, tx, ty, th, a, c);
 
     // 大きく・長く伸びるほど厚いガラス扱い: 屈折と影を強める
     const grow = Math.max(0, s.sc - 1) + r * 0.35;
@@ -386,6 +472,7 @@
       Math.hypot(s.ox, s.oy) < 0.3 && Math.hypot(s.vox, s.voy) < 0.05 && s.gE < 0.004;
     if (settled) {
       e.style.removeProperty('transform');
+      if (s.comp) placeComp(s, 0, 0, 0, 1, 1);
       e.style.setProperty('--sh', (s.baseSh || 0.25).toFixed(3));
       if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
       if (s.zSet) { e.style.zIndex = s.prevZ || ''; s.zSet = false; }
