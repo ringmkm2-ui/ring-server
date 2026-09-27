@@ -196,6 +196,7 @@ function initWebSocketServer(server) {
         // 呼び出し中の着信があれば offer と ICE をこの接続に再配送する
         pendingCalls.forEach((p, callId) => {
           if (p.to !== userId) return;
+          p.delivered = true; // 相手の端末で着信が鳴った
           ws.send(JSON.stringify({ type: 'call_offer', callId, fromUserId: p.from, sdp: p.sdp, isVideo: p.isVideo, redelivered: true }));
           p.ice.forEach(candidate => ws.send(JSON.stringify({ type: 'call_ice', callId, fromUserId: p.from, candidate })));
         });
@@ -382,12 +383,15 @@ function initWebSocketServer(server) {
         clearPendingCall(data.callId);
         const pending = {
           from: userId, to: data.recipientId, sdp: data.sdp, isVideo: !!data.isVideo,
-          ice: [], ts: Date.now(), timer: null,
+          ice: [], ts: Date.now(), timer: null, delivered: !!delivered,
         };
         pending.timer = setTimeout(() => {
-          if (!pendingCalls.has(data.callId)) return;
+          const pc = pendingCalls.get(data.callId);
+          if (!pc) return;
           clearPendingCall(data.callId);
-          broadcastToUser(userId, { type: 'call_unavailable', callId: data.callId, reason: 'no_answer' });
+          // 相手の端末で一度でも鳴っていれば「出られない」(留守番電話へ)、
+          // 一度も繋がらなかったら「電波の届かない場所…」のガイダンスにする
+          broadcastToUser(userId, { type: 'call_unavailable', callId: data.callId, reason: pc.delivered ? 'no_answer' : 'unreachable' });
           cancelRinging(data.recipientId, data.callId);
         }, RING_TIMEOUT_MS);
         pendingCalls.set(data.callId, pending);

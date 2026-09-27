@@ -32,7 +32,7 @@ function toPreviewText(content, encrypted) {
   try {
     const parsed = JSON.parse(content);
     if (parsed && parsed.media && parsed.mediaType) {
-      return parsed.mediaType === 'image' ? '画像が送信されました' : '動画が送信されました';
+      return parsed.mediaType === 'image' ? '画像が送信されました' : parsed.mediaType === 'audio' ? '留守番電話が届きました' : '動画が送信されました';
     }
     if (parsed && parsed.__call__) {
       return '通話';

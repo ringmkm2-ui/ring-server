@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.108 beta</div>
+  <div class="version-badge">Bro Chat v1.28.109 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1038,7 +1038,7 @@ async function sendMediaViaCloudinary(f, t) {
     }
     const sharedKey = nacl.box.before(recipientPublicKey, myKeys.secretKey);
 
-    const caption = `[${t === 'image' ? '画像' : '動画'}]`;
+    const caption = `[${t === 'image' ? '画像' : t === 'audio' ? '留守番電話' : '動画'}]`;
     const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
       f,
       sharedKey,
@@ -1198,9 +1198,16 @@ async function loadLazyMedia(placeholder) {
     mediaEl.controls = true;
     mediaEl.preload = 'metadata';
     mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+  } else if (mediaType === 'audio') {
+    mediaEl = document.createElement('audio');
+    mediaEl.src = mediaSrc;
+    mediaEl.controls = true;
+    mediaEl.preload = 'metadata';
+    mediaEl.style.cssText = 'display:block;width:240px;max-width:100%;';
   }
   if (mediaEl) {
     placeholder.replaceWith(mediaEl);
+    if (mediaType === 'audio') return; // 音声はその場で再生する(拡大表示しない)
     // 以前はここに「表示から400ms以内のクリックだけ開く」という
     // ロジックが誤って逆転しており、実質的にタップしても永久に
     // 画像/動画が開かなくなっていた。attachPress側(bubbleに対する
@@ -1590,7 +1597,8 @@ function renderMessageImpl(msg) {
     const mediaPlaceholder = document.createElement('div');
     mediaPlaceholder.className = 'media-placeholder';
     mediaPlaceholder.style.cssText = 'background:#f0f0f0;width:200px;height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;';
-    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : '動画読み込み中...';
+    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : mediaType === 'audio' ? '留守番電話 読み込み中...' : '動画読み込み中...';
+    if (mediaType === 'audio') { mediaPlaceholder.style.width = '240px'; mediaPlaceholder.style.height = '54px'; }
     mediaPlaceholder.dataset.mediaSrc = mediaSrc;
     mediaPlaceholder.dataset.mediaType = mediaType;
     if (cloudinaryMedia) {
@@ -1602,7 +1610,7 @@ function renderMessageImpl(msg) {
     // 共有ObserverにObserveさせる
     lazyLoadObserver.observe(mediaPlaceholder);
     
-    if (displayText && displayText !== '[画像]' && displayText !== '[動画]') {
+    if (displayText && displayText !== '[画像]' && displayText !== '[動画]' && displayText !== '[留守番電話]') {
       const cap = document.createElement('div');
       cap.className = 'msg-text';
       cap.style.marginTop = '6px';
@@ -3010,6 +3018,9 @@ window.__broInCall = false; // APKのネイティブ側が「本当に通話中�
 window.addEventListener('pagehide', () => { stopAllCallMedia(); try { const bc = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BroCall; if (bc) bc.callEnded(); } catch (e) {} });
 
 function cleanupCall() {
+  if (guidePhase === 'recording') { finishVoicemail(false); return; }
+  guidePhase = null;
+  stopCallGuide();
   window.__broInCall = false;
   acceptInProgress = false;
   // APK: OS側の「通話中」状態を終わらせる(残ると次の着信がビジー扱いになる)
@@ -3251,12 +3262,88 @@ async function onCallIce(data) {
   }
 }
 
+// ========== 発信時のガイダンス音声と留守番電話 ==========
+// 相手が出なかった理由に合わせて、キャリアと同じガイダンスを流す。
+//  unreachable … 一度も相手の端末で鳴らなかった: 「電波の届かない場所に…」
+//  voicemail   … 鳴ったが出なかった/拒否された: 「現在出ることができません。ピーと鳴ったら…」→ 録音して送る
+//  busy        … 相手が別の通話中: 「お客様のご都合により…」
+let guideAudio = null;
+let guidePhase = null;          // null | 'guide' | 'recording'
+let vmRecorder = null, vmChunks = [], vmStart = 0, vmTimer = null, vmStream = null;
+const VM_MAX_SEC = 60;
+
+function guideLang() {
+  const l = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
+  return l === 'ja' ? 'ja' : 'en';
+}
+function playCallGuide(kind) {
+  stopCallGuide();
+  guidePhase = 'guide';
+  guideAudio = new Audio('/sounds/guide-' + kind + '-' + guideLang() + '.m4a');
+  guideAudio.onended = () => {
+    guideAudio = null;
+    if (guidePhase !== 'guide') return;
+    if (kind === 'voicemail') startVoicemail();
+    else { guidePhase = null; cleanupCall(); }
+  };
+  guideAudio.onerror = () => { guideAudio = null; guidePhase = null; cleanupCall(); };
+  guideAudio.play().catch(() => { guidePhase = null; setTimeout(cleanupCall, 1500); });
+}
+function stopCallGuide() {
+  if (guideAudio) { try { guideAudio.pause(); } catch (e) {} guideAudio = null; }
+}
+async function startVoicemail() {
+  guidePhase = 'recording';
+  try {
+    const src = localStream && localStream.getAudioTracks().length
+      ? new MediaStream(localStream.getAudioTracks())
+      : await navigator.mediaDevices.getUserMedia({ audio: true });
+    vmStream = src;
+    const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+    vmRecorder = new MediaRecorder(src, mime ? { mimeType: mime } : undefined);
+  } catch (e) {
+    guidePhase = null; setCallStatus('マイクを使えません'); setTimeout(cleanupCall, 1500); return;
+  }
+  vmChunks = [];
+  vmRecorder.ondataavailable = ev => { if (ev.data && ev.data.size) vmChunks.push(ev.data); };
+  vmRecorder.start(250);
+  vmStart = Date.now();
+  const tick = () => {
+    const sec = Math.floor((Date.now() - vmStart) / 1000);
+    setCallStatus('録音中 ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + '  (終了で送信)');
+    if (sec >= VM_MAX_SEC) finishVoicemail(true);
+  };
+  tick();
+  vmTimer = setInterval(tick, 500);
+}
+function finishVoicemail(send) {
+  if (guidePhase !== 'recording' || !vmRecorder) return;
+  guidePhase = null;
+  clearInterval(vmTimer); vmTimer = null;
+  const rec = vmRecorder; vmRecorder = null;
+  const dur = (Date.now() - vmStart) / 1000;
+  rec.onstop = () => {
+    if (vmStream && vmStream !== localStream) vmStream.getTracks().forEach(t => t.stop());
+    vmStream = null;
+    if (send && dur >= 1 && vmChunks.length) {
+      const type = rec.mimeType || vmChunks[0].type || 'audio/webm';
+      const ext = type.indexOf('mp4') >= 0 ? 'm4a' : 'webm';
+      const file = new File(vmChunks, 'voicemail.' + ext, { type });
+      sendMediaViaCloudinary(file, 'audio');
+    }
+    vmChunks = [];
+  };
+  try { rec.stop(); } catch (e) { rec.onstop(); }
+  setCallStatus(send ? '送信しました' : '');
+  setTimeout(cleanupCall, 600);
+}
+
 function onCallReject(data) {
   if (data.callId !== currentCallId) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
   logCall(data.reason === 'busy' ? 'busy' : 'no_answer');
   setCallStatus(data.reason === 'busy' ? '通話中です' : '応答がありませんでした');
-  setTimeout(cleanupCall, 1500);
+  playCallGuide(data.reason === 'busy' ? 'busy' : 'voicemail');
 }
 
 function onCallEnd(data) {
@@ -3277,11 +3364,16 @@ function onCallUnavailable(data) {
     : data.reason === 'no_answer' ? '応答がありません'
     : '相手はオフラインです'
   );
-  setTimeout(cleanupCall, 1500);
+  if (data.reason === 'not_friends') { setTimeout(cleanupCall, 1500); return; }
+  logCall('no_answer');
+  playCallGuide(data.reason === 'no_answer' ? 'voicemail' : 'unreachable');
 }
 
 function endCall() {
   if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
+  // ガイダンス中・留守番電話の録音中: 相手とはもう繋がっていないので信号は送らない
+  if (guidePhase === 'recording') { finishVoicemail(true); return; }
+  if (guidePhase === 'guide') { guidePhase = null; stopCallGuide(); cleanupCall(); return; }
   if (currentCallId) {
     sendSignal('call_end', {});
   }
