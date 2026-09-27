@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.110 beta</div>
+  <div class="version-badge">Bro Chat v1.28.111 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3297,9 +3297,9 @@ function primeCallGuides() {
     ['unreachable', 'voicemail', 'busy'].forEach(kind => {
       const key = kind + '-' + lang;
       if (guideBuf[key]) return;
-      guideBuf[key] = fetch('/sounds/guide-' + key + '.m4a')
+      guideBuf[key] = fetch('/sounds/guide-' + key + '.mp3')
         .then(r => r.arrayBuffer())
-        .then(ab => new Promise((ok, ng) => guideCtx.decodeAudioData(ab, ok, ng)))
+        .then(ab => new Promise((ok, ng) => { const pr = guideCtx.decodeAudioData(ab, ok, ng); if (pr && pr.catch) pr.catch(() => {}); }))
         .catch(e => { console.error('[guide] load failed', key, e); delete guideBuf[key]; return null; });
     });
   } catch (e) { console.error('[guide] prime failed', e); }
@@ -3329,7 +3329,7 @@ async function playCallGuide(kind) {
     } catch (e) { console.error('[guide] webaudio play failed', e); }
   }
   // 予備: 普通の<audio>で鳴らしてみる
-  const el = new Audio('/sounds/guide-' + key + '.m4a');
+  const el = new Audio('/sounds/guide-' + key + '.mp3');
   guideAudio = el;
   el.onended = () => { if (guideAudio === el) guideDone(kind); };
   el.onerror = () => { if (guideAudio === el) guideDone(kind); };

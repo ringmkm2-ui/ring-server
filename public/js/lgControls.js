@@ -224,6 +224,8 @@
   const CAND = '.ngicon,button,[role="button"],a[href],[onclick],.hbtn,.pbtn,.back-btn,.back-link';
   // 通話系は膨張させない(learnings: scaleでtouchendが別要素で発火してonclickが効かなくなる)
   const NOSCALE = '.lg-no-scale';
+  // 自分で transform を動かして使うボタン(着信画面の「丸をつかんで引っぱる」応答/拒否)
+  const SELF_MOVE = '.gx-btn';
   const GAIN = 1.8;
   const rejected = new WeakSet();
   const states = new WeakMap();
@@ -258,10 +260,39 @@
     if ((!c || c.a < 0.35) && img.indexOf('gradient') >= 0) c = parseRGB(img);
     if (c && c.a >= 0.35) {
       const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b);
-      if (mx - mn > 40) return { tint: `rgba(${c.r},${c.g},${c.b},.62)` };
+      const lum = (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+      // 色付き(赤い終了・緑の応答など)と、押している状態の濃い色は、その色のガラスにする
+      if (mx - mn > 40 || (c.a >= 0.6 && lum < 0.45)) {
+        const a = Math.max(0.62, Math.min(0.9, c.a * 0.9));
+        return { tint: `rgba(${c.r},${c.g},${c.b},${a.toFixed(2)})` };
+      }
     }
     return { clear: true };
   }
+
+  function nativeMaterial(e) {
+    e.classList.remove('lg-round');
+    const m = material(e, getComputedStyle(e));
+    e.classList.add('lg-round');
+    if (stateObs) stateObs.takeRecords();   // 自分で付け外しした分は無視する
+    return m;
+  }
+  // ミュート中などでボタンの色(class/style)が変わったら、ガラスの色も追従させる
+  const stateObs = ('MutationObserver' in window) ? new MutationObserver(recs => {
+    const seen = new Set();
+    recs.forEach(r => {
+      const s = states.get(r.target);
+      if (!s || seen.has(s)) return;
+      if (r.attributeName === 'class') {
+        const strip = v => (v || '').split(/\s+/).filter(x => x && !/^(lg-|onlight$)/.test(x)).sort().join(' ');
+        if (strip(r.oldValue) === strip(r.target.getAttribute('class'))) return;
+      }
+      seen.add(s);
+      const m = nativeMaterial(s.e);
+      const on = !!m.tint, col = m.tint || null;
+      if (on !== s.on || col !== s.onColor) { s.on = on; s.onColor = col; adapt(s); }
+    });
+  }) : null;
 
   // 下の明るさ: 背景が不透明になる所まで親をたどって、その色の輝度を使う
   function underLum(e) {
@@ -440,6 +471,7 @@
     e.dataset.lgBase = base;
     const mat = material(e, cs);
     e.classList.add('lg-round');
+    if (e.matches(SELF_MOVE)) e.classList.add('lg-selfmove');
 
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
@@ -449,7 +481,7 @@
 
     const w = e.offsetWidth, h = e.offsetHeight;
     const s = {
-      e, w, h, noScale: e.matches(NOSCALE),
+      e, w, h, noScale: e.matches(NOSCALE), selfMove: e.matches(SELF_MOVE),
       ox: 0, oy: 0, vox: 0, voy: 0, dx: 0, dy: 0, sc: 1, vs: 0, ts: 1,
       gE: 0, gR: 0.1, gx: w / 2, gy: h / 2, pressed: false, pid: null, moved: 0,
       glow: fx.querySelector('.lg-glow'), nglow: fx.querySelector('.lg-nglow'),
@@ -462,6 +494,7 @@
     s.on = !!mat.tint; s.onColor = mat.tint || null;
     states.set(e, s); rounds.add(s);
     adapt(s);
+    if (stateObs) stateObs.observe(e, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'aria-pressed'] });
     // デモと同じ方式: レンズの中に「ボタンの下にあるもの」の複製を置いて、SVGフィルタで曲げる
     s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp');
     s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
@@ -543,8 +576,8 @@
       a = s.sc * (1 + 0.45 * r); c = s.sc * (1 - 0.2 * r);
     } else if (s.noScale) { a = c = 1; }
     const base = e.dataset.lgBase || '';
-    e.style.setProperty('transform', `${base} translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${a.toFixed(4)},${c.toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`, 'important');
-    if (s.comp) placeComp(s, tx, ty, th, a, c);
+    if (!s.selfMove) e.style.setProperty('transform', `${base} translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${a.toFixed(4)},${c.toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`, 'important');
+    if (s.comp && !s.selfMove) placeComp(s, tx, ty, th, a, c);
 
     // 大きく・長く伸びるほど厚いガラス扱い: 屈折と影を強める
     const grow = Math.max(0, s.sc - 1) + r * 0.35;
@@ -567,7 +600,7 @@
     const settled = s.started && s.mat >= 1 && !s.pressed && Math.abs(s.sc - 1) < 0.002 && Math.abs(s.vs) < 0.001 &&
       Math.hypot(s.ox, s.oy) < 0.3 && Math.hypot(s.vox, s.voy) < 0.05 && s.gE < 0.004;
     if (settled) {
-      e.style.removeProperty('transform');
+      if (!s.selfMove) e.style.removeProperty('transform');
       if (s.comp) placeComp(s, 0, 0, 0, 1, 1);
       s.lastSh = (s.baseSh || 0.25).toFixed(3); e.style.setProperty('--sh', s.lastSh);
       if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);

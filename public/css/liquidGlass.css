@@ -774,7 +774,10 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
   -webkit-tap-highlight-color:transparent;transform-origin:50% 50%;
   color:var(--lg-ink,#fff)!important;transition:color .35s!important;
   box-shadow:0 12px 30px -8px rgba(0,0,0,var(--sh,.3)),0 2px 5px rgba(0,0,0,calc(var(--sh,.3) * .45))!important}
-.lg-round:active{transform:var(--lg-base,none)!important;filter:none!important}
+.lg-round:not(.lg-selfmove):active{transform:var(--lg-base,none)!important}
+.lg-round:active{filter:none!important}
+/* 着信のドラッグ応答ボタン: 元の移動・戻りのアニメーションを残す */
+.lg-round.lg-selfmove{transition-property:transform,opacity,color!important;transition-duration:revert!important}
 .lg-round.lg-live{will-change:transform}
 .lg-fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1}
 .lg-fxclip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;isolation:isolate;
