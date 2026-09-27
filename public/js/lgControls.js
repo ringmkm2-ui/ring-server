@@ -44,8 +44,8 @@
     const c = convex(x), v = 1 - 0.45 * c, s = x * x * x * (x * (x * 6 - 15) + 10);
     return c * (1 - s) + v * s;
   };
-  function profile(f, B, Hh) {
-    const N = 160, T0 = Hh * 0.2, prof = new Float32Array(N + 1);
+  function profile(f, B, Hh, t0k) {
+    const N = 200, T0 = Hh * (t0k || 0.2), prof = new Float32Array(N + 1);
     let max = 0;
     for (let i = 0; i <= N; i++) {
       const x = Math.max(i / N, 0.004), e = 0.002;
@@ -67,7 +67,7 @@
     const half = Math.min(w, h) / 2;
     const B = kind === 'lip' ? half : half * 0.62;
     const Hh = B * (kind === 'lip' ? 0.8 : 0.75);
-    const P = profile(kind === 'lip' ? lip : convex, B, Hh);
+    const P = profile(kind === 'lip' ? lip : convex, B, Hh, kind === 'lip' ? 0.15 : 0.2);
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d'), img = ctx.createImageData(w, h), D = img.data;
@@ -468,11 +468,29 @@
     const label = row ? row.querySelector('.sgtitle') : wrap.querySelector('span');
     if (label) root.setAttribute('aria-label', label.textContent.trim());
     root.innerHTML = '<div class="lg-sw-track"><i></i></div>' +
-      '<div class="lg-sw-knob"><span class="lg-sw-tint"></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
+      '<div class="lg-sw-knob"><span class="lg-kclip"><span class="lg-klens"><span class="lg-kcomp"><span class="lg-ktrack"><i></i></span></span></span><span class="lg-sw-tint"></span></span>' +
+      '<span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
     wrap.insertBefore(root, input);
     const trackOn = root.querySelector('.lg-sw-track i');
     const knob = root.querySelector('.lg-sw-knob');
     const fill = root.querySelector('.lg-sw-fill');
+    const klens = root.querySelector('.lg-klens'), kcomp = root.querySelector('.lg-kcomp');
+    const ktrack = root.querySelector('.lg-ktrack'), ktrackOn = ktrack.querySelector('i');
+    // デモと同じ方式: レンズの中に「下にあるもの」(カードの面 + トラック)の複製を置いて、
+    // それをSVGフィルタ(CSS filter)で曲げる。backdrop-filterを使わないのでどの端末でも同じ見た目になる
+    const PAD = 80;
+    Object.assign(kcomp.style, { width: (TW + PAD * 2) + 'px', height: (TH + PAD * 2) + 'px' });
+    Object.assign(ktrack.style, { left: PAD + 'px', top: PAD + 'px', width: TW + 'px', height: TH + 'px' });
+    const kfilter = getFilter(KW, KH, KH / 2, 'lip');
+    klens.style.filter = `url(#${kfilter.id}) saturate(1.4) brightness(1.04)`;
+    function surface() {
+      for (let p = root.parentElement; p; p = p.parentElement) {
+        const c = parseRGB(getComputedStyle(p).backgroundColor);
+        if (c && c.a >= 0.5) return `rgb(${c.r},${c.g},${c.b})`;
+      }
+      return document.documentElement.classList.contains('dark-mode') ? '#000' : '#fff';
+    }
+    kcomp.style.background = surface();
     knob.style.width = KW + 'px'; knob.style.height = KH + 'px';
     knob.style.top = ((TH - KH) / 2) + 'px';
 
@@ -488,14 +506,19 @@
     function render() {
       const st = calm() ? 0 : Math.min(0.22, Math.abs(s.vx) * 0.035);
       const a = s.sc * (1 + st), c = s.sc * (1 - st * 0.5);
-      knob.style.transform = `translateX(${(s.x - KW / 2).toFixed(2)}px) scale(${a.toFixed(4)},${c.toFixed(4)})`;
+      const bx = s.x - KW / 2, by = (TH - KH) / 2;
+      knob.style.transform = `translateX(${bx.toFixed(2)}px) scale(${a.toFixed(4)},${c.toFixed(4)})`;
+      // 伸び縮みしても中の複製が画面上でズレないよう逆変換(デモと同じ)
+      kcomp.style.left = (-bx - PAD) + 'px'; kcomp.style.top = (-by - PAD) + 'px';
+      kcomp.style.transformOrigin = `${bx + KW / 2 + PAD}px ${by + KH / 2 + PAD}px`;
+      kcomp.style.transform = `scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)})`;
       const p = (s.x - OFFX) / (ONX - OFFX);
-      trackOn.style.opacity = fx3(sstep(0.25, 0.75, p));
+      trackOn.style.opacity = ktrackOn.style.opacity = fx3(sstep(0.25, 0.75, p));
       // g: ガラスになる度合い。白が抜けて屈折・縁の光・影が立ち上がる
       fill.style.opacity = fx3(1 - s.g * 0.95);
       knob.style.setProperty('--so', fx3(s.g));
       knob.style.setProperty('--sh', (0.18 + s.g * 0.16).toFixed(3));
-      if (s.filter) setDisp(s.filter, 2 * s.filter.max * 1.2 * s.g * me());
+      setDisp(kfilter, 2 * kfilter.max * 1.2 * s.g * me());
     }
     function setOn(v, fire) {
       s.on = v;
@@ -529,11 +552,6 @@
         Math.abs(s.sc - s.ts) < 0.002 && Math.abs(s.vs) < 0.001 && s.g < 0.004;
       if (settled) {
         s.x = tgt; s.sc = s.ts; s.g = 0; render();
-        if (s.applied) {
-          knob.style.removeProperty('backdrop-filter');
-          knob.style.removeProperty('-webkit-backdrop-filter');
-          s.applied = false;
-        }
         root.classList.remove('lg-live');
         return false;
       }
@@ -546,12 +564,7 @@
       try { root.setPointerCapture(ev.pointerId); } catch (e) { }
       s.pressed = true; s.moved = 0; s.p0 = ev.clientX;
       s.start = s.on ? ONX : OFFX; s.drag = s.start; s.ts = 1;
-      if (CAN_REFRACT && !s.applied && !calm()) {
-        if (!s.filter) s.filter = getFilter(KW, KH, KH / 2, 'lip');
-        knob.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.4) brightness(1.04)`);
-        knob.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.4) brightness(1.04)`);
-        s.applied = true;
-      }
+      kcomp.style.background = surface();
       root.classList.add('lg-live');
       if (window.LiquidGlass && LiquidGlass.haptic) LiquidGlass.haptic('selection');
       kick(s);

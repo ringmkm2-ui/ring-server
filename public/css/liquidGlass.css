@@ -794,6 +794,11 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-sw-track i{position:absolute;inset:0;background:#34c759;opacity:0}
 .lg-sw-knob{position:absolute;left:0;border-radius:999px;pointer-events:none;transform-origin:50% 50%;
   box-shadow:0 3px 8px rgba(0,0,0,var(--sh,.18)),0 1px 2px rgba(0,0,0,calc(var(--sh,.18) * .5))}
+.lg-kclip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;isolation:isolate;-webkit-mask-image:-webkit-radial-gradient(white,black)}
+.lg-klens{position:absolute;inset:0}
+.lg-kcomp{position:absolute;left:0;top:0}
+.lg-ktrack{position:absolute;border-radius:999px;background:rgba(120,120,128,.36);overflow:hidden}
+.lg-ktrack i{position:absolute;inset:0;background:#34c759;opacity:0}
 .lg-sw-knob .lg-sw-tint{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.04)}
 .lg-sw-fill{position:absolute;inset:0;border-radius:inherit;background:#fff}
 .lg-sw.lg-live .lg-sw-knob{will-change:transform}
