@@ -21,6 +21,7 @@ const callsRouter = require('./routes/calls');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 const { apiLimiter } = require('./utils/rateLimits');
+const { startKeepAlive } = require('./utils/keepAlive');
 
 const PORT = process.env.PORT || 3000;
 
@@ -192,6 +193,7 @@ async function main() {
   const server = http.createServer(app);
   initWebSocketServer(server);
   startTTLCleanupJob();
+  startKeepAlive();
 
   server.listen(PORT, () => {
     console.log(`\nRing サーバー起動: http://localhost:${PORT}`);

@@ -2,8 +2,8 @@ name: Keep Render service awake
 
 on:
   schedule:
-    # 10分おき（Renderは15分無通信でスリープするので余裕を持たせる）
-    - cron: '*/10 * * * *'
+    # 5分おき。GitHubのcronは遅延/スキップが多いので本命はサーバー側のutils/keepAlive.js、こっちは寝た時の起こし役
+    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 jobs:
