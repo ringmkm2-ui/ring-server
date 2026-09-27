@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.114 beta</div>
+  <div class="version-badge">Bro Chat v1.28.115 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2443,7 +2443,7 @@ document.getElementById('postAttachVideoBtn').onclick = () => document.getElemen
 
 document.getElementById('postImageFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
-  if (f.size > 100 * 1024 * 1024) { // Cloudinary 対応で 100MB まで対応
+  if (f.size > 1024 * 1024 * 1024) { // 投稿メディア上限は画像/動画とも1GB
     alert(i18n.t('err_image_too_large'));
     e.target.value = '';
     return;
@@ -2463,7 +2463,7 @@ document.getElementById('postImageFile').onchange = e => {
 
 document.getElementById('postVideoFile').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
-  if (f.size > 500 * 1024 * 1024) { // Cloudinary 対応で 500MB まで対応
+  if (f.size > 1024 * 1024 * 1024) { // 投稿メディア上限は画像/動画とも1GB
     alert(i18n.t('err_video_too_large'));
     e.target.value = '';
     return;
