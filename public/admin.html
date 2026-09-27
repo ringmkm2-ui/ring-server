@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.112 beta</div>
+  <div class="version-badge">Bro Chat v1.28.113 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2818,6 +2818,13 @@ let isMuted = false;
 let wakeLock = null;       // 通話中の画面スリープ防止
 let pendingRemoteIce = [];  // remote description 到着前に届いたICE候補の一時保管
 let callConnected = false;  // 現在の通話が接続確立まで到達したか(通話ログの完了/不在判定用)
+// 通話シグナル(answer/ice/reject)の送信先。
+// 以前はここで otherId(=今開いているチャット画面の相手、URLパラメータ由来)を
+// 使い回していたが、着信は「今表示中の相手」とは限らない(別の友達から
+// かかってくることもある)。ミスマッチが起きると call_answer が発信者に届かず、
+// 発信者側は永久に「接続中...」のまま固まる。役割ごとに実際の通話相手のIDを
+// ここへセットし、sendSignal はこれ宛に送る。
+let callPartnerId = null;
 let isVideoCall = urlIsVideoParam;    // 現在の通話がビデオ通話か（SW通知タップ時はURLパラメータで初期化）
 let isVideoEnabled = true;  // 自分のカメラがONか（ビデオ通話中のみ意味を持つ）
 let currentFacingMode = 'user'; // 'user'=インカメ, 'environment'=アウトカメ
@@ -2898,7 +2905,7 @@ function stopCallTimer() {
 
 function sendSignal(type, extra) {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type, recipientId: otherId, callId: currentCallId, ...extra }));
+    ws.send(JSON.stringify({ type, recipientId: callPartnerId || otherId, callId: currentCallId, ...extra }));
   } else {
     console.error('[sendSignal] WebSocket not connected, cannot send:', type, 'readyState:', ws ? ws.readyState : 'ws is null');
     if (type === 'call_offer') {
@@ -3115,6 +3122,7 @@ function cleanupCall() {
   }
   currentCallId = null;
   callRole = null;
+  callPartnerId = null;
   callConnected = false;
   isMuted = false;
   isVideoCall = false;
@@ -3153,6 +3161,7 @@ async function startOutgoingCall(isVideo = false) {
 
   currentCallId = genCallId();
   callRole = 'caller';
+  callPartnerId = otherId;
   isVideoCall = isVideo;
   showCallOverlay();
   // 発信時は必ず「着信ボタン(応答/拒否)」を隠し、「通話終了ボタン」のみ表示する
@@ -3208,16 +3217,17 @@ function onCallOffer(data) {
     }
     return;
   }
-  // このページは特定の相手(otherId、URLパラメータ由来)専用のチャット画面という
-  // 設計のため、発信者(data.fromUserId)が画面に表示中の相手と一致しない場合、
-  // 応答(call_answer)がotherId宛に送られてしまい発信者に届かず、
-  // 「接続中のまま切れる」原因になりうる。現状は基本的に一致する設計だが、
-  // 万一の不一致を後から追えるようログだけ残しておく。
+  // 修正済み(v1.28.113): 以前はここでotherId(画面に表示中の相手)と
+  // data.fromUserId(実際の発信者)が食い違うと応答がotherId宛に送られて
+  // 発信者に届かず「接続中のまま固まる」バグがあった。callPartnerIdへ
+  // data.fromUserIdを明示的にセットし、sendSignalはそれ宛に送るよう修正済み。
+  // 一致しないケースが本当にあり得るかは引き続きログで監視する。
   if (data.fromUserId !== otherId) {
-    console.warn('[call] 発信者IDと表示中の相手IDが一致しません', { fromUserId: data.fromUserId, otherId });
+    console.warn('[call] 発信者IDと表示中の相手IDが一致しません(callPartnerIdで対処済み)', { fromUserId: data.fromUserId, otherId });
   }
   currentCallId = data.callId;
   callRole = 'callee';
+  callPartnerId = data.fromUserId; // 応答(call_answer)/ICEは必ずこの発信者IDへ送る(otherIdではない)
   isVideoCall = !!data.isVideo;
   window.__incomingOffer = data.sdp;
   window.__incomingOffer_callId = data.callId;
