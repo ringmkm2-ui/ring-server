@@ -305,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.93 beta</div>
+  <div class="version-badge">Bro Chat v1.28.94 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2255,8 +2255,12 @@ setInterval(() => {
 }, 25000); // 25秒ごと（30秒のチェックイン前）
 
 if (otherId) {
-  // URL経由(SW通知タップ)の着信であれば、SDP到着を待つ間も画面に「着信中」を出す
-  if (urlCallId) {
+  // URL経由(通知タップ/APKの応答ボタン)の着信であれば、SDP到着を待つ間も画面に「着信中」を出す。
+  // 重要: ここはスクリプトの途中で、currentCallId / callRole / isVideoCall は後ろで let 宣言されている。
+  // そのまま代入すると「初期化前にアクセス」の例外でこの先(WebSocket接続を含む)が全部止まり、
+  // 通知やAPKから応答しても繋がらなかった。スクリプトを最後まで評価してから実行する。
+  if (urlCallId) setTimeout(() => {
+    isVideoCall = urlIsVideoParam;
     currentCallId = urlCallId;
     callRole = 'callee';
     showCallOverlay();
@@ -2268,7 +2272,7 @@ if (otherId) {
         document.getElementById('callOv').classList.add('incoming-mode');
         document.getElementById('callAv').classList.add('ringing');
     }
-  }
+  }, 0);
 
   // 前回の会話を即表示(サーバー応答や鍵の初期化を待たない)
   renderChatFromCache();
