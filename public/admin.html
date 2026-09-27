@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.109 beta</div>
+  <div class="version-badge">Bro Chat v1.28.110 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3087,6 +3087,7 @@ function cleanupCall() {
 async function startOutgoingCall(isVideo = false) {
   window.__broInCall = true;
   if (pc) return; // 既に通話中
+  primeCallGuides();
 
   // WebSocket未接続なら発信前に警告して中断（サイレント失敗を防ぐ）
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -3142,6 +3143,8 @@ async function startOutgoingCall(isVideo = false) {
 
 // --- 着信 ---
 function onCallOffer(data) {
+  // 発信側に「こっちの端末で鳴っている」を知らせる(圏外ガイダンスと留守電の出し分けに使う)
+  try { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'call_ringing', callId: data.callId })); } catch (e) {}
   if (pc) {
     // 既に通話中なら自動的にビジーを返す
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -3276,21 +3279,66 @@ function guideLang() {
   const l = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
   return l === 'ja' ? 'ja' : 'en';
 }
-function playCallGuide(kind) {
+// Android WebView(APK)とiOSは、ユーザー操作の外で始まる音声再生を拒否する。
+// ガイダンスは発信から45秒後などに流れるので、発信ボタンを押した瞬間に
+// AudioContextを起こして音声を読み込んでおき、後からそれで鳴らす。
+let guideCtx = null;
+const guideBuf = {};
+function primeCallGuides() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!guideCtx) guideCtx = new AC();
+    if (guideCtx.state === 'suspended') guideCtx.resume().catch(() => {});
+    // 無音を一瞬鳴らしてロックを確実に外す(iOS対策)
+    const b = guideCtx.createBuffer(1, 1, 22050), src = guideCtx.createBufferSource();
+    src.buffer = b; src.connect(guideCtx.destination); src.start(0);
+    const lang = guideLang();
+    ['unreachable', 'voicemail', 'busy'].forEach(kind => {
+      const key = kind + '-' + lang;
+      if (guideBuf[key]) return;
+      guideBuf[key] = fetch('/sounds/guide-' + key + '.m4a')
+        .then(r => r.arrayBuffer())
+        .then(ab => new Promise((ok, ng) => guideCtx.decodeAudioData(ab, ok, ng)))
+        .catch(e => { console.error('[guide] load failed', key, e); delete guideBuf[key]; return null; });
+    });
+  } catch (e) { console.error('[guide] prime failed', e); }
+}
+function guideDone(kind) {
+  guideAudio = null;
+  if (guidePhase !== 'guide') return;
+  if (kind === 'voicemail') startVoicemail();
+  else { guidePhase = null; cleanupCall(); }
+}
+async function playCallGuide(kind) {
   stopCallGuide();
   guidePhase = 'guide';
-  guideAudio = new Audio('/sounds/guide-' + kind + '-' + guideLang() + '.m4a');
-  guideAudio.onended = () => {
-    guideAudio = null;
-    if (guidePhase !== 'guide') return;
-    if (kind === 'voicemail') startVoicemail();
-    else { guidePhase = null; cleanupCall(); }
-  };
-  guideAudio.onerror = () => { guideAudio = null; guidePhase = null; cleanupCall(); };
-  guideAudio.play().catch(() => { guidePhase = null; setTimeout(cleanupCall, 1500); });
+  const key = kind + '-' + guideLang();
+  let buf = null;
+  try { buf = guideCtx && guideBuf[key] ? await guideBuf[key] : null; } catch (e) { buf = null; }
+  if (guidePhase !== 'guide') return;
+  if (buf && guideCtx) {
+    try {
+      if (guideCtx.state === 'suspended') await guideCtx.resume();
+      const src = guideCtx.createBufferSource();
+      src.buffer = buf; src.connect(guideCtx.destination);
+      src.onended = () => { if (guideAudio === src) guideDone(kind); };
+      guideAudio = src;
+      src.start(0);
+      return;
+    } catch (e) { console.error('[guide] webaudio play failed', e); }
+  }
+  // 予備: 普通の<audio>で鳴らしてみる
+  const el = new Audio('/sounds/guide-' + key + '.m4a');
+  guideAudio = el;
+  el.onended = () => { if (guideAudio === el) guideDone(kind); };
+  el.onerror = () => { if (guideAudio === el) guideDone(kind); };
+  el.play().catch(e => { console.error('[guide] audio play blocked', e); if (guideAudio === el) setTimeout(() => guideDone(kind), 800); });
 }
 function stopCallGuide() {
-  if (guideAudio) { try { guideAudio.pause(); } catch (e) {} guideAudio = null; }
+  const a = guideAudio; guideAudio = null;
+  if (!a) return;
+  try { if (a.stop) a.stop(); else a.pause(); } catch (e) {}
 }
 async function startVoicemail() {
   guidePhase = 'recording';

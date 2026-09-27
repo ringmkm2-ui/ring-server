@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.109 beta</div>
+  <div class="version-badge">Bro Chat v1.28.110 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2350,6 +2350,10 @@ function connectTalkWs() {
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (!d || d.type === 'auth_ok' || d.type === 'presence_update' || d.type === 'pong') return;
     // ブラウザ版: トーク一覧にいる時の着信はチャット画面に移って出す(APKはネイティブの着信画面が出る)
+    // 着信: 発信側に「この端末で鳴っている」を知らせる(圏外ガイダンスとの出し分け用)
+    if (d.type === 'call_offer' && d.callId) {
+      try { talkWs.send(JSON.stringify({ type: 'call_ringing', callId: d.callId })); } catch (_) {}
+    }
     if (d.type === 'call_offer' && !window.Capacitor && d.fromUserId && d.callId) {
       location.href = `/admin.html?callerId=${encodeURIComponent(d.fromUserId)}&callId=${encodeURIComponent(d.callId)}&isVideo=${d.isVideo ? '1' : '0'}`;
       return;

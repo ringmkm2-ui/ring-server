@@ -114,8 +114,22 @@ function initWebSocketServer(server) {
   const ipConnections = new Map(); // IP -> count
   const MAX_CONNECTIONS_PER_IP = 10;
 
+  // 死んだ接続の掃除: 相手が機内モード等で突然消えるとTCPが半開きのまま残り、
+  // サーバーは「まだ繋がっている」と思い込む(着信を送ったつもりになる)。
+  // 20秒ごとにpingし、次のpingまでにpongが返らない接続は切る。
+  const heartbeat = setInterval(() => {
+    wss.clients.forEach(c => {
+      if (c.isAlive === false) { try { c.terminate(); } catch (e) {} return; }
+      c.isAlive = false;
+      try { c.ping(); } catch (e) {}
+    });
+  }, 20000);
+  wss.on('close', () => clearInterval(heartbeat));
+
   wss.on('connection', (ws, req) => {
     let userId = null;
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
     // Call Assist: track('mic'|'remote')ごとに有効なDeepgramセッションIDを保持する。
     // 自分のマイク音声と相手の受信音声(remoteAudio)を別々に文字起こしするため。
     let callAssistSessions = { mic: null, remote: null };
@@ -196,7 +210,6 @@ function initWebSocketServer(server) {
         // 呼び出し中の着信があれば offer と ICE をこの接続に再配送する
         pendingCalls.forEach((p, callId) => {
           if (p.to !== userId) return;
-          p.delivered = true; // 相手の端末で着信が鳴った
           ws.send(JSON.stringify({ type: 'call_offer', callId, fromUserId: p.from, sdp: p.sdp, isVideo: p.isVideo, redelivered: true }));
           p.ice.forEach(candidate => ws.send(JSON.stringify({ type: 'call_ice', callId, fromUserId: p.from, candidate })));
         });
@@ -383,7 +396,7 @@ function initWebSocketServer(server) {
         clearPendingCall(data.callId);
         const pending = {
           from: userId, to: data.recipientId, sdp: data.sdp, isVideo: !!data.isVideo,
-          ice: [], ts: Date.now(), timer: null, delivered: !!delivered,
+          ice: [], ts: Date.now(), timer: null, delivered: false, // 相手の画面から call_ringing が来たら true
         };
         pending.timer = setTimeout(() => {
           const pc = pendingCalls.get(data.callId);
@@ -437,6 +450,13 @@ function initWebSocketServer(server) {
           console.error('[push] caller lookup failed:', err.message);
         }
 
+        return;
+      }
+
+      if (data.type === 'call_ringing') {
+        // data: { callId } 相手の端末で着信画面が出た(= 圏外ではない)
+        const p = pendingCalls.get(data.callId);
+        if (p && p.to === userId) p.delivered = true;
         return;
       }
 
