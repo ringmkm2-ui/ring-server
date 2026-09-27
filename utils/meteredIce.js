@@ -31,19 +31,17 @@ function normalizeAppName(v) {
 }
 const METERED_APP_NAME = normalizeAppName(RAW_APP);
 
-const FALLBACK_ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-];
-
 function isMeteredConfigured() {
   return !!(METERED_APP_NAME && METERED_API_KEY);
 }
 
 /**
  * Metered から一時的なICEサーバー一覧(STUN+TURN)を取得する。
- * 失敗した場合は FALLBACK_ICE_SERVERS (STUNのみ) を返す。
+ * 失敗した場合は null を返す(呼び出し側 routes/ice.js が次のフォールバックに進む)。
+ * 以前はここでSTUNのみのFALLBACK_ICE_SERVERSを返していたが、routes/ice.jsは
+ * 「配列が空でなければ成功」としか見ていなかったため、TURNが完全に死んでいても
+ * provider: 'metered' (TURN取得成功)として扱われてしまい、実際はTURN無しの
+ * STUN-onlyな状態がクライアントからも運用側からも見えなくなっていた。
  */
 function fetchMeteredIceServers() {
   return new Promise((resolve) => {
@@ -51,7 +49,7 @@ function fetchMeteredIceServers() {
       if (!METERED_APP_NAME) console.warn('[meteredIce] METERED_APP_NAME が未設定です');
       if (!METERED_API_KEY) console.warn('[meteredIce] METERED_API_KEY が未設定です');
       console.warn('[meteredIce] 設定不足のためSTUNのみで動作します(国際通話は繋がりません)');
-      resolve(FALLBACK_ICE_SERVERS);
+      resolve(null);
       return;
     }
 
@@ -69,7 +67,7 @@ function fetchMeteredIceServers() {
       res.on('end', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           console.error(`[meteredIce] Metered API エラー (status=${res.statusCode}):`, body.slice(0, 300));
-          resolve(FALLBACK_ICE_SERVERS);
+          resolve(null);
           return;
         }
         try {
@@ -80,7 +78,7 @@ function fetchMeteredIceServers() {
             : (Array.isArray(data.iceServers) ? data.iceServers : null);
           if (!raw || raw.length === 0) {
             console.warn('[meteredIce] Metered レスポンスにICEサーバーが含まれていません:', body.slice(0, 200));
-            resolve(FALLBACK_ICE_SERVERS);
+            resolve(null);
             return;
           }
           const iceServers = raw.map(s => {
@@ -98,19 +96,19 @@ function fetchMeteredIceServers() {
           resolve(iceServers);
         } catch (e) {
           console.error('[meteredIce] Metered レスポンスのパースに失敗:', e.message);
-          resolve(FALLBACK_ICE_SERVERS);
+          resolve(null);
         }
       });
     });
 
     req.on('error', (e) => {
       console.error('[meteredIce] Metered API 呼び出し失敗:', e.message);
-      resolve(FALLBACK_ICE_SERVERS);
+      resolve(null);
     });
     req.on('timeout', () => {
       req.destroy();
       console.error('[meteredIce] Metered API タイムアウト');
-      resolve(FALLBACK_ICE_SERVERS);
+      resolve(null);
     });
 
     req.end();
