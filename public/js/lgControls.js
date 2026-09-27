@@ -122,10 +122,7 @@
     const fi = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
     fi.setAttribute('href', map.url);
     const dms = [];
-    if (kind === 'lip') {
-      // ノブは中央が外側を映すので、色を分けると端でサンプルが外に出て色ズレの点が出る。単色で曲げる
-      dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'out' }, f));
-    } else {
+    {
       ['r', 'g', 'b'].forEach((c, i) => {
         dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
         mk('feColorMatrix', { in: 'd' + c, type: 'matrix', values: CH[i], result: c }, f);
@@ -193,7 +190,7 @@
   // ============================================================
   const CAND = 'button,[role="button"],a[href],[onclick],.hbtn,.pbtn,.back-btn,.back-link';
   // 通話系は膨張させない(learnings: scaleでtouchendが別要素で発火してonclickが効かなくなる)
-  const NOSCALE = '.phone-btn,.end-btn,.call-control-btn,.call-assist-btn,.accept-btn-glass,.decline-btn-glass,.lg-no-scale';
+  const NOSCALE = '.lg-no-scale';
   const GAIN = 1.8;
   const rejected = new WeakSet();
   const states = new WeakMap();
@@ -214,14 +211,6 @@
     if (br < w / 2 - 1.5 || cs.visibility === 'hidden' || (cs.backgroundImage || '').indexOf('url(') >= 0) { rejected.add(e); return 0; }
     return w;
   }
-  // 親がすでにbackdrop-filterを持っていると入れ子になってチカチカする(learnings)。その場合は屈折を付けない
-  function nestedBackdrop(e) {
-    for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) {
-      const b = getComputedStyle(p).backdropFilter || getComputedStyle(p).webkitBackdropFilter;
-      if (b && b !== 'none') return true;
-    }
-    return false;
-  }
   function parseRGB(str) {
     const m = str && str.match(/rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?/);
     if (!m) return null;
@@ -241,6 +230,31 @@
     return { clear: true };
   }
 
+  // 下の明るさ: 背景が不透明になる所まで親をたどって、その色の輝度を使う
+  function underLum(e) {
+    for (let p = e.parentElement; p; p = p.parentElement) {
+      const c = parseRGB(getComputedStyle(p).backgroundColor);
+      if (c && c.a >= 0.5) return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+    }
+    return document.documentElement.classList.contains('dark-mode') ? 0.08 : 0.95;
+  }
+  // デモの adapt() と同じ式
+  function adapt(s) {
+    const e = s.e, m = underLum(e), sd = 0.07;
+    const light = m > 0.6;
+    e.classList.toggle('onlight', light && !s.on);
+    e.style.setProperty('--lg-ink', s.on ? '#fff' : (light ? '#1d1d1f' : '#fff'));
+    s.tintEl.style.setProperty('--tint', s.on
+      ? s.onColor
+      : (light ? 'rgba(255,255,255,.2)' : 'rgba(10,10,24,.08)'));
+    s.baseSh = 0.14 + Math.min(0.28, sd * 1.5) + (light ? 0 : 0.08);
+    e.style.setProperty('--sh', s.baseSh.toFixed(3));
+    e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
+  }
+  // ダークモード切替で全部やり直す
+  new MutationObserver(() => rounds.forEach(s => { if (s.e.isConnected) adapt(s); }))
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
   function enhance(e, materialize) {
     if (e.classList.contains('lg-round')) return states.get(e);
     const cs = getComputedStyle(e);
@@ -249,15 +263,12 @@
     e.style.setProperty('--lg-base', base || 'none');
     e.dataset.lgBase = base;
     const mat = material(e, cs);
-    if (mat.photo) e.classList.add('lg-photo');
-    else if (mat.tint) { e.classList.add('lg-tinted'); e.style.setProperty('--lg-tint', mat.tint); }
-    else e.classList.add('lg-clear');
     e.classList.add('lg-round');
 
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
     fx.setAttribute('aria-hidden', 'true');
-    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-tint"></span><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
     e.appendChild(fx);
 
     const w = e.offsetWidth, h = e.offsetHeight;
@@ -269,8 +280,11 @@
       filter: null, mat: 1, born: 0, started: true, nb: [], lit: false,
     };
     s.step = () => stepRound(s);
+    s.tintEl = fx.querySelector('.lg-tint');
+    s.on = !!mat.tint; s.onColor = mat.tint || null;
     states.set(e, s); rounds.add(s);
-    if (CAN_REFRACT && !mat.photo && !calm() && !nestedBackdrop(e)) {
+    adapt(s);
+    if (CAN_REFRACT && !mat.photo && !calm()) {
       s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
       e.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
       e.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
@@ -354,7 +368,7 @@
     // 大きく・長く伸びるほど厚いガラス扱い: 屈折と影を強める
     const grow = Math.max(0, s.sc - 1) + r * 0.35;
     if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN * (1 + grow * 2.6) * me);
-    e.style.setProperty('--sh', (0.25 + grow * 1.1).toFixed(3));
+    e.style.setProperty('--sh', ((s.baseSh || 0.25) + grow * 1.1).toFixed(3));
 
     if (s.gE > 0.002) {
       const g = s.gE;
@@ -372,7 +386,7 @@
       Math.hypot(s.ox, s.oy) < 0.3 && Math.hypot(s.vox, s.voy) < 0.05 && s.gE < 0.004;
     if (settled) {
       e.style.removeProperty('transform');
-      e.style.removeProperty('--sh');
+      e.style.setProperty('--sh', (s.baseSh || 0.25).toFixed(3));
       if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
       if (s.zSet) { e.style.zIndex = s.prevZ || ''; s.zSet = false; }
       s.glow.style.background = '';
@@ -565,6 +579,11 @@
 
     root.setAttribute('aria-checked', s.on ? 'true' : 'false');
     render();
+    // 出現: デモと同じく200ms後から
+    if (!calm()) {
+      root.style.opacity = '0';
+      setTimeout(() => { root.style.opacity = ''; }, 200);
+    }
   }
   function upgradeSwitches() { document.querySelectorAll('.ts-wrap, input.ios-switch').forEach(upgradeSwitch); }
 
