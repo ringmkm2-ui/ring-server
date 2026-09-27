@@ -348,6 +348,7 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
+<script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
@@ -491,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.98 beta</div>
+  <div class="version-badge">Bro Chat v1.28.99 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3092,7 +3093,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const cloneEl=document.getElementById(sw.clone);
       const inputEl=document.getElementById(sw.input);
       if(thumbEl&&trackEl&&inputEl){
-        initTactileSwitch(thumbEl,trackEl,cloneEl,inputEl,sw.dispImg,sw.dispMap);
+        // v1.28.99: スイッチは /js/lgControls.js (iOS 26 Liquid Glass) に置き換えたので旧実装は起動しない
       }
     });
   });

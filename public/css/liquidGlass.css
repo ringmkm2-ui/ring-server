@@ -751,3 +751,41 @@ html.ios-standalone .input-bar-container { padding-bottom: env(safe-area-inset-b
 .ios-pwa-banner .ipb-on{border:none;border-radius:999px;background:#0a84ff;color:#fff;font-weight:700;padding:8px 16px;font-size:14px}
 .ios-pwa-banner .ipb-x{border:none;width:30px;height:30px;border-radius:50%;background:rgba(120,120,128,.16);display:flex;align-items:center;justify-content:center;color:#555;flex:none}
 html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.dark-mode .ios-pwa-banner .ipb-text span{color:#aeaeb2}
+
+/* ==========================================================================
+   iOS 26 Liquid Glass: 丸ボタン + スイッチ (lgControls.js)
+   ========================================================================== */
+/* 縁の光: 光源の方向(--la)で明るさが変わるリング。円でもカプセルでも使える */
+.lg-spec,.lg-bloom{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:conic-gradient(from calc(var(--la,315deg) - 70deg),
+    rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
+    rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
+.lg-spec{padding:1.3px;opacity:.85}
+.lg-bloom{padding:7px;opacity:calc(.18 + var(--lg-press,0) * .25);filter:blur(2.5px)}
+
+.lg-round{transition-property:background-color,color,opacity,border-color!important;transition-duration:.2s!important}
+/* 旧来の :active の scale(1.65)/brightness は JS のばねと喧嘩するので止める */
+.lg-round:active{transform:var(--lg-base,none)!important;filter:none!important}
+.lg-round.lg-live{will-change:transform;
+  box-shadow:0 calc(4px + var(--lg-press,0) * 10px) calc(12px + var(--lg-press,0) * 18px) rgba(0,0,0,calc(.14 + var(--lg-press,0) * .16))!important}
+.lg-fx{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:1}
+.lg-glow{position:absolute;inset:0;mix-blend-mode:screen}
+
+/* スイッチ */
+.lg-sw{position:relative;width:64px;height:28px;border-radius:999px;touch-action:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;outline:none;flex:none}
+.lg-sw::before{content:"";position:absolute;inset:-12px -8px}
+.lg-sw:focus-visible{box-shadow:0 0 0 2px #0a84ff}
+.lg-sw-track{position:absolute;inset:0;border-radius:inherit;overflow:hidden;background:rgba(120,120,128,.16)}
+.lg-sw-track i{position:absolute;inset:0;background:#34c759;opacity:0}
+.dark-mode .lg-sw-track{background:rgba(120,120,128,.32)}
+.lg-sw-knob{position:absolute;left:0;border-radius:999px;pointer-events:none;transform-origin:50% 50%;
+  box-shadow:0 3px 8px rgba(0,0,0,calc(.15 + var(--lg-press,0) * .14)),0 1px 2px rgba(0,0,0,.06)}
+.lg-sw-fill{position:absolute;inset:0;border-radius:inherit;background:#fff}
+.lg-sw-knob .lg-spec{opacity:var(--lg-press,0)}
+.lg-sw-knob .lg-bloom{opacity:calc(var(--lg-press,0) * .3)}
+.lg-sw.lg-live .lg-sw-knob{will-change:transform}
+
+@media (prefers-reduced-motion: reduce){.lg-bloom{filter:none}}
