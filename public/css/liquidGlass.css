@@ -754,38 +754,46 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 
 /* ==========================================================================
    iOS 26 Liquid Glass: 丸ボタン + スイッチ (lgControls.js)
+   見た目・数値はデモ(Liquid Glass v2.2.0)と同じ
    ========================================================================== */
-/* 縁の光: 光源の方向(--la)で明るさが変わるリング。円でもカプセルでも使える */
+:root{--lg-clear-tint:rgba(255,255,255,.2)}
+.dark-mode{--lg-clear-tint:rgba(10,10,24,.08)}
+
+/* 縁の光: 光源の方向(--la, 端末の傾きで動く)で明るさが変わるリング */
 .lg-spec,.lg-bloom{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:conic-gradient(from calc(var(--la,315deg) - 70deg),
     rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
     rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
-.lg-spec{padding:1.3px;opacity:.85}
-.lg-bloom{padding:7px;opacity:calc(.18 + var(--lg-press,0) * .25);filter:blur(2.5px)}
+.lg-spec{padding:1.4px}
+.lg-bloom{padding:9px;opacity:.3;filter:blur(2px)}
+.lg-rim{position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
 
-.lg-round{transition-property:background-color,color,opacity,border-color!important;transition-duration:.2s!important}
-/* 旧来の :active の scale(1.65)/brightness は JS のばねと喧嘩するので止める */
+/* 丸ボタン本体: 素材はデモと同じ(色味 + 屈折 + 影)。既存の枠線・ぼかし・:active演出は止める */
+.lg-round:not(.lg-photo){background:var(--lg-tint,var(--lg-clear-tint))!important}
+.lg-round{isolation:isolate;border-color:transparent!important;
+  box-shadow:0 12px 30px -8px rgba(0,0,0,var(--sh,.25)),0 2px 5px rgba(0,0,0,calc(var(--sh,.25) * .45))!important;
+  transition-property:color,opacity!important;transition-duration:.35s!important}
+.lg-round.lg-clear{--lg-tint:var(--lg-clear-tint)}
 .lg-round:active{transform:var(--lg-base,none)!important;filter:none!important}
-.lg-round.lg-live{will-change:transform;
-  box-shadow:0 calc(4px + var(--lg-press,0) * 10px) calc(12px + var(--lg-press,0) * 18px) rgba(0,0,0,calc(.14 + var(--lg-press,0) * .16))!important}
-.lg-fx{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:1}
-.lg-glow{position:absolute;inset:0;mix-blend-mode:screen}
+.lg-round.lg-live{will-change:transform}
+.lg-fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1}
+.lg-fxclip{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+.lg-glow,.lg-nglow{position:absolute;inset:0;mix-blend-mode:screen}
+.dark-mode .lg-round svg,.lg-round.lg-tinted svg{filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.3))}
 
 /* スイッチ */
-.lg-sw{position:relative;width:64px;height:28px;border-radius:999px;touch-action:none;cursor:pointer;
+.lg-sw{position:relative;width:79px;height:35px;border-radius:999px;touch-action:none;cursor:pointer;
   -webkit-tap-highlight-color:transparent;outline:none;flex:none}
-.lg-sw::before{content:"";position:absolute;inset:-12px -8px}
+.lg-sw::before{content:"";position:absolute;inset:-14px -12px}
 .lg-sw:focus-visible{box-shadow:0 0 0 2px #0a84ff}
-.lg-sw-track{position:absolute;inset:0;border-radius:inherit;overflow:hidden;background:rgba(120,120,128,.16)}
+.lg-sw-track{position:absolute;inset:0;border-radius:inherit;overflow:hidden;background:rgba(120,120,128,.36)}
 .lg-sw-track i{position:absolute;inset:0;background:#34c759;opacity:0}
-.dark-mode .lg-sw-track{background:rgba(120,120,128,.32)}
 .lg-sw-knob{position:absolute;left:0;border-radius:999px;pointer-events:none;transform-origin:50% 50%;
-  box-shadow:0 3px 8px rgba(0,0,0,calc(.15 + var(--lg-press,0) * .14)),0 1px 2px rgba(0,0,0,.06)}
+  box-shadow:0 3px 8px rgba(0,0,0,var(--sh,.18)),0 1px 2px rgba(0,0,0,calc(var(--sh,.18) * .5))}
+.lg-sw-knob .lg-sw-tint{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.04)}
 .lg-sw-fill{position:absolute;inset:0;border-radius:inherit;background:#fff}
-.lg-sw-knob .lg-spec{opacity:var(--lg-press,0)}
-.lg-sw-knob .lg-bloom{opacity:calc(var(--lg-press,0) * .3)}
+.lg-sw-knob .lg-spec{opacity:var(--so,0)}
+.lg-sw-knob .lg-bloom{opacity:calc(var(--so,0) * .3)}
 .lg-sw.lg-live .lg-sw-knob{will-change:transform}
-
-@media (prefers-reduced-motion: reduce){.lg-bloom{filter:none}}

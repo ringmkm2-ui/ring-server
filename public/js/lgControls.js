@@ -10,10 +10,9 @@
 //  - 大きくなるほど厚いガラス扱い: 屈折と影が強くなる
 //  - スイッチのノブは触ると透明なガラスになって膨らみ、下のトラックが透けて見える
 //
-// 性能メモ(learnings):
-//  backdrop-filter:url() は背後が変わるたびに再計算される重いフィルタなので、
-//  「押している間とその余韻だけ」付けて、落ち着いたら外す。常時付けっぱなしにしない。
-//  DOM監視(MutationObserver)もしない。タップ直後に軽く再スキャンするだけ。
+// 数値・見た目はデモ(Liquid Glass v2.2.0 artifact)と同じにしてある。
+// 屈折は普段から付けっぱなし(デモと同じ)。バッテリーセーバー時のアニメーション軽減が
+// オンのときだけ、屈折と動きを切って軽くする。
 // -----------------------------------------------------------------------
 (function () {
   'use strict';
@@ -46,7 +45,7 @@
     return c * (1 - s) + v * s;
   };
   function profile(f, B, Hh) {
-    const N = 160, T0 = Hh * 0.15, prof = new Float32Array(N + 1);
+    const N = 160, T0 = Hh * 0.2, prof = new Float32Array(N + 1);
     let max = 0;
     for (let i = 0; i <= N; i++) {
       const x = Math.max(i / N, 0.004), e = 0.002;
@@ -110,35 +109,34 @@
     return e;
   }
   const CH = ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'];
-  // 同じ(幅,高さ,角丸,断面)ならフィルタは1個を使い回す
-  const filterCache = new Map();
+  // 変位マップ(重い計算)は同じ(幅,高さ,角丸,断面)なら使い回す。
+  // フィルタ要素はボタンごとに1個(押したボタンだけ屈折を強めるため)
+  const mapCache = new Map();
   let fid = 0;
   function getFilter(w, h, rad, kind) {
     const key = w + 'x' + h + 'r' + rad + kind;
-    if (filterCache.has(key)) return filterCache.get(key);
-    const map = buildMap(w, h, rad, kind);
+    let map = mapCache.get(key);
+    if (!map) { map = buildMap(w, h, rad, kind); mapCache.set(key, map); }
     const id = 'lgc-f' + (fid++);
     const f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
-    mk('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: kind === 'lip' ? 0.3 : 0.8, result: 'src' }, f);
     const fi = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
     fi.setAttribute('href', map.url);
     const dms = [];
     if (kind === 'lip') {
       // ノブは中央が外側を映すので、色を分けると端でサンプルが外に出て色ズレの点が出る。単色で曲げる
-      dms.push(mk('feDisplacementMap', { in: 'src', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'out' }, f));
+      dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'out' }, f));
     } else {
       ['r', 'g', 'b'].forEach((c, i) => {
-        dms.push(mk('feDisplacementMap', { in: 'src', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
+        dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
         mk('feColorMatrix', { in: 'd' + c, type: 'matrix', values: CH[i], result: c }, f);
       });
       mk('feBlend', { in: 'r', in2: 'g', mode: 'screen', result: 'rg' }, f);
       mk('feBlend', { in: 'rg', in2: 'b', mode: 'screen', result: 'out' }, f);
     }
     // 端で範囲外を拾って抜けた所は、曲げる前の背景で埋める
-    mk('feComposite', { in: 'out', in2: 'src', operator: 'over' }, f);
-    const out = { id, dms, max: map.max, last: -1 };
-    filterCache.set(key, out);
-    return out;
+    mk('feComposite', { in: 'out', in2: 'SourceGraphic', operator: 'over', result: 'filled' }, f);
+    mk('feGaussianBlur', { in: 'filled', stdDeviation: 0.7 }, f);
+    return { id, dms, max: map.max, last: -1, node: f };
   }
   function setDisp(f, ds) {
     if (Math.abs(ds - f.last) < 0.05) return;
@@ -163,13 +161,44 @@
   const fx3 = n => n.toFixed(3);
 
   // ============================================================
+  // 光源: 端末の傾きで縁の光が回る(デモと同じ。PCはマウスの方向)
+  // ============================================================
+  let lightAng = 315, lastLa = -1, laRaf = 0, askedMotion = false;
+  function setLight(a) {
+    lightAng = a;
+    if (laRaf) return;
+    laRaf = requestAnimationFrame(() => {
+      laRaf = 0;
+      if (Math.abs(lightAng - lastLa) > 0.5) { lastLa = lightAng; document.documentElement.style.setProperty('--la', lightAng.toFixed(1) + 'deg'); }
+    });
+  }
+  function listenMotion() {
+    addEventListener('deviceorientation', e => {
+      if (e.gamma == null || calm()) return;
+      const lx = -(e.gamma || 0) / 40, ly = ((e.beta || 0) - 55) / 40;
+      const a = (Math.atan2(lx, -ly) * 180 / Math.PI + 360) % 360;
+      const d = ((a - lightAng + 540) % 360) - 180;
+      setLight((lightAng + d * 0.15 + 360) % 360);
+    });
+  }
+  function askMotion() {
+    if (askedMotion) return; askedMotion = true;
+    const D = window.DeviceOrientationEvent;
+    if (D && typeof D.requestPermission === 'function') D.requestPermission().then(r => { if (r === 'granted') listenMotion(); }).catch(() => {});
+  }
+  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') listenMotion();
+
+  // ============================================================
   // 丸いボタン
   // ============================================================
   const CAND = 'button,[role="button"],a[href],[onclick],.hbtn,.pbtn,.back-btn,.back-link';
   // 通話系は膨張させない(learnings: scaleでtouchendが別要素で発火してonclickが効かなくなる)
   const NOSCALE = '.phone-btn,.end-btn,.call-control-btn,.call-assist-btn,.accept-btn-glass,.decline-btn-glass,.lg-no-scale';
+  const GAIN = 1.8;
   const rejected = new WeakSet();
   const states = new WeakMap();
+  const rounds = new Set();
+  const t0 = performance.now();
 
   function roundSize(e) {
     if (e.classList.contains('lg-no-lens') || e.closest('.ts-wrap,.lg-sw')) return 0;
@@ -182,74 +211,120 @@
     if (br < w / 2 - 1.5 || cs.visibility === 'hidden') { rejected.add(e); return 0; }
     return w;
   }
-  function enhance(e) {
-    if (e.classList.contains('lg-round')) return;
+  function parseRGB(str) {
+    const m = str && str.match(/rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?/);
+    if (!m) return null;
+    let a = m[4] == null ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+    return { r: +m[1], g: +m[2], b: +m[3], a };
+  }
+  // 元のボタンの色から、デモと同じ「色付きガラス(α.62)」か「透明ガラス」かを決める
+  function material(e, cs) {
+    const img = cs.backgroundImage || 'none';
+    if (img.indexOf('url(') >= 0) return { photo: true };
+    let c = parseRGB(cs.backgroundColor);
+    if ((!c || c.a < 0.35) && img.indexOf('gradient') >= 0) c = parseRGB(img);
+    if (c && c.a >= 0.35) {
+      const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b);
+      if (mx - mn > 40) return { tint: `rgba(${c.r},${c.g},${c.b},.62)` };
+    }
+    return { clear: true };
+  }
+
+  function enhance(e, materialize) {
+    if (e.classList.contains('lg-round')) return states.get(e);
     const cs = getComputedStyle(e);
     if (cs.position === 'static') e.style.position = 'relative';
-    const base = cs.transform;
-    e.style.setProperty('--lg-base', base && base !== 'none' ? base : 'none');
-    e.dataset.lgBase = base && base !== 'none' ? base : '';
+    const base = cs.transform && cs.transform !== 'none' ? cs.transform : '';
+    e.style.setProperty('--lg-base', base || 'none');
+    e.dataset.lgBase = base;
+    const mat = material(e, cs);
+    if (mat.photo) e.classList.add('lg-photo');
+    else if (mat.tint) { e.classList.add('lg-tinted'); e.style.setProperty('--lg-tint', mat.tint); }
+    else e.classList.add('lg-clear');
     e.classList.add('lg-round');
+
     const fx = document.createElement('span');
     fx.className = 'lg-fx';
     fx.setAttribute('aria-hidden', 'true');
-    fx.innerHTML = '<span class="lg-glow"></span><span class="lg-bloom"></span><span class="lg-spec"></span>';
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-glow"></span><span class="lg-nglow"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
     e.appendChild(fx);
+
+    const w = e.offsetWidth, h = e.offsetHeight;
+    const s = {
+      e, w, h, noScale: e.matches(NOSCALE),
+      ox: 0, oy: 0, vox: 0, voy: 0, dx: 0, dy: 0, sc: 1, vs: 0, ts: 1,
+      gE: 0, gR: 0.1, gx: w / 2, gy: h / 2, pressed: false, pid: null, moved: 0,
+      glow: fx.querySelector('.lg-glow'), nglow: fx.querySelector('.lg-nglow'),
+      filter: null, mat: 1, born: 0, started: true, nb: [], lit: false,
+    };
+    s.step = () => stepRound(s);
+    states.set(e, s); rounds.add(s);
+    if (CAN_REFRACT && !mat.photo && !calm()) {
+      s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
+      e.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
+      e.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`, 'important');
+    }
+    // 出現: フェードではなく、屈折を強めながら膨らんで「現れる」(デモと同じ)
+    if (materialize && !calm()) {
+      s.born = performance.now(); s.mat = 0; s.sc = 0.6; s.ts = 0.6; s.started = false;
+      e.style.opacity = '0';
+      kick(s);
+    } else {
+      s.mat = 1;
+      if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
+    }
+    return s;
   }
-  function scan() {
+  function scan(materialize) {
     document.querySelectorAll(CAND).forEach(e => {
       if (e.classList.contains('lg-round') || rejected.has(e)) return;
-      if (roundSize(e)) enhance(e);
+      if (roundSize(e)) enhance(e, materialize);
     });
   }
   let scanT = 0;
-  function scanSoon(ms) { clearTimeout(scanT); scanT = setTimeout(scan, ms || 350); }
+  function scanSoon(ms) { clearTimeout(scanT); scanT = setTimeout(() => scan(true), ms || 350); }
 
-  function pressRound(e, ev) {
-    let s = states.get(e);
-    const w = e.offsetWidth, h = e.offsetHeight;
-    if (!s) {
-      s = {
-        e, w, h, noScale: e.matches(NOSCALE),
-        ox: 0, oy: 0, vox: 0, voy: 0, dx: 0, dy: 0, sc: 1, vs: 0, ts: 1, gE: 0, gR: 0.1, gx: w / 2, gy: h / 2,
-        pressed: false, pid: null, filter: null, applied: false,
-        fx: e.querySelector(':scope > .lg-fx'),
-      };
-      s.glow = s.fx && s.fx.querySelector('.lg-glow');
-      s.step = () => stepRound(s);
-      states.set(e, s);
-    }
-    s.w = w; s.h = h;
-    s.pressed = true; s.pid = ev.pointerId;
+  function pressRound(s, ev) {
+    const e = s.e;
+    askMotion();
+    s.pressed = true; s.pid = ev.pointerId; s.moved = 0;
     s.p0x = ev.clientX; s.p0y = ev.clientY; s.dx = s.dy = 0;
     s.ts = (s.noScale || calm()) ? 1 : 1.22;
     s.gR = 0.08;
     const r = e.getBoundingClientRect();
-    s.gx = Math.max(0, Math.min(w, (ev.clientX - r.left) * w / (r.width || w)));
-    s.gy = Math.max(0, Math.min(h, (ev.clientY - r.top) * h / (r.height || h)));
-    if (CAN_REFRACT && !s.applied) {
-      s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
-      s.prevBF = e.style.getPropertyValue('backdrop-filter');
-      s.prevWBF = e.style.getPropertyValue('-webkit-backdrop-filter');
-      e.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.5)`, 'important');
-      e.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.5)`, 'important');
-      s.applied = true;
-    }
+    s.gx = Math.max(0, Math.min(s.w, (ev.clientX - r.left) * s.w / (r.width || s.w)));
+    s.gy = Math.max(0, Math.min(s.h, (ev.clientY - r.top) * s.h / (r.height || s.h)));
+    // 押した光が映る近くの丸ボタン(デモと同じく中心距離で減衰)
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, S = Math.max(s.w, s.h);
+    s.nb = [];
+    rounds.forEach(o => {
+      if (o === s || !o.e.isConnected) return;
+      const q = o.e.getBoundingClientRect();
+      if (!q.width) return;
+      const ox = q.left + q.width / 2, oy = q.top + q.height / 2, d = Math.hypot(ox - cx, oy - cy);
+      if (d > S * 4.2) return;
+      // oから見た「押されたボタン側」の縁の位置
+      s.nb.push({ o, d, px: o.w / 2 + (cx - ox) / d * o.w * 0.5, py: o.h / 2 + (cy - oy) / d * o.h * 0.5 });
+    });
     if (!s.zSet) { s.prevZ = e.style.zIndex; e.style.zIndex = '60'; s.zSet = true; }
     e.classList.add('lg-live');
     kick(s);
   }
 
   function stepRound(s) {
-    const e = s.e, S = Math.max(s.w, s.h);
-    if (calm()) { s.ox = s.oy = 0; s.sc = s.ts; s.vox = s.voy = s.vs = 0; }
+    const e = s.e, S = Math.max(s.w, s.h), now = performance.now();
+    if (!s.started) {
+      s.mat = Math.max(0, Math.min(1, (now - s.born - 200) / 700));
+      if (s.mat > 0) { s.started = true; e.style.opacity = ''; if (!s.pressed) s.ts = 1; }
+    }
+    const me = 1 - Math.pow(1 - s.mat, 3);
+    if (calm()) { s.ox = s.oy = 0; s.sc = s.ts > 1 ? 1 : s.ts; s.vox = s.voy = s.vs = 0; }
     else {
-      // もったり: 柔らかいばね + 強めの減衰
       s.vox += (s.dx - s.ox) * 0.09; s.vox *= 0.8; s.ox += s.vox;
       s.voy += (s.dy - s.oy) * 0.09; s.voy *= 0.8; s.oy += s.voy;
       s.vs += (s.ts - s.sc) * 0.09; s.vs *= 0.8; s.sc += s.vs;
     }
-    s.gE += ((s.pressed ? 1 : 0) - s.gE) * (s.pressed ? 0.16 : 0.06);
+    s.gE += ((s.pressed ? 1 : 0) - s.gE) * (s.pressed ? 0.16 : 0.05);
     if (s.pressed) s.gR += (1.7 - s.gR) * 0.05;
 
     let a = s.sc, c = s.sc, th = 0, tx = 0, ty = 0, r = 0;
@@ -261,41 +336,36 @@
         tx = s.ox / len * r * S * 0.24; ty = s.oy / len * r * S * 0.24;
       }
       a = s.sc * (1 + 0.45 * r); c = s.sc * (1 - 0.2 * r);
-    }
+    } else if (s.noScale) { a = c = 1; }
     const base = e.dataset.lgBase || '';
     e.style.setProperty('transform', `${base} translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${a.toFixed(4)},${c.toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`, 'important');
 
-    // 押した瞬間に屈折が立ち上がり、離すと引いていく(=materialize)
+    // 大きく・長く伸びるほど厚いガラス扱い: 屈折と影を強める
     const grow = Math.max(0, s.sc - 1) + r * 0.35;
-    if (s.filter) setDisp(s.filter, 2 * s.filter.max * 1.6 * (1 + grow * 2.6) * s.gE);
-    if (s.glow) {
-      if (s.gE > 0.003) {
-        const g = s.gE;
-        s.glow.style.background = `radial-gradient(circle at ${s.gx.toFixed(1)}px ${s.gy.toFixed(1)}px,rgba(255,255,255,${fx3(0.5 * g)}) 0,rgba(255,255,255,${fx3(0.16 * g)}) ${(s.gR * 45).toFixed(1)}%,rgba(255,255,255,0) ${(s.gR * 100).toFixed(1)}%)`;
-      } else s.glow.style.background = '';
-    }
-    e.style.setProperty('--lg-press', fx3(s.gE));
-    if (s.pressed) {
-      const ang = (Math.atan2(s.gx - s.w / 2, -(s.gy - s.h / 2)) * 180 / Math.PI + 360) % 360;
-      e.style.setProperty('--la', ang.toFixed(1) + 'deg');
+    if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN * (1 + grow * 2.6) * me);
+    e.style.setProperty('--sh', (0.25 + grow * 1.1).toFixed(3));
+
+    if (s.gE > 0.002) {
+      const g = s.gE;
+      s.glow.style.background = `radial-gradient(circle at ${s.gx.toFixed(1)}px ${s.gy.toFixed(1)}px,rgba(255,255,255,${fx3(0.5 * g)}) 0,rgba(255,255,255,${fx3(0.16 * g)}) ${(s.gR * 45).toFixed(1)}%,rgba(255,255,255,0) ${(s.gR * 100).toFixed(1)}%)`;
+      s.nb.forEach(n => {
+        const w = Math.max(0, 1 - (n.d - S) / (S * 3)) * g * 0.42;
+        n.o.nglow.style.background = w > 0.004 ? `radial-gradient(circle at ${n.px.toFixed(1)}px ${n.py.toFixed(1)}px,rgba(255,255,255,${fx3(w)}),rgba(255,255,255,0) 70%)` : '';
+      });
+    } else if (s.glow.style.background) {
+      s.glow.style.background = '';
+      s.nb.forEach(n => { n.o.nglow.style.background = ''; });
     }
 
-    const settled = !s.pressed && Math.abs(s.sc - 1) < 0.002 && Math.abs(s.vs) < 0.001 &&
+    const settled = s.started && s.mat >= 1 && !s.pressed && Math.abs(s.sc - 1) < 0.002 && Math.abs(s.vs) < 0.001 &&
       Math.hypot(s.ox, s.oy) < 0.3 && Math.hypot(s.vox, s.voy) < 0.05 && s.gE < 0.004;
     if (settled) {
       e.style.removeProperty('transform');
-      if (s.applied) {
-        e.style.removeProperty('backdrop-filter');
-        e.style.removeProperty('-webkit-backdrop-filter');
-        if (s.prevBF) e.style.setProperty('backdrop-filter', s.prevBF);
-        if (s.prevWBF) e.style.setProperty('-webkit-backdrop-filter', s.prevWBF);
-        s.applied = false;
-        if (s.filter) setDisp(s.filter, 0);
-      }
+      e.style.removeProperty('--sh');
+      if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
       if (s.zSet) { e.style.zIndex = s.prevZ || ''; s.zSet = false; }
-      if (s.glow) s.glow.style.background = '';
-      e.style.removeProperty('--lg-press');
-      e.style.removeProperty('--la');
+      s.glow.style.background = '';
+      s.nb.forEach(n => { n.o.nglow.style.background = ''; }); s.nb = [];
       e.classList.remove('lg-live');
       s.gE = 0; s.sc = 1; s.ox = s.oy = 0;
       return false;
@@ -307,36 +377,51 @@
     if (ev.button > 0) return;
     const e = ev.target.closest && ev.target.closest(CAND);
     if (!e || e.disabled || e.closest('.lg-sw')) return;
-    if (!e.classList.contains('lg-round')) {
+    let s = states.get(e);
+    if (!s) {
       if (rejected.has(e) || !roundSize(e)) return;
-      enhance(e);
+      s = enhance(e, false);
     }
-    pressRound(e, ev);
+    pressRound(s, ev);
   }, { capture: true, passive: true });
 
   document.addEventListener('pointermove', ev => {
     active.forEach(s => {
       if (!s.e || !s.pressed || s.pid !== ev.pointerId) return;
       s.dx = ev.clientX - s.p0x; s.dy = ev.clientY - s.p0y;
+      s.moved = Math.max(s.moved, Math.hypot(s.dx, s.dy));
     });
   }, { passive: true });
+  // 大きく引っぱってから離したらタップ扱いにしない(デモ・iOSと同じ)
+  let suppress = null;
   const release = ev => {
     active.forEach(s => {
       if (!s.e || !s.pressed || s.pid !== ev.pointerId) return;
       s.pressed = false; s.ts = 1; s.dx = s.dy = 0;
+      if (s.moved >= Math.max(s.w, s.h) * 0.6) { suppress = s.e; setTimeout(() => { if (suppress === s.e) suppress = null; }, 400); }
     });
   };
   document.addEventListener('pointerup', release, { passive: true });
   document.addEventListener('pointercancel', release, { passive: true });
+  window.addEventListener('click', ev => {
+    if (suppress && ev.target && suppress.contains(ev.target)) {
+      ev.stopImmediatePropagation(); ev.preventDefault(); suppress = null;
+    }
+  }, true);
   document.addEventListener('click', () => scanSoon(380), { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scanSoon(200); });
+  addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    // PC: 画面中央から見たマウスの方向を光源にする
+    setLight((Math.atan2(e.clientX - innerWidth / 2, -(e.clientY - innerHeight / 2)) * 180 / Math.PI + 360) % 360);
+  }, { passive: true });
 
   // ============================================================
   // スイッチ (.ts-wrap の中の checkbox をそのまま使う)
   // iOS 26: 横長トラック + 白いピル。触るとノブが透明なガラスになって
   // トラックより大きく膨らみ、ガラス越しに下のトラックが見える。
   // ============================================================
-  const TW = 64, TH = 28, KW0 = 39, KH0 = 24, KS = 1.5;
+  const TW = 79, TH = 35, KW0 = 49, KH0 = 30, KS = 1.45;
   const KW = Math.round(KW0 * KS), KH = Math.round(KH0 * KS), INS = (TH - KH0) / 2;
   const OFFX = INS + KW0 / 2, ONX = TW - INS - KW0 / 2;
   const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -356,7 +441,7 @@
     const label = wrap.closest('.sgrow') && wrap.closest('.sgrow').querySelector('.sgtitle');
     if (label) root.setAttribute('aria-label', label.textContent.trim());
     root.innerHTML = '<div class="lg-sw-track"><i></i></div>' +
-      '<div class="lg-sw-knob"><span class="lg-sw-fill"></span><span class="lg-bloom"></span><span class="lg-spec"></span></div>';
+      '<div class="lg-sw-knob"><span class="lg-sw-tint"></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span><span class="lg-sw-fill"></span></div>';
     wrap.insertBefore(root, input);
     const trackOn = root.querySelector('.lg-sw-track i');
     const knob = root.querySelector('.lg-sw-knob');
@@ -365,6 +450,9 @@
     knob.style.top = ((TH - KH) / 2) + 'px';
 
     const on0 = nativeChecked.get.call(input);
+    // 出現はボタンと同じタイミング
+    const born = performance.now();
+    const me = () => { const m = Math.max(0, Math.min(1, (performance.now() - born - 200) / 700)); return calm() ? 1 : 1 - Math.pow(1 - m, 3); };
     const s = {
       on: on0, x: on0 ? ONX : OFFX, vx: 0, sc: 1 / KS, vs: 0, ts: 1 / KS, g: 0,
       pressed: false, moved: 0, drag: 0, filter: null, applied: false,
@@ -378,8 +466,9 @@
       trackOn.style.opacity = fx3(sstep(0.25, 0.75, p));
       // g: ガラスになる度合い。白が抜けて屈折・縁の光・影が立ち上がる
       fill.style.opacity = fx3(1 - s.g * 0.95);
-      knob.style.setProperty('--lg-press', fx3(s.g));
-      if (s.filter) setDisp(s.filter, 2 * s.filter.max * 1.2 * s.g);
+      knob.style.setProperty('--so', fx3(s.g));
+      knob.style.setProperty('--sh', (0.18 + s.g * 0.16).toFixed(3));
+      if (s.filter) setDisp(s.filter, 2 * s.filter.max * 1.2 * s.g * me());
     }
     function setOn(v, fire) {
       s.on = v;
@@ -426,13 +515,14 @@
 
     root.addEventListener('pointerdown', ev => {
       if (ev.button > 0) return;
+      askMotion();
       try { root.setPointerCapture(ev.pointerId); } catch (e) { }
       s.pressed = true; s.moved = 0; s.p0 = ev.clientX;
       s.start = s.on ? ONX : OFFX; s.drag = s.start; s.ts = 1;
-      if (CAN_REFRACT && !s.applied) {
-        s.filter = getFilter(KW, KH, KH / 2, 'lip');
-        knob.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.4)`);
-        knob.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.4)`);
+      if (CAN_REFRACT && !s.applied && !calm()) {
+        if (!s.filter) s.filter = getFilter(KW, KH, KH / 2, 'lip');
+        knob.style.setProperty('backdrop-filter', `url(#${s.filter.id}) saturate(1.4) brightness(1.04)`);
+        knob.style.setProperty('-webkit-backdrop-filter', `url(#${s.filter.id}) saturate(1.4) brightness(1.04)`);
         s.applied = true;
       }
       root.classList.add('lg-live');
@@ -467,9 +557,9 @@
 
   function init() {
     upgradeSwitches();
-    scan();
+    scan(true);
     // 遅れて描画されるボタン用にもう一度だけ
-    setTimeout(scan, 1200);
+    setTimeout(() => scan(true), 1200);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
