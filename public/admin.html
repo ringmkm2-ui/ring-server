@@ -305,7 +305,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.94 beta</div>
+  <div class="version-badge">Bro Chat v1.28.95 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2153,6 +2153,22 @@ async function initialLoadHistory() {
   }
 }
 
+// 相手のアイコンを使う所すべて(通話画面・入力中表示など)に反映。次に開いた時に即出せるよう控える
+function applyPartnerPic(url) {
+  window._partnerAvatar = url;
+  const hav = document.getElementById('partnerAv');
+  if (hav && url) { hav.style.backgroundImage = `url(${url})`; hav.style.backgroundSize = 'cover'; hav.style.backgroundPosition = 'center'; hav.textContent = ''; }
+  const ca = document.getElementById('callAv');
+  if (ca && url) {
+    ca.style.background = `center/cover no-repeat url(${url})`;
+    ca.textContent = '';
+  }
+  try { localStorage.setItem('partner_pic_' + otherId, url.length < 400000 ? url : ''); } catch (e) {}
+}
+(function () {
+  try { const cached = localStorage.getItem('partner_pic_' + otherId); if (cached) setTimeout(() => applyPartnerPic(cached), 0); } catch (e) {}
+})();
+
 // パートナープロフィールの最新化（相手が名前/画像を変更したら反映）
 async function refreshPartnerProfile() {
   if (!otherId) return;
@@ -2165,6 +2181,7 @@ async function refreshPartnerProfile() {
         const imgUrl = partner.profilePic;
         const preload = new Image();
         preload.onload = () => {
+          applyPartnerPic(imgUrl);
           pAv.style.backgroundImage = `url(${imgUrl})`;
           pAv.style.backgroundSize = 'cover';
           pAv.style.backgroundPosition = 'center';
@@ -2969,7 +2986,31 @@ function createPeerConnection() {
   lv.addEventListener('resize', fit);
 })();
 
+// ===== マイク/カメラの取りっぱなし防止 =====
+// 通話中に取得したストリームは全部ここで覚えておき、通話終了時に1本残らず止める。
+// 以前は、応答処理が二重に走った時・カメラ切替時・ライブ字幕などで取った別のストリームが
+// 止められずに残り、通話が終わってもマイクが使われ続けていた。
+const callMediaStreams = new Set();
+(function () {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async (c) => {
+    const st = await orig(c);
+    callMediaStreams.add(st);
+    return st;
+  };
+})();
+function stopAllCallMedia() {
+  callMediaStreams.forEach(st => { try { st.getTracks().forEach(t => t.stop()); } catch (e) {} });
+  callMediaStreams.clear();
+}
+window.__broInCall = false; // APKのネイティブ側が「本当に通話中か」を確認するのに使う
+// ページを離れる/閉じる時は必ずマイク・カメラを止める
+window.addEventListener('pagehide', () => { stopAllCallMedia(); try { const bc = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.BroCall; if (bc) bc.callEnded(); } catch (e) {} });
+
 function cleanupCall() {
+  window.__broInCall = false;
+  acceptInProgress = false;
   // APK: OS側の「通話中」状態を終わらせる(残ると次の着信がビジー扱いになる)
   try {
     const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall;
@@ -2999,6 +3040,7 @@ function cleanupCall() {
     try { pc.close(); } catch (e) {}
     pc = null;
   }
+  stopAllCallMedia();
   if (localStream) {
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
@@ -3031,6 +3073,7 @@ function cleanupCall() {
 
 // --- 発信 ---
 async function startOutgoingCall(isVideo = false) {
+  window.__broInCall = true;
   if (pc) return; // 既に通話中
 
   // WebSocket未接続なら発信前に警告して中断（サイレント失敗を防ぐ）
@@ -3133,7 +3176,12 @@ function onCallOffer(data) {
   }
 }
 
+let acceptInProgress = false;
 async function acceptIncomingCall() {
+  // 二重に応答処理が走るとマイクを2回取り、片方が止められずに残る
+  if (acceptInProgress) return;
+  acceptInProgress = true;
+  window.__broInCall = true;
   if (window.LiquidGlass) window.LiquidGlass.haptic('success');
   document.getElementById('incomingBtnRow').style.display = 'none';
         document.getElementById('callOv').classList.remove('incoming-mode');
