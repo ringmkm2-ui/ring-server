@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.104 beta</div>
+  <div class="version-badge">Bro Chat v1.28.105 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -598,6 +598,8 @@ window.ensureGroupCrypto = (function () {
     </div>
     <div class="set-section-title" data-i18n="basic_settings">基本設定</div>
     <div class="set-group">
+      <label class="set-row"><span data-i18n="theme">テーマ</span>
+        <select id="setTheme"><option value="liquid">Liquid Glass</option><option value="whatsapp">WhatsApp</option></select></label>
       <label class="set-row"><span data-i18n="font_size">文字サイズ</span>
         <select id="setFontScale"><option value="0.9" data-i18n="size_small">小</option><option value="1" data-i18n="size_normal">標準</option><option value="1.12" data-i18n="size_large">大</option><option value="1.25" data-i18n="size_xlarge">特大</option></select></label>
       <label class="set-row"><span data-i18n="enter_to_send">Enterで送信</span>
@@ -1864,6 +1866,16 @@ document.getElementById('setFontScale').addEventListener('change', e => {
 });
 document.getElementById('setEnterToSend').addEventListener('change', e => localStorage.setItem('enterToSend', e.target.value));
 document.getElementById('setHaptics').addEventListener('change', e => localStorage.setItem('haptics', e.target.checked ? '1' : '0'));
+// テーマ: 見た目の仕組みごと切り替わるので、保存したら読み込み直す
+(function(){
+  const sel = document.getElementById('setTheme');
+  if (!sel) return;
+  sel.value = localStorage.getItem('uiTheme') === 'whatsapp' ? 'whatsapp' : 'liquid';
+  sel.addEventListener('change', () => {
+    localStorage.setItem('uiTheme', sel.value);
+    location.reload();
+  });
+})();
 document.getElementById('setNotif').addEventListener('click', async () => {
   if ('Notification' in window && Notification.permission === 'default') {
     try { await Notification.requestPermission(); } catch (e) {}

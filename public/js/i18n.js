@@ -16,6 +16,7 @@
     enter_auto: { ja: "自動(PCのみ)", en: "Auto (PC only)", "zh-CN": "自动(仅电脑)", ko: "자동(PC만)" },
     enter_to_send: { ja: "Enterで送信", en: "Enter to send", "zh-CN": "回车发送", ko: "Enter로 전송" },
     font_size: { ja: "文字サイズ", en: "Text size", "zh-CN": "字体大小", ko: "글자 크기" },
+    theme: { ja: "テーマ", en: "Theme", "zh-CN": "主题", ko: "테마" },
     haptics: { ja: "触覚フィードバック", en: "Haptics", "zh-CN": "触感反馈", ko: "햅틱" },
     live_translate: { ja: "ライブ翻訳", en: "Live translate", "zh-CN": "实时翻译", ko: "실시간 번역" },
     managed_by_app: { ja: "アプリで管理", en: "Managed by app", "zh-CN": "由应用管理", ko: "앱에서 관리" },

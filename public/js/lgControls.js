@@ -23,6 +23,8 @@
   const DISP = [1, 1.035, 1.07];           // RGBごとの分散(縁の色収差)
   const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const calm = () => RM || localStorage.getItem('batterySaverAnimations') === '1';
+  // 設定 > テーマ が WhatsApp のときはガラスを一切付けない(スイッチだけ普通の見た目で動かす)
+  const WA = localStorage.getItem('uiTheme') === 'whatsapp';
 
   // backdrop-filter: url() が効くのはChromium(Android APK/WebView)だけ
   const CAN_REFRACT = (() => {
@@ -65,7 +67,7 @@
   }
   function buildMap(w, h, rad, kind) {
     const half = Math.min(w, h) / 2;
-    const B = kind === 'lip' ? half : half * 0.62;
+    const B = kind === 'lip' ? half : kind === 'panel' ? Math.min(half * 0.62, 18) : half * 0.62;
     const Hh = B * (kind === 'lip' ? 0.8 : 0.75);
     const P = profile(kind === 'lip' ? lip : convex, B, Hh, kind === 'lip' ? 0.15 : 0.2);
     const cv = document.createElement('canvas');
@@ -188,7 +190,7 @@
   // ============================================================
   // 丸いボタン
   // ============================================================
-  const CAND = 'button,[role="button"],a[href],[onclick],.hbtn,.pbtn,.back-btn,.back-link';
+  const CAND = '.ngicon,button,[role="button"],a[href],[onclick],.hbtn,.pbtn,.back-btn,.back-link';
   // 通話系は膨張させない(learnings: scaleでtouchendが別要素で発火してonclickが効かなくなる)
   const NOSCALE = '.lg-no-scale';
   const GAIN = 1.8;
@@ -252,7 +254,7 @@
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
   }
   // ダークモード切替で全部やり直す
-  new MutationObserver(() => { rounds.forEach(s => { if (s.e.isConnected) adapt(s); }); if (typeof rebuildSoon === 'function') rebuildSoon(60); })
+  new MutationObserver(() => { rounds.forEach(s => { if (s.e.isConnected) adapt(s); }); if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(panelTint); if (typeof rebuildSoon === 'function') rebuildSoon(60); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
   // ------------------------------------------------------------
@@ -292,11 +294,20 @@
       cur.appendChild(paint(view, hcs, R));
       if (hasBg(bcs)) cur.appendChild(paint(document.body.getBoundingClientRect(), bcs, R));
     } else if (hasBg(bcs)) cur.appendChild(paint(view, bcs, R));
-    document.querySelectorAll('.bg-orb,.cbg').forEach(d => {
+    document.querySelectorAll('.bg-orb,.cbg,.bgo').forEach(d => {
       if (d.contains(e) || d.closest('.lg-comp,.lg-kcomp')) return; // 他のボタンの複製の中身は拾わない
       const q = d.getBoundingClientRect();
       if (!hit(q, R) || getComputedStyle(d).display === 'none') return;
+      if (d.classList.contains('bgo')) {
+        // 全面のぼかしオーバーレイ: ここまでをぼかして、その色を重ねる
+        const dcs = getComputedStyle(d);
+        const bf = dcs.backdropFilter || dcs.webkitBackdropFilter;
+        if (bf && bf !== 'none') { cur.style.filter = bf; const up = group(); up.appendChild(cur); cur = up; }
+        cur.appendChild(paint(q, dcs, R));
+        return;
+      }
       const cl = d.cloneNode(true);
+      if (cl.classList.contains('cbg')) cl.classList.add('cbg-paused');
       cl.removeAttribute('id');
       Object.assign(cl.style, { position: 'absolute', left: (q.left - R.x) + 'px', top: (q.top - R.y) + 'px', width: q.width + 'px', height: q.height + 'px', margin: '0', transform: 'none', right: 'auto', bottom: 'auto', inset: 'auto', pointerEvents: 'none' });
       cl.style.left = (q.left - R.x) + 'px'; cl.style.top = (q.top - R.y) + 'px';
@@ -311,22 +322,37 @@
         cur.style.filter = bf;
         const up = group(); up.appendChild(cur); cur = up;
       }
+      if (p.classList.contains('lg-panel')) {
+        // 親がガラスのパネル(バー等)なら、そのガラス越しの見え方(ぼかし+色味)を複製する
+        cur.style.filter = 'blur(6px)';
+        const up = group(); up.appendChild(cur); cur = up;
+        const q = p.getBoundingClientRect(), ps = panels.get(p);
+        if (hit(q, R) && ps) {
+          const d = paint(q, cs, R);
+          d.style.backgroundImage = 'none';
+          d.style.backgroundColor = getComputedStyle(ps.tintEl).backgroundColor;
+          cur.appendChild(d);
+        }
+        return;
+      }
       if (hasBg(cs)) { const q = p.getBoundingClientRect(); if (hit(q, R)) cur.appendChild(paint(q, cs, R)); }
     });
     s.comp.style.width = R.w + 'px'; s.comp.style.height = R.h + 'px';
     s.comp.replaceChildren(cur);
-    s.rx = r.left; s.ry = r.top;
+    s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0;
     placeComp(s, 0, 0, 0, 1, 1);
   }
   // 伸び縮みしても中の複製が画面上でズレないよう逆変換(デモと同じ考え方)
   function placeComp(s, tx, ty, th, a, c) {
     const st = s.comp.style;
+    tx += s.sx || 0; ty += s.sy || 0;   // 作った後にスクロール等で動いた分
     st.left = (-PAD - tx).toFixed(2) + 'px'; st.top = (-PAD - ty).toFixed(2) + 'px';
     st.transformOrigin = `${(s.w / 2 + PAD + tx).toFixed(2)}px ${(s.h / 2 + PAD + ty).toFixed(2)}px`;
     st.transform = `rotate(${th.toFixed(2)}deg) scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`;
   }
   let rebuildT = 0;
   function rebuildAll() {
+    visiblePanels.forEach(s => { if (s.e.isConnected) buildReplica(s); });
     rounds.forEach(s => {
       if (!s.e.isConnected || s.e.classList.contains('lg-live')) return;
       const r = s.e.getBoundingClientRect();
@@ -335,7 +361,22 @@
     });
   }
   function rebuildSoon(ms) { clearTimeout(rebuildT); rebuildT = setTimeout(rebuildAll, ms || 120); }
-  document.addEventListener('scroll', () => rebuildSoon(120), { capture: true, passive: true });
+  let scrollRaf = 0;
+  function followScroll() {
+    scrollRaf = 0;
+    const all = [];
+    rounds.forEach(s => all.push(s));
+    visiblePanels.forEach(s => all.push(s));
+    all.forEach(s => {
+      if (!s.comp || !s.e.isConnected || s.e.classList.contains('lg-live')) return;
+      const r = s.e.getBoundingClientRect();
+      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) return;
+      const dx = r.left - s.rx, dy = r.top - s.ry;
+      if (Math.abs(dx) > PAD * 0.6 || Math.abs(dy) > PAD * 0.6) { buildReplica(s); return; }
+      if (dx !== s.sx || dy !== s.sy) { s.sx = dx; s.sy = dy; placeComp(s, 0, 0, 0, 1, 1); }
+    });
+  }
+  document.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(followScroll); rebuildSoon(250); }, { capture: true, passive: true });
   addEventListener('resize', () => rebuildSoon(200));
   addEventListener('storage', ev => { if (ev.key === 'myBgImage') rebuildSoon(100); });
 
@@ -385,6 +426,7 @@
     return s;
   }
   function scan(materialize) {
+    if (WA) return;
     document.querySelectorAll(CAND).forEach(e => {
       if (e.classList.contains('lg-round') || rejected.has(e)) return;
       if (roundSize(e)) enhance(e, materialize);
@@ -486,7 +528,7 @@
   }
 
   document.addEventListener('pointerdown', ev => {
-    if (ev.button > 0) return;
+    if (ev.button > 0 || WA) return;
     const e = ev.target.closest && ev.target.closest(CAND);
     if (!e || e.disabled || e.closest('.lg-sw')) return;
     let s = states.get(e);
@@ -520,13 +562,102 @@
       ev.stopImmediatePropagation(); ev.preventDefault(); suppress = null;
     }
   }, true);
-  document.addEventListener('click', () => scanSoon(380), { passive: true });
+  document.addEventListener('click', () => { scanSoon(380); scanPanelsSoon(420); }, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scanSoon(200); });
   addEventListener('pointermove', e => {
     if (e.pointerType !== 'mouse') return;
     // PC: 画面中央から見たマウスの方向を光源にする
     setLight((Math.atan2(e.clientX - innerWidth / 2, -(e.clientY - innerHeight / 2)) * 180 / Math.PI + 360) % 360);
   }, { passive: true });
+
+
+  // ============================================================
+  // パネル: 吹き出し・ヘッダー/入力バー・カード・メニュー等もガラスにする
+  // 丸ボタンと同じ「下の複製を曲げる」方式。文字が読めるように、中身は少しぼかして
+  // (AppleのRegularガラスと同じ考え方)縁だけ強く曲げる
+  // ============================================================
+  const PANELS = [
+    '.bubble:not(.media-bub)', '.bub:not(.mbub)',
+    '.app-header-bar', '.hdr', '.input-floating-bar', '.ibar',
+    '.pin-banner', '.reply-preview', '.ctx-menu', '.rbadge',
+    '.card', '.tb26', '.set-group', '.cbs',
+  ].join(',');
+  const panels = new WeakMap();
+  const visiblePanels = new Set();
+  const io = ('IntersectionObserver' in window) ? new IntersectionObserver(ents => {
+    ents.forEach(en => {
+      const s = panels.get(en.target);
+      if (!s) return;
+      if (en.isIntersecting) {
+        visiblePanels.add(s);
+        if (!s.built) { s.built = true; sizePanel(s); }
+        else buildReplica(s);
+      } else visiblePanels.delete(s);
+    });
+  }, { rootMargin: '120px' }) : null;
+  const ro = ('ResizeObserver' in window) ? new ResizeObserver(ents => {
+    ents.forEach(en => {
+      const s = panels.get(en.target);
+      if (!s || !s.built) return;
+      clearTimeout(s.rt); s.rt = setTimeout(() => sizePanel(s), 120);
+    });
+  }) : null;
+
+  function sizePanel(s) {
+    const e = s.e, w = e.offsetWidth, h = e.offsetHeight;
+    if (!w || !h) return;
+    if (w !== s.w || h !== s.h || !s.filter) {
+      s.w = w; s.h = h;
+      if (s.filter && s.filter.node) s.filter.node.remove();
+      const cs = getComputedStyle(e);
+      let rad = parseFloat(cs.borderTopLeftRadius) || 0;
+      if ((cs.borderTopLeftRadius || '').endsWith('%')) rad = Math.min(w, h) / 2;
+      s.filter = getFilter(w, h, Math.round(Math.min(rad, Math.min(w, h) / 2)), 'panel');
+      s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
+      setDisp(s.filter, 2 * s.filter.max * GAIN);
+    }
+    buildReplica(s);
+  }
+  function panelTint(s) {
+    const m = underLum(s.e), light = m > 0.6 || !document.documentElement.classList.contains('dark-mode');
+    s.tintEl.style.setProperty('--tint', light ? 'rgba(255,255,255,.45)' : 'rgba(28,28,32,.45)');
+  }
+  function enhancePanel(e) {
+    if (panels.has(e) || e.closest('.lg-comp,.lg-kcomp')) return;
+    const cs = getComputedStyle(e);
+    if (cs.position === 'static') e.style.position = 'relative';
+    e.classList.add('lg-panel');
+    const fx = document.createElement('span');
+    fx.className = 'lg-fx';
+    fx.setAttribute('aria-hidden', 'true');
+    fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens"><span class="lg-comp lg-frost"></span></span><span class="lg-tint"></span></span><span class="lg-bloom"></span><span class="lg-spec"></span><span class="lg-rim"></span>';
+    e.insertBefore(fx, e.firstChild);
+    const s = { e, fx, w: 0, h: 0, filter: null, built: false, panel: true,
+      lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
+    panels.set(e, s);
+    panelTint(s);
+    rebuildSoon(60);
+    if (io) io.observe(e); else { s.built = true; sizePanel(s); visiblePanels.add(s); }
+    if (ro) ro.observe(e);
+  }
+  function scanPanels() {
+    if (WA || calm()) return;
+    document.querySelectorAll(PANELS).forEach(e => {
+      const s = panels.get(e);
+      if (!s) enhancePanel(e);
+      else if (s.fx.parentNode !== e) { e.insertBefore(s.fx, e.firstChild); if (s.built) buildReplica(s); } // 中身を書き換えられた時
+    });
+    // 消えた吹き出しのフィルタを片付ける
+    visiblePanels.forEach(s => { if (!s.e.isConnected) { visiblePanels.delete(s); if (s.filter && s.filter.node) s.filter.node.remove(); } });
+  }
+  let panelT = 0;
+  function scanPanelsSoon(ms) { clearTimeout(panelT); panelT = setTimeout(scanPanels, ms || 200); }
+  // 新着メッセージ等: チャット欄とリストだけを見張る(ページ全体は見ない)
+  function watchLists() {
+    document.querySelectorAll('#chatScreen,#cs,#talkList,#groupList,#communityList,.tc').forEach(el => {
+      new MutationObserver(() => scanPanelsSoon(200)).observe(el, { childList: true, subtree: true });
+    });
+  }
 
   // ============================================================
   // スイッチ (.ts-wrap の中の checkbox をそのまま使う)
@@ -632,7 +763,7 @@
       else {
         s.vx += (tgt - s.x) * 0.1; s.vx *= 0.78; s.x += s.vx;
         s.vs += (s.ts - s.sc) * 0.09; s.vs *= 0.78; s.sc += s.vs;
-        s.g += ((s.pressed ? 1 : 0) - s.g) * (s.pressed ? 0.14 : 0.08);
+        s.g += ((s.pressed && !WA ? 1 : 0) - s.g) * (s.pressed ? 0.14 : 0.08);
       }
       render();
       const settled = !s.pressed && Math.abs(s.x - tgt) < 0.05 && Math.abs(s.vx) < 0.02 &&
@@ -650,7 +781,7 @@
       askMotion();
       try { root.setPointerCapture(ev.pointerId); } catch (e) { }
       s.pressed = true; s.moved = 0; s.p0 = ev.clientX;
-      s.start = s.on ? ONX : OFFX; s.drag = s.start; s.ts = 1;
+      s.start = s.on ? ONX : OFFX; s.drag = s.start; s.ts = WA ? 1 / KS : 1;
       kcomp.style.background = surface();
       root.classList.add('lg-live');
       if (window.LiquidGlass && LiquidGlass.haptic) LiquidGlass.haptic('selection');
@@ -688,10 +819,13 @@
   function upgradeSwitches() { document.querySelectorAll('.ts-wrap, input.ios-switch').forEach(upgradeSwitch); }
 
   function init() {
+    if (WA) document.documentElement.classList.add('theme-wa');
     upgradeSwitches();
     scan(true);
+    scanPanels();
+    watchLists();
     // 遅れて描画されるボタン用にもう一度だけ
-    setTimeout(() => scan(true), 1200);
+    setTimeout(() => { scan(true); scanPanels(); }, 1200);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

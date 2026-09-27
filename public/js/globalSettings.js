@@ -20,15 +20,22 @@
     document.documentElement.classList.toggle('reduce-motion', manualBatterySaver || osReducedMotion);
   }
 
+  // --- テーマ: 'liquid'(既定) / 'whatsapp' ---
+  function applyTheme(){
+    document.documentElement.classList.toggle('theme-wa', localStorage.getItem('uiTheme') === 'whatsapp');
+  }
+
   applyDarkMode();
   applyReducedMotion();
+  applyTheme();
 
   // 設定画面での変更をリアルタイム反映(同一タブ内)
-  window.addEventListener('settings-changed', () => { applyDarkMode(); applyReducedMotion(); });
+  window.addEventListener('settings-changed', () => { applyDarkMode(); applyReducedMotion(); applyTheme(); });
   // 別タブでの変更も反映
   window.addEventListener('storage', (e) => {
     if(e.key === 'darkMode') applyDarkMode();
     if(e.key === 'batterySaverAnimations') applyReducedMotion();
+    if(e.key === 'uiTheme') location.reload();
   });
 
   // システムのダークモード変更に追従
