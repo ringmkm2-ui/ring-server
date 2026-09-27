@@ -73,20 +73,23 @@
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d'), img = ctx.createImageData(w, h), D = img.data;
+    const hx = w / 2 - rad, hy = h / 2 - rad, cx0 = w / 2, cy0 = h / 2, lim = B + 0.5, k = P.N / B;
     for (let py = 0; py < h; py++) {
+      const Y = py + 0.5, ay = Math.abs(Y - cy0), qy = ay - hy, sy = Y < cy0 ? -1 : 1;
       for (let px = 0; px < w; px++) {
-        const X = px + 0.5, Y = py + 0.5, dE = -sdRR(X, Y, w, h, rad), i = (py * w + px) * 4;
-        let vx = 0, vy = 0;
-        if (dE > 0 && dE < B + 0.5) {
-          const gx = sdRR(X + 0.5, Y, w, h, rad) - sdRR(X - 0.5, Y, w, h, rad);
-          const gy = sdRR(X, Y + 0.5, w, h, rad) - sdRR(X, Y - 0.5, w, h, rad);
-          const gl = Math.hypot(gx, gy);
-          if (gl > 1e-4) {
-            const m = P.prof[Math.min(P.N, Math.round(dE / B * P.N))] / P.max;
-            vx = -gx / gl * m; vy = -gy / gl * m;
-          }
-        }
-        D[i] = 128 + vx * 127; D[i + 1] = 128 + vy * 127; D[i + 2] = 128; D[i + 3] = 255;
+        const i = (py * w + px) * 4;
+        D[i + 2] = 128; D[i + 3] = 255;
+        const X = px + 0.5, ax = Math.abs(X - cx0), qx = ax - hx, sx = X < cx0 ? -1 : 1;
+        // 角丸矩形の外向き法線とSDF(同じ式を解析的に)
+        let nx, ny, sd;
+        if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); sd = l - rad; nx = sx * qx / l; ny = sy * qy / l; }
+        else if (qx > qy) { sd = qx - rad; nx = sx; ny = 0; }
+        else { sd = qy - rad; nx = 0; ny = sy; }
+        const dE = -sd;
+        if (dE > 0 && dE < lim) {
+          const m = P.prof[Math.min(P.N, Math.round(dE * k))] / P.max;
+          D[i] = 128 - nx * m * 127; D[i + 1] = 128 - ny * m * 127;
+        } else { D[i] = 128; D[i + 1] = 128; }
       }
     }
     ctx.putImageData(img, 0, 0);
@@ -168,12 +171,24 @@
     if (laRaf) return;
     laRaf = requestAnimationFrame(() => {
       laRaf = 0;
-      if (Math.abs(lightAng - lastLa) > 0.5) { lastLa = lightAng; document.documentElement.style.setProperty('--la', lightAng.toFixed(1) + 'deg'); }
+      if (Math.abs(lightAng - lastLa) > 0.5) {
+        lastLa = lightAng;
+        const v = lightAng.toFixed(1) + 'deg';
+        lightTargets().forEach(el => el.style.setProperty('--la', v));
+      }
     });
+  }
+  // 光を当てるのは画面に出ている物だけ
+  function lightTargets() {
+    const out = [];
+    if (typeof rounds !== 'undefined') rounds.forEach(s => { if (s.e.isConnected && !s.e.classList.contains('lg-live')) out.push(s.e); });
+    if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(s => out.push(s.e));
+    document.querySelectorAll('.lg-sw-knob').forEach(k => out.push(k));
+    return out;
   }
   function listenMotion() {
     addEventListener('deviceorientation', e => {
-      if (e.gamma == null || calm()) return;
+      if (e.gamma == null || calm() || document.hidden) return;
       const lx = -(e.gamma || 0) / 40, ly = ((e.beta || 0) - 55) / 40;
       const a = (Math.atan2(lx, -ly) * 180 / Math.PI + 360) % 360;
       const d = ((a - lightAng + 540) % 360) - 180;
@@ -338,17 +353,20 @@
       if (hasBg(cs)) { const q = p.getBoundingClientRect(); if (hit(q, R)) cur.appendChild(paint(q, cs, R)); }
     });
     s.comp.style.width = R.w + 'px'; s.comp.style.height = R.h + 'px';
+    s.comp.style.left = -PAD + 'px'; s.comp.style.top = -PAD + 'px';
     s.comp.replaceChildren(cur);
-    s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0;
+    s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0; s.stale = false;
     placeComp(s, 0, 0, 0, 1, 1);
   }
   // 伸び縮みしても中の複製が画面上でズレないよう逆変換(デモと同じ考え方)
   function placeComp(s, tx, ty, th, a, c) {
     const st = s.comp.style;
     tx += s.sx || 0; ty += s.sy || 0;   // 作った後にスクロール等で動いた分
-    st.left = (-PAD - tx).toFixed(2) + 'px'; st.top = (-PAD - ty).toFixed(2) + 'px';
+    // 位置は left/top ではなく transform で動かす(レイアウトを起こさない)
     st.transformOrigin = `${(s.w / 2 + PAD + tx).toFixed(2)}px ${(s.h / 2 + PAD + ty).toFixed(2)}px`;
-    st.transform = `rotate(${th.toFixed(2)}deg) scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`;
+    st.transform = th || a !== 1 || c !== 1
+      ? `translate(${(-tx).toFixed(2)}px,${(-ty).toFixed(2)}px) rotate(${th.toFixed(2)}deg) scale(${(1 / a).toFixed(4)},${(1 / c).toFixed(4)}) rotate(${(-th).toFixed(2)}deg)`
+      : `translate(${(-tx).toFixed(2)}px,${(-ty).toFixed(2)}px)`;
   }
   let rebuildT = 0;
   function rebuildAll() {
@@ -364,19 +382,29 @@
   let scrollRaf = 0;
   function followScroll() {
     scrollRaf = 0;
-    const all = [];
-    rounds.forEach(s => all.push(s));
-    visiblePanels.forEach(s => all.push(s));
-    all.forEach(s => {
-      if (!s.comp || !s.e.isConnected || s.e.classList.contains('lg-live')) return;
-      const r = s.e.getBoundingClientRect();
-      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) return;
+    const list = [], rects = [];
+    rounds.forEach(s => { if (s.comp && s.e.isConnected && !s.e.classList.contains('lg-live')) list.push(s); });
+    visiblePanels.forEach(s => { if (s.comp && s.e.isConnected) list.push(s); });
+    for (let i = 0; i < list.length; i++) rects.push(list[i].e.getBoundingClientRect());   // 読むだけ
+    for (let i = 0; i < list.length; i++) {                                              // 書くだけ
+      const s = list[i], r = rects[i];
+      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) continue;
       const dx = r.left - s.rx, dy = r.top - s.ry;
-      if (Math.abs(dx) > PAD * 0.6 || Math.abs(dy) > PAD * 0.6) { buildReplica(s); return; }
-      if (dx !== s.sx || dy !== s.sy) { s.sx = dx; s.sy = dy; placeComp(s, 0, 0, 0, 1, 1); }
-    });
+      if (Math.abs(dx) > PAD * 0.6 || Math.abs(dy) > PAD * 0.6) { s.stale = true; continue; }
+      if (dx !== s.sx || dy !== s.sy) { s.sx = dx; s.sy = dy; s.stale = true; placeComp(s, 0, 0, 0, 1, 1); }
+    }
   }
-  document.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(followScroll); rebuildSoon(250); }, { capture: true, passive: true });
+  let settleT = 0;
+  function rebuildStale() {
+    const t = [];
+    rounds.forEach(s => { if (s.stale && s.e.isConnected && !s.e.classList.contains('lg-live')) t.push(s); });
+    visiblePanels.forEach(s => { if (s.stale && s.e.isConnected) t.push(s); });
+    t.forEach(s => { s.stale = false; buildReplica(s); });
+  }
+  document.addEventListener('scroll', () => {
+    if (!scrollRaf) scrollRaf = requestAnimationFrame(followScroll);
+    clearTimeout(settleT); settleT = setTimeout(rebuildStale, 220);
+  }, { capture: true, passive: true });
   addEventListener('resize', () => rebuildSoon(200));
   addEventListener('storage', ev => { if (ev.key === 'myBgImage') rebuildSoon(100); });
 
@@ -496,7 +524,8 @@
     // 大きく・長く伸びるほど厚いガラス扱い: 屈折と影を強める
     const grow = Math.max(0, s.sc - 1) + r * 0.35;
     if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN * (1 + grow * 2.6) * me);
-    e.style.setProperty('--sh', ((s.baseSh || 0.25) + grow * 1.1).toFixed(3));
+    const shv = ((s.baseSh || 0.25) + grow * 1.1).toFixed(3);
+    if (shv !== s.lastSh) { s.lastSh = shv; e.style.setProperty('--sh', shv); }
 
     if (s.gE > 0.002) {
       const g = s.gE;
@@ -515,7 +544,7 @@
     if (settled) {
       e.style.removeProperty('transform');
       if (s.comp) placeComp(s, 0, 0, 0, 1, 1);
-      e.style.setProperty('--sh', (s.baseSh || 0.25).toFixed(3));
+      s.lastSh = (s.baseSh || 0.25).toFixed(3); e.style.setProperty('--sh', s.lastSh);
       if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
       if (s.zSet) { e.style.zIndex = s.prevZ || ''; s.zSet = false; }
       s.glow.style.background = '';
@@ -584,15 +613,17 @@
   ].join(',');
   const panels = new WeakMap();
   const visiblePanels = new Set();
+  const allPanels = new Set();
   const io = ('IntersectionObserver' in window) ? new IntersectionObserver(ents => {
     ents.forEach(en => {
       const s = panels.get(en.target);
       if (!s) return;
       if (en.isIntersecting) {
         visiblePanels.add(s);
+        s.comp.classList.add('lg-on');
         if (!s.built) { s.built = true; sizePanel(s); }
         else buildReplica(s);
-      } else visiblePanels.delete(s);
+      } else { visiblePanels.delete(s); s.comp.classList.remove('lg-on'); }
     });
   }, { rootMargin: '120px' }) : null;
   const ro = ('ResizeObserver' in window) ? new ResizeObserver(ents => {
@@ -634,7 +665,7 @@
     e.insertBefore(fx, e.firstChild);
     const s = { e, fx, w: 0, h: 0, filter: null, built: false, panel: true,
       lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
-    panels.set(e, s);
+    panels.set(e, s); allPanels.add(s);
     panelTint(s);
     rebuildSoon(60);
     if (io) io.observe(e); else { s.built = true; sizePanel(s); visiblePanels.add(s); }
@@ -647,8 +678,18 @@
       if (!s) enhancePanel(e);
       else if (s.fx.parentNode !== e) { e.insertBefore(s.fx, e.firstChild); if (s.built) buildReplica(s); } // 中身を書き換えられた時
     });
-    // 消えた吹き出しのフィルタを片付ける
-    visiblePanels.forEach(s => { if (!s.e.isConnected) { visiblePanels.delete(s); if (s.filter && s.filter.node) s.filter.node.remove(); } });
+    // 消えた要素のフィルタを片付ける
+    allPanels.forEach(s => {
+      if (s.e.isConnected) return;
+      allPanels.delete(s); visiblePanels.delete(s);
+      if (io) io.unobserve(s.e); if (ro) ro.unobserve(s.e);
+      if (s.filter && s.filter.node) s.filter.node.remove();
+    });
+    rounds.forEach(s => {
+      if (s.e.isConnected) return;
+      rounds.delete(s);
+      if (s.filter && s.filter.node) s.filter.node.remove();
+    });
   }
   let panelT = 0;
   function scanPanelsSoon(ms) { clearTimeout(panelT); panelT = setTimeout(scanPanels, ms || 200); }

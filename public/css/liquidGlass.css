@@ -779,6 +779,7 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
 .lg-lens{position:absolute;inset:0}
 .lg-comp{position:absolute;left:0;top:0;overflow:hidden}
+.lg-comp.lg-on{will-change:transform}
 .lg-tint{position:absolute;inset:0;background:var(--tint,rgba(10,10,20,.08));transition:background .35s}
 .lg-glow,.lg-nglow{position:absolute;inset:0;mix-blend-mode:screen;pointer-events:none}
 /* グリフ: デモと同じく currentColor で白/黒が切り替わる */
