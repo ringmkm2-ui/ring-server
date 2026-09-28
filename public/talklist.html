@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.115 beta</div>
+  <div class="version-badge">Bro Chat v1.28.116 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2448,17 +2448,17 @@ document.getElementById('postImageFile').onchange = e => {
     e.target.value = '';
     return;
   }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    pendingPostMedia = { dataUrl: ev.target.result, type: 'image', file: f };
-    const preview = document.getElementById('postMediaPreview');
-    const img = document.getElementById('postMediaPreviewImg');
-    const video = document.getElementById('postMediaPreviewVideo');
-    img.src = ev.target.result; img.style.display = 'block';
-    video.style.display = 'none'; video.src = '';
-    preview.style.display = 'block';
-  };
-  reader.readAsDataURL(f);
+  // FileReader.readAsDataURLは巨大ファイルを丸ごとメモリに載せるためiOSで固まる。
+  // objectURLならファイルを読み込まずに参照だけで済む。
+  if (pendingPostMedia && pendingPostMedia.objectUrl) URL.revokeObjectURL(pendingPostMedia.objectUrl);
+  const objectUrl = URL.createObjectURL(f);
+  pendingPostMedia = { objectUrl, type: 'image', file: f };
+  const preview = document.getElementById('postMediaPreview');
+  const img = document.getElementById('postMediaPreviewImg');
+  const video = document.getElementById('postMediaPreviewVideo');
+  img.src = objectUrl; img.style.display = 'block';
+  video.style.display = 'none'; video.src = '';
+  preview.style.display = 'block';
 };
 
 document.getElementById('postVideoFile').onchange = e => {
@@ -2468,9 +2468,10 @@ document.getElementById('postVideoFile').onchange = e => {
     e.target.value = '';
     return;
   }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    pendingPostMedia = { dataUrl: ev.target.result, type: 'video', file: f };
+  if (pendingPostMedia && pendingPostMedia.objectUrl) URL.revokeObjectURL(pendingPostMedia.objectUrl);
+  const objectUrl = URL.createObjectURL(f);
+  {
+    pendingPostMedia = { objectUrl, type: 'video', file: f };
     const preview = document.getElementById('postMediaPreview');
     const img = document.getElementById('postMediaPreviewImg');
     const videoContainer = document.getElementById('postVideoContainer');
@@ -2478,7 +2479,7 @@ document.getElementById('postVideoFile').onchange = e => {
     const videoLoading = document.getElementById('postVideoLoading');
     const videoTime = document.getElementById('postVideoTime');
     
-    video.src = ev.target.result;
+    video.src = objectUrl;
     videoContainer.style.display = 'block';
     videoLoading.style.display = 'flex'; // 読み込み中を表示
     img.style.display = 'none'; img.src = '';
@@ -2495,8 +2496,7 @@ document.getElementById('postVideoFile').onchange = e => {
     };
     
     video.addEventListener('loadedmetadata', onLoadedMetadata);
-  };
-  reader.readAsDataURL(f);
+  }
 };
 
 document.getElementById('postMediaRemoveBtn').onclick = () => {
@@ -2509,6 +2509,64 @@ document.getElementById('postMediaRemoveBtn').onclick = () => {
   document.getElementById('postVideoContainer').style.display = 'none';
   document.getElementById('postVideoLoading').style.display = 'none';
 };
+
+// Cloudinaryへのチャンクアップロード(署名なしプリセット)。
+// 単発XHRだと大きい動画でiOSのネットワーク断/プラン上限に当たった時に
+// 「Network error」としか出ず原因が見えない。チャンク化すると
+// 途中失敗のリトライができ、上限超過時もCloudinaryのJSONエラーが読める。
+async function uploadToCloudinaryChunked(file, resourceType, folder, onProgress) {
+  const url = `https://api.cloudinary.com/v1_1/a6rxinoz/${resourceType}/upload`;
+  const CHUNK = 20 * 1024 * 1024;
+  const uploadId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/[^a-zA-Z0-9]/g, '');
+  const total = file.size;
+  let start = 0, last = null;
+  while (start < total) {
+    const end = Math.min(start + CHUNK, total);
+    const blob = file.slice(start, end);
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        last = await new Promise((resolve, reject) => {
+          const fd = new FormData();
+          fd.append('file', blob, file.name || 'upload');
+          fd.append('upload_preset', 'brochat_upload');
+          fd.append('folder', folder);
+          const xhr = new XMLHttpRequest();
+          xhr.upload.addEventListener('progress', (ev) => {
+            if (ev.lengthComputable && onProgress) onProgress(Math.min(99, Math.round(((start + ev.loaded) / total) * 100)));
+          });
+          xhr.addEventListener('load', () => {
+            let json = null;
+            try { json = JSON.parse(xhr.responseText); } catch {}
+            if (xhr.status < 200 || xhr.status >= 300) {
+              const e = new Error(`${xhr.status}${json && json.error ? ' - ' + json.error.message : ''}`);
+              e.fatal = xhr.status >= 400 && xhr.status < 500; // 4xxはリトライしても無駄
+              reject(e);
+              return;
+            }
+            resolve(json);
+          });
+          xhr.addEventListener('error', () => reject(new Error('Network error (' + Math.round(total / 1048576) + 'MB, chunk ' + Math.floor(start / CHUNK + 1) + ')')));
+          xhr.open('POST', url);
+          xhr.setRequestHeader('X-Unique-Upload-Id', uploadId);
+          xhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${total}`);
+          xhr.send(fd);
+        });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (e.fatal) break;
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    if (lastErr) throw lastErr;
+    start = end;
+  }
+  if (onProgress) onProgress(100);
+  if (!last || !last.secure_url) throw new Error('アップロード結果が不正です');
+  return last.secure_url;
+}
 
 document.getElementById('postSubmitBtn').onclick = async () => {
   const textInput = document.getElementById('postTextInput');
@@ -2530,33 +2588,8 @@ document.getElementById('postSubmitBtn').onclick = async () => {
         const resourceType = pendingPostMedia.type === 'video' ? 'video' : 'image';
         console.log('[postSubmit] Starting media upload:', { size: mediaFile.size, type: resourceType });
 
-        const formData = new FormData();
-        formData.append('file', mediaFile);
-        formData.append('upload_preset', 'brochat_upload');
-        formData.append('folder', 'brochat/posts');
-
-        const cloudinaryUrl = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.upload.addEventListener('progress', (ev) => {
-            if (ev.lengthComputable) {
-              const pct = Math.round((ev.loaded / ev.total) * 100);
-              submitBtn.textContent = i18n.t('post_btn') + `...${pct}%`;
-            }
-          });
-          xhr.addEventListener('load', () => {
-            if (xhr.status < 200 || xhr.status >= 300) {
-              let detail = '';
-              try { detail = JSON.parse(xhr.responseText)?.error?.message || ''; } catch {}
-              console.error('[postUpload] status', xhr.status, 'body:', xhr.responseText);
-              reject(new Error(`${xhr.status}${detail ? ' - ' + detail : ''}`));
-              return;
-            }
-            const resp = JSON.parse(xhr.responseText);
-            resolve(resp.secure_url);
-          });
-          xhr.addEventListener('error', () => reject(new Error('Network error')));
-          xhr.open('POST', `https://api.cloudinary.com/v1_1/a6rxinoz/${resourceType}/upload`);
-          xhr.send(formData);
+        const cloudinaryUrl = await uploadToCloudinaryChunked(mediaFile, resourceType, 'brochat/posts', (pct) => {
+          submitBtn.textContent = i18n.t('post_btn') + `...${pct}%`;
         });
 
         body.mediaUrl = cloudinaryUrl;
