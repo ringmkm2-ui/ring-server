@@ -72,7 +72,21 @@ async function initDB() {
       bio TEXT,
       public_key TEXT,
       token_revoked_at TEXT,
+      email_verified_at TEXT,
+      email_verify_required INTEGER DEFAULT 0,
+      totp_secret TEXT,
+      totp_enabled INTEGER DEFAULT 0,
+      totp_last_step INTEGER DEFAULT 0,
+      backup_codes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS email_codes (
+      username TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL,
+      expires_ms INTEGER NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      last_sent_ms INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS friendships (

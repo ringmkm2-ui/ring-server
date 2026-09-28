@@ -45,6 +45,31 @@ async function initDB() {
     console.log('[db] token_revoked_at migration skip:', e.message);
   }
 
+  // マイグレーション: メール認証と2段階認証(TOTP)。
+  // email_verify_required: この機能の導入後に登録したアカウントだけtrue。
+  //   既存アカウントは未認証でもログインを止めない(全員が突然ログインできなくなるのを避ける)。
+  // totp_last_step: 最後に受理したTOTPのステップ番号。同じコードの再利用(リプレイ)を弾く。
+  // backup_codes: 予備コードのSHA-256ハッシュ配列(JSON)。使ったものは配列から消す。
+  try {
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_required BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step BIGINT DEFAULT 0');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_codes (
+        username TEXT PRIMARY KEY,
+        code_hash TEXT NOT NULL,
+        expires_ms BIGINT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        last_sent_ms BIGINT DEFAULT 0
+      )
+    `);
+  } catch (e) {
+    console.log('[db] email verify / totp migration skip:', e.message);
+  }
+
   // マイグレーション: 既存のmessagesテーブルにencryptedカラムがなければ追加
   try {
     await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN DEFAULT false');

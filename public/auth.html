@@ -270,6 +270,9 @@
         font-size: 24px;
       }
     }
+    .sec-title { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-align: center; }
+    .sec-desc { font-size: 14px; color: #64748b; margin-bottom: 16px; text-align: center; line-height: 1.5; }
+    .link-btn { display: block; width: 100%; margin-top: 12px; padding: 8px; background: none; border: none; color: #64748b; font-size: 14px; cursor: pointer; text-decoration: underline; }
     .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
     .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
     .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -337,15 +340,142 @@
           <input type="email" id="signupEmail" placeholder="メールアドレス" required>
         </div>
         <div class="form-group">
-          <input type="password" id="signupPassword" placeholder="パスワード（6文字以上）" required minlength="6">
+          <input type="password" id="signupPassword" placeholder="パスワード（8文字以上）" required minlength="8">
         </div>
         <button type="submit" class="btn btn-login" data-i18n="register">登録</button>
       </form>
+    </div>
+
+    <!-- メール認証コード入力 -->
+    <div id="verifySection" class="form-section">
+      <h2 class="sec-title" data-i18n="verify_title">メールアドレスの確認</h2>
+      <p class="sec-desc" data-i18n="verify_desc">届いた6桁のコードを入力してください(10分間有効)</p>
+      <form onsubmit="submitVerify(event)">
+        <div class="form-group">
+          <input type="text" id="verifyCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6桁のコード" data-i18n-placeholder="verify_code_placeholder" required>
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="verify_btn">確認する</button>
+      </form>
+      <button type="button" class="link-btn" onclick="resendCode()" data-i18n="resend_code">コードを再送する</button>
+      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+    </div>
+
+    <!-- 2段階認証コード入力 -->
+    <div id="twofaSection" class="form-section">
+      <h2 class="sec-title" data-i18n="twofa_title">2段階認証</h2>
+      <p class="sec-desc" data-i18n="twofa_desc">認証アプリの6桁のコード、または予備コードを入力してください</p>
+      <form onsubmit="submitTwoFa(event)">
+        <div class="form-group">
+          <input type="text" id="twofaCode" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16" placeholder="コード" data-i18n-placeholder="twofa_code_placeholder" required>
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="twofa_btn">ログイン</button>
+      </form>
+      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
   </div>
 
   <script>
     const API_BASE = window.location.origin;
+
+    // --- 共通: セッション保存 / 画面切替 ---
+    let pendingVerifyEmail = null;
+    let pendingTwoFaToken = null;
+
+    function storeSession(data) {
+      localStorage.setItem('ring_token', data.token);
+      localStorage.setItem('ring_userId', data.userId);
+      localStorage.setItem('ring_user_id', data.userId);
+      localStorage.setItem('ring_userIdCode', data.userIdCode || '');
+      localStorage.setItem('ring_username', data.username);
+      localStorage.setItem('ring_display_name', data.displayName || '');
+      localStorage.setItem('myName', data.displayName || data.username);
+    }
+
+    function showOnly(sectionId) {
+      document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
+      document.getElementById(sectionId).classList.add('active');
+      document.querySelector('.auth-mode-switch').style.display = 'none';
+      clearMessages();
+    }
+
+    function backToLogin() {
+      pendingVerifyEmail = null;
+      pendingTwoFaToken = null;
+      document.querySelector('.auth-mode-switch').style.display = '';
+      switchMode('login');
+    }
+
+    function showVerify(email) {
+      pendingVerifyEmail = email;
+      document.getElementById('verifyCode').value = '';
+      showOnly('verifySection');
+    }
+
+    function showTwoFa(token) {
+      pendingTwoFaToken = token;
+      document.getElementById('twofaCode').value = '';
+      showOnly('twofaSection');
+    }
+
+    // ログインAPIの応答を見て次の画面へ(2段階認証 / メール認証 / ログイン完了)
+    function handleAuthResult(response, data, fallbackEmail) {
+      if (data.needs2fa) { showTwoFa(data.twoFaToken); return true; }
+      if (data.needsVerification) { showVerify(data.username || fallbackEmail); return true; }
+      return false;
+    }
+
+    async function submitVerify(e) {
+      e.preventDefault();
+      const code = document.getElementById('verifyCode').value.trim();
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: pendingVerifyEmail, code })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '確認に失敗しました');
+        if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
+        storeSession(data);
+        window.location.replace('/talklist.html');
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function resendCode() {
+      try {
+        await fetch(`${API_BASE}/api/auth/resend-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: pendingVerifyEmail })
+        });
+        showSuccess((window.i18n && i18n.t('code_resent')) || 'コードを再送しました');
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function submitTwoFa(e) {
+      e.preventDefault();
+      const code = document.getElementById('twofaCode').value.trim();
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login/2fa`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ twoFaToken: pendingTwoFaToken, code })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.expired) { backToLogin(); }
+          throw new Error(data.error || '認証に失敗しました');
+        }
+        storeSession(data);
+        window.location.replace('/talklist.html');
+      } catch (err) {
+        showError(err.message);
+      }
+    }
 
     function switchMode(mode) {
       document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
@@ -396,6 +526,7 @@
 
         const data = await response.json();
 
+        if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || 'ログインに失敗しました');
         }
@@ -433,6 +564,7 @@
 
         const data = await response.json();
 
+        if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || '登録に失敗しました');
         }
@@ -464,6 +596,7 @@
         })
         .then(r => r.json())
         .then(data => {
+          if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
           if (data.token) {
             localStorage.setItem('ring_token', data.token);
             localStorage.setItem('ring_userId', data.userId);

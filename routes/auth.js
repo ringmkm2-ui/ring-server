@@ -1,6 +1,7 @@
 // routes/auth.js
 // UserAuthenticator: 登録・ログイン・JWT発行
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
@@ -10,6 +11,8 @@ const { JWT_SECRET } = require('../utils/jwtSecret');
 const { loginLimiter, registerLimiter } = require('../utils/rateLimits');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
+const { isMailConfigured, sendMail } = require('../utils/mailer');
+const { generateSecret, verifyTotp, otpauthUri } = require('../utils/totp');
 
 const router = express.Router();
 const JWT_EXPIRES_IN = '30d';
@@ -18,6 +21,113 @@ const JWT_EXPIRES_IN = '30d';
 // public/auth.html に埋め込まれているものと同じ値でなければ検証が常に失敗する。
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+
+// ---------------------------------------------------------------------
+// メール認証 + 2段階認証(TOTP)
+// ---------------------------------------------------------------------
+const EMAIL_RE = /^[^\s@<>"'`]+@[^\s@<>"'`]+\.[^\s@<>"'`]+$/;
+const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CODE_COOLDOWN_MS = 60 * 1000;
+const EMAIL_CODE_MAX_ATTEMPTS = 5;
+// 2FA途中トークンは通常のセッションJWTとは別の鍵で署名する。
+// 同じ鍵だと、パスワードだけ通った段階のトークンが verifyToken を通ってしまい2FAを丸ごと迂回される。
+const TWOFA_SECRET = JWT_SECRET + ':2fa-pending';
+const TWOFA_TOKEN_TTL = '5m';
+
+const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
+const truthy = (v) => v === true || v === 1 || v === '1' || v === 't' || v === 'true';
+
+function sessionResponse(user, extra = {}) {
+  const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return {
+    userId: user.id,
+    userIdCode: user.user_id,
+    username: user.username,
+    displayName: user.display_name,
+    token,
+    ...extra,
+  };
+}
+
+// パスワード(またはGoogle)を通過した後の分岐: 2FAが有効なら途中トークンだけ返す。
+function finishLogin(user, extra = {}) {
+  if (truthy(user.totp_enabled)) {
+    const twoFaToken = jwt.sign({ userId: user.id, purpose: '2fa' }, TWOFA_SECRET, { expiresIn: TWOFA_TOKEN_TTL });
+    return { needs2fa: true, twoFaToken };
+  }
+  return sessionResponse(user, extra);
+}
+
+async function sendEmailCode(username) {
+  const row = await db.get('SELECT last_sent_ms FROM email_codes WHERE username = ?', [username]);
+  const now = Date.now();
+  if (row && now - Number(row.last_sent_ms || 0) < EMAIL_CODE_COOLDOWN_MS) {
+    const e = new Error('cooldown');
+    e.cooldown = true;
+    throw e;
+  }
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  await db.run(
+    `INSERT INTO email_codes (username, code_hash, expires_ms, attempts, last_sent_ms) VALUES (?, ?, ?, 0, ?)
+     ON CONFLICT(username) DO UPDATE SET code_hash = excluded.code_hash, expires_ms = excluded.expires_ms, attempts = 0, last_sent_ms = excluded.last_sent_ms`,
+    [username, sha256(code), now + EMAIL_CODE_TTL_MS, now]
+  );
+  await sendMail({
+    to: username,
+    subject: 'Bro Chat 認証コード',
+    text: `Bro Chat の認証コードです。\n\n${code}\n\n10分以内に入力してください。心当たりがない場合はこのメールを無視してください。`,
+  });
+}
+
+// 2FA総当たり対策: ユーザー単位で5回失敗したら15分ロック(IP単位のレート制限とは別)。
+const twoFaFails = new Map();
+function twoFaLocked(userId) {
+  const f = twoFaFails.get(userId);
+  return !!(f && f.until && f.until > Date.now());
+}
+function twoFaFail(userId) {
+  const f = twoFaFails.get(userId) || { count: 0, until: 0 };
+  f.count += 1;
+  if (f.count >= 5) { f.until = Date.now() + 15 * 60 * 1000; f.count = 0; }
+  twoFaFails.set(userId, f);
+}
+function twoFaOk(userId) { twoFaFails.delete(userId); }
+
+function normalizeBackup(code) {
+  return String(code || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+}
+function generateBackupCodes() {
+  const plain = [];
+  for (let i = 0; i < 8; i++) {
+    const h = crypto.randomBytes(5).toString('hex');
+    plain.push(h.slice(0, 5) + '-' + h.slice(5));
+  }
+  return { plain, hashes: plain.map(c => sha256(normalizeBackup(c))) };
+}
+
+// TOTPまたは予備コードを検証する。成功なら true(予備コードは消費、TOTPはステップを記録)。
+async function checkSecondFactor(user, rawCode) {
+  const code = String(rawCode || '').trim();
+  if (/^\d{3}\s?\d{3}$/.test(code) && user.totp_secret) {
+    const step = verifyTotp(user.totp_secret, code);
+    if (step === null) return false;
+    if (step <= Number(user.totp_last_step || 0)) return false; // 同じコードの再利用を拒否
+    await db.run('UPDATE users SET totp_last_step = ? WHERE id = ?', [step, user.id]);
+    return true;
+  }
+  const norm = normalizeBackup(code);
+  if (norm.length === 10) {
+    let list = [];
+    try { list = JSON.parse(user.backup_codes || '[]'); } catch {}
+    const h = sha256(norm);
+    if (list.includes(h)) {
+      await db.run('UPDATE users SET backup_codes = ? WHERE id = ?', [JSON.stringify(list.filter(x => x !== h)), user.id]);
+      return true;
+    }
+  }
+  return false;
+}
 
 // --- 新規登録 ---
 // body: { username, password, displayName }
@@ -47,31 +157,100 @@ router.post('/register', registerLimiter, async (req, res) => {
     return res.status(400).json({ error: 'ユーザー名に使用できない文字が含まれています' });
   }
 
-  const existing = await db.get('SELECT id FROM users WHERE username = ?', [username]);
-  if (existing) {
-    return res.status(409).json({ error: 'そのユーザー名は既に使われています' });
+  const mailOn = isMailConfigured();
+  if (mailOn && !EMAIL_RE.test(username)) {
+    return res.status(400).json({ error: 'メールアドレスの形式で登録してください' });
   }
 
-  // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
-  // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
   const passwordHash = await bcrypt.hash(password, 12);
-  const userId = uuidv4();
-  const userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase(); // User ID like U3K7F9
+  const existing = await db.get('SELECT id, email_verify_required, email_verified_at FROM users WHERE username = ?', [username]);
+  let userId;
+  let userIdCode;
+  let createdNew = false;
 
-  await db.run(
-    'INSERT INTO users (id, user_id, username, password_hash, display_name) VALUES (?, ?, ?, ?, ?)',
-    [userId, userIdCode, username, passwordHash, displayName || username]
-  );
+  if (existing) {
+    // 認証前のまま放置された登録は、その人しか知らないパスワードで作られただけで、
+    // トークンも発行されていない。本物のメール所有者が登録し直せるよう上書きを許す
+    // (そうしないとメールアドレスを先に押さえられただけで本人が登録できなくなる)。
+    const stale = truthy(existing.email_verify_required) && !existing.email_verified_at;
+    if (!stale) {
+      return res.status(409).json({ error: 'そのユーザー名は既に使われています' });
+    }
+    userId = existing.id;
+    await db.run('UPDATE users SET password_hash = ?, display_name = ? WHERE id = ?', [passwordHash, displayName || username, userId]);
+  } else {
+    // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
+    // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
+    userId = uuidv4();
+    userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase(); // User ID like U3K7F9
+    await db.run(
+      'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verify_required) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, userIdCode, username, passwordHash, displayName || username, mailOn ? 1 : 0]
+    );
+    createdNew = true;
+  }
 
-  const token = jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  if (mailOn) {
+    try {
+      await sendEmailCode(username);
+    } catch (e) {
+      if (!e.cooldown) {
+        console.error('[auth] 認証メール送信失敗:', e.message);
+        if (createdNew) await db.run('DELETE FROM users WHERE id = ?', [userId]);
+        return res.status(502).json({ error: '認証メールを送信できませんでした。メールアドレスを確認してもう一度試してください' });
+      }
+    }
+    // トークンは認証が済むまで発行しない
+    return res.json({ needsVerification: true, username });
+  }
 
-  res.json({
-    userId,
-    userIdCode,
-    username,
-    displayName: displayName || username,
-    token,
-  });
+  const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+  res.json(sessionResponse(user));
+});
+
+// --- メール認証コードの確認 ---
+// body: { username, code }  成功したらそのままログイン状態(トークン発行)にする
+router.post('/verify-email', loginLimiter, async (req, res) => {
+  try {
+    const { username, code } = req.body;
+    if (!username || !code) return res.status(400).json({ error: 'メールアドレスとコードを入力してください' });
+    const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+    const row = await db.get('SELECT * FROM email_codes WHERE username = ?', [username]);
+    const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
+    if (!user || !row) return invalid();
+    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
+      await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
+      return invalid();
+    }
+    const given = Buffer.from(sha256(String(code).replace(/\s/g, '')));
+    const real = Buffer.from(row.code_hash);
+    if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
+      await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE username = ?', [username]);
+      return invalid();
+    }
+    await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
+    await db.run('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    res.json(finishLogin({ ...user, email_verified_at: true }));
+  } catch (e) {
+    sendServerError(res, e, 'verify-email');
+  }
+});
+
+// --- 認証コードの再送 ---
+// 存在しない/認証済みのアカウントでも同じ応答を返す(アカウントの有無を探られないように)
+router.post('/resend-code', loginLimiter, async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (username && isMailConfigured()) {
+      const user = await db.get('SELECT email_verify_required, email_verified_at FROM users WHERE username = ?', [username]);
+      if (user && truthy(user.email_verify_required) && !user.email_verified_at) {
+        try { await sendEmailCode(username); } catch (e) { if (!e.cooldown) console.error('[auth] 再送失敗:', e.message); }
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e, 'resend-code');
+  }
 });
 
 // --- ログイン ---
@@ -92,15 +271,44 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
   }
 
-  const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  if (truthy(user.email_verify_required) && !user.email_verified_at) {
+    if (isMailConfigured()) {
+      try { await sendEmailCode(user.username); } catch (e) { if (!e.cooldown) console.error('[auth] 認証メール送信失敗:', e.message); }
+    }
+    return res.status(403).json({ needsVerification: true, username: user.username, error: 'メールアドレスの認証が済んでいません。届いたコードを入力してください' });
+  }
 
-  res.json({
-    userId: user.id,
-    userIdCode: user.user_id,
-    username: user.username,
-    displayName: user.display_name,
-    token,
-  });
+  res.json(finishLogin(user));
+});
+
+// --- 2段階認証コードでログイン完了 ---
+// body: { twoFaToken, code }  codeは認証アプリの6桁、または予備コード
+router.post('/login/2fa', loginLimiter, async (req, res) => {
+  try {
+    const { twoFaToken, code } = req.body;
+    if (!twoFaToken || !code) return res.status(400).json({ error: 'コードを入力してください' });
+    let payload;
+    try {
+      payload = jwt.verify(twoFaToken, TWOFA_SECRET, { algorithms: ['HS256'] });
+    } catch {
+      return res.status(401).json({ error: '有効時間が切れました。最初からログインし直してください', expired: true });
+    }
+    if (!payload || payload.purpose !== '2fa') return res.status(401).json({ error: '無効なリクエストです' });
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [payload.userId]);
+    if (!user || !truthy(user.totp_enabled)) return res.status(401).json({ error: '無効なリクエストです' });
+    if (twoFaLocked(user.id)) {
+      return res.status(429).json({ error: '失敗が続いたため一時的にロックしました。15分後にもう一度試してください' });
+    }
+    const ok = await checkSecondFactor(user, code);
+    if (!ok) {
+      twoFaFail(user.id);
+      return res.status(401).json({ error: 'コードが正しくありません' });
+    }
+    twoFaOk(user.id);
+    res.json(sessionResponse(user));
+  } catch (e) {
+    sendServerError(res, e, 'login-2fa');
+  }
 });
 
 // --- Google OAuth ログイン ---
@@ -148,18 +356,17 @@ router.post('/google', loginLimiter, async (req, res) => {
       if (picture) {
         await db.run('UPDATE users SET profile_pic = ? WHERE id = ?', [picture, user.id]);
       }
+      // メール認証待ちのまま残っていた登録に、そのメールの本当の持ち主がGoogleで来た場合。
+      // 認証前のパスワードは第三者が設定した可能性があるので消して、Googleで認証済みにする
+      // (以前は先に他人のメールで登録しておくと、本人がGoogleログインした時に
+      //  その乗っ取り側のパスワードが残ったアカウントへ入ってしまっていた)。
+      if (truthy(user.email_verify_required) && !user.email_verified_at) {
+        await db.run("UPDATE users SET password_hash = '', email_verified_at = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
+        user.password_hash = '';
+      }
     }
 
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
-    res.json({
-      userId: user.id,
-      userIdCode: user.user_id,
-      username: user.username,
-      displayName: user.display_name,
-      profilePic: user.profile_pic,
-      token,
-    });
+    res.json(finishLogin(user, { profilePic: user.profile_pic }));
   } catch (e) {
     // verifyIdTokenは署名不正・期限切れ・audience不一致などで例外を投げる。
     // これらは全て「なりすまし試行または壊れたトークン」として一律401にする
@@ -290,6 +497,69 @@ router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
     res.json({ ok: true, message: '全端末のセッションを無効化しました。再度ログインしてください。' });
   } catch (e) {
     sendServerError(res, e, 'revoke-all-sessions');
+  }
+});
+
+// --- 2段階認証の管理(要ログイン) ---
+router.get('/2fa/status', verifyToken, async (req, res) => {
+  try {
+    const user = await db.get('SELECT totp_enabled, backup_codes FROM users WHERE id = ?', [req.user.userId]);
+    let left = 0;
+    try { left = JSON.parse(user.backup_codes || '[]').length; } catch {}
+    res.json({ enabled: truthy(user && user.totp_enabled), backupCodesLeft: left });
+  } catch (e) {
+    sendServerError(res, e, '2fa-status');
+  }
+});
+
+// 設定開始: 秘密鍵を作って返す(有効化はコード確認後)
+router.post('/2fa/setup', verifyToken, async (req, res) => {
+  try {
+    const user = await db.get('SELECT username, totp_enabled FROM users WHERE id = ?', [req.user.userId]);
+    if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+    if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
+    const secret = generateSecret();
+    await db.run('UPDATE users SET totp_secret = ? WHERE id = ?', [secret, req.user.userId]);
+    res.json({ secret, uri: otpauthUri(secret, user.username) });
+  } catch (e) {
+    sendServerError(res, e, '2fa-setup');
+  }
+});
+
+// 有効化: 認証アプリの6桁コードで確認できたら有効にして、予備コードを1回だけ返す
+router.post('/2fa/enable', verifyToken, loginLimiter, async (req, res) => {
+  try {
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.userId]);
+    if (!user || !user.totp_secret) return res.status(400).json({ error: '先に設定を開始してください' });
+    if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
+    const step = verifyTotp(user.totp_secret, req.body.code);
+    if (step === null) return res.status(400).json({ error: 'コードが正しくありません' });
+    const { plain, hashes } = generateBackupCodes();
+    await db.run('UPDATE users SET totp_enabled = 1, totp_last_step = ?, backup_codes = ? WHERE id = ?',
+      [step, JSON.stringify(hashes), user.id]);
+    res.json({ ok: true, backupCodes: plain });
+  } catch (e) {
+    sendServerError(res, e, '2fa-enable');
+  }
+});
+
+// 無効化: パスワード(あれば) + 現在のコードが必要。ログインしっぱなしの端末を拾われても外せないように。
+router.post('/2fa/disable', verifyToken, loginLimiter, async (req, res) => {
+  try {
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.userId]);
+    if (!user || !truthy(user.totp_enabled)) return res.status(400).json({ error: '有効になっていません' });
+    if (twoFaLocked(user.id)) return res.status(429).json({ error: '失敗が続いたため一時的にロックしました。15分後にもう一度試してください' });
+    if (user.password_hash) {
+      const okPw = req.body.password && await bcrypt.compare(req.body.password, user.password_hash);
+      if (!okPw) return res.status(401).json({ error: 'パスワードが違います' });
+    }
+    const ok = await checkSecondFactor(user, req.body.code);
+    if (!ok) { twoFaFail(user.id); return res.status(401).json({ error: 'コードが正しくありません' }); }
+    twoFaOk(user.id);
+    await db.run('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_last_step = 0, backup_codes = NULL WHERE id = ?', [user.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e, '2fa-disable');
   }
 });
 
