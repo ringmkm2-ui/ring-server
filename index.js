@@ -17,6 +17,7 @@ const postsRouter = require('./routes/posts');
 const iceRouter = require('./routes/ice');
 const callAssistRouter = require('./routes/callAssist');
 const communitiesRouter = require('./routes/communities');
+const { uploadRouter: iconUploadRouter, publicRouter: iconPublicRouter } = require('./routes/icons');
 const callsRouter = require('./routes/calls');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
@@ -167,6 +168,8 @@ async function main() {
 
   app.use('/api/auth', authRouter);
   app.use('/api/prekeys', prekeysRouter);
+  app.use('/api/icons', iconUploadRouter);
+  app.use('/icons', iconPublicRouter); // 公開配信(/apiのレート制限の外。一覧で大量に読まれるため)
   app.use('/api/media', mediaRouter);
   app.use('/api/groups', groupsRouter);
   app.use('/api/friends', friendsRouter);
@@ -202,6 +205,27 @@ async function main() {
   initWebSocketServer(server);
   startTTLCleanupJob();
   startKeepAlive();
+
+  // 既存ユーザーのBase64アイコンを、画像のURLに置き換える(裏で1回ずつ。失敗した分は次回起動時に再挑戦)
+  setTimeout(async () => {
+    try {
+      const { parseDataUrl, storeIcon } = require('./utils/iconStore');
+      const base = process.env.PUBLIC_BASE_URL || (process.env.RENDER_EXTERNAL_URL || '');
+      if (!base) { console.log('[icons] migration skipped: PUBLIC_BASE_URL/RENDER_EXTERNAL_URL not set'); return; }
+      const rows = await db.all("SELECT id, profile_pic FROM users WHERE profile_pic LIKE 'data:image/%'");
+      let done = 0;
+      for (const u of rows) {
+        const parsed = parseDataUrl(u.profile_pic);
+        if (!parsed) continue;
+        try {
+          const url = await storeIcon(parsed.buf, parsed.mime, base.replace(/\/$/, ''));
+          await db.run('UPDATE users SET profile_pic = ? WHERE id = ? AND profile_pic = ?', [url, u.id, u.profile_pic]);
+          done++;
+        } catch (e) { console.warn('[icons] migrate failed for a user:', e.message); }
+      }
+      if (rows.length) console.log(`[icons] Base64アイコンを移行: ${done}/${rows.length}`);
+    } catch (e) { console.warn('[icons] migration error:', e.message); }
+  }, 15000);
 
   server.listen(PORT, () => {
     console.log(`\nRing サーバー起動: http://localhost:${PORT}`);

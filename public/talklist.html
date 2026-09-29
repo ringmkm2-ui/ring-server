@@ -342,6 +342,7 @@ window.ensureGroupCrypto = (function () {
 })();
 </script>
 <script src="/js/e2eKeys.js"></script>
+<script src="/js/iconUpload.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -493,7 +494,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.125 beta</div>
+  <div class="version-badge">Bro Chat v1.28.126 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1631,7 +1632,7 @@ function renderGroups(groups) {
 
     const av = document.createElement('div');
     av.className = 'tav group-default-av';
-    setAvatarBackground(av, null, (g.name || '?')[0]);
+    setAvatarBackground(av, g.avatarUrl || null, (g.name || '?')[0]);
 
     const body = document.createElement('div');
     body.className = 'tbody';
@@ -2196,6 +2197,20 @@ document.getElementById('saveSettings').onclick=async ()=>{
   if(name){
     localStorage.setItem('myName',name);
     document.getElementById('dispName').textContent=name;
+  }
+
+  // 画像はBase64のままDBに入れず、先にアップロードして画像のURLを保存する
+  if(newAvatarUrl!==null){
+    try{
+      const uploaded=await window.uploadIcon(newAvatarUrl);
+      newAvatarUrl=uploaded;
+      localStorage.setItem('myAvatar',uploaded);
+      document.getElementById('dispAv').style.backgroundImage=`url(${JSON.stringify(uploaded)})`;
+    }catch(e){
+      console.error('アイコンのアップロードに失敗:',e);
+      alert('アイコンをアップロードできませんでした。もう一度試してください');
+      newAvatarUrl=null;
+    }
   }
 
   // 名前・画像のどちらか一方でも変更があればサーバーへ反映する

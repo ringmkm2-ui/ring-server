@@ -178,6 +178,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
+<script src="/js/iconUpload.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script defer src="/js/spring.js"></script>
@@ -197,7 +198,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.125 beta</div>
+  <div class="version-badge">Bro Chat v1.28.126 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -411,6 +412,7 @@ async function loadGroupInfo(){
       if (found) {
         gi.name = found.name;
         gi.ownerId = found.ownerId;
+        gi.avatarImg = found.avatarUrl || '';
         gi.members = found.members.map(m => {
           const displayName = m.userId === myUserId ? myName : m.displayName;
           return {
@@ -1136,7 +1138,7 @@ document.getElementById('gCropResetBtn').onclick=()=>{
   updCrop();
 };
 
-document.getElementById('gSaveBtn').onclick=()=>{
+document.getElementById('gSaveBtn').onclick=async()=>{
   const name=document.getElementById('gNameIn').value.trim();if(name)gi.name=name;
   if(gImgSrc&&document.getElementById('gCropBox').style.display!=='none'){
     // キャンバスでクロップ
@@ -1148,7 +1150,16 @@ document.getElementById('gSaveBtn').onclick=()=>{
     const sx=(bx-cropX)/cropS,sy=(by-cropY)/cropS;
     const cw=130/cropS,ch=130/cropS;
     ctx.drawImage(img,sx-cw/2,sy-ch/2,cw,ch,0,0,130,130);
-    gi.avatarImg=canvas.toDataURL();
+    // Base64のまま持たず、アップロードしてグループ全員に共通のURLとして保存する
+    try{
+      const url=await window.uploadIcon(canvas.toDataURL());
+      const r=await api('/api/groups/'+groupId+'/icon',{method:'POST',body:JSON.stringify({url})});
+      if(!r||!r.ok) throw new Error((r&&r.error)||'save failed');
+      gi.avatarImg=url;
+    }catch(e){
+      console.error('グループアイコンの保存に失敗:',e);
+      alert('アイコンをアップロードできませんでした。もう一度試してください');
+    }
   }
   saveGI(gi);refreshHdr();
   document.getElementById('gsOv').classList.remove('show');
@@ -1371,6 +1382,8 @@ function connectGroupWS(){
       }else if(data.type==='group_member_added'&&data.groupId===groupId){
         // 新メンバー追加 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
         cachedGroupKey = null;
+        loadGroupInfo();
+      }else if(data.type==='group_updated'&&data.groupId===groupId){
         loadGroupInfo();
       }else if(data.type==='member_keys_ready'){
         // 鍵をまだ持っていなかったメンバーが鍵を作った → 持っているグループ鍵を配る

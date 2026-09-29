@@ -10,6 +10,7 @@ const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 
 const { searchLimiter } = require('../utils/rateLimits');
+const { parseDataUrl, storeIcon, baseUrl } = require('../utils/iconStore');
 const router = express.Router();
 
 // 自分のプロフィール取得
@@ -54,7 +55,14 @@ router.post('/me', auth, async (req, res) => {
       if (!isValidProfilePic(profilePic)) {
         return res.status(400).json({ error: 'プロフィール画像の形式が不正です' });
       }
-      await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', profilePic, req.userId]);
+      // Base64のまま来た場合(古い版のアプリ)も、DBには画像のURLだけを保存する
+      let picToSave = profilePic;
+      if (profilePic && profilePic.startsWith('data:')) {
+        const parsed = parseDataUrl(profilePic);
+        if (!parsed) return res.status(400).json({ error: 'プロフィール画像の形式が不正です' });
+        picToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
+      }
+      await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', picToSave, req.userId]);
     } else {
       await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
     }

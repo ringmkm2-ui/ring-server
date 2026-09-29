@@ -200,6 +200,15 @@ async function initDB() {
     console.log('[db] fcm_tokens migration skip:', e.message);
   }
 
+  // アイコン画像(Cloudinaryに届かなかった時のサーバー保存先)とグループアイコンURL
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS icon_images (
+      id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BYTEA NOT NULL, created_at TIMESTAMP DEFAULT now())`);
+    await pool.query('ALTER TABLE groups ADD COLUMN IF NOT EXISTS avatar_url TEXT');
+  } catch (e) {
+    console.log('[db] icon migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 

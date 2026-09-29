@@ -7,6 +7,7 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { messageSendLimiter } = require('../utils/rateLimits');
+const { isValidIconUrl } = require('../utils/iconStore');
 
 const MAX_GROUP_CONTENT_LENGTH = 64 * 1024; // 64KB
 
@@ -26,7 +27,7 @@ async function isGroupMember(groupId, userId) {
 // --- 自分が所属するグループ一覧を取得 ---
 router.get('/list', verifyToken, asyncHandler(async (req, res) => {
   const rows = await db.all(
-    `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at
+    `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at, g.avatar_url
      FROM groups g
      JOIN group_members gm ON gm.group_id = g.id
      WHERE gm.user_id = ? AND gm.left_at IS NULL
@@ -53,6 +54,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       ownerId: g.owner_id,
       isOwner: g.owner_id === req.user.userId,
       keyVersion: g.key_version,
+      avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
       lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted } : null,
     });
@@ -195,6 +197,23 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   broadcastToUser(removeUserId, { type: 'removed_from_group', groupId });
 
   res.json({ ok: true, groupId, keyVersion: newVersion });
+}));
+
+// --- グループアイコン設定 ---
+// body: { url } (先に POST /api/icons でアップロードして得たURL。空文字で削除)
+router.post('/:groupId/icon', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { url } = req.body || {};
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+  if (url && !isValidIconUrl(url, req)) return res.status(400).json({ error: 'アイコンのURLが不正です' });
+  await db.run('UPDATE groups SET avatar_url = ? WHERE id = ?', [url || null, groupId]);
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  for (const m of members) {
+    if (m.user_id !== req.user.userId) broadcastToUser(m.user_id, { type: 'group_updated', groupId });
+  }
+  res.json({ ok: true, avatarUrl: url || null });
 }));
 
 // --- 現行バージョンの鍵をまだ受け取っていないメンバーがいるグループ一覧 ---
