@@ -6,14 +6,16 @@
 // ここで発行される一時的なICEサーバー情報だけをクライアントへ渡す。
 //
 // TURN取得は多段フォールバック:
-//   1) Cloudflare Realtime TURN (CLOUDFLARE_TURN_KEY_ID / CLOUDFLARE_TURN_API_TOKEN があれば最優先)
-//   2) Metered.ca (METERED_API_KEY があれば次点)
-//   3) Google STUN のみ(最終フォールバック。国際通話等は繋がらない)
+//   1) 固定認証のTURN (TURN_URLS / TURN_USERNAME / TURN_CREDENTIAL。ExpressTURN等、カード不要の無料枠向け)
+//   2) Cloudflare Realtime TURN (CLOUDFLARE_TURN_KEY_ID / CLOUDFLARE_TURN_API_TOKEN。要カード)
+//   3) Metered.ca (METERED_API_KEY があれば次点)
+//   4) Google STUN のみ(最終フォールバック。国際通話等は繋がらない)
 // -----------------------------------------------------------------------
 const express = require('express');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { fetchCloudflareIceServers, isCloudflareConfigured } = require('../utils/cloudflareIce');
+const { getStaticTurnIceServers, isStaticTurnConfigured } = require('../utils/staticTurn');
 const { fetchMeteredIceServers, isMeteredConfigured } = require('../utils/meteredIce');
 
 const router = express.Router();
@@ -27,7 +29,13 @@ const STUN_ONLY = [
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
   // ?skip=cloudflare : クライアント側でTURNが実際には使えなかった(中継候補が取れない)時に次を試す
   const skip = String(req.query.skip || '').split(',');
-  // 1) Cloudflare Realtime TURN を最優先で試す
+  // 1) 固定認証のTURN(カード不要の無料サービス)
+  if (isStaticTurnConfigured() && !skip.includes('turn')) {
+    res.json({ iceServers: getStaticTurnIceServers(), provider: 'turn' });
+    return;
+  }
+
+  // 2) Cloudflare Realtime TURN
   if (isCloudflareConfigured() && !skip.includes('cloudflare')) {
     const cf = await fetchCloudflareIceServers();
     if (cf && cf.length > 0) {
@@ -36,7 +44,7 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
     }
   }
 
-  // 2) Metered.ca にフォールバック
+  // 3) Metered.ca にフォールバック
   if (isMeteredConfigured() && !skip.includes('metered')) {
     const metered = await fetchMeteredIceServers();
     if (metered && metered.length > 0) {
