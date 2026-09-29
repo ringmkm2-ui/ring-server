@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.122 beta</div>
+  <div class="version-badge">Bro Chat v1.28.123 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3310,7 +3310,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return m[1] + t + '/' + m[2];
   };
 
-  function setupGestures(el) {
+  function setupGestures(el, onZoom) {
     let mode = null, sx = 0, sy = 0, stx = 0, sty = 0, sd = 0, ssc = 1, lastTap = 0, moved = false;
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     inner.ontouchstart = e => {
@@ -3326,6 +3326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sc = Math.min(8, Math.max(1, ssc * dist(e.touches) / sd));
         if (sc === 1) { tx = 0; ty = 0; }
         applyT(el);
+        if (sc > 2.5 && onZoom) onZoom();
       } else if (mode === 'pan' && e.touches.length === 1 && sc > 1) {
         tx = stx + (e.touches[0].clientX - sx);
         ty = sty + (e.touches[0].clientY - sy);
@@ -3340,7 +3341,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (mode === 'pan' && !moved) {
         const now = Date.now();
         if (now - lastTap < 300) {
-          if (sc > 1) { resetT(el); } else { sc = 3; tx = 0; ty = 0; applyT(el); }
+          if (sc > 1) { resetT(el); } else { sc = 3; tx = 0; ty = 0; applyT(el); if (onZoom) onZoom(); }
           lastTap = 0;
         } else { lastTap = now; }
       }
@@ -3368,26 +3369,47 @@ document.addEventListener('DOMContentLoaded', () => {
       el.decoding = 'async';
       el.draggable = false;
       el.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;display:block;transform-origin:center center;will-change:transform;-webkit-user-drag:none;user-select:none';
-      const lite = window.cldTransform(curOriginal, 'w_1600,c_limit,q_auto,f_auto');
-      const hd = window.cldTransform(curOriginal, 'w_4096,c_limit,q_90,f_jpg');
+      const orig = curOriginal;
+      const lite = window.cldTransform(orig, 'w_1600,c_limit,q_auto,f_auto');
+      const hd = window.cldTransform(orig, 'w_4096,c_limit,q_90,f_jpg');
+      let level = 'lite'; // lite → hd → orig の順に鮮明にする
+      let origRequested = false;
+      let badgeTimer = null;
+      const say = (txt, ms) => {
+        badge.textContent = txt; badge.style.display = 'block';
+        clearTimeout(badgeTimer);
+        if (ms) badgeTimer = setTimeout(() => { badge.style.display = 'none'; }, ms);
+      };
+      // 実際に画面に出ている画像の大きさを出す(ぼやける時にどの段階か分かるように)
+      const size = () => el.naturalWidth + '×' + el.naturalHeight;
+      el.onload = () => { say((level === 'orig' ? '原寸 ' : level === 'hd' ? 'HD ' : '縮小 ') + size(), level === 'lite' ? 0 : 3500); };
+      el.onerror = () => { if (el.src !== orig && !el.dataset.fell) { el.dataset.fell = '1'; level = 'orig'; el.src = orig; } };
       el.src = lite;
-      el.onerror = () => { if (el.src !== curOriginal && !el.dataset.fell) { el.dataset.fell = '1'; el.src = curOriginal; } };
-      setupGestures(el);
-      if (hd !== lite) {
-        const my = curOriginal;
-        badge.textContent = 'HD 読み込み中';
-        badge.style.display = 'block';
+      setupGestures(el, () => { if (level !== 'orig') upgrade('orig'); });
+
+      // 裏で読み込んでから差し替える(読み込み中は今の画像を出したまま)
+      const upgrade = (target) => {
+        const url = target === 'orig' ? orig : hd;
+        if (url === lite && target !== 'orig') { return; }
+        if (level === target || level === 'orig') return;
+        if (target === 'orig') { if (origRequested) return; origRequested = true; }
+        say(target === 'orig' ? '原寸 読み込み中' : 'HD 読み込み中', 0);
         const pre = new Image();
         pre.decoding = 'async';
         pre.onload = () => {
-          if (curOriginal !== my || !inner.contains(el)) return;
-          el.src = hd;
-          badge.textContent = 'HD';
-          setTimeout(() => { if (curOriginal === my) badge.style.display = 'none'; }, 1800);
+          if (curOriginal !== orig || !inner.contains(el)) return;
+          if (target === 'hd' && level === 'orig') return; // 原寸が先に届いたらHDで上書きしない
+          level = target;
+          el.src = url;
         };
-        pre.onerror = () => { badge.style.display = 'none'; }; // HD版が作れない時は今の画像のまま
-        pre.src = hd;
-      }
+        pre.onerror = () => {
+          if (curOriginal !== orig) return;
+          if (target === 'hd') { say('HD版を作れない → 原寸を読み込みます', 0); upgrade('orig'); }
+          else { say('原寸を読み込めません(メモリ不足の可能性)', 5000); }
+        };
+        pre.src = url;
+      };
+      if (hd !== lite) upgrade('hd'); else upgrade('orig');
     }
     inner.appendChild(el);
 
