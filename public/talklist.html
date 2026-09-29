@@ -492,7 +492,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.123 beta</div>
+  <div class="version-badge">Bro Chat v1.28.124 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2301,7 +2301,12 @@ document.getElementById('ngCreate').onclick = async () => {
       encryptedKeysForMembers = dist.distributions;
     } catch (e) {
       console.error('グループ鍵の生成に失敗しました:', e);
-      alert(i18n.t('err_encryption_init_failed'));
+      const miss = /相手の鍵バンドルが見つかりません: ([^\s(]+)/.exec((e && e.message) || '');
+      if (miss) {
+        alert(i18n.t('err_member_no_keys').replace('{name}', memberNameMap.get(miss[1]) || ''));
+      } else {
+        alert(i18n.t('err_encryption_init_failed') + '\n(' + ((e && e.message) || e) + ')');
+      }
       createBtn.disabled = false;
       createBtn.textContent = i18n.t('create_btn');
       return;
@@ -3672,6 +3677,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 起動後3秒で静かにチェック
   setTimeout(checkUpdate, 3000);
+})();
+</script>
+<script>
+// 自分の暗号鍵を、端末ごとに1回だけ裏で作ってサーバーに登録する。
+// これをやらないと、グループ作成の時に「相手の鍵が無い」で失敗する
+// (鍵はグループ作成/参加で初めて作られる仕様だったため)。
+(function () {
+  try {
+    const uid = localStorage.getItem('ring_userId');
+    if (!uid) return;
+    const flag = 'e2e_registered_' + uid;
+    if (localStorage.getItem(flag)) return;
+    const run = () => window.ensureGroupCrypto()
+      .then(() => window.groupE2E.ensureMyIdentity())
+      .then(() => localStorage.setItem(flag, '1'))
+      .catch(e => console.warn('[e2e] identity init failed:', e));
+    if (window.requestIdleCallback) window.requestIdleCallback(() => setTimeout(run, 3000), { timeout: 10000 });
+    else setTimeout(run, 5000);
+  } catch (e) {}
 })();
 </script>
 </body>

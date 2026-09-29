@@ -156,6 +156,7 @@
     err_media_upload_failed: { ja: "メディアのアップロードに失敗しました: ", en: "Media upload failed: ", "zh-CN": "媒体上传失败：", ko: "미디어 업로드 실패: " },
     err_video_too_large: { ja: "動画は500MB以下にしてください", en: "Videos must be under 500MB", "zh-CN": "视频请控制在500MB以内", ko: "동영상은 500MB 이하로 해주세요" },
     err_post_failed: { ja: "投稿に失敗しました", en: "Failed to post", "zh-CN": "发布失败", ko: "게시에 실패했습니다" },
+    err_member_no_keys: { ja: "{name} さんはまだ暗号鍵を準備できていません。相手がBro Chatを開いてから、もう一度試してください", en: "{name} has not set up encryption keys yet. Ask them to open Bro Chat, then try again", "zh-CN": "{name} 尚未准备好加密密钥。请让对方打开 Bro Chat 后再试", ko: "{name}님은 아직 암호화 키가 준비되지 않았습니다. 상대가 Bro Chat을 연 뒤 다시 시도하세요" },
     err_encryption_init_failed: { ja: "暗号化の初期化に失敗しました", en: "Failed to initialize encryption", "zh-CN": "加密初始化失败", ko: "암호화 초기화에 실패했습니다" },
     err_encryption_not_ready: { ja: "暗号化の準備ができていません。ページをリロードしてください。", en: "Encryption isn't ready yet. Please reload the page.", "zh-CN": "加密尚未准备好，请重新加载页面。", ko: "암호화가 준비되지 않았습니다. 페이지를 새로고침 해주세요." },
     err_encryption_module_not_ready: { ja: "暗号化モジュールが準備できていません", en: "Encryption module isn't ready", "zh-CN": "加密模块尚未就绪", ko: "암호화 모듈이 준비되지 않았습니다" },
