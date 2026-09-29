@@ -175,6 +175,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script src="/js/libsodium-wrappers.min.js"></script>
 <script src="/js/signalkeymanager.js"></script>
 <script src="/js/groupE2E.js"></script>
+<script src="/js/groupCall.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
@@ -198,7 +199,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.126 beta</div>
+  <div class="version-badge">Bro Chat v1.28.127 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -211,8 +212,11 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
         <div class="mcnt" id="mcntEl" data-i18n="members_count">メンバー 0人</div>
       </div>
-      <button class="hbtn glass-interactive" id="phoneBtnG" type="button">
+      <button class="hbtn glass-interactive" id="phoneBtnG" type="button" aria-label="グループ通話">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+      <button class="hbtn glass-interactive" id="videoBtnG" type="button" aria-label="グループビデオ通話">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </button>
       <button class="hbtn glass-interactive" onclick="openGS()" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -397,11 +401,22 @@ let gi = { id: groupId, name: params.get('name') || 'グループ', avatarImg: '
 // グループのE2E共有鍵(復号済みUint8Array)。取得済みならメモリ上に保持し、
 // メッセージ・メディアの送受信のたびに毎回サーバー問い合わせ・復号をしないようにする。
 let cachedGroupKey = null;
-async function ensureGroupKey() {
-  if (cachedGroupKey) return cachedGroupKey;
-  const result = await groupE2E.getGroupKey(groupId);
-  cachedGroupKey = result.key;
-  return cachedGroupKey;
+let cachedGroupKeyVersion = null;
+// 過去バージョンの鍵(メンバー変更で鍵が更新される前のメッセージ復号用)
+const oldGroupKeys = {};
+function invalidateGroupKey(){ cachedGroupKey = null; cachedGroupKeyVersion = null; }
+async function ensureGroupKey(version) {
+  if (version == null || version === cachedGroupKeyVersion) {
+    if (cachedGroupKey) return cachedGroupKey;
+    const result = await groupE2E.getGroupKey(groupId);
+    cachedGroupKey = result.key;
+    cachedGroupKeyVersion = result.version;
+    if (version == null || version === result.version) return cachedGroupKey;
+  }
+  if (oldGroupKeys[version]) return oldGroupKeys[version];
+  const r = await groupE2E.getGroupKey(groupId, version);
+  oldGroupKeys[version] = r.key;
+  return r.key;
 }
 
 async function loadGroupInfo(){
@@ -470,6 +485,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (pcEl) pcEl.classList.add('lg-page-push-in');
 });
 refreshHdr();
+window.GroupCall.init({
+  groupId, token, myUserId, myName, myAvatar,
+  getWs: () => groupWs,
+  getMembers: () => gi.members,
+  getGroupName: () => gi.name,
+});
+document.getElementById('phoneBtnG').onclick = () => window.GroupCall.join(false);
+document.getElementById('videoBtnG').onclick = () => window.GroupCall.join(true);
 // loadGroupInfo()の呼び出しはファイル末尾でloadGroupMessages()より先に
 // await完了させる形にまとめてある(メンバー情報が揃ってから履歴を描画するため)
 
@@ -586,7 +609,8 @@ async function handleMediaGroup(f,t){
         mediaPublicId: metadata.cloudinaryPublicId,
         encryptedMetadata: metadata.encryptedMetadata,
         chunkCount: metadata.chunkCount,
-        encrypted: true
+        encrypted: true,
+        keyVersion: cachedGroupKeyVersion
       })
     });
 
@@ -630,7 +654,7 @@ document.getElementById('tform').onsubmit=async e=>{
       try {
         const groupKey = await ensureGroupKey();
         const encryptedContent = await groupE2E.encryptGroupText(txt, groupKey);
-        editBody = { content: encryptedContent, encrypted: true };
+        editBody = { content: encryptedContent, encrypted: true, keyVersion: cachedGroupKeyVersion };
       } catch (keyErr) {
         console.error('グループ鍵の取得/暗号化に失敗しました(編集):', keyErr);
         alert(i18n.t('err_encryption_not_ready'));
@@ -664,7 +688,7 @@ document.getElementById('tform').onsubmit=async e=>{
     try {
       const groupKey = await ensureGroupKey();
       const encryptedContent = await groupE2E.encryptGroupText(txt, groupKey);
-      sendBody = { content: encryptedContent, encrypted: true };
+      sendBody = { content: encryptedContent, encrypted: true, keyVersion: cachedGroupKeyVersion };
     } catch (keyErr) {
       console.error('グループ鍵の取得/暗号化に失敗しました。平文で送信せず中断します:', keyErr);
       msgDiv.remove();
@@ -968,7 +992,7 @@ function openMemModal(){
               })
             });
             if(data && data.ok){
-              cachedGroupKey = dist.groupKey;
+              invalidateGroupKey();
               gi.members=gi.members.filter(x=>x.id!==m.id);refreshHdr();
             }else{
               alert((data && data.error) || i18n.t('err_group_create_failed'));
@@ -1032,7 +1056,7 @@ document.getElementById('invBtn').onclick=async ()=>{
 
     if(data && data.ok){
       // 新しいグループ鍵バージョンをローカルキャッシュにも反映
-      cachedGroupKey = dist.groupKey;
+      invalidateGroupKey();
       await loadGroupInfo(); // メンバー一覧をサーバーから再取得して正しいidに更新
       document.getElementById('invInput').value='';
       openMemModal();
@@ -1193,7 +1217,7 @@ document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementByI
 // 3. JSON.stringify({text, mediaType, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount}) - Cloudinary方式
 // 4. JSON.stringify({ciphertext, nonce}) - groupE2E.encryptGroupTextで暗号化されたテキスト(msg.encrypted===trueの時)
 // msg.encryptedフラグと中身を見て判別し、復号が必要なものは復号してから返す。
-async function parseMsgContent(rawContent, isEncrypted){
+async function parseMsgContent(rawContent, isEncrypted, keyVersion){
   if(typeof rawContent!=='string')return{text:'',media:null};
 
   if(rawContent.startsWith('{')){
@@ -1203,7 +1227,7 @@ async function parseMsgContent(rawContent, isEncrypted){
     // Cloudinary方式のメディア(暗号化された動画/画像)
     if(parsed && parsed.mediaUrl && parsed.mediaType){
       try{
-        const groupKey = await ensureGroupKey();
+        const groupKey = await ensureGroupKey(keyVersion);
         const blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(
           parsed.mediaUrl, parsed.encryptedMetadata, groupKey
         );
@@ -1223,7 +1247,7 @@ async function parseMsgContent(rawContent, isEncrypted){
     // groupE2Eで暗号化されたテキスト
     if(isEncrypted && parsed && parsed.ciphertext && parsed.nonce){
       try{
-        const groupKey = await ensureGroupKey();
+        const groupKey = await ensureGroupKey(keyVersion);
         const text = await groupE2E.decryptGroupText(rawContent, groupKey);
         return{text, media:null};
       }catch(e){
@@ -1242,7 +1266,7 @@ async function loadGroupMessages(){
     if(Array.isArray(msgs)){
       for(const msg of msgs){
         const member=gi.members.find(m=>m.id===msg.sender_id);
-        const{text,media}=await parseMsgContent(msg.content, msg.encrypted);
+        const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
         const incoming=msg.sender_id!==myUserId;
         const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
         if(msg.edited_at){
@@ -1255,7 +1279,7 @@ async function loadGroupMessages(){
     const pinned=await api('/api/groups/'+groupId+'/pinned');
     if(Array.isArray(pinned)&&pinned.length>0){
       const latest=pinned[0];
-      const{text}=await parseMsgContent(latest.content, latest.encrypted);
+      const{text}=await parseMsgContent(latest.content, latest.encrypted, latest.key_version);
       document.getElementById('pinText').textContent=text||'メディア';
       document.getElementById('pinBanner').classList.add('show');
       document.getElementById('pinBanner').dataset.msgId=latest.id;
@@ -1319,11 +1343,13 @@ function connectGroupWS(){
   groupWs.onmessage=async e=>{
     try{
       const data=JSON.parse(e.data);
+      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); return; }
+      if(typeof data.type==='string'&&data.type.startsWith('gcall_')){ window.GroupCall.handle(data); return; }
       if(data.type==='group_message'&&data.groupId===groupId){
         const msg=data.message;
         if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
         const member=gi.members.find(m=>m.id===msg.senderId);
-        const{text,media}=await parseMsgContent(msg.content, msg.encrypted);
+        const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
         createMsg(text,media,true,member,msg.id,msg.createdAt,true);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)
@@ -1332,7 +1358,10 @@ function connectGroupWS(){
         }
       }else if(data.type==='group_message_edited'&&data.groupId===groupId){
         const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text`);
-        if(el)setLinkedText(el,data.content);
+        if(el){
+          const{text:editedText}=await parseMsgContent(data.content, data.encrypted, data.keyVersion);
+          setLinkedText(el,editedText);
+        }
         const editedLabel=document.querySelector(`[data-msg-id="${data.messageId}"] .edited-label`);
         if(!editedLabel){
           const meta=document.querySelector(`[data-msg-id="${data.messageId}"] .mmeta .time`);
@@ -1377,11 +1406,11 @@ function connectGroupWS(){
         // 現在開いているのが別グループの場合は何もしない)
       }else if(data.type==='removed_from_group'&&data.groupId===groupId){
         // 自分または他のメンバーが削除 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
-        cachedGroupKey = null;
+        invalidateGroupKey();
         loadGroupInfo();
       }else if(data.type==='group_member_added'&&data.groupId===groupId){
         // 新メンバー追加 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
-        cachedGroupKey = null;
+        invalidateGroupKey();
         loadGroupInfo();
       }else if(data.type==='group_updated'&&data.groupId===groupId){
         loadGroupInfo();
@@ -1390,12 +1419,13 @@ function connectGroupWS(){
         if(window.groupE2E&&window.groupE2E.distributePendingKeys) window.groupE2E.distributePendingKeys();
       }else if(data.type==='group_key_rotated'&&data.groupId===groupId){
         // 鍵ローテーション通知 → メモリキャッシュとlocalStorageの古いバージョンを破棄して次回取得時に再取得させる
-        cachedGroupKey = null;
+        invalidateGroupKey();
       }
     }catch(err){console.error('WebSocketメッセージ処理エラー:',err);}
   };
 
   groupWs.onclose=()=>{
+    window.GroupCall.onSocketClosed();
     // 切断時は5秒後に再接続を試みる
     setTimeout(connectGroupWS,5000);
   };

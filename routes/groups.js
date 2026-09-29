@@ -286,10 +286,16 @@ router.post('/:groupId/distribute-keys', verifyToken, asyncHandler(async (req, r
 
 // --- 自分宛の最新グループ鍵を取得 ---
 router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
-  const row = await db.get(
-    `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? ORDER BY key_version DESC LIMIT 1`,
-    [req.params.groupId, req.user.userId]
-  );
+  const wantVer = parseInt(req.query.version, 10);
+  const row = Number.isInteger(wantVer)
+    ? await db.get(
+        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=? LIMIT 1`,
+        [req.params.groupId, req.user.userId, wantVer]
+      )
+    : await db.get(
+        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? ORDER BY key_version DESC LIMIT 1`,
+        [req.params.groupId, req.user.userId]
+      );
   if (!row) return res.status(404).json({ error: '鍵が見つかりません' });
   res.json({ keyVersion: row.key_version, encryptedGroupKey: row.encrypted_group_key });
 }));
@@ -300,7 +306,7 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // mediaData: base64エンコードされたデータ
 router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
-  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted } = req.body;
+  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
   if (typeof content === 'string' && content.length > MAX_GROUP_CONTENT_LENGTH) {
     return res.status(413).json({ error: 'メッセージが長すぎます' });
@@ -338,7 +344,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   const msgId = uuidv4();
   await db.run(
     'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, group.key_version]
+    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= group.key_version) ? keyVersion : group.key_version]
   );
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ?', [msgId]);
@@ -470,7 +476,7 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
 // --- グループメッセージ編集 ---
 router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
-  const { content, encrypted } = req.body;
+  const { content, encrypted, keyVersion } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
@@ -481,7 +487,9 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (r
   if (msg.sender_id !== req.user.userId) return res.status(403).json({ error: '権限がありません' });
 
   const now = new Date().toISOString();
-  await db.run('UPDATE group_messages SET content = ?, encrypted = ?, edited_at = ? WHERE id = ?', [content, !!encrypted, now, msgId]);
+  const grp = await db.get('SELECT key_version FROM groups WHERE id = ?', [groupId]);
+  const newKv = (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= (grp?.key_version || 1)) ? keyVersion : (grp?.key_version || msg.key_version);
+  await db.run('UPDATE group_messages SET content = ?, encrypted = ?, key_version = ?, edited_at = ? WHERE id = ?', [content, !!encrypted, newKv, now, msgId]);
 
   const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
   members.forEach(m => {
@@ -491,6 +499,7 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (r
       messageId: msgId,
       content,
       encrypted: !!encrypted,
+      keyVersion: newKv,
       editedAt: now,
     });
   });

@@ -63,6 +63,41 @@ function rejectPendingCall(userId, callId) {
   return true;
 }
 
+
+// --- グループ通話(メッシュ型WebRTC) ---
+// サーバーは参加者名簿とSDP/ICEの中継だけを行う。映像・音声は参加者同士が直接やり取りする。
+// 参加者が増えると各端末の負荷が跳ね上がるため上限を設ける。
+const groupCalls = new Map(); // groupId -> { video, startedAt, startedBy, peers: Map<userId, ws> }
+const GROUP_CALL_MAX = 6;
+
+async function isActiveGroupMember(groupId, userId) {
+  const row = await db.get(
+    'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL',
+    [groupId, userId]
+  );
+  return !!row;
+}
+
+async function broadcastToGroupMembers(groupId, payload, exceptUserId) {
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => { if (m.user_id !== exceptUserId) broadcastToUser(m.user_id, payload); });
+}
+
+function leaveGroupCall(groupId, userId, ws) {
+  const room = groupCalls.get(groupId);
+  if (!room) return;
+  // 別端末の同一ユーザーの接続を巻き込まない
+  if (room.peers.get(userId) !== ws) return;
+  room.peers.delete(userId);
+  room.peers.forEach(peerWs => {
+    if (peerWs.readyState === peerWs.OPEN) peerWs.send(JSON.stringify({ type: 'gcall_left', groupId, userId }));
+  });
+  if (room.peers.size === 0) {
+    groupCalls.delete(groupId);
+    broadcastToGroupMembers(groupId, { type: 'gcall_ended', groupId }).catch(() => {});
+  }
+}
+
 function isUserOnline(userId) {
   const set = connections.get(userId);
   return !!set && set.size > 0;
@@ -554,6 +589,93 @@ function initWebSocketServer(server) {
         return;
       }
 
+      // --- グループ通話 ---
+      if (data.type === 'gcall_status') {
+        if (!userId || !data.groupId) return;
+        if (!(await isActiveGroupMember(data.groupId, userId))) return;
+        const room = groupCalls.get(data.groupId);
+        ws.send(JSON.stringify({
+          type: 'gcall_state', groupId: data.groupId, active: !!room,
+          participants: room ? [...room.peers.keys()] : [], video: room ? room.video : false, self: false,
+        }));
+        return;
+      }
+
+      if (data.type === 'gcall_join') {
+        if (!userId || !data.groupId) return;
+        const groupId = data.groupId;
+        if (!(await isActiveGroupMember(groupId, userId))) return;
+        let room = groupCalls.get(groupId);
+        const isNew = !room;
+        if (isNew) {
+          room = { video: !!data.video, startedAt: Date.now(), startedBy: userId, peers: new Map() };
+          groupCalls.set(groupId, room);
+        }
+        if (!room.peers.has(userId) && room.peers.size >= GROUP_CALL_MAX) {
+          ws.send(JSON.stringify({ type: 'gcall_full', groupId, max: GROUP_CALL_MAX }));
+          return;
+        }
+        // 同じユーザーが別端末から入り直した場合は古い接続を外す
+        const prev = room.peers.get(userId);
+        if (prev && prev !== ws && prev.readyState === prev.OPEN) {
+          prev.send(JSON.stringify({ type: 'gcall_kicked', groupId }));
+        }
+        const existing = [...room.peers.keys()].filter(id => id !== userId);
+        room.peers.set(userId, ws);
+        // 入った本人には既存の参加者を渡す。接続(offer)は「入った側」から既存の全員へ張る
+        ws.send(JSON.stringify({ type: 'gcall_state', groupId, active: true, participants: existing, video: room.video, self: true }));
+        room.peers.forEach((peerWs, id) => {
+          if (id !== userId && peerWs.readyState === peerWs.OPEN) {
+            peerWs.send(JSON.stringify({ type: 'gcall_joined', groupId, userId }));
+          }
+        });
+        if (isNew) {
+          try {
+            const group = await db.get('SELECT name FROM groups WHERE id = ?', [groupId]);
+            const caller = await db.get('SELECT display_name FROM users WHERE id = ?', [userId]);
+            const callerName = caller?.display_name || 'ユーザー';
+            const groupName = group?.name || 'グループ';
+            const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+            members.forEach(m => {
+              if (m.user_id === userId) return;
+              broadcastToUser(m.user_id, { type: 'gcall_started', groupId, groupName, byUserId: userId, byName: callerName, video: room.video });
+              require('../utils/fcm').sendMessageNotification(
+                m.user_id, `${callerName} (${groupName})`, 'グループ通話が始まりました', 'group', { senderId: userId, chatId: groupId }
+              ).catch(err => console.error('[fcm] group call failed:', err.message));
+              if (!isUserOnline(m.user_id)) {
+                sendPushToUser(m.user_id, {
+                  type: 'new_group_message', groupId, groupName, senderName: callerName, preview: 'グループ通話が始まりました',
+                }).catch(err => console.error('[push] group call failed:', err.message));
+              }
+            });
+          } catch (err) {
+            console.error('[ws] group call notify error:', err);
+          }
+        }
+        return;
+      }
+
+      if (data.type === 'gcall_signal') {
+        // data: { groupId, to, kind: 'offer'|'answer'|'ice', sdp?, candidate? }
+        if (!userId || !data.groupId || !data.to) return;
+        const room = groupCalls.get(data.groupId);
+        if (!room || room.peers.get(userId) !== ws) return; // 参加していない人の中継はしない
+        const target = room.peers.get(data.to);
+        if (!target || target.readyState !== target.OPEN) return;
+        if (!['offer', 'answer', 'ice'].includes(data.kind)) return;
+        target.send(JSON.stringify({
+          type: 'gcall_signal', groupId: data.groupId, from: userId, kind: data.kind,
+          sdp: data.sdp, candidate: data.candidate,
+        }));
+        return;
+      }
+
+      if (data.type === 'gcall_leave') {
+        if (!userId || !data.groupId) return;
+        leaveGroupCall(data.groupId, userId, ws);
+        return;
+      }
+
       // --- Call Assist: リアルタイム字幕・翻訳セッションの開始 ---
       // data: { callId, language?, track? }  track: 'mic'(自分) | 'remote'(相手)
       if (data.type === 'call_assist_start') {
@@ -599,6 +721,7 @@ function initWebSocketServer(server) {
     });
 
     ws.on('close', () => {
+      if (userId) groupCalls.forEach((room, gid) => { if (room.peers.get(userId) === ws) leaveGroupCall(gid, userId, ws); });
       ['mic', 'remote'].forEach(track => {
         if (callAssistSessions[track]) {
           callAssist.stopSession(callAssistSessions[track]);
