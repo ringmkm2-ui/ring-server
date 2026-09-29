@@ -23,14 +23,28 @@ function clearPendingCall(callId) {
   const p = pendingCalls.get(callId);
   if (!p) return null;
   clearTimeout(p.timer);
+  if (p.repeat) { clearInterval(p.repeat); p.repeat = null; }
   pendingCalls.delete(callId);
   return p;
 }
 
 // 着信を鳴らしている全端末(Web Push / APKのFCM)に「もう鳴らさなくていい」を送る
-function cancelRinging(userId, callId) {
-  sendPushToUser(userId, { type: 'call_cancelled', callId }, { ttl: 30, skipApple: true })
-    .catch(err => console.error('[push] call_cancelled failed:', err.message));
+// missedFrom を渡すと「不在着信」通知に差し替える(iPhoneのPWAは着信音を指定できないので、
+// 鳴らしっぱなしの着信通知を消す代わりに不在着信として残す)。渡さなければ静かに消すだけ。
+async function cancelRinging(userId, callId, missedFrom) {
+  if (missedFrom) {
+    try {
+      const caller = await db.get('SELECT display_name, username FROM users WHERE id = ?', [missedFrom]);
+      const callerName = caller?.display_name || caller?.username || '不明なユーザー';
+      sendPushToUser(userId, { type: 'call_missed', callId, callerId: missedFrom, callerName }, { ttl: 3600 })
+        .catch(err => console.error('[push] call_missed failed:', err.message));
+    } catch (err) {
+      console.error('[push] call_missed lookup failed:', err.message);
+    }
+  } else {
+    sendPushToUser(userId, { type: 'call_cancelled', callId }, { ttl: 30, skipApple: true })
+      .catch(err => console.error('[push] call_cancelled failed:', err.message));
+  }
   try {
     require('../utils/fcm').sendCallCancelled(userId, callId)
       .catch(err => console.error('[fcm] call_cancelled failed:', err.message));
@@ -407,7 +421,7 @@ function initWebSocketServer(server) {
           // 相手の端末で一度でも鳴っていれば「出られない」(留守番電話へ)、
           // 一度も繋がらなかったら「電波の届かない場所…」のガイダンスにする
           broadcastToUser(userId, { type: 'call_unavailable', callId: data.callId, reason: pc.delivered ? 'no_answer' : 'unreachable' });
-          cancelRinging(data.recipientId, data.callId);
+          cancelRinging(data.recipientId, data.callId, userId);
         }, RING_TIMEOUT_MS);
         pendingCalls.set(data.callId, pending);
         if (!delivered) {
@@ -432,14 +446,29 @@ function initWebSocketServer(server) {
           const callerPic = rawPic && !String(rawPic).startsWith('data:') && String(rawPic).length < 512 ? rawPic : null;
 
           // Web Push（ブラウザ用）
-          sendPushToUser(data.recipientId, {
+          // iPhoneのPWAは着信音を指定できず、通知音は1回しか鳴らない。電話のように鳴り続けて
+          // 聞こえるよう、相手の画面で着信が出る(call_ringing)まで7秒おきに最大5回、同じtagで送り直す。
+          const ringPayload = {
             type: 'call_incoming',
             callId: data.callId,
             callerId: userId,
             callerName,
             callerPic,
             isVideo: !!data.isVideo,
-          }, { ttl: 30 }).catch(err => console.error('[push] call_offer push failed:', err.message));
+          };
+          const sendRing = () => sendPushToUser(data.recipientId, ringPayload, { ttl: 30 })
+            .catch(err => console.error('[push] call_offer push failed:', err.message));
+          sendRing();
+          if (pendingCalls.get(data.callId) === pending) {
+            let repeats = 0;
+            pending.repeat = setInterval(() => {
+              if (pendingCalls.get(data.callId) !== pending || pending.delivered || ++repeats > 5) {
+                clearInterval(pending.repeat); pending.repeat = null;
+                return;
+              }
+              sendRing();
+            }, 7000);
+          }
 
           // FCM Push（Capacitorアプリ用）
           try {
@@ -512,9 +541,10 @@ function initWebSocketServer(server) {
           callId: data.callId,
           fromUserId: userId,
         });
-        clearPendingCall(data.callId);
+        const wasRinging = clearPendingCall(data.callId);
         // 呼び出し中に発信者が切った場合など、相手の端末で鳴っている着信を止める
-        cancelRinging(data.recipientId, data.callId);
+        // (まだ鳴っていた=応答されていないので、iPhoneにも不在着信として残す)
+        cancelRinging(data.recipientId, data.callId, wasRinging ? userId : undefined);
         ['mic', 'remote'].forEach(track => {
           if (callAssistSessions[track]) {
             callAssist.stopSession(callAssistSessions[track]);

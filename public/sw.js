@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.118';
+const CACHE_VERSION = 'v1.28.119';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -144,6 +144,20 @@ self.addEventListener('push', event => {
         self.registration.getNotifications({ tag: `call-${callId}` })
           .then(notifications => notifications.forEach(n => n.close()))
       );
+    }
+
+    // 応答されないまま切れた/時間切れ → 着信通知を「不在着信」に差し替える(同じtagで置き換わる)
+    // タップすると発信者とのトークが開く
+    if (data.type === 'call_missed') {
+      const { callId, callerId, callerName } = data;
+      pendingCalls.delete(callId);
+      event.waitUntil(self.registration.showNotification('不在着信', {
+        body: callerName || 'ユーザー',
+        icon: '/images/icons/icon-192.png',
+        badge: '/images/icons/icon-192.png',
+        tag: `call-${callId}`,
+        data: { type: 'dm', senderId: callerId },
+      }));
     }
 
     // 1対1チャットの新着メッセージ
