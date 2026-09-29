@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.119 beta</div>
+  <div class="version-badge">Bro Chat v1.28.120 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3176,7 +3176,7 @@ async function startOutgoingCall(isVideo = false) {
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('発信中...');
 
-  // 通話開始のたびにTwilioの一時的なICE認証情報を取得し直す
+  // 通話開始のたびに一時的なICE認証情報を取得し直す
   // (有効期限があるため、通話ごとに最新のものを使う)
   await refreshIceServers();
   if (currentCallId !== myCallId) return; // 準備中にキャンセルされた
@@ -3285,7 +3285,7 @@ async function acceptIncomingCall() {
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('接続中...');
 
-  // 通話応答のたびにTwilioの一時的なICE認証情報を取得し直す
+  // 通話応答のたびに一時的なICE認証情報を取得し直す
   await refreshIceServers();
 
   try {
