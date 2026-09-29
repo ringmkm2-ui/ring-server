@@ -378,6 +378,8 @@ function initWebSocketServer(server) {
       // callId はクライアント側(発信者)が生成し、通話1本を通して一貫して使う。
       if (data.type === 'call_offer') {
         // data: { recipientId, callId, sdp, isVideo? }
+        // callIdが無い/宛先が無いofferは不正(キャンセル後の遅延送信など)。鳴らさず、タイマーも作らない
+        if (!data.callId || !data.recipientId) return;
         //
         // 以前は友達関係チェック(user_a_id/user_b_idがfriendships上でacceptedか)を
         // ここに入れていたが、これがあるとテスト用アカウント間のような

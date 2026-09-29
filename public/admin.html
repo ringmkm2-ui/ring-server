@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.117 beta</div>
+  <div class="version-badge">Bro Chat v1.28.118 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2904,6 +2904,9 @@ function stopCallTimer() {
 }
 
 function sendSignal(type, extra) {
+  // キャンセル済み(currentCallId=null)の通話のシグナルを送ると、サーバーにcallId=nullの
+  // 着信が残り、45秒後に発信者へ不在ガイダンスが流れてしまう
+  if (!currentCallId) { console.warn('[sendSignal] callIdが無いので送信しません:', type); return; }
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type, recipientId: callPartnerId || otherId, callId: currentCallId, ...extra }));
   } else {
@@ -3160,6 +3163,7 @@ async function startOutgoingCall(isVideo = false) {
   }
 
   currentCallId = genCallId();
+  const myCallId = currentCallId; // await中にキャンセルされたか判定する用
   callRole = 'caller';
   callPartnerId = otherId;
   isVideoCall = isVideo;
@@ -3175,9 +3179,17 @@ async function startOutgoingCall(isVideo = false) {
   // 通話開始のたびにTwilioの一時的なICE認証情報を取得し直す
   // (有効期限があるため、通話ごとに最新のものを使う)
   await refreshIceServers();
+  if (currentCallId !== myCallId) return; // 準備中にキャンセルされた
 
   try {
     localStream = await getMediaStream(isVideo);
+    if (currentCallId !== myCallId) {
+      // 取得中にキャンセルされた: 取ったマイク/カメラを止めて終わる
+      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      localStream = null;
+      stopAllCallMedia();
+      return;
+    }
   } catch (err) {
     setCallStatus(isVideo ? 'カメラ/マイクにアクセスできません' : 'マイクにアクセスできません');
     setTimeout(hideCallOverlay, 1500);
@@ -3201,7 +3213,9 @@ async function startOutgoingCall(isVideo = false) {
   }
 
   const offer = await pc.createOffer();
+  if (currentCallId !== myCallId) return;
   await pc.setLocalDescription(offer);
+  if (currentCallId !== myCallId) return; // キャンセル済みならofferを送らない
   sendSignal('call_offer', { sdp: offer, isVideo });
   setCallStatus('呼び出し中...');
 }
@@ -3314,7 +3328,7 @@ function declineIncomingCall() {
 
 // --- 相手からの応答受信（発信者側） ---
 async function onCallAnswer(data) {
-  if (!pc || data.callId !== currentCallId) return;
+  if (!pc || !currentCallId || data.callId !== currentCallId) return;
   await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
   for (const c of pendingRemoteIce) {
     try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
@@ -3325,7 +3339,7 @@ async function onCallAnswer(data) {
 }
 
 async function onCallIce(data) {
-  if (data.callId !== currentCallId) return;
+  if (!currentCallId || data.callId !== currentCallId) return;
   if (pc && pc.remoteDescription) {
     try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
   } else {
@@ -3455,7 +3469,7 @@ function finishVoicemail(send) {
 }
 
 function onCallReject(data) {
-  if (data.callId !== currentCallId) return;
+  if (!currentCallId || data.callId !== currentCallId) return;
   if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
   logCall(data.reason === 'busy' ? 'busy' : 'no_answer');
   setCallStatus(data.reason === 'busy' ? '通話中です' : '応答がありませんでした');
@@ -3463,14 +3477,15 @@ function onCallReject(data) {
 }
 
 function onCallEnd(data) {
-  if (data.callId !== currentCallId) return;
+  if (!currentCallId || data.callId !== currentCallId) return;
   logCall(callConnected ? 'completed' : 'cancelled');
   setCallStatus('通話終了');
   setTimeout(cleanupCall, 800);
 }
 
 function onCallUnavailable(data) {
-  if (data.callId !== currentCallId) return;
+  if (!currentCallId || data.callId !== currentCallId) return;
+  if (callRole !== 'caller' || guidePhase) return; // 発信中の自分にだけ、ガイダンスは1回だけ
   if (window.LiquidGlass) window.LiquidGlass.haptic('warning');
   // reason別にメッセージを出し分ける。以前は理由を問わず「相手はオフラインです」
   // 固定表示だったため、友達関係が未成立で発信できなかった場合にも
