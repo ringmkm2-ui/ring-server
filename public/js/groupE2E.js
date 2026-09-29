@@ -225,11 +225,17 @@
   }
 
   // --- グループの現在の鍵を取得する(ローカルキャッシュ→無ければサーバーから取得して復号) ---
-  async function getGroupKey(groupId) {
-    // まずサーバーに現在のkeyVersionを問い合わせ、ローカルキャッシュと突き合わせる
-    const myKeyRes = await api('/api/groups/' + groupId + '/my-key');
+  async function getGroupKey(groupId, version) {
+    // version指定あり: そのバージョンの鍵(ローカルキャッシュ優先)。過去メッセージの復号用
+    if (version != null) {
+      const ck = GROUP_KEY_STORAGE_PREFIX + groupId + '_v' + version;
+      const c = localStorage.getItem(ck);
+      if (c) return { key: new Uint8Array(JSON.parse(c)), version };
+    }
+    const q = version != null ? '?version=' + encodeURIComponent(version) : '';
+    const myKeyRes = await api('/api/groups/' + groupId + '/my-key' + q);
     if (!myKeyRes || !myKeyRes.encryptedGroupKey) {
-      throw new Error('グループ鍵が見つかりません（まだ配布されていない可能性があります）');
+      throw new Error('グループ鍵が見つかりません（まだ配布されていない、またはこの期間はメンバーではありませんでした）');
     }
 
     const cacheKey = GROUP_KEY_STORAGE_PREFIX + groupId + '_v' + myKeyRes.keyVersion;
