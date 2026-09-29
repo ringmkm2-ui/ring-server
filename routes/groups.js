@@ -89,6 +89,7 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   // クライアントが生成した初期グループ鍵(全メンバー分、X3DHで個別暗号化済み)を保存
   if (Array.isArray(encryptedKeysForMembers)) {
     for (const entry of encryptedKeysForMembers) {
+      if (!entry || !addedMembers.includes(entry.userId)) continue; // メンバー以外宛の鍵は保存しない
       await db.run(
         'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, 1, ?)',
         [uuidv4(), groupId, entry.userId, entry.encryptedGroupKey]
@@ -194,6 +195,74 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   broadcastToUser(removeUserId, { type: 'removed_from_group', groupId });
 
   res.json({ ok: true, groupId, keyVersion: newVersion });
+}));
+
+// --- 現行バージョンの鍵をまだ受け取っていないメンバーがいるグループ一覧 ---
+// 自分がその現行鍵を持っている(=配れる)グループだけを返す。
+// 暗号鍵をまだ作っていないメンバーがいても先にグループを作れるようにするための仕組み。
+router.get('/pending-keys', verifyToken, asyncHandler(async (req, res) => {
+  const mine = await db.all(
+    `SELECT g.id, g.key_version
+     FROM groups g
+     JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = ? AND gm.left_at IS NULL
+     JOIN group_key_distributions d ON d.group_id = g.id AND d.user_id = ? AND d.key_version = g.key_version`,
+    [req.user.userId, req.user.userId]
+  );
+  const groups = [];
+  for (const g of mine) {
+    const rows = await db.all(
+      `SELECT gm.user_id
+       FROM group_members gm
+       WHERE gm.group_id = ? AND gm.left_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM group_key_distributions d
+           WHERE d.group_id = gm.group_id AND d.user_id = gm.user_id AND d.key_version = ?
+         )`,
+      [g.id, g.key_version]
+    );
+    if (rows.length) groups.push({ groupId: g.id, keyVersion: g.key_version, userIds: rows.map(r => r.user_id) });
+  }
+  res.json({ groups });
+}));
+
+// --- 後から鍵を配る ---
+// body: { keyVersion, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
+// 現行バージョンの鍵を持つ現メンバーだけが、まだ鍵を持っていない現メンバー宛にのみ配れる(上書き不可)。
+router.post('/:groupId/distribute-keys', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { keyVersion, encryptedKeysForMembers } = req.body;
+  const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+  if (Number(keyVersion) !== group.key_version) {
+    return res.status(409).json({ error: '鍵のバージョンが古くなっています', keyVersion: group.key_version });
+  }
+  const holds = await db.get(
+    'SELECT 1 FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=?',
+    [groupId, req.user.userId, group.key_version]
+  );
+  if (!holds) return res.status(403).json({ error: 'このグループの現在の鍵を持っていません' });
+  if (!Array.isArray(encryptedKeysForMembers)) return res.status(400).json({ error: '配布データが不正です' });
+
+  let delivered = 0;
+  for (const entry of encryptedKeysForMembers) {
+    if (!entry || typeof entry.encryptedGroupKey !== 'string' || !entry.userId) continue;
+    if (!(await isGroupMember(groupId, entry.userId))) continue;
+    const exists = await db.get(
+      'SELECT 1 FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=?',
+      [groupId, entry.userId, group.key_version]
+    );
+    if (exists) continue;
+    await db.run(
+      'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
+      [uuidv4(), groupId, entry.userId, group.key_version, entry.encryptedGroupKey]
+    );
+    delivered++;
+    broadcastToUser(entry.userId, { type: 'group_key_rotated', groupId, keyVersion: group.key_version, reason: 'key_delivered' });
+  }
+  res.json({ ok: true, delivered });
 }));
 
 // --- 自分宛の最新グループ鍵を取得 ---

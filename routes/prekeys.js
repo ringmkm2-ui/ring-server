@@ -9,6 +9,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { prekeyLimiter } = require('../utils/rateLimits');
+const { broadcastToUser } = require('../ws/wsServer');
 
 const router = express.Router();
 
@@ -41,6 +42,16 @@ router.post('/upload', prekeyLimiter, verifyToken, asyncHandler(async (req, res)
       `INSERT INTO identity_keys (user_id, identity_pubkey, signing_pubkey, signed_prekey_pub, signed_prekey_sig, registration_id) VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, identityPubkey, signingPubkey || null, signedPrekeyPub, signedPrekeySig, registrationId || 0]
     );
+    // 初めて鍵を登録した。同じグループの人に知らせて、まだ渡せていないグループ鍵を配ってもらう
+    try {
+      const peers = await db.all(
+        `SELECT DISTINCT gm2.user_id FROM group_members gm1
+         JOIN group_members gm2 ON gm2.group_id = gm1.group_id AND gm2.left_at IS NULL AND gm2.user_id <> ?
+         WHERE gm1.user_id = ? AND gm1.left_at IS NULL`,
+        [userId, userId]
+      );
+      for (const p of peers) broadcastToUser(p.user_id, { type: 'member_keys_ready', userId });
+    } catch (e) { console.error('member_keys_ready broadcast failed:', e.message); }
   }
 
   if (Array.isArray(oneTimePrekeys)) {

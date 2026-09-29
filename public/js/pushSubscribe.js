@@ -148,6 +148,38 @@
       }
     });
 
+    // 裏に回していたアプリを開き直した時(タブ/アプリが生きたまま戻る場合)は、ページの
+    // 読み込み自体が走らないので、上の更新チェックが効かず古いまま使い続けてしまう。
+    // 復帰した時と、表示中の一定間隔で、サーバーの版と自分の版を比べて違えば更新する。
+    const badge = document.querySelector('.version-badge');
+    const m = badge && /v(\d+\.\d+\.\d+)/.exec(badge.textContent || '');
+    const myVersion = m ? m[1] : null;
+    let lastCheck = 0;
+    async function checkVersion() {
+      if (!myVersion || document.hidden) return;
+      const now = Date.now();
+      if (now - lastCheck < 20000) return;
+      lastCheck = now;
+      try {
+        const r = await fetch('/api/version', { cache: 'no-store' });
+        const j = await r.json();
+        if (!j || !j.version || j.version === myVersion) return;
+        // リロードが繰り返されないよう、同じ版への更新は1分に1回まで
+        const key = 'sw_reload_' + j.version;
+        const prev = Number(sessionStorage.getItem(key) || 0);
+        if (now - prev < 60000) return;
+        sessionStorage.setItem(key, String(now));
+        navigator.serviceWorker.getRegistration().then(reg => reg && reg.update().catch(() => {}));
+        const callOv = document.getElementById('callOv');
+        if (callOv && callOv.classList.contains('show')) { window.__pendingSwReload = true; return; }
+        location.reload();
+      } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+    window.addEventListener('focus', checkVersion);
+    window.addEventListener('pageshow', checkVersion);
+    setInterval(checkVersion, 5 * 60 * 1000);
+
     // 通話終了時など、保留していた自動更新を反映したいタイミングで
     // 他のスクリプトから呼び出せるようグローバルに公開しておく
     window.__applyPendingSwReloadIfAny = function () {

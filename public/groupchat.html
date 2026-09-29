@@ -197,7 +197,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.124 beta</div>
+  <div class="version-badge">Bro Chat v1.28.125 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1372,6 +1372,9 @@ function connectGroupWS(){
         // 新メンバー追加 → 鍵がローテーションされた可能性があるのでキャッシュ破棄
         cachedGroupKey = null;
         loadGroupInfo();
+      }else if(data.type==='member_keys_ready'){
+        // 鍵をまだ持っていなかったメンバーが鍵を作った → 持っているグループ鍵を配る
+        if(window.groupE2E&&window.groupE2E.distributePendingKeys) window.groupE2E.distributePendingKeys();
       }else if(data.type==='group_key_rotated'&&data.groupId===groupId){
         // 鍵ローテーション通知 → メモリキャッシュとlocalStorageの古いバージョンを破棄して次回取得時に再取得させる
         cachedGroupKey = null;

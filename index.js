@@ -136,6 +136,14 @@ async function main() {
 
   app.get('/health', (req, res) => res.json({ ok: true, service: 'ring-server', time: new Date().toISOString() }));
 
+  // クライアントが「自分は古い版か」を確かめるためのバージョン返却。キャッシュさせない。
+  app.get('/api/version', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    let version = '';
+    try { version = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version; } catch (e) {}
+    res.json({ version });
+  });
+
   // sw.js(Service Worker本体)は、ブラウザ/中継プロキシに一切キャッシュさせない。
   // ここがキャッシュされると「デプロイしても誰にも新バージョンが届かない」
   // 事態になり、アプリを開くだけで自動更新される仕組み全体が機能しなくなるため。

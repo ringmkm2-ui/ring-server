@@ -145,7 +145,10 @@
     // 404時は{error:'...'}が返る(nullにはならない)。identityPubkeyの有無で判定する。
     const theirBundle = await api('/api/prekeys/bundle/' + targetUserId);
     if (!theirBundle || !theirBundle.identityPubkey) {
-      throw new Error('相手の鍵バンドルが見つかりません: ' + targetUserId + (theirBundle && theirBundle.error ? ' (' + theirBundle.error + ')' : ''));
+      const noBundle = new Error('相手の鍵バンドルが見つかりません: ' + targetUserId + (theirBundle && theirBundle.error ? ' (' + theirBundle.error + ')' : ''));
+      noBundle.code = 'NO_BUNDLE';
+      noBundle.userId = targetUserId;
+      throw noBundle;
     }
 
     // signed prekey の署名検証(なりすまし・改竄防止)。ここを通らない鍵バンドルは
@@ -270,10 +273,54 @@
   async function createInitialGroupKeyDistribution(memberIds) {
     const groupKey = await generateGroupKey();
     const distributions = [];
+    const missing = []; // まだ暗号鍵を作っていないメンバー。後から自動で配られる
     for (const uid of memberIds) {
-      distributions.push({ userId: uid, encryptedGroupKey: await encryptGroupKeyForMember(groupKey, uid) });
+      try {
+        distributions.push({ userId: uid, encryptedGroupKey: await encryptGroupKeyForMember(groupKey, uid) });
+      } catch (e) {
+        if (e && e.code === 'NO_BUNDLE' && uid !== window.myUserId) missing.push(uid);
+        else throw e;
+      }
     }
-    return { groupKey, distributions };
+    return { groupKey, distributions, missing };
+  }
+
+  // --- 鍵をまだ受け取っていないメンバーへ、持っているグループ鍵を配る ---
+  // 相手が鍵を作ったのに自分がオフラインだった場合などに、次に開いた時に追いつく。
+  let distributing = false;
+  async function distributePendingKeys() {
+    if (distributing) return 0;
+    distributing = true;
+    let total = 0;
+    try {
+      const res = await api('/api/groups/pending-keys');
+      if (!res || !Array.isArray(res.groups) || res.groups.length === 0) return 0;
+      await ensureMyIdentity();
+      for (const g of res.groups) {
+        let mine;
+        try { mine = await getGroupKey(g.groupId); } catch (e) { console.warn('[groupE2E] group key unavailable:', g.groupId, e); continue; }
+        if (mine.version !== g.keyVersion) continue;
+        const entries = [];
+        for (const uid of g.userIds) {
+          try {
+            entries.push({ userId: uid, encryptedGroupKey: await encryptGroupKeyForMember(mine.key, uid) });
+          } catch (e) {
+            if (!(e && e.code === 'NO_BUNDLE')) console.warn('[groupE2E] key distribution failed:', uid, e);
+          }
+        }
+        if (!entries.length) continue;
+        const r = await api('/api/groups/' + g.groupId + '/distribute-keys', {
+          method: 'POST',
+          body: JSON.stringify({ keyVersion: g.keyVersion, encryptedKeysForMembers: entries }),
+        });
+        if (r && r.delivered) total += r.delivered;
+      }
+    } catch (e) {
+      console.warn('[groupE2E] distributePendingKeys failed:', e);
+    } finally {
+      distributing = false;
+    }
+    return total;
   }
 
   window.groupE2E = {
@@ -285,5 +332,6 @@
     encryptGroupText,
     decryptGroupText,
     createInitialGroupKeyDistribution,
+    distributePendingKeys,
   };
 })();

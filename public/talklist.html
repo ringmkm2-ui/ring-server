@@ -276,6 +276,7 @@ html.dark-mode #settingsMov .sg{background:#1c1c1e}
   -webkit-backdrop-filter:url(#tsGlassFilter);
 }
 .use-backdrop-filter .ts-thumb-clone{display:none;}
+@keyframes talkSpin{to{transform:rotate(360deg)}}.talk-spin{animation:talkSpin .8s linear infinite}
 .version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
 html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
@@ -492,7 +493,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.124 beta</div>
+  <div class="version-badge">Bro Chat v1.28.125 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1344,7 +1345,23 @@ async function loadTalks(animate = false) {
     // キャッシュから描画済みなら出現アニメーションを二重にかけない
     renderTalkList(merged, animate && !window.__talksRenderedFromCache);
     window.__talksRenderedFromCache = false;
-  } catch(e) { console.error('loadTalks:', e); }
+  } catch(e) {
+    console.error('loadTalks:', e);
+    // ローディングのまま固まらないよう、取得に失敗したら再試行できる表示にする
+    const box = document.querySelector('#talkList .talk-loading');
+    if (box) {
+      box.textContent = '';
+      const msg = document.createElement('div');
+      msg.textContent = '読み込めませんでした';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = '再読み込み';
+      retry.style.cssText = 'padding:8px 18px;border:none;border-radius:999px;background:rgba(15,23,42,.08);color:#0f172a;font-weight:700;font-size:13px;cursor:pointer';
+      retry.addEventListener('click', () => { window.__lastTalkListFingerprint = null; loadTalks(true); });
+      box.appendChild(msg);
+      box.appendChild(retry);
+    }
+  }
 }
 
 function renderTalkList(merged, animate) {
@@ -2301,12 +2318,7 @@ document.getElementById('ngCreate').onclick = async () => {
       encryptedKeysForMembers = dist.distributions;
     } catch (e) {
       console.error('グループ鍵の生成に失敗しました:', e);
-      const miss = /相手の鍵バンドルが見つかりません: ([^\s(]+)/.exec((e && e.message) || '');
-      if (miss) {
-        alert(i18n.t('err_member_no_keys').replace('{name}', memberNameMap.get(miss[1]) || ''));
-      } else {
-        alert(i18n.t('err_encryption_init_failed') + '\n(' + ((e && e.message) || e) + ')');
-      }
+      alert(i18n.t('err_encryption_init_failed') + '\n(' + ((e && e.message) || e) + ')');
       createBtn.disabled = false;
       createBtn.textContent = i18n.t('create_btn');
       return;
@@ -2420,7 +2432,16 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // 初期読み込み: まず前回の一覧を即表示 → 裏で最新化
-window.__talksRenderedFromCache = renderTalksFromCache();
+// 前回の一覧(ゴースト)は出さず、最新が取れるまでローディング表示にする
+window.__talksRenderedFromCache = false;
+(function showTalkLoading() {
+  const spin = '<svg class="talk-spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>';
+  const box = '<div class="talk-loading" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 0;color:#64748b;font-size:13px">' + spin + '<div>読み込み中</div></div>';
+  const t = document.getElementById('talkList');
+  const g = document.getElementById('groupList');
+  if (t) t.innerHTML = box;
+  if (g) g.innerHTML = '';
+})();
 loadTalks(true);
 loadPendingRequests(true);
 
@@ -2481,6 +2502,7 @@ function connectTalkWs() {
       return;
     }
     if (/^call_/.test(d.type)) return;
+    if (d.type === 'member_keys_ready' && window.__e2eBackgroundWork) { window.__e2eBackgroundWork(); return; }
     scheduleTalkRefresh();
   };
   talkWs.onclose = () => {
@@ -2506,7 +2528,7 @@ function logout() {
   const keep = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_)/.test(k)) keep[k] = localStorage.getItem(k);
+    if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/.test(k)) keep[k] = localStorage.getItem(k);
   }
   localStorage.clear();
   for (const k in keep) localStorage.setItem(k, keep[k]);
@@ -3680,22 +3702,39 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 <script>
-// 自分の暗号鍵を、端末ごとに1回だけ裏で作ってサーバーに登録する。
-// これをやらないと、グループ作成の時に「相手の鍵が無い」で失敗する
-// (鍵はグループ作成/参加で初めて作られる仕様だったため)。
+// 暗号鍵まわりの裏処理。libsodium(1.8MB)は必要な時だけ読む。
+//  1) 自分の鍵を端末ごとに1回だけ作ってサーバーに登録する
+//  2) 鍵をまだ持っていないメンバーがいるグループがあれば、自分の持つグループ鍵を配る
 (function () {
-  try {
-    const uid = localStorage.getItem('ring_userId');
-    if (!uid) return;
-    const flag = 'e2e_registered_' + uid;
-    if (localStorage.getItem(flag)) return;
-    const run = () => window.ensureGroupCrypto()
-      .then(() => window.groupE2E.ensureMyIdentity())
-      .then(() => localStorage.setItem(flag, '1'))
-      .catch(e => console.warn('[e2e] identity init failed:', e));
-    if (window.requestIdleCallback) window.requestIdleCallback(() => setTimeout(run, 3000), { timeout: 10000 });
-    else setTimeout(run, 5000);
-  } catch (e) {}
+  const uid = localStorage.getItem('ring_userId');
+  if (!uid) return;
+  const flag = 'e2e_registered_' + uid;
+  let running = false;
+  async function work() {
+    if (running || document.hidden) return;
+    running = true;
+    try {
+      let needIdentity = !localStorage.getItem(flag);
+      let needDistribute = false;
+      try {
+        const r = await api('/api/groups/pending-keys');
+        needDistribute = !!(r && Array.isArray(r.groups) && r.groups.length);
+      } catch (e) {}
+      if (!needIdentity && !needDistribute) return;
+      await window.ensureGroupCrypto();
+      await window.groupE2E.ensureMyIdentity();
+      localStorage.setItem(flag, '1');
+      if (needDistribute) await window.groupE2E.distributePendingKeys();
+    } catch (e) {
+      console.warn('[e2e] background key work failed:', e);
+    } finally {
+      running = false;
+    }
+  }
+  window.__e2eBackgroundWork = work;
+  const start = () => setTimeout(work, 3000);
+  if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 10000 });
+  else setTimeout(work, 5000);
 })();
 </script>
 </body>
