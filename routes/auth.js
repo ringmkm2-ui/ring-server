@@ -401,10 +401,17 @@ router.post('/google/app-start', loginLimiter, (req, res) => {
   if (googleAppPending.size > 2000) return res.status(429).json({ error: 'busy' });
   const nonce = require('crypto').randomBytes(16).toString('hex');
   googleAppPending.set(state, { nonce, ts: Date.now(), result: null });
-  // リダイレクトURIの登録が要らない方式: 自サイトのログインページ(Googleの承認済みJavaScript生成元に登録済み)を
-  // システムブラウザで開き、そこでGoogleのボタンを押してもらう。IDトークンはJSのコールバックで受け取る。
-  const url = publicBase(req) + '/google-login.html?' + new URLSearchParams({ state, nonce }).toString();
-  res.json({ url });
+  const redirectUri = publicBase(req) + '/google-callback.html';
+  const q = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'id_token',
+    scope: 'openid email profile',
+    nonce,
+    state,
+    prompt: 'select_account',
+  });
+  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri });
 });
 
 router.post('/google/app-relay', loginLimiter, async (req, res) => {
