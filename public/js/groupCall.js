@@ -150,7 +150,16 @@
     const pc = new RTCPeerConnection({ iceServers });
     const p = { pc, pendingIce: [], hasRemote: false };
     peers.set(uid, p);
-    localStream.getTracks().forEach(tr => pc.addTrack(tr, localStream));
+    localStream.getTracks().forEach(tr => {
+      const sender = pc.addTrack(tr, localStream);
+      // 帯域とCPUを抑える。人数分の送信が並行するので1本あたりは小さく
+      try {
+        const prm = sender.getParameters();
+        if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+        prm.encodings[0].maxBitrate = tr.kind === 'audio' ? 24000 : 200000;
+        sender.setParameters(prm).catch(() => {});
+      } catch (e) {}
+    });
     pc.onicecandidate = e => {
       if (e.candidate) send({ type: 'gcall_signal', groupId: cfg.groupId, to: uid, kind: 'ice', candidate: e.candidate });
     };
@@ -241,7 +250,7 @@
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: isVideo ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } : false,
+          video: isVideo ? { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } } : false,
         });
       } catch (e) {
         alert('マイク' + (isVideo ? 'かカメラ' : '') + 'を使えませんでした。権限を確認してください');
@@ -300,6 +309,14 @@
     switch (d.type) {
       case 'gcall_state':
         if (d.self) {
+          if (isVideo && !d.video) {
+            // 音声通話として始まっている部屋にビデオで入った場合は音声のみに切り替える
+            isVideo = false;
+            if (localStream) localStream.getVideoTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+            els.cam.style.display = 'none';
+            const me = els.grid.querySelector('[data-uid="' + cfg.myUserId + '"]');
+            if (me) me.classList.add('novid');
+          }
           // 入室完了。既存の全員へこちらからofferを送る
           d.participants.forEach(uid => callPeer(uid).catch(e => console.error('[gcall] offer failed', e)));
         } else {

@@ -68,7 +68,10 @@ function rejectPendingCall(userId, callId) {
 // サーバーは参加者名簿とSDP/ICEの中継だけを行う。映像・音声は参加者同士が直接やり取りする。
 // 参加者が増えると各端末の負荷が跳ね上がるため上限を設ける。
 const groupCalls = new Map(); // groupId -> { video, startedAt, startedBy, peers: Map<userId, ws> }
-const GROUP_CALL_MAX = 6;
+// メッシュ型は1人あたり(人数-1)本の接続を張るので、30人では成立しない。
+// 端末が耐えられる範囲として、音声は8人、ビデオは4人まで。
+const GROUP_CALL_MAX_AUDIO = 8;
+const GROUP_CALL_MAX_VIDEO = 4;
 
 async function isActiveGroupMember(groupId, userId) {
   const row = await db.get(
@@ -611,8 +614,10 @@ function initWebSocketServer(server) {
           room = { video: !!data.video, startedAt: Date.now(), startedBy: userId, peers: new Map() };
           groupCalls.set(groupId, room);
         }
-        if (!room.peers.has(userId) && room.peers.size >= GROUP_CALL_MAX) {
-          ws.send(JSON.stringify({ type: 'gcall_full', groupId, max: GROUP_CALL_MAX }));
+        const roomMax = room.video ? GROUP_CALL_MAX_VIDEO : GROUP_CALL_MAX_AUDIO;
+        if (!room.peers.has(userId) && room.peers.size >= roomMax) {
+          if (isNew) groupCalls.delete(groupId);
+          ws.send(JSON.stringify({ type: 'gcall_full', groupId, max: roomMax }));
           return;
         }
         // 同じユーザーが別端末から入り直した場合は古い接続を外す
