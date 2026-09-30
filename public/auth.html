@@ -669,7 +669,10 @@
       }
 
       // アプリ内(WebView)はブラウザ経由のログインに切り替える
-      if (window.Capacitor) {
+      // Capacitorの注入が間に合わない場合に備え、AndroidのWebView(UAに wv / Version/x が入る)でも判定する
+      const ua = navigator.userAgent || '';
+      const inAppWebView = !!window.Capacitor || /; wv\)/.test(ua) || (/Android/.test(ua) && /Version\/\d/.test(ua) && !/Brave|OPR|EdgA|SamsungBrowser|Firefox/.test(ua));
+      if (inAppWebView) {
         renderAppGoogleButton(document.getElementById('googleLoginButton'));
         renderAppGoogleButton(document.getElementById('googleSignupButton'));
         return;
