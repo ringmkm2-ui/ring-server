@@ -196,8 +196,14 @@ async function main() {
   // (ファイルパス・行番号・依存ライブラリ構成などが漏洩する)。
   // 4引数(err, req, res, next)はExpressがエラーハンドラと認識するために必須。
   app.use((err, req, res, next) => {
-    console.error('[unhandled error]', err && err.stack ? err.stack : err);
     if (res.headersSent) return next(err);
+    // 壊れたJSON・大きすぎる本文などはクライアント側の問題なので4xxで返す(以前は全部500になり、
+    // スタック付きのエラーログがログを埋めていた)
+    if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large' || err.type === 'encoding.unsupported' || err.type === 'charset.unsupported')) {
+      const status = err.type === 'entity.too.large' ? 413 : 400;
+      return res.status(status).json({ error: status === 413 ? 'データが大きすぎます' : 'リクエストの形式が正しくありません' });
+    }
+    console.error('[unhandled error]', err && err.stack ? err.stack : err);
     res.status(500).json({ error: 'サーバーエラーが発生しました。しばらくしてから再度お試しください。' });
   });
 
