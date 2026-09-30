@@ -306,7 +306,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.136 beta</div>
+  <div class="version-badge">Bro Chat v1.28.137 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -976,7 +976,7 @@ document.getElementById('locationBtn').onclick = async () => {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
     const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
-    const text = `📍 現在地を共有しました\n${mapUrl}`;
+    const text = `現在地を共有しました\n${mapUrl}`;
     // 通常メッセージとして送信
     const msgId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
     const msg = {
