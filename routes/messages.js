@@ -242,7 +242,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         editedAt: m.edited_at,
         deletedAt: m.deleted_at,
         pinnedAt: m.pinned_at,
-        reactions: reactions.map(r => ({ emoji: r.emoji, count: r.cnt })),
+        reactions: reactions.map(r => ({ emoji: r.emoji, count: Number(r.cnt) })),
       });
     }
 
@@ -279,12 +279,13 @@ router.get('/talks', auth, async (req, res) => {
           content, encrypted, created_at, sender_id, deleted_at
         FROM messages
         WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
-          AND created_at = ?
-        ORDER BY id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
-      `, [req.userId, req.userId, lt.other_id, lt.other_id, req.userId, lt.last_time]);
+      `, [req.userId, req.userId, lt.other_id, lt.other_id, req.userId]);
+      // NOTE: created_at は PostgreSQL ではマイクロ秒精度だが、JSのDateに通るとミリ秒に丸まる。
+      // 以前は「created_at = 丸めた最新時刻」で引いていたため一致せず、最新メッセージが取れなかった。
       if (msg) {
-        rows.push({ ...msg, last_time: lt.last_time });
+        rows.push({ ...msg, last_time: msg.created_at });
       }
     }
 
@@ -305,7 +306,7 @@ router.get('/talks', auth, async (req, res) => {
           profilePic: user.profile_pic,
           lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content, row.encrypted),
           lastTime: row.last_time,
-          unreadCount: unread ? unread.cnt : 0,
+          unreadCount: unread ? Number(unread.cnt) : 0,
         });
         processedIds.add(user.id);
       }
@@ -497,7 +498,7 @@ router.post('/react', auth, async (req, res) => {
     const payload = {
       type: 'message_reaction',
       messageId: messageId,
-      reactions: reactions.map(r => ({ emoji: r.emoji, count: r.cnt })),
+      reactions: reactions.map(r => ({ emoji: r.emoji, count: Number(r.cnt) })),
       senderId: msg.sender_id,
       recipientId: msg.recipient_id,
     };

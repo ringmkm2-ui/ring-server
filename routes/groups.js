@@ -161,6 +161,17 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   // 権限チェック: オーナー本人による削除、または本人による自主脱退のみ許可する。
   // (このチェックが無いと、メンバーであれば誰でも他人を削除できてしまう
   //  重大な権限バグになるため必須)
+  if (!removeUserId || typeof removeUserId !== 'string') {
+    return res.status(400).json({ error: 'removeUserId が必要です' });
+  }
+  // 対象が現役メンバーでない場合は何もしない。以前は素通りして鍵の版だけが上がり、
+  // 新しい版の鍵が誰にも配られず、以降のメッセージが全員復号できなくなっていた。
+  const target = await db.get(
+    'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL',
+    [groupId, removeUserId]
+  );
+  if (!target) return res.status(404).json({ error: '対象のメンバーが見つかりません' });
+
   const isOwner = group.owner_id === req.user.userId;
   const isSelfLeaving = removeUserId === req.user.userId;
   if (!isOwner && !isSelfLeaving) {
@@ -450,7 +461,7 @@ router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res
         groupId,
         messageId: msgId,
         readerUserId: req.user.userId,
-        readCount: readCount.cnt,
+        readCount: Number(readCount.cnt),
         totalMembers: members.length,
       });
     });
