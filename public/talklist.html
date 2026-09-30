@@ -494,7 +494,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.135 beta</div>
+  <div class="version-badge">Bro Chat v1.28.136 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1649,8 +1649,14 @@ function renderGroups(groups) {
 
     const msgEl = document.createElement('div');
     msgEl.className = 'tmsg';
-    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? '(暗号化されたメッセージ)' : g.lastMessage.content) : 'まだメッセージがありません';
-    msgEl.textContent = lastMsg + ` ・ ${g.members ? g.members.length : 0}人`;
+    const memberSuffix = ` ・ ${g.members ? g.members.length : 0}人`;
+    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? 'メッセージ' : previewFromGroupContent(g.lastMessage.content)) : 'まだメッセージがありません';
+    msgEl.textContent = lastMsg + memberSuffix;
+    // 暗号化メッセージは、そのグループの鍵が端末に保存済みの時だけ復号してプレビューに出す。
+    // (libsodiumは重いので、鍵が無いグループのためだけに読み込むことはしない)
+    if (g.lastMessage && g.lastMessage.encrypted) {
+      decryptGroupPreview(g).then(t => { if (t) msgEl.textContent = t + memberSuffix; }).catch(() => {});
+    }
     body.appendChild(row);
     body.appendChild(msgEl);
 
@@ -1665,6 +1671,37 @@ function renderGroups(groups) {
     });
     list.appendChild(item);
   });
+}
+
+// グループ一覧の最新メッセージ用: JSON形式(メディア/暗号文)をプレビュー文字にする
+function previewFromGroupContent(raw) {
+  if (typeof raw !== 'string' || raw.charAt(0) !== '{') return raw || '';
+  try {
+    const o = JSON.parse(raw);
+    if (o && o.mediaType) {
+      const t = String(o.mediaType);
+      const label = t.indexOf('video') === 0 ? '[動画]' : t.indexOf('audio') === 0 ? '[音声]' : t.indexOf('image') === 0 ? '[画像]' : '[ファイル]';
+      return o.text ? label + ' ' + o.text : label;
+    }
+  } catch (e) {}
+  return raw;
+}
+
+async function decryptGroupPreview(g) {
+  const lm = g.lastMessage;
+  const gid = g.groupId || g.id;
+  const ver = lm.keyVersion != null ? lm.keyVersion : g.keyVersion;
+  if (!gid || ver == null) return null;
+  const cached = localStorage.getItem('group_key_' + gid + '_v' + ver);
+  if (!cached) return null;
+  let parsed;
+  try { parsed = JSON.parse(lm.content); } catch (e) { return null; }
+  if (parsed && parsed.mediaType) return previewFromGroupContent(lm.content);
+  if (!parsed || !parsed.ciphertext || !parsed.nonce) return null;
+  await window.ensureGroupCrypto();
+  const key = new Uint8Array(JSON.parse(cached));
+  const text = await window.groupE2E.decryptGroupText(lm.content, key);
+  return text.length > 60 ? text.slice(0, 60) + '…' : text;
 }
 
 async function loadFriends() {
