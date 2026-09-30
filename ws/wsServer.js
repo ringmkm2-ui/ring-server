@@ -212,7 +212,7 @@ function initWebSocketServer(server) {
     let wsRateCount = 0;
     let wsRateWindowStart = Date.now();
 
-    ws.on('message', async (raw, isBinary) => {
+    const handleWsMessage = async (raw, isBinary) => {
       // バイナリ(音声)はレート制限対象外
       if (!isBinary) {
         const now = Date.now();
@@ -245,6 +245,8 @@ function initWebSocketServer(server) {
 
       let data;
       try { data = JSON.parse(raw.toString()); } catch { return; }
+      // 'null' や数値・配列などオブジェクト以外は無視(data.typeで落ちるのを防ぐ。認証前でも送れるため誰でもサーバーを落とせた)
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return;
 
       // --- 認証 (接続直後に1回だけ) ---
       if (data.type === 'auth') {
@@ -723,6 +725,10 @@ function initWebSocketServer(server) {
         });
         return;
       }
+    };
+    // 例外が外に漏れるとプロセスごと落ちる(未処理のPromise rejection)ため必ずここで握る
+    ws.on('message', (raw, isBinary) => {
+      handleWsMessage(raw, isBinary).catch(e => console.error('[ws] メッセージ処理エラー:', e && e.message));
     });
 
     ws.on('close', () => {
