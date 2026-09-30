@@ -131,7 +131,7 @@ router.get('/count', verifyToken, asyncHandler(async (req, res) => {
     'SELECT COUNT(*) as cnt FROM one_time_prekeys WHERE user_id = ? AND used = 0',
     [req.user.userId]
   );
-  res.json({ remaining: row ? row.cnt : 0 });
+  res.json({ remaining: row ? Number(row.cnt) : 0 });
 }));
 
 module.exports = router;
