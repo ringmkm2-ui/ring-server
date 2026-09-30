@@ -43,7 +43,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       [g.id]
     );
     const lastMsg = await db.get(
-      `SELECT content, created_at, encrypted FROM group_messages
+      `SELECT content, created_at, encrypted, key_version FROM group_messages
        WHERE group_id = ? AND deleted_at IS NULL
        ORDER BY created_at DESC LIMIT 1`,
       [g.id]
@@ -56,7 +56,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       keyVersion: g.key_version,
       avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
-      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted } : null,
+      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version } : null,
     });
   }
   res.json({ groups });
