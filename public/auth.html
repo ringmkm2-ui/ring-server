@@ -634,16 +634,25 @@
         window.open(d.url, '_system');
         showSuccess('ブラウザでGoogleにログインしたら、このアプリに戻ってください');
         const t0 = Date.now();
-        googleAppPollTimer = setInterval(async () => {
-          if (Date.now() - t0 > 5 * 60 * 1000) { clearInterval(googleAppPollTimer); showError('時間切れです。もう一度やり直してください'); return; }
+        let polling = false;
+        const pollOnce = async () => {
+          if (polling) return;
+          polling = true;
           try {
+            if (Date.now() - t0 > 5 * 60 * 1000) { clearInterval(googleAppPollTimer); showError('時間切れです。もう一度やり直してください'); return; }
             const pr = await fetch('/api/auth/google/app-poll?state=' + encodeURIComponent(state));
             const pd = await pr.json();
             if (pd.pending) return;
             clearInterval(googleAppPollTimer);
+            document.removeEventListener('visibilitychange', onVis);
             handleGoogleResult(pd);
           } catch (e) { /* 一時的な通信失敗は次のポーリングで再試行 */ }
-        }, 2000);
+          finally { polling = false; }
+        };
+        // ブラウザからアプリに戻った瞬間に確認する(バックグラウンド中はタイマーが止まっていることがある)
+        const onVis = () => { if (document.visibilityState === 'visible') pollOnce(); };
+        document.addEventListener('visibilitychange', onVis);
+        googleAppPollTimer = setInterval(pollOnce, 2000);
       } catch (e) { showError('ネットワークエラー: ' + e.message); }
     }
 
