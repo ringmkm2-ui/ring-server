@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bro Chat - Googleでログイン</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#1e293b}
+  .c{background:#fff;border-radius:20px;padding:32px 28px;width:min(340px,86vw);text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+  h1{font-size:18px;margin:0 0 6px}
+  p{font-size:14px;color:#64748b;margin:0 0 20px;line-height:1.6}
+  #btn{display:flex;justify-content:center;min-height:44px}
+  #back{display:none;margin-top:18px;padding:12px 22px;border-radius:12px;background:#667eea;color:#fff;font-weight:600;text-decoration:none;font-size:15px}
+  .err{color:#ef4444}
+</style>
+</head>
+<body>
+<div class="c">
+  <h1 id="t">Bro Chat</h1>
+  <p id="m">Googleアカウントを選んでください</p>
+  <div id="btn"></div>
+  <a id="back" href="#">アプリに戻る</a>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get('state'), nonce = q.get('nonce');
+  var CLIENT_ID = '253097251071-qsajqnr9l71vjma3hlg8d91hmh7m6c9l.apps.googleusercontent.com';
+  var INTENT = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.brochat.app;end';
+  function $(id){ return document.getElementById(id); }
+  function fail(msg){ $('t').textContent = 'ログインに失敗しました'; $('m').textContent = msg; $('m').className = 'err'; }
+
+  async function onCred(resp) {
+    $('m').textContent = '確認中';
+    try {
+      var r = await fetch('/api/auth/google/app-relay', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: state, idToken: resp.credential })
+      });
+      var d = await r.json();
+      if (!r.ok) { fail(d.error || 'ログインできませんでした'); return; }
+      $('btn').style.display = 'none';
+      $('t').textContent = 'ログインできました';
+      $('m').textContent = 'アプリに戻ります';
+      var back = $('back'); back.href = INTENT; back.style.display = 'inline-block';
+      if (/Android/i.test(navigator.userAgent)) location.href = INTENT;
+    } catch (e) { fail('通信に失敗しました'); }
+  }
+
+  if (!state || !nonce) { fail('アプリからやり直してください'); return; }
+  var tries = 0;
+  (function init() {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCred, nonce: nonce, use_fedcm_for_prompt: false });
+      google.accounts.id.renderButton($('btn'), { theme: 'outline', size: 'large', width: 280, locale: 'ja' });
+    } else if (++tries < 50) { setTimeout(init, 100); }
+    else { fail('Googleの読み込みに失敗しました'); }
+  })();
+})();
+</script>
+</body>
+</html>
