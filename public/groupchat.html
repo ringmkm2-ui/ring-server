@@ -199,7 +199,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.136 beta</div>
+  <div class="version-badge">Bro Chat v1.28.137 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -535,7 +535,7 @@ document.getElementById('locationBtn').onclick = async () => {
       navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000 });
     });
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
-    const text = '📍 現在地を共有しました\nhttps://www.google.com/maps?q=' + lat + ',' + lng;
+    const text = '現在地を共有しました\nhttps://www.google.com/maps?q=' + lat + ',' + lng;
     const resp = await fetch('/api/groups/' + groupId + '/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
