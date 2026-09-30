@@ -16,6 +16,7 @@
   <svg id="ic" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12.5 11 15.5 16 9"/></svg>
   <h1 id="t">処理中</h1>
   <p id="m">少しお待ちください</p>
+  <a id="back" href="#" style="display:none;margin-top:18px;padding:12px 22px;border-radius:12px;background:#667eea;color:#fff;font-weight:600;text-decoration:none;font-size:15px">アプリに戻る</a>
 </div>
 <script>
 (async function () {
@@ -36,7 +37,14 @@
     var d = await r.json();
     if (!r.ok) { fail(d.error || 'ログインできませんでした'); return; }
     document.getElementById('t').textContent = 'ログインできました';
-    document.getElementById('m').textContent = 'Bro Chatのアプリに戻ってください';
+    document.getElementById('m').textContent = 'アプリに戻ります';
+    // Androidは intent: でBro Chatアプリ本体(すでに開いていれば前面に)を起動できる。APKに専用の設定は要らない
+    var intentUrl = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.brochat.app;end';
+    var back = document.getElementById('back');
+    back.href = intentUrl;
+    back.style.display = 'inline-block';
+    if (/Android/i.test(navigator.userAgent)) setTimeout(function () { location.href = intentUrl; }, 400);
+    else document.getElementById('m').textContent = 'Bro Chatのアプリに戻ってください';
   } catch (e) { fail('通信に失敗しました'); }
 })();
 </script>
