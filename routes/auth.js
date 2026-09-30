@@ -314,28 +314,21 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
 // --- Google OAuth ログイン ---
 // POST /api/auth/google
 // body: { idToken } (Google Sign-In から取得したIDトークン)
-router.post('/google', loginLimiter, async (req, res) => {
-  const { idToken } = req.body;
-  if (!idToken) return res.status(400).json({ error: 'idToken required' });
-
+// IDトークンを検証してログイン/自動登録まで行う共通処理。{ status, body } を返す。
+// expectedNonce がある場合(アプリのシステムブラウザ経由)は、トークンのnonceも一致を確認する。
+async function googleLoginFromIdToken(idToken, expectedNonce) {
   try {
     // Google IDトークンの署名・発行者・有効期限・audience(このアプリ向けに
     // 発行されたものか)をすべてGoogleの公開鍵で検証する。
     // 以前はペイロードをBase64デコードするだけで署名を一切確認していなかったため、
     // 誰でも任意のメールアドレスを名乗る偽トークンを作ってなりすませる状態だった。
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: GOOGLE_CLIENT_ID,
-    });
+    const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
-    if (!payload || !payload.email) {
-      return res.status(401).json({ error: 'Invalid idToken' });
-    }
+    if (!payload || !payload.email) return { status: 401, body: { error: 'Invalid idToken' } };
+    if (expectedNonce && payload.nonce !== expectedNonce) return { status: 401, body: { error: 'Google認証に失敗しました' } };
     // メールアドレスがGoogle側で検証済みであることも確認する
     // (未検証メールアドレスでのなりすまし登録を防ぐ)
-    if (payload.email_verified === false) {
-      return res.status(401).json({ error: 'メールアドレスが未検証です' });
-    }
+    if (payload.email_verified === false) return { status: 401, body: { error: 'メールアドレスが未検証です' } };
 
     const { email, name, picture } = payload;
 
@@ -365,15 +358,79 @@ router.post('/google', loginLimiter, async (req, res) => {
         user.password_hash = '';
       }
     }
-
-    res.json(finishLogin(user, { profilePic: user.profile_pic }));
+    return { status: 200, body: finishLogin(user, { profilePic: user.profile_pic }) };
   } catch (e) {
     // verifyIdTokenは署名不正・期限切れ・audience不一致などで例外を投げる。
     // これらは全て「なりすまし試行または壊れたトークン」として一律401にする
     // (詳細なエラー内容を返すと、攻撃者に検証ロジックの手がかりを与えるため)
     console.error('Google OAuth verification failed:', e.message);
-    res.status(401).json({ error: 'Google認証に失敗しました' });
+    return { status: 401, body: { error: 'Google認証に失敗しました' } };
   }
+}
+
+router.post('/google', loginLimiter, async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ error: 'idToken required' });
+  const r = await googleLoginFromIdToken(idToken, null);
+  res.status(r.status).json(r.body);
+});
+
+// --- アプリ(Capacitor WebView)用のGoogleログイン ---
+// GoogleはWebView内でのログイン画面表示をブロックするため、アプリはシステムのブラウザでGoogleを開き、
+// 結果をサーバー経由でアプリが受け取る(ポーリング)。アプリ本体のAPK変更は不要。
+//   1) POST /google/app-start {state}  -> Googleの認証URLを返す(アプリがシステムブラウザで開く)
+//   2) ブラウザ側 /google-callback.html が id_token を POST /google/app-relay {state, idToken}
+//   3) アプリが GET /google/app-poll?state= を繰り返し、結果(1回だけ)を受け取る
+const googleAppPending = new Map(); // state -> { nonce, ts, result }
+const GOOGLE_APP_TTL_MS = 5 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of googleAppPending) if (now - v.ts > GOOGLE_APP_TTL_MS) googleAppPending.delete(k);
+}, 60 * 1000).unref();
+const GOOGLE_STATE_RE = /^[A-Za-z0-9_-]{22,64}$/;
+
+function publicBase(req) {
+  if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
+  return proto + '://' + req.get('host');
+}
+
+router.post('/google/app-start', loginLimiter, (req, res) => {
+  const state = req.body && req.body.state;
+  if (typeof state !== 'string' || !GOOGLE_STATE_RE.test(state)) return res.status(400).json({ error: 'state invalid' });
+  if (googleAppPending.size > 2000) return res.status(429).json({ error: 'busy' });
+  const nonce = require('crypto').randomBytes(16).toString('hex');
+  googleAppPending.set(state, { nonce, ts: Date.now(), result: null });
+  const redirectUri = publicBase(req) + '/google-callback.html';
+  const q = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'id_token',
+    scope: 'openid email profile',
+    nonce,
+    state,
+    prompt: 'select_account',
+  });
+  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri });
+});
+
+router.post('/google/app-relay', loginLimiter, async (req, res) => {
+  const { state, idToken } = req.body || {};
+  const pend = typeof state === 'string' ? googleAppPending.get(state) : null;
+  if (!pend || !idToken) return res.status(400).json({ error: '有効時間が切れました。アプリからやり直してください' });
+  if (pend.result) return res.json({ ok: true });
+  const r = await googleLoginFromIdToken(idToken, pend.nonce);
+  pend.result = r;
+  res.status(r.status === 200 ? 200 : r.status).json(r.status === 200 ? { ok: true } : r.body);
+});
+
+router.get('/google/app-poll', (req, res) => {
+  const state = String(req.query.state || '');
+  const pend = GOOGLE_STATE_RE.test(state) ? googleAppPending.get(state) : null;
+  if (!pend) return res.status(404).json({ error: 'expired' });
+  if (!pend.result) return res.json({ pending: true });
+  googleAppPending.delete(state); // 結果は1回だけ渡す
+  res.status(pend.result.status).json(pend.result.body);
 });
 
 // --- Google連絡先同期（Google People API） ---

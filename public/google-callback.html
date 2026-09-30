@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bro Chat</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#1e293b}
+  .c{background:#fff;border-radius:20px;padding:32px 28px;max-width:340px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+  h1{font-size:18px;margin:12px 0 6px}
+  p{font-size:14px;color:#64748b;margin:0;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="c">
+  <svg id="ic" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12.5 11 15.5 16 9"/></svg>
+  <h1 id="t">処理中</h1>
+  <p id="m">少しお待ちください</p>
+</div>
+<script>
+(async function () {
+  var h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  var idToken = h.get('id_token'), state = h.get('state');
+  history.replaceState(null, '', location.pathname); // アドレスバーからトークンを消す
+  function fail(msg) {
+    document.getElementById('ic').setAttribute('stroke', '#ef4444');
+    document.getElementById('t').textContent = 'ログインに失敗しました';
+    document.getElementById('m').textContent = msg;
+  }
+  if (!idToken || !state) { fail('Googleから情報を受け取れませんでした。アプリからやり直してください'); return; }
+  try {
+    var r = await fetch('/api/auth/google/app-relay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: state, idToken: idToken })
+    });
+    var d = await r.json();
+    if (!r.ok) { fail(d.error || 'ログインできませんでした'); return; }
+    document.getElementById('t').textContent = 'ログインできました';
+    document.getElementById('m').textContent = 'Bro Chatのアプリに戻ってください';
+  } catch (e) { fail('通信に失敗しました'); }
+})();
+</script>
+</body>
+</html>
