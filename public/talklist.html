@@ -494,7 +494,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.140 beta</div>
+  <div class="version-badge">Bro Chat v1.28.141 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1980,6 +1980,7 @@ function renderSecOff() {
     if (r.error) { alert(r.error); return; }
     renderSecSetup(r);
   }));
+  appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
 }
 function renderSecSetup(r) {
@@ -2024,7 +2025,63 @@ function renderSecOn(d) {
   });
   btn.style.color = '#ef4444';
   secBody.appendChild(btn);
+  appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
+}
+
+// --- ログイン中の端末(端末ごとのサインアウト) ---
+function sessAgo(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return t2('just_now', 'たった今');
+  if (m < 60) return m + (t2('min_ago', '分前'));
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + (t2('hour_ago', '時間前'));
+  return Math.floor(h / 24) + (t2('day_ago', '日前'));
+}
+async function appendSessions() {
+  const box = secNode('div', null, 'margin-top:18px');
+  box.appendChild(secNode('p', t2('sessions_title', 'ログイン中の端末'), 'font-size:13px;margin:0 0 6px;opacity:.7'));
+  const list = secNode('div');
+  box.appendChild(list);
+  secBody.appendChild(box);
+  let d;
+  try { d = await api('/api/auth/sessions'); } catch (e) { return; }
+  if (!d || !Array.isArray(d.sessions)) return;
+  const render = (sessions) => {
+    list.textContent = '';
+    sessions.forEach(s => {
+      const row = secNode('div', null, 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:12px;background:rgba(120,120,128,.14)');
+      const left = secNode('div', null, 'min-width:0');
+      left.appendChild(secNode('div', s.device + (s.current ? '  ·  ' + t2('sessions_this', 'この端末') : ''), 'font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'));
+      left.appendChild(secNode('div', t2('sessions_last', '最終利用') + ' ' + sessAgo(s.lastSeenAt || s.createdAt) + (s.ip ? '  ·  ' + s.ip : ''), 'font-size:12px;opacity:.65;margin-top:2px'));
+      row.appendChild(left);
+      if (!s.current) {
+        const out = secNode('button', t2('sessions_signout', 'サインアウト'), 'flex:none;border:0;background:none;color:#ef4444;font-size:13px;font-weight:600;padding:6px 4px');
+        out.type = 'button';
+        out.onclick = async () => {
+          out.disabled = true;
+          await api('/api/auth/sessions/revoke', { method: 'POST', body: JSON.stringify({ id: s.id }) });
+          render(sessions.filter(x => x.id !== s.id));
+        };
+        row.appendChild(out);
+      }
+      list.appendChild(row);
+    });
+    const others = sessions.filter(x => !x.current);
+    if (!others.length) {
+      list.appendChild(secNode('p', t2('sessions_none', '他にログイン中の端末はありません'), 'font-size:13px;opacity:.6;margin:6px 2px'));
+    } else if (others.length > 1) {
+      const all = secButton(t2('sessions_signout_others', '他の端末をすべてサインアウト'), 'cancelbtn', async () => {
+        await Promise.all(others.map(x => api('/api/auth/sessions/revoke', { method: 'POST', body: JSON.stringify({ id: x.id }) })));
+        render(sessions.filter(x => x.current));
+      });
+      all.style.color = '#ef4444';
+      list.appendChild(all);
+    }
+  };
+  render(d.sessions);
 }
 document.getElementById('setSecurity').addEventListener('click', openSec);
 secMov.onclick = e => { if (e.target === secMov) closeSec(); };
@@ -2575,6 +2632,8 @@ setInterval(() => {
 }, 60000);
 
 function logout() {
+  // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める
+  try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); } catch (e) {}
   // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
   // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)
   const keep = {};

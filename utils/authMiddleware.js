@@ -20,6 +20,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/db');
 const { JWT_SECRET } = require('./jwtSecret');
+const { touchSession } = require('./sessions');
 
 // トークン失効チェック込みの検証。有効なら { userId, username, ... } を返し、
 // 無効(署名不正・期限切れ・失効済み)なら null を返す。
@@ -38,10 +39,25 @@ async function verifyTokenWithRevocation(token) {
 
   if (!payload || !payload.userId) return null;
 
-  const user = await db.get('SELECT token_revoked_at FROM users WHERE id = ?', [payload.userId]);
+  // ユーザー行とセッション行を1回のクエリで引く(リクエストごとに走るので往復を増やさない)。
+  // sid付きのトークンは user_sessions に有効な行が無ければ無効(端末単位のサインアウト)。
+  // sid無しの古いトークンは従来どおり token_revoked_at だけで判定する。
+  const user = await db.get(
+    `SELECT u.token_revoked_at AS token_revoked_at, s.id AS s_id, s.revoked_at AS s_revoked_at
+       FROM users u LEFT JOIN user_sessions s ON s.id = ? AND s.user_id = u.id
+      WHERE u.id = ?`,
+    [payload.sid || '', payload.userId]
+  );
   if (!user) return null; // ユーザーが削除されている等
+  if (payload.sid) {
+    if (!user.s_id || user.s_revoked_at) return null;
+    touchSession(payload.sid);
+  }
 
-  if (user.token_revoked_at) {
+  // sid付きトークンの有効/無効は user_sessions で決まる(全端末サインアウト・パスワード変更は
+  // 全セッションを失効させる)。ここで token_revoked_at と比べると、失効の直後に発行した
+  // 新しいトークン(パスワード変更直後に返すものなど)が同じ秒のiatのせいで弾かれてしまう。
+  if (!payload.sid && user.token_revoked_at) {
     const revokedAtMs = new Date(user.token_revoked_at).getTime();
     const issuedAtMs = (payload.iat || 0) * 1000;
     // JWTのiatとDBのタイムスタンプはどちらも秒単位の精度しかないため、
