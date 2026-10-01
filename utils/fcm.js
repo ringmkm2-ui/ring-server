@@ -53,6 +53,11 @@ function initFirebase() {
  * ユーザーのFCMトークンを保存/更新
  */
 async function saveToken(userId, fcmToken) {
+  // FCMトークンは「端末(アプリ)」に1つ。同じ端末で別のアカウントにログインし直したとき、
+  // 前のアカウントの行を残すと、そのアカウント宛ての着信・通知がこの端末にも届いてしまう
+  // (Aで発信するとBに着信するはずが、同じ端末で以前Bにログインしていたせいで自分の端末が鳴る)。
+  // 最後に登録したアカウントだけがこのトークンを持つようにする。
+  await db.run('DELETE FROM fcm_tokens WHERE token = ? AND user_id <> ?', [fcmToken, userId]);
   await db.run(
     `INSERT INTO fcm_tokens (user_id, token, updated_at) VALUES (?, ?, now())
      ON CONFLICT (user_id, token) DO UPDATE SET updated_at = now()`,
@@ -63,6 +68,12 @@ async function saveToken(userId, fcmToken) {
 /**
  * ユーザーのFCMトークン一覧を取得
  */
+// この端末(トークン)を、そのユーザーから外す。ログアウト時に使う
+async function removeToken(userId, fcmToken) {
+  if (!fcmToken) return;
+  await db.run('DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?', [userId, fcmToken]);
+}
+
 async function getTokens(userId) {
   const rows = await db.all(
     'SELECT token FROM fcm_tokens WHERE user_id = ? ORDER BY updated_at DESC LIMIT 5',
@@ -78,7 +89,12 @@ async function sendCallNotification(recipientId, callerId, callerName, callerAva
   if (!initialized) { initFirebase(); }
   if (!initialized) return;
 
-  const tokens = await getTokens(recipientId);
+  let tokens = await getTokens(recipientId);
+  // 発信者自身の端末(同じトークンが発信者の行にも残っている場合)は鳴らさない
+  if (callerId && tokens.length) {
+    const own = new Set(await getTokens(callerId));
+    tokens = tokens.filter(t => !own.has(t));
+  }
   if (tokens.length === 0) {
     console.log('[FCM] No tokens for user:', recipientId);
     return;
@@ -185,4 +201,4 @@ async function sendToTokens(tokens, messageTemplate, userId) {
 // 起動時に初期化
 initFirebase();
 
-module.exports = { initFirebase, saveToken, getTokens, sendCallNotification, sendCallCancelled, sendMessageNotification };
+module.exports = { initFirebase, saveToken, removeToken, getTokens, sendCallNotification, sendCallCancelled, sendMessageNotification };

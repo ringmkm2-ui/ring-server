@@ -803,6 +803,12 @@ router.post('/sessions/revoke', verifyToken, async (req, res) => {
 // ログアウト: この端末のセッションだけ失効させる(sid無しの古いトークンは何もしない)
 router.post('/logout', verifyToken, async (req, res) => {
   try {
+    // この端末のプッシュ宛先も外す。残すと、ログアウトした後もこの端末に通知・着信が届き、
+    // 同じ端末で別アカウントを使うと、そのアカウントとの通話で自分の端末が鳴ってしまう
+    const fcmToken = req.body && req.body.fcmToken;
+    if (typeof fcmToken === 'string' && fcmToken.length > 20 && fcmToken.length < 4096) {
+      try { await require('../utils/fcm').removeToken(req.user.userId, fcmToken); } catch (e) { console.error('[auth] fcm removeToken:', e.message); }
+    }
     if (req.user.sid) {
       await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.user.sid, req.user.userId]);
       sessionEvents.emit('revoked', { userId: req.user.userId, sid: req.user.sid });
