@@ -847,6 +847,7 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [userId]);
     await db.run('DELETE FROM email_codes WHERE username = (SELECT username FROM users WHERE id = ?)', [userId]);
     try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
+    try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
     // ユーザー情報の匿名化(外部キー制約のため行自体は残す)
     await db.run(
       "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, totp_secret = NULL, totp_enabled = ?, backup_codes = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",

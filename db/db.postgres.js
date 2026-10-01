@@ -73,6 +73,14 @@ async function initDB() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
+    // E2E鍵のバックアップ(パスフレーズで端末側が暗号化した塊。サーバーは中身を読めない)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS key_backups (
+        user_id TEXT PRIMARY KEY,
+        blob TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
     // パスワード再設定コード(メール認証コードとは別テーブル。同時に進行しても干渉しない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_resets (

@@ -99,6 +99,40 @@ router.post('/publickey', auth, async (req, res) => {
   }
 });
 
+// --- E2E鍵のバックアップ(端末の乗り換え・複数端末のため) ---
+// 中身はクライアントがパスフレーズ由来の鍵で暗号化済みの塊。サーバーは読めないし、読まない。
+// GET: 有無だけ返す(?full=1 で本体も返す)。PUT: 保存。
+router.get('/key-backup', auth, async (req, res) => {
+  try {
+    const row = await db.get('SELECT blob, updated_at FROM key_backups WHERE user_id = ?', [req.userId]);
+    if (!row) return res.json({ exists: false });
+    if (req.query.full === '1') return res.json({ exists: true, blob: row.blob, updatedAt: row.updated_at });
+    res.json({ exists: true, updatedAt: row.updated_at });
+  } catch (e) {
+    sendServerError(res, e);
+  }
+});
+
+router.put('/key-backup', auth, async (req, res) => {
+  try {
+    const blob = req.body && req.body.blob;
+    if (typeof blob !== 'string' || blob.length < 20 || blob.length > 200000) {
+      return res.status(400).json({ error: 'バックアップの形式が不正です' });
+    }
+    if (!/^[A-Za-z0-9+/=_.:-]+$/.test(blob)) {
+      return res.status(400).json({ error: 'バックアップの形式が不正です' });
+    }
+    await db.run(
+      `INSERT INTO key_backups (user_id, blob, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = CURRENT_TIMESTAMP`,
+      [req.userId, blob]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e);
+  }
+});
+
 // 特定ユーザーの公開鍵を取得（メッセージ暗号化のため）
 router.get('/publickey/:userId', auth, async (req, res) => {
   try {
