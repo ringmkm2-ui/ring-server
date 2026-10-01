@@ -83,6 +83,14 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS password_resets (
+      username TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL,
+      expires_ms INTEGER NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      last_sent_ms INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS user_sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,

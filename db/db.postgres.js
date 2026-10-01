@@ -73,6 +73,16 @@ async function initDB() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
+    // パスワード再設定コード(メール認証コードとは別テーブル。同時に進行しても干渉しない)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_resets (
+        username TEXT PRIMARY KEY,
+        code_hash TEXT NOT NULL,
+        expires_ms BIGINT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        last_sent_ms BIGINT DEFAULT 0
+      )
+    `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS email_codes (
         username TEXT PRIMARY KEY,

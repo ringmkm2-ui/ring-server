@@ -1,10 +1,12 @@
 // utils/rateLimits.js
 const rateLimit = require('express-rate-limit');
 
-// ログイン・Google認証: ブルートフォース対策。15分に10回まで。
+// ログイン・Google認証・認証コード系: IP単位のブルートフォース/クレデンシャルスタッフィング対策。15分に30回まで。
+// 特定アカウントへの総当たりは、アカウント単位のロック(連続8回失敗で15分)が別に止める。
+// 10回だと、同じWi-Fi(学校・家族)から複数人がログインするだけで弾かれるため緩めた。
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'ログイン試行が多すぎます。しばらくしてから再度お試しください。' },

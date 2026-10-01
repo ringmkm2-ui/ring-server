@@ -293,6 +293,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/session.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 </head>
@@ -306,7 +307,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.141 beta</div>
+  <div class="version-badge">Bro Chat v1.28.142 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1762,6 +1763,7 @@ function connectRealWS() {
   ws.onmessage = async e => {
     try {
       const data = JSON.parse(e.data);
+      if (window.bcHandleWsAuth && window.bcHandleWsAuth(data)) return;
       if (data.type === 'auth_ok') {
         // チャット画面を開いたことをサーバーに通知（オンライン表示用）
         ws.send(JSON.stringify({ type: 'chat_open' }));
