@@ -294,6 +294,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/session.js"></script>
+<script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 </head>
@@ -307,7 +308,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.142 beta</div>
+  <div class="version-badge">Bro Chat v1.28.143 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -663,11 +664,25 @@ function rememberPeerKey(peerId, b64) {
 }
 
 // 自分の鍵ペアを取得（なければ生成してサーバーに公開鍵を登録）
-async function getOrCreateMyKeyPair() {
+let _kpPromise = null;
+function getOrCreateMyKeyPair() {
+  // 同時に何度呼ばれても、鍵の生成・復元は1回だけ走らせる(復元の確認中に別々の鍵が作られないように)
+  if (myKeyPair) return Promise.resolve(myKeyPair);
+  if (!_kpPromise) _kpPromise = _getOrCreateMyKeyPair().finally(() => { _kpPromise = null; });
+  return _kpPromise;
+}
+async function _getOrCreateMyKeyPair() {
   if (myKeyPair) return myKeyPair;
 
   const keyStorageName = `e2e_keypair_${myUserId}`;
-  const keyStr = localStorage.getItem(keyStorageName);
+  let keyStr = localStorage.getItem(keyStorageName);
+  // keypairもkeyringも無い端末で勝手に鍵を作ると、サーバーの公開鍵を上書きして他の端末のメッセージが読めなくなる。
+  // バックアップがあるなら、作る前に復元を促す(keyBackup.js)
+  if (!keyStr && !loadMyKeyring().length && window.bcKeyBackup) {
+    try {
+      if ((await window.bcKeyBackup.guardCreate()) === 'restored') keyStr = localStorage.getItem(keyStorageName);
+    } catch (e) {}
+  }
 
   if (keyStr) {
     const keyObj = JSON.parse(keyStr);

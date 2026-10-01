@@ -83,6 +83,12 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS key_backups (
+      user_id TEXT PRIMARY KEY,
+      blob TEXT NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS password_resets (
       username TEXT PRIMARY KEY,
       code_hash TEXT NOT NULL,

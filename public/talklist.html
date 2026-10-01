@@ -344,6 +344,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/iconUpload.js"></script>
 <script src="/js/session.js"></script>
+<script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -495,7 +496,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.142 beta</div>
+  <div class="version-badge">Bro Chat v1.28.143 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1981,6 +1982,7 @@ function renderSecOff() {
     if (r.error) { alert(r.error); return; }
     renderSecSetup(r);
   }));
+  appendKeyBackup();
   appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
 }
@@ -2026,8 +2028,33 @@ function renderSecOn(d) {
   });
   btn.style.color = '#ef4444';
   secBody.appendChild(btn);
+  appendKeyBackup();
   appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
+}
+
+// --- 暗号鍵のバックアップ(端末の乗り換え・複数端末で過去のメッセージを読むため) ---
+async function appendKeyBackup() {
+  if (!window.bcKeyBackup) return;
+  const box = secNode('div', null, 'margin-top:18px');
+  box.appendChild(secNode('p', t2('kb_section', '暗号鍵のバックアップ'), 'font-size:13px;margin:0 0 6px;opacity:.7'));
+  const holder = secNode('div');
+  box.appendChild(holder);
+  secBody.appendChild(box);
+  let st;
+  try { st = await window.bcKeyBackup.status(); } catch (e) { return; }
+  if (st.server === null) return;
+  holder.appendChild(secNode('p', st.server ? t2('kb_status_on', 'バックアップ済み') : t2('kb_status_off', '未設定'), 'font-size:14px;font-weight:600;margin:0 2px 8px'));
+  const again = async (fn) => { await fn(); closeSec(); };
+  if (st.local) {
+    holder.appendChild(secButton(st.server ? t2('kb_btn_change', 'パスフレーズを変えて預け直す') : t2('kb_btn_setup', 'パスフレーズを設定して預ける'), 'cancelbtn', () => again(() => window.bcKeyBackup.openSetup())));
+  }
+  if (st.server) {
+    holder.appendChild(secButton(t2('kb_btn_restore', 'バックアップから鍵を復元'), 'cancelbtn', async () => {
+      const r = await window.bcKeyBackup.openRestore();
+      if (r === 'restored') location.reload();
+    }));
+  }
 }
 
 // --- ログイン中の端末(端末ごとのサインアウト) ---
@@ -2632,6 +2659,9 @@ setInterval(() => {
   if (document.hidden || (talkWs && talkWs.readyState === WebSocket.OPEN)) return;
   scheduleTalkRefresh();
 }, 60000);
+
+// 画面が落ち着いてから、鍵バックアップの案内(必要な時だけ)を出す
+window.addEventListener('load', () => setTimeout(() => { if (window.bcKeyBackup) window.bcKeyBackup.init(); }, 2500));
 
 function logout() {
   // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める

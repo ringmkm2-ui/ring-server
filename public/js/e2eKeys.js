@@ -3,7 +3,14 @@
 
 let myKeyPair = null;
 
-async function getOrCreateMyKeyPair() {
+let _kpPromise = null;
+function getOrCreateMyKeyPair() {
+  // 同時に何度呼ばれても、鍵の生成・復元は1回だけ走らせる(復元の確認中に別々の鍵が作られないように)
+  if (myKeyPair) return Promise.resolve(myKeyPair);
+  if (!_kpPromise) _kpPromise = _getOrCreateMyKeyPair().finally(() => { _kpPromise = null; });
+  return _kpPromise;
+}
+async function _getOrCreateMyKeyPair() {
   if (myKeyPair) return myKeyPair;
 
   // myUserId は各ページで定義されていることを想定
@@ -24,6 +31,14 @@ async function getOrCreateMyKeyPair() {
         keyStr = JSON.stringify(ring[0]);
         localStorage.setItem(keyStorageName, keyStr);
       }
+    } catch (e) {}
+  }
+
+  // 鍵が無い端末で勝手に新しい鍵を作ると、公開鍵の登録を上書きして他の端末のメッセージが読めなくなる。
+  // バックアップがあるなら、作る前に復元を促す(keyBackup.js)
+  if (!keyStr && window.bcKeyBackup) {
+    try {
+      if ((await window.bcKeyBackup.guardCreate()) === 'restored') keyStr = localStorage.getItem(keyStorageName);
     } catch (e) {}
   }
 
