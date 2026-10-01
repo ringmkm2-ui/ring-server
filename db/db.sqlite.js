@@ -78,7 +78,19 @@ async function initDB() {
       totp_enabled INTEGER DEFAULT 0,
       totp_last_step INTEGER DEFAULT 0,
       backup_codes TEXT,
+      failed_login_count INTEGER DEFAULT 0,
+      locked_until INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      device TEXT,
+      ip TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      revoked_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS email_codes (

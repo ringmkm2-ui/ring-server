@@ -57,6 +57,22 @@ async function initDB() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step BIGINT DEFAULT 0');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT');
+    // パスワード総当たり対策(アカウント単位): 連続失敗回数とロック解除時刻(ms)
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count INTEGER DEFAULT 0');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until BIGINT DEFAULT 0');
+    // 端末ごとのログインセッション(JWTのsidと対応)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        device TEXT,
+        ip TEXT,
+        created_at TIMESTAMP DEFAULT now(),
+        last_seen_at TIMESTAMP DEFAULT now(),
+        revoked_at TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS email_codes (
         username TEXT PRIMARY KEY,

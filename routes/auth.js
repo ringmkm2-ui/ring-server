@@ -13,6 +13,9 @@ const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
 const { generateSecret, verifyTotp, otpauthUri } = require('../utils/totp');
+const { validatePassword } = require('../utils/passwordPolicy');
+const secretBox = require('../utils/secretBox');
+const { createSession } = require('../utils/sessions');
 
 const router = express.Router();
 const JWT_EXPIRES_IN = '30d';
@@ -38,8 +41,19 @@ const TWOFA_TOKEN_TTL = '5m';
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 const truthy = (v) => v === true || v === 1 || v === '1' || v === 't' || v === 'true';
 
-function sessionResponse(user, extra = {}) {
-  const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+// リクエストから端末情報(User-Agent / IP)を取り出す
+const reqMeta = (req) => ({ ua: req.headers['user-agent'], ip: req.ip });
+
+// 端末ごとのセッションを作ってJWTに sid を入れる(端末単位のサインアウトのため)
+async function issueToken(user, meta) {
+  const sid = await createSession(user.id, meta || {});
+  const payload = { userId: user.id, username: user.username };
+  if (sid) payload.sid = sid;
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+async function sessionResponse(user, extra = {}, meta) {
+  const token = await issueToken(user, meta);
   return {
     userId: user.id,
     userIdCode: user.user_id,
@@ -51,12 +65,12 @@ function sessionResponse(user, extra = {}) {
 }
 
 // パスワード(またはGoogle)を通過した後の分岐: 2FAが有効なら途中トークンだけ返す。
-function finishLogin(user, extra = {}) {
+async function finishLogin(user, extra = {}, meta) {
   if (truthy(user.totp_enabled)) {
     const twoFaToken = jwt.sign({ userId: user.id, purpose: '2fa' }, TWOFA_SECRET, { expiresIn: TWOFA_TOKEN_TTL });
     return { needs2fa: true, twoFaToken };
   }
-  return sessionResponse(user, extra);
+  return sessionResponse(user, extra, meta);
 }
 
 async function sendEmailCode(username) {
@@ -94,6 +108,26 @@ function twoFaFail(userId) {
 }
 function twoFaOk(userId) { twoFaFails.delete(userId); }
 
+// パスワード総当たり対策(アカウント単位)。IP単位のレート制限だけだと、IPを散らされたら素通りになる。
+// 連続8回失敗で15分ロック。成功したらカウントを戻す。
+const LOGIN_MAX_FAILS = 8;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+// 存在しないユーザーでもbcryptを1回走らせて、応答時間でアカウントの有無を探られないようにする
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing-only', 12);
+
+async function recordLoginFailure(userId) {
+  await db.run('UPDATE users SET failed_login_count = COALESCE(failed_login_count, 0) + 1 WHERE id = ?', [userId]);
+  const row = await db.get('SELECT failed_login_count FROM users WHERE id = ?', [userId]);
+  if (row && Number(row.failed_login_count) >= LOGIN_MAX_FAILS) {
+    await db.run('UPDATE users SET failed_login_count = 0, locked_until = ? WHERE id = ?', [Date.now() + LOGIN_LOCK_MS, userId]);
+  }
+}
+async function clearLoginFailures(user) {
+  if (Number(user.failed_login_count || 0) > 0 || Number(user.locked_until || 0) > 0) {
+    await db.run('UPDATE users SET failed_login_count = 0, locked_until = 0 WHERE id = ?', [user.id]);
+  }
+}
+
 function normalizeBackup(code) {
   return String(code || '').toLowerCase().replace(/[^a-f0-9]/g, '');
 }
@@ -110,8 +144,14 @@ function generateBackupCodes() {
 async function checkSecondFactor(user, rawCode) {
   const code = String(rawCode || '').trim();
   if (/^\d{3}\s?\d{3}$/.test(code) && user.totp_secret) {
-    const step = verifyTotp(user.totp_secret, code);
+    const plainSecret = secretBox.decrypt(user.totp_secret);
+    if (!plainSecret) return false;
+    const step = verifyTotp(plainSecret, code);
     if (step === null) return false;
+    // 旧バージョンで平文のまま保存されていた秘密鍵は、使われたタイミングで暗号化し直す
+    if (!secretBox.isEncrypted(user.totp_secret)) {
+      await db.run('UPDATE users SET totp_secret = ? WHERE id = ?', [secretBox.encrypt(plainSecret), user.id]);
+    }
     if (step <= Number(user.totp_last_step || 0)) return false; // 同じコードの再利用を拒否
     await db.run('UPDATE users SET totp_last_step = ? WHERE id = ?', [step, user.id]);
     return true;
@@ -136,15 +176,12 @@ router.post('/register', registerLimiter, async (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: 'username と password は必須です' });
   }
-  // 6文字は現代の基準では弱すぎる(オフライン総当たりに対して脆弱)ため8文字以上に強化。
-  // 併せて、パスワードとして極端に長い文字列(bcryptはハッシュ化に時間がかかるため
-  // DoS化を防ぐ意味もある)も拒否する。
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'パスワードは8文字以上にしてください' });
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'username と password は文字列で指定してください' });
   }
-  if (password.length > 128) {
-    return res.status(400).json({ error: 'パスワードが長すぎます' });
-  }
+  // 8文字以上・上限128(bcryptは重いのでDoS防止)に加え、よくあるパスワード/ユーザー名と同じものを弾く
+  const pwErr = validatePassword(password, username);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   if (username.length > 254) {
     return res.status(400).json({ error: 'ユーザー名が長すぎます' });
   }
@@ -205,7 +242,7 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 
   const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
-  res.json(sessionResponse(user));
+  res.json(await sessionResponse(user, {}, reqMeta(req)));
 });
 
 // --- メール認証コードの確認 ---
@@ -230,7 +267,7 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     }
     await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
     await db.run('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
-    res.json(finishLogin({ ...user, email_verified_at: true }));
+    res.json(await finishLogin({ ...user, email_verified_at: true }, {}, reqMeta(req)));
   } catch (e) {
     sendServerError(res, e, 'verify-email');
   }
@@ -260,16 +297,27 @@ router.post('/login', loginLimiter, async (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: 'username と password は必須です' });
   }
+  if (typeof username !== 'string' || typeof password !== 'string' || password.length > 128) {
+    return res.status(400).json({ error: 'ユーザー名またはパスワードが違います' });
+  }
 
   const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
   if (!user) {
+    await bcrypt.compare(password, DUMMY_HASH);
     return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
   }
 
-  const match = await bcrypt.compare(password, user.password_hash);
+  if (Number(user.locked_until || 0) > Date.now()) {
+    return res.status(429).json({ error: 'ログインの失敗が続いたため、一時的にロックしています。15分ほど待ってからもう一度試してください' });
+  }
+
+  // Google連携アカウント(password_hashが空)にはパスワードログインを通さない
+  const match = await bcrypt.compare(password, user.password_hash || DUMMY_HASH) && !!user.password_hash;
   if (!match) {
+    await recordLoginFailure(user.id);
     return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
   }
+  await clearLoginFailures(user);
 
   if (truthy(user.email_verify_required) && !user.email_verified_at) {
     if (isMailConfigured()) {
@@ -278,7 +326,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(403).json({ needsVerification: true, username: user.username, error: 'メールアドレスの認証が済んでいません。届いたコードを入力してください' });
   }
 
-  res.json(finishLogin(user));
+  res.json(await finishLogin(user, {}, reqMeta(req)));
 });
 
 // --- 2段階認証コードでログイン完了 ---
@@ -305,7 +353,7 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'コードが正しくありません' });
     }
     twoFaOk(user.id);
-    res.json(sessionResponse(user));
+    res.json(await sessionResponse(user, {}, reqMeta(req)));
   } catch (e) {
     sendServerError(res, e, 'login-2fa');
   }
@@ -316,7 +364,7 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
 // body: { idToken } (Google Sign-In から取得したIDトークン)
 // IDトークンを検証してログイン/自動登録まで行う共通処理。{ status, body } を返す。
 // expectedNonce がある場合(アプリのシステムブラウザ経由)は、トークンのnonceも一致を確認する。
-async function googleLoginFromIdToken(idToken, expectedNonce) {
+async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
   try {
     // Google IDトークンの署名・発行者・有効期限・audience(このアプリ向けに
     // 発行されたものか)をすべてGoogleの公開鍵で検証する。
@@ -358,7 +406,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce) {
         user.password_hash = '';
       }
     }
-    return { status: 200, body: finishLogin(user, { profilePic: user.profile_pic }) };
+    return { status: 200, body: await finishLogin(user, { profilePic: user.profile_pic }, meta) };
   } catch (e) {
     // verifyIdTokenは署名不正・期限切れ・audience不一致などで例外を投げる。
     // これらは全て「なりすまし試行または壊れたトークン」として一律401にする
@@ -371,7 +419,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce) {
 router.post('/google', loginLimiter, async (req, res) => {
   const { idToken } = req.body;
   if (!idToken) return res.status(400).json({ error: 'idToken required' });
-  const r = await googleLoginFromIdToken(idToken, null);
+  const r = await googleLoginFromIdToken(idToken, null, reqMeta(req));
   res.status(r.status).json(r.body);
 });
 
@@ -419,7 +467,7 @@ router.post('/google/app-relay', loginLimiter, async (req, res) => {
   const pend = typeof state === 'string' ? googleAppPending.get(state) : null;
   if (!pend || !idToken) return res.status(400).json({ error: '有効時間が切れました。アプリからやり直してください' });
   if (pend.result) return res.json({ ok: true });
-  const r = await googleLoginFromIdToken(idToken, pend.nonce);
+  const r = await googleLoginFromIdToken(idToken, pend.nonce, reqMeta(req));
   pend.result = r;
   res.status(r.status === 200 ? 200 : r.status).json(r.status === 200 ? { ok: true } : r.body);
 });
@@ -516,11 +564,13 @@ router.post('/change-password', verifyToken, async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: '現在のパスワードと新しいパスワードは必須です' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください' });
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: 'パスワードが正しくありません' });
     }
-    if (newPassword.length > 128) {
-      return res.status(400).json({ error: 'パスワードが長すぎます' });
+    const pwErr = validatePassword(newPassword, req.user.username);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ error: '今のパスワードと同じです。別のパスワードにしてください' });
     }
 
     const user = await db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.userId]);
@@ -534,11 +584,13 @@ router.post('/change-password', verifyToken, async (req, res) => {
     }
 
     const newHash = await bcrypt.hash(newPassword, 12);
-    await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?',
+    await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0 WHERE id = ?',
       [newHash, req.user.userId]);
+    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [req.user.userId]);
 
-    // 新しいトークンを発行(変更直後に再ログインさせないため)
-    const token = jwt.sign({ userId: req.user.userId, username: req.user.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    // 新しいトークンを発行(変更直後に再ログインさせないため)。
+    // token_revoked_at とiatが同じ秒だと失効扱いになるので、sid付き(セッション有効判定)で発行する。
+    const token = await issueToken({ id: req.user.userId, username: req.user.username }, reqMeta(req));
     res.json({ ok: true, token, message: 'パスワードを変更しました。他の全端末からサインアウトされます。' });
   } catch (e) {
     sendServerError(res, e, 'change-password');
@@ -551,6 +603,7 @@ router.post('/change-password', verifyToken, async (req, res) => {
 router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
   try {
     await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [req.user.userId]);
+    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [req.user.userId]);
     res.json({ ok: true, message: '全端末のセッションを無効化しました。再度ログインしてください。' });
   } catch (e) {
     sendServerError(res, e, 'revoke-all-sessions');
@@ -576,7 +629,7 @@ router.post('/2fa/setup', verifyToken, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
     if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
     const secret = generateSecret();
-    await db.run('UPDATE users SET totp_secret = ? WHERE id = ?', [secret, req.user.userId]);
+    await db.run('UPDATE users SET totp_secret = ? WHERE id = ?', [secretBox.encrypt(secret), req.user.userId]);
     res.json({ secret, uri: otpauthUri(secret, user.username) });
   } catch (e) {
     sendServerError(res, e, '2fa-setup');
@@ -589,11 +642,12 @@ router.post('/2fa/enable', verifyToken, loginLimiter, async (req, res) => {
     const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.userId]);
     if (!user || !user.totp_secret) return res.status(400).json({ error: '先に設定を開始してください' });
     if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
-    const step = verifyTotp(user.totp_secret, req.body.code);
+    const plainSecret = secretBox.decrypt(user.totp_secret);
+    const step = plainSecret ? verifyTotp(plainSecret, req.body.code) : null;
     if (step === null) return res.status(400).json({ error: 'コードが正しくありません' });
     const { plain, hashes } = generateBackupCodes();
-    await db.run('UPDATE users SET totp_enabled = 1, totp_last_step = ?, backup_codes = ? WHERE id = ?',
-      [step, JSON.stringify(hashes), user.id]);
+    await db.run('UPDATE users SET totp_enabled = ?, totp_last_step = ?, backup_codes = ? WHERE id = ?',
+      [true, step, JSON.stringify(hashes), user.id]);
     res.json({ ok: true, backupCodes: plain });
   } catch (e) {
     sendServerError(res, e, '2fa-enable');
@@ -613,10 +667,57 @@ router.post('/2fa/disable', verifyToken, loginLimiter, async (req, res) => {
     const ok = await checkSecondFactor(user, req.body.code);
     if (!ok) { twoFaFail(user.id); return res.status(401).json({ error: 'コードが正しくありません' }); }
     twoFaOk(user.id);
-    await db.run('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_last_step = 0, backup_codes = NULL WHERE id = ?', [user.id]);
+    await db.run('UPDATE users SET totp_enabled = ?, totp_secret = NULL, totp_last_step = 0, backup_codes = NULL WHERE id = ?', [false, user.id]);
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e, '2fa-disable');
+  }
+});
+
+// --- ログイン中の端末(セッション)の一覧と、端末ごとのサインアウト ---
+router.get('/sessions', verifyToken, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT id, device, ip, created_at, last_seen_at FROM user_sessions
+        WHERE user_id = ? AND revoked_at IS NULL ORDER BY last_seen_at DESC LIMIT 30`,
+      [req.user.userId]
+    );
+    res.json({
+      sessions: rows.map(r => ({
+        id: r.id,
+        device: r.device || '不明な端末',
+        ip: r.ip || '',
+        createdAt: r.created_at,
+        lastSeenAt: r.last_seen_at,
+        current: !!req.user.sid && r.id === req.user.sid,
+      })),
+    });
+  } catch (e) {
+    sendServerError(res, e, 'sessions-list');
+  }
+});
+
+// body: { id }  自分のセッションだけ失効できる。今の端末を指定すればサインアウトになる。
+router.post('/sessions/revoke', verifyToken, async (req, res) => {
+  try {
+    const id = req.body && req.body.id;
+    if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'id が必要です' });
+    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND revoked_at IS NULL', [id, req.user.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e, 'sessions-revoke');
+  }
+});
+
+// ログアウト: この端末のセッションだけ失効させる(sid無しの古いトークンは何もしない)
+router.post('/logout', verifyToken, async (req, res) => {
+  try {
+    if (req.user.sid) {
+      await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.user.sid, req.user.userId]);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e, 'logout');
   }
 });
 
@@ -650,10 +751,14 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     await db.run('DELETE FROM offline_queue WHERE sender_id = ? OR recipient_id = ?', [userId, userId]);
     await db.run('DELETE FROM call_notes WHERE owner_id = ?', [userId]);
     await db.run('DELETE FROM call_summaries WHERE owner_id = ?', [userId]);
+    // ログイン関連の残り(2FA秘密鍵・予備コード・認証コード・端末セッション・プッシュ宛先)も消す
+    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [userId]);
+    await db.run('DELETE FROM email_codes WHERE username = (SELECT username FROM users WHERE id = ?)', [userId]);
+    try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
     // ユーザー情報の匿名化(外部キー制約のため行自体は残す)
     await db.run(
-      "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [`deleted_${userId}`, userId]
+      "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, totp_secret = NULL, totp_enabled = ?, backup_codes = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [`deleted_${userId}`, false, userId]
     );
 
     res.json({ ok: true, message: 'アカウントを削除しました' });
