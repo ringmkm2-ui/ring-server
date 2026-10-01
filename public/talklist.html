@@ -496,7 +496,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.143 beta</div>
+  <div class="version-badge">Bro Chat v1.28.144 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2665,7 +2665,7 @@ window.addEventListener('load', () => setTimeout(() => { if (window.bcKeyBackup)
 
 function logout() {
   // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める
-  try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); } catch (e) {}
+  try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fcmToken: localStorage.getItem('fcm_token') || undefined }) }).catch(() => {}); } catch (e) {}
   // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
   // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)
   const keep = {};

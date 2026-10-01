@@ -233,6 +233,18 @@ async function initDB() {
   } catch (e) {
     console.log('[db] fcm_tokens migration skip:', e.message);
   }
+  // 同じFCMトークンが複数アカウントに紐づいている行を整理する(最後に登録したアカウントだけ残す)。
+  // 残っていると、別アカウントでの着信・通知がこの端末にも届く
+  try {
+    const r = await pool.query(`
+      DELETE FROM fcm_tokens f USING fcm_tokens g
+      WHERE f.token = g.token AND f.user_id <> g.user_id
+        AND (f.updated_at < g.updated_at OR (f.updated_at = g.updated_at AND f.user_id < g.user_id))
+    `);
+    if (r.rowCount) console.log('[db] fcm_tokens: 重複トークンを整理しました:', r.rowCount);
+  } catch (e) {
+    console.log('[db] fcm_tokens dedupe skip:', e.message);
+  }
 
   // アイコン画像(Cloudinaryに届かなかった時のサーバー保存先)とグループアイコンURL
   try {
