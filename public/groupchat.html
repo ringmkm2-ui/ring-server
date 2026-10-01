@@ -176,6 +176,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script src="/js/signalkeymanager.js"></script>
 <script src="/js/groupE2E.js"></script>
 <script src="/js/groupCall.js"></script>
+<script src="/js/session.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
@@ -199,7 +200,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.141 beta</div>
+  <div class="version-badge">Bro Chat v1.28.142 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1343,6 +1344,7 @@ function connectGroupWS(){
   groupWs.onmessage=async e=>{
     try{
       const data=JSON.parse(e.data);
+      if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
       if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); return; }
       if(typeof data.type==='string'&&data.type.startsWith('gcall_')){ window.GroupCall.handle(data); return; }
       if(data.type==='group_message'&&data.groupId===groupId){

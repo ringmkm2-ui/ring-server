@@ -16,6 +16,7 @@ const { generateSecret, verifyTotp, otpauthUri } = require('../utils/totp');
 const { validatePassword } = require('../utils/passwordPolicy');
 const secretBox = require('../utils/secretBox');
 const { createSession } = require('../utils/sessions');
+const sessionEvents = require('../utils/sessionEvents');
 
 const router = express.Router();
 const JWT_EXPIRES_IN = '30d';
@@ -359,6 +360,93 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
   }
 });
 
+// --- パスワードを忘れた場合の再設定(メール) ---
+// メール送信の設定(SMTP)がある時だけ動く。ユーザー名がメールアドレスのアカウントが対象。
+// 存在しないアカウントでも同じ応答を返す(アカウントの有無を探られないように)。
+router.post('/forgot-password', loginLimiter, async (req, res) => {
+  try {
+    const username = req.body && req.body.username;
+    if (typeof username !== 'string' || !EMAIL_RE.test(username) || username.length > 254) {
+      return res.json({ ok: true });
+    }
+    if (isMailConfigured()) {
+      const user = await db.get('SELECT id FROM users WHERE username = ?', [username]);
+      if (user) {
+        const now = Date.now();
+        const row = await db.get('SELECT last_sent_ms FROM password_resets WHERE username = ?', [username]);
+        if (!row || now - Number(row.last_sent_ms || 0) >= EMAIL_CODE_COOLDOWN_MS) {
+          const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+          await db.run(
+            `INSERT INTO password_resets (username, code_hash, expires_ms, attempts, last_sent_ms) VALUES (?, ?, ?, 0, ?)
+             ON CONFLICT(username) DO UPDATE SET code_hash = excluded.code_hash, expires_ms = excluded.expires_ms, attempts = 0, last_sent_ms = excluded.last_sent_ms`,
+            [username, sha256(code), now + EMAIL_CODE_TTL_MS, now]
+          );
+          try {
+            await sendMail({
+              to: username,
+              subject: 'Bro Chat パスワード再設定コード',
+              text: `Bro Chat のパスワード再設定コードです。\n\n${code}\n\n10分以内に入力してください。心当たりがない場合はこのメールを無視してください(パスワードは変わりません)。`,
+            });
+          } catch (e) {
+            console.error('[auth] 再設定メール送信失敗:', e.message);
+          }
+        }
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e, 'forgot-password');
+  }
+});
+
+// body: { username, code, newPassword, totpCode? }  2段階認証が有効なアカウントは totpCode も必要
+router.post('/reset-password', loginLimiter, async (req, res) => {
+  try {
+    const { username, code, newPassword, totpCode } = req.body || {};
+    if (typeof username !== 'string' || typeof code !== 'string' || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: '入力内容が正しくありません' });
+    }
+    const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
+    const pwErr = validatePassword(newPassword, username);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+
+    const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+    const row = await db.get('SELECT * FROM password_resets WHERE username = ?', [username]);
+    if (!user || !row) return invalid();
+    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
+      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+      return invalid();
+    }
+    const given = Buffer.from(sha256(code.replace(/\s/g, '')));
+    const real = Buffer.from(row.code_hash);
+    if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
+      await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE username = ?', [username]);
+      return invalid();
+    }
+    // メールを押さえられただけで2段階認証を迂回されないよう、2FAが有効なら認証アプリのコードも必須にする
+    if (truthy(user.totp_enabled)) {
+      if (twoFaLocked(user.id)) return res.status(429).json({ error: '失敗が続いたため一時的にロックしました。15分後にもう一度試してください' });
+      if (!totpCode || !(await checkSecondFactor(user, totpCode))) {
+        twoFaFail(user.id);
+        return res.status(401).json({ error: '2段階認証のコードが正しくありません', needs2fa: true });
+      }
+      twoFaOk(user.id);
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await db.run(
+      'UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP) WHERE id = ?',
+      [newHash, user.id]
+    );
+    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+    await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+    sessionEvents.emit('revoked', { userId: user.id });
+    res.json({ ok: true, message: 'パスワードを変更しました。新しいパスワードでログインしてください。' });
+  } catch (e) {
+    sendServerError(res, e, 'reset-password');
+  }
+});
+
 // --- Google OAuth ログイン ---
 // POST /api/auth/google
 // body: { idToken } (Google Sign-In から取得したIDトークン)
@@ -591,6 +679,7 @@ router.post('/change-password', verifyToken, async (req, res) => {
     // 新しいトークンを発行(変更直後に再ログインさせないため)。
     // token_revoked_at とiatが同じ秒だと失効扱いになるので、sid付き(セッション有効判定)で発行する。
     const token = await issueToken({ id: req.user.userId, username: req.user.username }, reqMeta(req));
+    sessionEvents.emit('revoked', { userId: req.user.userId }); // 旧セッションのWebSocketを全て切る(この端末は新トークンで繋ぎ直す)
     res.json({ ok: true, token, message: 'パスワードを変更しました。他の全端末からサインアウトされます。' });
   } catch (e) {
     sendServerError(res, e, 'change-password');
@@ -604,6 +693,7 @@ router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
   try {
     await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [req.user.userId]);
     await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [req.user.userId]);
+    sessionEvents.emit('revoked', { userId: req.user.userId });
     res.json({ ok: true, message: '全端末のセッションを無効化しました。再度ログインしてください。' });
   } catch (e) {
     sendServerError(res, e, 'revoke-all-sessions');
@@ -703,6 +793,7 @@ router.post('/sessions/revoke', verifyToken, async (req, res) => {
     const id = req.body && req.body.id;
     if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'id が必要です' });
     await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND revoked_at IS NULL', [id, req.user.userId]);
+    sessionEvents.emit('revoked', { userId: req.user.userId, sid: id });
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e, 'sessions-revoke');
@@ -714,6 +805,7 @@ router.post('/logout', verifyToken, async (req, res) => {
   try {
     if (req.user.sid) {
       await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.user.sid, req.user.userId]);
+      sessionEvents.emit('revoked', { userId: req.user.userId, sid: req.user.sid });
     }
     res.json({ ok: true });
   } catch (e) {

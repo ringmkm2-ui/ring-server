@@ -8,6 +8,7 @@ const db = require('../db/db');
 const { verifyTokenRaw } = require('../routes/auth');
 const { sendPushToUser } = require('../utils/webPush');
 const callAssist = require('./callAssistProxy');
+const sessionEvents = require('../utils/sessionEvents');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -156,6 +157,21 @@ async function flushOfflineQueue(userId) {
   }
 }
 
+// セッションが失効したら、その端末のWebSocketもすぐ切る(トークンを失効させても、
+// 既に繋がっている接続は生きたままメッセージを受け取り続けてしまうため)。
+sessionEvents.on('revoked', ({ userId, sid, exceptSid }) => {
+  const set = connections.get(userId);
+  if (!set) return;
+  for (const c of [...set]) {
+    const hit = sid ? c.sessionId === sid : (exceptSid ? c.sessionId !== exceptSid : true);
+    if (!hit) continue;
+    try { c.send(JSON.stringify({ type: 'session_revoked' })); } catch (e) {}
+    try { c.close(4001, 'session revoked'); } catch (e) {}
+    set.delete(c);
+  }
+  if (set.size === 0) connections.delete(userId);
+});
+
 function initWebSocketServer(server) {
   // maxPayload: 単一WSフレームの最大サイズ。デフォルトは100MBで実質無制限。
   // 大きいペイロードでメモリ枯渇するDoSを防ぐため64KBに制限する。
@@ -212,6 +228,12 @@ function initWebSocketServer(server) {
     let wsRateCount = 0;
     let wsRateWindowStart = Date.now();
 
+    // 接続だけして認証しない接続を放置しない(15秒で切る)。接続数上限を食いつぶす嫌がらせ対策
+    const authTimer = setTimeout(() => {
+      if (!userId) { try { ws.close(4000, 'auth timeout'); } catch (e) {} }
+    }, 15000);
+    ws.on('close', () => clearTimeout(authTimer));
+
     const handleWsMessage = async (raw, isBinary) => {
       // バイナリ(音声)はレート制限対象外
       if (!isBinary) {
@@ -250,6 +272,9 @@ function initWebSocketServer(server) {
 
       // --- 認証 (接続直後に1回だけ) ---
       if (data.type === 'auth') {
+        // 認証は接続ごとに1回だけ。認証済みの接続で再度authを送られても無視する
+        // (別ユーザーのトークンで userId を差し替えて、前のユーザーの接続集合に居座られるのを防ぐ)
+        if (userId) return;
         const payload = await verifyTokenRaw(data.token);
         if (!payload) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'トークンが無効です' }));
@@ -257,6 +282,8 @@ function initWebSocketServer(server) {
           return;
         }
         userId = payload.userId;
+        ws.sessionId = payload.sid || null;
+        clearTimeout(authTimer);
         if (!connections.has(userId)) connections.set(userId, new Set());
         connections.get(userId).add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
