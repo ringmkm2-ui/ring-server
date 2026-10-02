@@ -308,7 +308,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.149 beta</div>
+  <div class="version-badge">Bro Chat v1.28.150 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3615,6 +3615,13 @@ async function chooseAudioRoute(info, id) {
       const r = await nativeCall().setAudioRoute({ route: id });
       audioRouteCurrent = (r && r.current) || id;
       setSpeakerBtnIcon(audioRouteCurrent);
+      // OS側の反映は少し遅れるので、実際の出口を取り直してアイコンを合わせる(効かなかった時に嘘の表示を残さない)
+      setTimeout(async () => {
+        try {
+          const now = await nativeCall().getAudioRoutes();
+          if (now && now.current) { audioRouteCurrent = now.current; setSpeakerBtnIcon(now.current); }
+        } catch (e) {}
+      }, 900);
     } else {
       await document.getElementById('remoteAudio').setSinkId(id);
       audioRouteCurrent = id;

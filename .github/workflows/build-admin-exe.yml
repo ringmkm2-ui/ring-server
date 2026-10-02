@@ -1,0 +1,39 @@
+name: Build Admin EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'admin-exe/**'
+      - '.github/workflows/build-admin-exe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: admin-exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build exe
+        run: npm run dist
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: admin-v1.0.${{ github.run_number }}
+          name: Bro Chat Admin v1.0.${{ github.run_number }}
+          files: admin-exe/dist/BroChatAdmin.exe
+          prerelease: true

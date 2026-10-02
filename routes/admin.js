@@ -1,0 +1,128 @@
+// routes/admin.js
+// -----------------------------------------------------------------------
+// 管理者専用API(管理用exeから使う)。
+// 環境変数 ADMIN_API_KEY が未設定ならこのAPI全体が存在しない扱い(404)になる。
+// 鍵はヘッダー x-admin-key で渡す。通常ユーザーのJWTとは完全に別物。
+// -----------------------------------------------------------------------
+const crypto = require('crypto');
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
+const db = require('../db/db');
+const { asyncHandler } = require('../utils/asyncHandler');
+const { validatePassword } = require('../utils/passwordPolicy');
+const sessionEvents = require('../utils/sessionEvents');
+const pkg = require('../package.json');
+
+const router = express.Router();
+
+// 鍵の総当たり対策: 失敗だけ数えて、IP単位で15分に10回まで
+const failLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてから再度お試しください。' },
+});
+
+function sha(s) { return crypto.createHash('sha256').update(String(s)).digest(); }
+
+function requireAdmin(req, res, next) {
+  const key = process.env.ADMIN_API_KEY;
+  if (!key || key.length < 16) return res.status(404).json({ error: 'Not Found' });
+  const given = req.get('x-admin-key') || '';
+  if (!crypto.timingSafeEqual(sha(given), sha(key))) return res.status(401).json({ error: '管理キーが違います' });
+  next();
+}
+
+router.use(failLimiter, requireAdmin);
+
+async function count(sql) {
+  try { const r = await db.get(sql); return Number(r && r.n) || 0; } catch (e) { return null; }
+}
+
+router.get('/stats', asyncHandler(async (req, res) => {
+  let online = null;
+  try {
+    const { isUserOnline } = require('../ws/wsServer');
+    const ids = await db.all("SELECT id FROM users WHERE password_hash <> ''");
+    online = ids.filter(u => isUserOnline(u.id)).length;
+  } catch (e) {}
+  res.json({
+    version: pkg.version,
+    uptimeSec: Math.floor(process.uptime()),
+    memoryMB: Math.round(process.memoryUsage().rss / 1048576),
+    users: await count("SELECT COUNT(*) AS n FROM users WHERE password_hash <> ''"),
+    online,
+    messages: await count('SELECT COUNT(*) AS n FROM messages'),
+    groupMessages: await count('SELECT COUNT(*) AS n FROM group_messages'),
+    groups: await count('SELECT COUNT(*) AS n FROM groups'),
+    posts: await count('SELECT COUNT(*) AS n FROM posts'),
+    activeSessions: await count('SELECT COUNT(*) AS n FROM user_sessions WHERE revoked_at IS NULL'),
+  });
+}));
+
+router.get('/users', asyncHandler(async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  const like = `%${q.replace(/[%_\\]/g, m => '\\' + m)}%`;
+  const rows = await db.all(
+    `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at
+       FROM users
+      WHERE password_hash <> '' AND (? = '' OR username LIKE ? OR display_name LIKE ? OR user_id LIKE ?)
+      ORDER BY created_at DESC LIMIT 200`,
+    [q, like, like, like]
+  );
+  let isOnline = () => false;
+  try { isOnline = require('../ws/wsServer').isUserOnline; } catch (e) {}
+  res.json({
+    users: rows.map(u => ({
+      id: u.id,
+      userId: u.user_id,
+      username: u.username,
+      displayName: u.display_name,
+      createdAt: u.created_at,
+      locked: Number(u.locked_until || 0) > Date.now(),
+      failedLogins: Number(u.failed_login_count || 0),
+      online: isOnline(u.id),
+    })),
+  });
+}));
+
+async function findUser(id) {
+  return db.get("SELECT id, username FROM users WHERE id = ? AND password_hash <> ''", [String(id).slice(0, 100)]);
+}
+
+// 全端末からログアウトさせる
+router.post('/users/:id/logout', asyncHandler(async (req, res) => {
+  const u = await findUser(req.params.id);
+  if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [u.id]);
+  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
+  try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}
+  res.json({ ok: true });
+}));
+
+// ログインロックを解除
+router.post('/users/:id/unlock', asyncHandler(async (req, res) => {
+  const u = await findUser(req.params.id);
+  if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  await db.run('UPDATE users SET failed_login_count = 0, locked_until = 0 WHERE id = ?', [u.id]);
+  res.json({ ok: true });
+}));
+
+// パスワードを強制的に再設定(全端末ログアウトも兼ねる)
+router.post('/users/:id/password', asyncHandler(async (req, res) => {
+  const u = await findUser(req.params.id);
+  if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  const password = req.body && req.body.password;
+  const bad = validatePassword(password, u.username);
+  if (bad) return res.status(400).json({ error: bad });
+  const hash = await bcrypt.hash(password, 12);
+  await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0 WHERE id = ?', [hash, u.id]);
+  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
+  try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}
+  res.json({ ok: true });
+}));
+
+module.exports = router;

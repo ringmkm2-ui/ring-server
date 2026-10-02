@@ -20,6 +20,7 @@ const callAssistRouter = require('./routes/callAssist');
 const communitiesRouter = require('./routes/communities');
 const { uploadRouter: iconUploadRouter, publicRouter: iconPublicRouter } = require('./routes/icons');
 const callsRouter = require('./routes/calls');
+const adminRouter = require('./routes/admin');
 const { initWebSocketServer } = require('./ws/wsServer');
 const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 const { apiLimiter } = require('./utils/rateLimits');
@@ -186,6 +187,7 @@ async function main() {
   app.use('/api/call-assist', callAssistRouter);
   app.use('/api/communities', communitiesRouter);
   app.use('/api/calls', callsRouter);
+  app.use('/api/admin', adminRouter);
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、
