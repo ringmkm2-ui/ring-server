@@ -68,8 +68,11 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .fsz{font-size:11px;color:#64748b}
 .dlbtn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
 .mmeta{align-self:flex-end;margin-top:4px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
-.chk{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
-.chk.lit{stroke:#059669}
+.chk,.chk1{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
+.chk.lit,.chk1.lit{stroke:#059669}
+.chk1.lit{animation:chkPop .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes chkPop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+.chk1{transform-origin:center;transform-box:fill-box}
 .rdrow{display:flex;align-items:center;gap:2px;margin-top:3px}
 .rav{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;cursor:pointer;border:1px solid rgba(255,255,255,.8);flex-shrink:0;background-size:cover;background-position:center;transition:transform .15s ease}
 .rav:hover{transform:scale(1.25)}
@@ -201,7 +204,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.147 beta</div>
+  <div class="version-badge">Bro Chat v1.28.148 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -668,6 +671,7 @@ async function handleMediaGroup(f,t){
     if (data && data.ok && data.message) {
       msgDiv.dataset.msgId = data.message.id;
       msgDiv.classList.remove('uploading');
+      const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit'); // サーバーに届いたので緑
     } else {
       console.error('メディア送信に失敗しました:', data);
       msgDiv.remove();
@@ -753,6 +757,7 @@ document.getElementById('tform').onsubmit=async e=>{
     });
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
+      const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit'); // サーバーに届いたので緑
     }else{
       console.error('送信に失敗しました:',data);
     }
@@ -806,7 +811,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
 
   if(!isInc){
     // 送信メッセージ: チェック1個 + 既読アバター(実際の既読状況はrefreshGroupReadStatus()で反映)
-    meta.innerHTML=`<span class="time">${t}</span><svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4.5 10 12 1" class="chk"/></svg>`;
+    meta.innerHTML=`<span class="time">${t}</span><svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-6px"><polyline points="1 6 4.5 10 12 1" class="chk1${String(msgId||'').indexOf('temp-')===0?'':' lit'}"/></svg><svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4.5 10 12 1" class="chk"/></svg>`;
     const rd=document.createElement('div');rd.className='rdrow';meta.appendChild(rd);
     bub.appendChild(meta);
     wrap.appendChild(bub);
