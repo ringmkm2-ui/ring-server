@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+<title>Bro Chat 管理</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<section id="login" class="center">
+  <form id="loginForm" class="card login" autocomplete="off">
+    <h1>Bro Chat 管理</h1>
+    <label>サーバーURL<input id="url" type="text" spellcheck="false"></label>
+    <label>管理キー<input id="key" type="password" spellcheck="false"></label>
+    <label class="chk"><input id="remember" type="checkbox"> このPCに保存する</label>
+    <button class="btn primary" id="loginBtn" type="submit">接続</button>
+    <p class="err" id="loginErr"></p>
+  </form>
+</section>
+
+<section id="main" hidden>
+  <header>
+    <h1>Bro Chat 管理</h1>
+    <span class="ver" id="ver"></span>
+    <div class="grow"></div>
+    <button class="icon" id="refresh" title="更新">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+    </button>
+    <button class="icon" id="logout" title="切断">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+  </header>
+  <div class="stats" id="stats"></div>
+  <div class="bar">
+    <input id="search" type="text" placeholder="ユーザー名・表示名で検索" spellcheck="false">
+    <span class="count" id="count"></span>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>表示名</th><th>ユーザー名</th><th>登録日</th><th>状態</th><th class="r">操作</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<dialog id="pwDlg">
+  <form method="dialog" id="pwForm" class="card">
+    <h2 id="pwTitle"></h2>
+    <label>新しいパスワード(8文字以上)<input id="pwInput" type="text" spellcheck="false" autocomplete="off"></label>
+    <p class="err" id="pwErr"></p>
+    <div class="row">
+      <button class="btn" type="button" id="pwCancel">やめる</button>
+      <button class="btn primary" type="submit" id="pwOk">変更する</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
