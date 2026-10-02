@@ -308,7 +308,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.147 beta</div>
+  <div class="version-badge">Bro Chat v1.28.148 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1679,7 +1679,7 @@ function renderMessageImpl(msg) {
   const meta = document.createElement('div'); meta.className = 'msg-meta' + (mediaSrc ? ' overlay' : '');
 
   if (isMine) {
-    meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1 lit"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
+    meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1${/^(temp|call)-/.test(String(msg.id)) ? '' : ' lit'}"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
   } else {
     meta.innerHTML = `<span class="time">${t}</span>`;
   }
