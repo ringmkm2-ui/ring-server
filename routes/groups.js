@@ -474,6 +474,22 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
     [groupId]
   );
 
+  // 誰が読んだか(既読アイコン用)。以前は読まれた瞬間のリアルタイム通知でしか表示されず、
+  // 画面を開き直すと既読アイコンが全部消えていた。
+  const readersBy = new Map();
+  if (messages.length) {
+    const ids = messages.map(m => m.id);
+    const reads = await db.all(
+      `SELECT message_id, user_id FROM group_message_reads WHERE message_id IN (${ids.map(() => '?').join(',')}) ORDER BY read_at ASC`,
+      ids
+    );
+    for (const r of reads) {
+      if (!readersBy.has(r.message_id)) readersBy.set(r.message_id, []);
+      readersBy.get(r.message_id).push(r.user_id);
+    }
+  }
+  for (const m of messages) m.reader_ids = readersBy.get(m.id) || [];
+
   res.json(messages.reverse());
 }));
 
