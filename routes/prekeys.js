@@ -23,7 +23,12 @@ router.post('/upload', prekeyLimiter, verifyToken, asyncHandler(async (req, res)
     return res.status(400).json({ error: '鍵バンドルが不完全です' });
   }
 
-  const existing = await db.get('SELECT user_id FROM identity_keys WHERE user_id = ?', [userId]);
+  const existing = await db.get('SELECT user_id, identity_pubkey FROM identity_keys WHERE user_id = ?', [userId]);
+  if (existing && existing.identity_pubkey !== identityPubkey) {
+    // 別の端末が新しい鍵を作って上書きした。サーバーに残っている古い鍵のワンタイム鍵は、
+    // 新しい鍵の持ち主には対応する秘密鍵が無いので、残すと相手がそれを使って暗号化し、復号できなくなる
+    await db.run('DELETE FROM one_time_prekeys WHERE user_id = ?', [userId]);
+  }
   if (existing) {
     // signingPubkeyが省略された場合(補充リクエストなど)は既存の値を保持する
     if (signingPubkey) {

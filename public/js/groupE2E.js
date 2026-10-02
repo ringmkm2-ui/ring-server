@@ -38,6 +38,16 @@
       return myFullBundle;
     }
 
+    // 鍵が無い端末で勝手に新しい鍵を作ると、サーバーの登録を上書きして、他の端末で受け取った
+    // グループ鍵が読めなくなる。バックアップがあるなら、作る前に復元を促す(keyBackup.js)
+    if (window.bcKeyBackup) {
+      try {
+        await window.bcKeyBackup.guardCreate();
+        const restored = localStorage.getItem(storageKey);
+        if (restored) { myFullBundle = JSON.parse(restored); return myFullBundle; }
+      } catch (e) {}
+    }
+
     // 初回: 鍵一式を生成してローカルに保存し、公開鍵だけサーバーへ送る
     const bundle = await window.RingSignalKeyManager.generateKeyBundle(20);
     myFullBundle = bundle;
@@ -191,19 +201,28 @@
       return groupKey;
     }
 
-    const sharedSecretB64 = await window.RingSignalKeyManager.x3dhRespond(
-      myFullBundle,
-      await getIdentityPubkeyOf(payload.fromUserId),
-      payload.ephemeralPublicKey,
-      payload.usedOneTimeKeyId
-    );
-    const sharedSecret = sodium.from_base64(sharedSecretB64);
-
     const ciphertext = sodium.from_base64(payload.ciphertext);
     const nonce = sodium.from_base64(payload.nonce);
-    const groupKey = sodium.crypto_secretbox_open_easy(ciphertext, nonce, sharedSecret);
-    if (!groupKey) throw new Error('グループ鍵の復号に失敗しました');
-    return groupKey; // Uint8Array(32)
+    const attempt = async () => {
+      const sharedSecretB64 = await window.RingSignalKeyManager.x3dhRespond(
+        myFullBundle,
+        await getIdentityPubkeyOf(payload.fromUserId),
+        payload.ephemeralPublicKey,
+        payload.usedOneTimeKeyId
+      );
+      const groupKey = sodium.crypto_secretbox_open_easy(ciphertext, nonce, sodium.from_base64(sharedSecretB64));
+      if (!groupKey) throw new Error('グループ鍵の復号に失敗しました');
+      return groupKey; // Uint8Array(32)
+    };
+    try {
+      return await attempt();
+    } catch (e) {
+      // 配布者が端末を替えて身元鍵が変わっていると、覚えていた古い公開鍵では計算が合わない。
+      // 一度だけ取り直して再試行する
+      if (!identityPubkeyCache.has(payload.fromUserId)) throw e;
+      identityPubkeyCache.delete(payload.fromUserId);
+      return await attempt();
+    }
   }
 
   // 配布者(fromUserId)のidentity公開鍵を取得する。x3dhRespondの計算に必要。
@@ -246,6 +265,7 @@
 
     const groupKey = await decryptGroupKey(myKeyRes.encryptedGroupKey);
     localStorage.setItem(cacheKey, JSON.stringify(Array.from(groupKey)));
+    if (window.bcKeyBackup) window.bcKeyBackup.syncSoon(); // 新しく手に入れた鍵をバックアップにも入れる
     return { key: groupKey, version: myKeyRes.keyVersion };
   }
 
@@ -289,6 +309,37 @@
       }
     }
     return { groupKey, distributions, missing };
+  }
+
+  // --- グループ鍵の作り直し ---
+  // 端末の入れ替えなどで、誰も今のグループ鍵を読めなくなった時の立て直し。
+  // 新しい鍵を作って全メンバー(自分を含む)に配る。これ以降のメッセージは全員読める。
+  // 以前のメッセージは、元の鍵を持っている端末でだけ読める。
+  async function rotateGroupKey(groupId, memberIds, expectedVersion) {
+    await ensureMyIdentity();
+    const groupKey = await generateGroupKey();
+    const entries = [];
+    for (const uid of memberIds) {
+      try {
+        entries.push({ userId: uid, encryptedGroupKey: await encryptGroupKeyForMember(groupKey, uid) });
+      } catch (e) {
+        // まだ鍵を作っていない人は後から配られる。自分宛が作れないのは致命的
+        if (uid === window.myUserId) throw e;
+        if (!(e && e.code === 'NO_BUNDLE')) console.warn('[groupE2E] rotate: skip', uid, e);
+      }
+    }
+    const r = await api('/api/groups/' + groupId + '/rotate-key', {
+      method: 'POST',
+      body: JSON.stringify({ expectedVersion, encryptedKeysForMembers: entries }),
+    });
+    if (!r || !r.ok) {
+      const err = new Error((r && r.error) || 'rotate failed');
+      err.serverVersion = r && r.keyVersion;
+      throw err;
+    }
+    localStorage.setItem(GROUP_KEY_STORAGE_PREFIX + groupId + '_v' + r.keyVersion, JSON.stringify(Array.from(groupKey)));
+    if (window.bcKeyBackup) window.bcKeyBackup.syncSoon();
+    return r.keyVersion;
   }
 
   // --- 鍵をまだ受け取っていないメンバーへ、持っているグループ鍵を配る ---
@@ -339,5 +390,6 @@
     decryptGroupText,
     createInitialGroupKeyDistribution,
     distributePendingKeys,
+    rotateGroupKey,
   };
 })();
