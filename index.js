@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const path = require('path');
 
 const db = require('./db/db');
@@ -66,6 +67,11 @@ async function main() {
   // これにより、XSS脆弱性があっても攻撃者が任意の外部スクリプトを読み込めなくなる。
   // 'unsafe-inline' は既存のインラインscript/styleが多数あるため当面必要だが、
   // 将来的にはnonce方式へ移行すべき。
+  // gzip圧縮。JSON(トーク一覧・メッセージ履歴など)はテキストなので大きく縮む。
+  // 今まで無圧縮で、アイコンが多いと1回の更新が1MB超になりモバイル回線で読み込みが長引いていた。
+  // 暗号化済みメディア(Cloudinaryへ直接送る分)はここを通らない。
+  app.use(compression({ threshold: 1024 }));
+
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {

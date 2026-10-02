@@ -257,84 +257,88 @@ router.get('/history/:userId', auth, async (req, res) => {
 // GET /api/messages/talks
 router.get('/talks', auth, async (req, res) => {
   try {
-    // メッセージがある会話（自分自身へのメッセージは除外）
-    // NOTE: PostgreSQLはGROUP BYに含まれない列をSELECTできない(SQLiteは黙って許容する)。
-    // SQLite/PostgreSQL両対応のため、まず相手ごとの最新時刻だけをGROUP BYで取得し、
-    // その後1件ずつ実際のメッセージ内容を引く（トーク数は通常少ないため許容範囲）。
-    const latestTimes = await db.all(`
-      SELECT
-        CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
-        MAX(created_at) as last_time
-      FROM messages
-      WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id
-      GROUP BY other_id
-      ORDER BY last_time DESC
-    `, [req.userId, req.userId, req.userId]);
+    const me = req.userId;
+    // 会話の数に関係なく、問い合わせは4回だけにする(以前は会話ごとに3〜4回引いていて、
+    // 友達が増えるほどトークを開くのが遅くなっていた)。SQLite/PostgreSQL両対応のSQLにしている。
 
-    const rows = [];
-    for (const lt of latestTimes) {
-      const msg = await db.get(`
-        SELECT
-          CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
-          content, encrypted, created_at, sender_id, deleted_at
-        FROM messages
-        WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1
-      `, [req.userId, req.userId, lt.other_id, lt.other_id, req.userId]);
-      // NOTE: created_at は PostgreSQL ではマイクロ秒精度だが、JSのDateに通るとミリ秒に丸まる。
-      // 以前は「created_at = 丸めた最新時刻」で引いていたため一致せず、最新メッセージが取れなかった。
-      if (msg) {
-        rows.push({ ...msg, last_time: msg.created_at });
-      }
+    // 1) 相手ごとの最新メッセージ(自分自身へのメッセージは除外)
+    const latest = await db.all(`
+      SELECT m.sender_id, m.recipient_id, m.content, m.encrypted, m.created_at, m.deleted_at
+      FROM messages m
+      WHERE m.id IN (
+        SELECT (
+          SELECT x.id FROM messages x
+          WHERE (x.sender_id = p.other_id AND x.recipient_id = ?) OR (x.sender_id = ? AND x.recipient_id = p.other_id)
+          ORDER BY x.created_at DESC, x.id DESC LIMIT 1
+        )
+        FROM (
+          SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END AS other_id
+          FROM messages
+          WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id
+        ) p
+      )
+    `, [me, me, me, me, me]);
+
+    // 2) 相手ごとの未読数
+    const unreadRows = await db.all(
+      'SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL GROUP BY sender_id',
+      [me]
+    );
+    const unreadBy = new Map(unreadRows.map(r => [r.sender_id, Number(r.cnt)]));
+
+    // 3) メッセージのない友達
+    const friendRows = await db.all(`
+      SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END AS friend_id
+      FROM friendships
+      WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'
+    `, [me, me, me]);
+
+    const rows = latest
+      .map(m => ({ ...m, other_id: m.sender_id === me ? m.recipient_id : m.sender_id }))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const withMsg = new Set(rows.map(r => r.other_id));
+    const ids = [...new Set([...rows.map(r => r.other_id), ...friendRows.map(f => f.friend_id)])];
+
+    // 4) 表示に使うユーザー情報をまとめて取得
+    const users = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const found = await db.all(
+        `SELECT id, user_id, display_name, profile_pic FROM users WHERE id IN (${chunk.map(() => '?').join(',')})`,
+        chunk
+      );
+      found.forEach(u => users.set(u.id, u));
     }
 
     const result = [];
-    const processedIds = new Set();
-
     for (const row of rows) {
-      const user = await db.get('SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ?', [row.other_id]);
-      if (user) {
-        const unread = await db.get(
-          "SELECT COUNT(*) as cnt FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
-          [row.other_id, req.userId]
-        );
-        result.push({
-          userId: user.id,
-          userIdCode: user.user_id,
-          displayName: user.display_name,
-          profilePic: user.profile_pic,
-          lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content, row.encrypted),
-          lastTime: row.last_time,
-          unreadCount: unread ? Number(unread.cnt) : 0,
-        });
-        processedIds.add(user.id);
-      }
+      const user = users.get(row.other_id);
+      if (!user) continue;
+      result.push({
+        userId: user.id,
+        userIdCode: user.user_id,
+        displayName: user.display_name,
+        profilePic: user.profile_pic,
+        lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content, row.encrypted),
+        lastTime: row.created_at,
+        unreadCount: unreadBy.get(row.other_id) || 0,
+      });
     }
-
     // メッセージのない友達も含める
-    const friends = await db.all(`
-      SELECT
-        CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as friend_id
-      FROM friendships
-      WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'
-    `, [req.userId, req.userId, req.userId]);
-
-    for (const f of friends) {
-      if (!processedIds.has(f.friend_id)) {
-        const user = await db.get('SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ?', [f.friend_id]);
-        if (user) {
-          result.push({
-            userId: user.id,
-            userIdCode: user.user_id,
-            displayName: user.display_name,
-            profilePic: user.profile_pic,
-            lastMessage: '',
-            lastTime: new Date().toISOString(),
-            unreadCount: 0,
-          });
-        }
-      }
+    for (const f of friendRows) {
+      if (withMsg.has(f.friend_id)) continue;
+      const user = users.get(f.friend_id);
+      if (!user) continue;
+      withMsg.add(f.friend_id);
+      result.push({
+        userId: user.id,
+        userIdCode: user.user_id,
+        displayName: user.display_name,
+        profilePic: user.profile_pic,
+        lastMessage: '',
+        lastTime: new Date().toISOString(),
+        unreadCount: 0,
+      });
     }
 
     res.json(result);
