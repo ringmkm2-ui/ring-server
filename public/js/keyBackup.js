@@ -32,23 +32,41 @@
   }
 
   // ---------- ローカルの鍵 ----------
+  // バックアップの対象:
+  //   個人チャット … e2e_keypair_<id>(いまの鍵) と e2e_keyring_<id>(過去の鍵も含む一覧)
+  //   グループ     … signal_identity_<id>(グループ鍵を受け取るための身元鍵一式) と
+  //                   group_key_<groupId>_v<n>(復号済みのグループ鍵のキャッシュ)
   function kpName() { return 'e2e_keypair_' + uid(); }
   function ringName() { return 'e2e_keyring_' + uid(); }
+  function idName() { return 'signal_identity_' + uid(); }
   function trustName() { return 'e2e_bk_key_' + uid(); }
   function readJson(name, fb) { try { var v = JSON.parse(localStorage.getItem(name)); return v == null ? fb : v; } catch (e) { return fb; } }
   function pubOf(k) { return b64e(new Uint8Array(k.publicKey)); }
 
+  function localGroupKeys() {
+    var out = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (/^group_key_[^_]+.*_v\d+$/.test(k)) {
+        var v = readJson(k, null);
+        if (Array.isArray(v) && v.length === 32) out[k] = v;
+      }
+    }
+    return out;
+  }
+
   function localState() {
     var kp = readJson(kpName(), null);
     var ring = readJson(ringName(), []);
-    return { keypair: kp, keyring: Array.isArray(ring) ? ring : [] };
+    return { keypair: kp, keyring: Array.isArray(ring) ? ring : [], identity: readJson(idName(), null), groupKeys: localGroupKeys() };
   }
-  function hasLocalKey() { var s = localState(); return !!(s.keypair || s.keyring.length); }
+  function hasLocalKey() { var s = localState(); return !!(s.keypair || s.keyring.length || s.identity); }
   function currentPub() {
     var s = localState();
     var k = s.keypair || s.keyring[0];
     return k ? pubOf(k) : null;
   }
+  function identityPub(id) { return id && id.identity && id.identity.publicKey ? String(id.identity.publicKey) : null; }
 
   // keyring を「優先する鍵を先頭」にして重複を除いて合成する
   function mergeRing(first, lists) {
@@ -90,18 +108,24 @@
     try { return JSON.parse(nacl().util.encodeUTF8(plain)); } catch (e) { return null; }
   }
 
-  // blob = bk1.<正の公開鍵(Base64)>.<salt(Base64)>.<sealed(Base64)>
-  function pack(pub, salt, sealed) { return 'bk1.' + pub + '.' + b64e(salt) + '.' + sealed; }
+  // blob = bk1.<個人鍵の公開鍵 or ->.<salt>.<sealed>[.<グループ身元鍵の公開鍵 or ->]
+  // (末尾の5つ目は後から足した。4つだけの古いバックアップも読める)
+  function pack(pub, salt, sealed, idpub) { return 'bk1.' + (pub || '-') + '.' + b64e(salt) + '.' + sealed + '.' + (idpub || '-'); }
   function unpack(blob) {
     var p = String(blob || '').split('.');
-    if (p.length !== 4 || p[0] !== 'bk1') return null;
-    return { pub: p[1], salt: b64d(p[2]), saltB64: p[2], sealed: p[3] };
+    if ((p.length !== 4 && p.length !== 5) || p[0] !== 'bk1') return null;
+    return { pub: p[1] === '-' ? null : p[1], salt: b64d(p[2]), saltB64: p[2], sealed: p[3], idpub: p[4] && p[4] !== '-' ? p[4] : null };
   }
 
   function payloadFromLocal() {
     var s = localState();
-    var canon = s.keypair || s.keyring[0];
-    return { keypair: canon, keyring: mergeRing(canon, [s.keyring]) };
+    var canon = s.keypair || s.keyring[0] || null;
+    return {
+      keypair: canon,
+      keyring: canon ? mergeRing(canon, [s.keyring]) : [],
+      identity: s.identity,
+      groupKeys: s.groupKeys
+    };
   }
 
   // ---------- 公開API(ロジック) ----------
@@ -116,13 +140,30 @@
     var salt = saltOverride || nacl().randomBytes(16);
     var key = await deriveKey(pass, salt);
     var payload = payloadFromLocal();
-    if (!payload.keypair) throw new Error('no local key');
-    var blob = pack(pubOf(payload.keypair), salt, seal(payload, key));
+    if (!payload.keypair && !payload.identity) throw new Error('no local key');
+    var blob = pack(payload.keypair ? pubOf(payload.keypair) : null, salt, seal(payload, key), identityPub(payload.identity));
     var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
     // この端末を「信頼済み」にして、以後は鍵が増えたら黙って更新できるようにする
     localStorage.setItem(trustName(), JSON.stringify({ salt: b64e(salt), key: b64e(key) }));
     return true;
+  }
+
+  // 復元したグループ用の身元鍵を、サーバーの登録にも反映する
+  // (サーバーの登録が別の端末の鍵のままだと、これから届くグループ鍵がこの端末では開けない)
+  async function publishIdentity(id) {
+    if (!id || !id.identity || !id.signedPrekey) return;
+    var cur = await http('GET', '/api/prekeys/identity/' + uid());
+    if (cur && cur.identityPubkey === id.identity.publicKey) return; // もう同じ
+    var otks = (id.oneTimePrekeys || []).slice(-20).map(function (k) { return { keyId: k.keyId, pubkey: k.publicKey }; });
+    await http('POST', '/api/prekeys/upload', {
+      identityPubkey: id.identity.publicKey,
+      signingPubkey: id.signing && id.signing.publicKey,
+      signedPrekeyPub: id.signedPrekey.publicKey,
+      signedPrekeySig: id.signedPrekey.signature,
+      registrationId: Math.floor(Math.random() * 1e9),
+      oneTimePrekeys: otks
+    });
   }
 
   async function restore(pass) {
@@ -132,16 +173,30 @@
     if (!u) throw new Error('bad backup');
     var key = await deriveKey(pass, u.salt);
     var data = open(u.sealed, key);
-    if (!data || !data.keypair) { var e = new Error('wrong passphrase'); e.code = 'WRONG'; throw e; }
+    if (!data || (!data.keypair && !data.identity)) { var e = new Error('wrong passphrase'); e.code = 'WRONG'; throw e; }
 
     var s = localState();
-    var canon = { publicKey: data.keypair.publicKey, secretKey: data.keypair.secretKey };
-    var ring = mergeRing(canon, [data.keyring || [], s.keyring, s.keypair ? [s.keypair] : []]);
-    localStorage.setItem(kpName(), JSON.stringify({ publicKey: Array.from(canon.publicKey), secretKey: Array.from(canon.secretKey) }));
-    localStorage.setItem(ringName(), JSON.stringify(ring));
+    // 個人チャットの鍵
+    if (data.keypair) {
+      var canon = { publicKey: data.keypair.publicKey, secretKey: data.keypair.secretKey };
+      var ring = mergeRing(canon, [data.keyring || [], s.keyring, s.keypair ? [s.keypair] : []]);
+      localStorage.setItem(kpName(), JSON.stringify({ publicKey: Array.from(canon.publicKey), secretKey: Array.from(canon.secretKey) }));
+      localStorage.setItem(ringName(), JSON.stringify(ring));
+      // 公開鍵を戻す。これで相手は以後この鍵宛てに暗号化する
+      await http('POST', '/api/friends/publickey', { publicKey: b64e(new Uint8Array(canon.publicKey)) });
+    }
+    // グループの身元鍵とグループ鍵
+    if (data.identity) {
+      localStorage.setItem(idName(), JSON.stringify(data.identity));
+      await publishIdentity(data.identity);
+    }
+    var gk = data.groupKeys || {};
+    Object.keys(gk).forEach(function (k) {
+      if (/^group_key_[^_]+.*_v\d+$/.test(k) && Array.isArray(gk[k]) && gk[k].length === 32 && localStorage.getItem(k) == null) {
+        localStorage.setItem(k, JSON.stringify(gk[k]));
+      }
+    });
     localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
-    // 公開鍵を戻す。これで相手は以後この鍵宛てに暗号化する
-    await http('POST', '/api/friends/publickey', { publicKey: b64e(new Uint8Array(canon.publicKey)) });
     return true;
   }
 
@@ -157,16 +212,31 @@
     var key = b64d(trust.key);
     var data = open(u.sealed, key);
     if (!data) { localStorage.removeItem(trustName()); return false; }
+
     var s = localState();
-    var canon = s.keypair || s.keyring[0];
-    var merged = mergeRing(canon, [s.keyring, data.keyring || []]);
-    var same = pubOf(canon) === u.pub && merged.length === (data.keyring || []).length;
-    if (same) return false;
-    var payload = { keypair: canon, keyring: merged };
-    var blob = pack(pubOf(canon), u.salt, seal(payload, key));
+    var canon = s.keypair || s.keyring[0] || (data.keypair || null);
+    var merged = canon ? mergeRing(canon, [s.keyring, data.keyring || []]) : [];
+    // 身元鍵は、この端末の方が新しければ(=バックアップと違えば)この端末のものを正とする
+    var identity = s.identity || data.identity || null;
+    var groupKeys = Object.assign({}, data.groupKeys || {}, s.groupKeys);
+
+    var sameKeys = (canon ? pubOf(canon) : null) === (u.pub || null) && merged.length === (data.keyring || []).length;
+    var sameId = identityPub(identity) === (u.idpub || null);
+    var sameGroups = Object.keys(groupKeys).length === Object.keys(data.groupKeys || {}).length;
+    if (sameKeys && sameId && sameGroups) return false;
+
+    var payload = { keypair: canon, keyring: merged, identity: identity, groupKeys: groupKeys };
+    var blob = pack(canon ? pubOf(canon) : null, u.salt, seal(payload, key), identityPub(identity));
     var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
-    if (r && r.ok) localStorage.setItem(ringName(), JSON.stringify(merged));
+    if (r && r.ok && canon) localStorage.setItem(ringName(), JSON.stringify(merged));
     return !!(r && r.ok);
+  }
+
+  // グループ鍵を新しく手に入れた直後などに呼ぶ(数秒まとめて1回だけ同期する)
+  var syncTimer = null;
+  function syncSoon() {
+    if (syncTimer) return;
+    syncTimer = setTimeout(function () { syncTimer = null; syncIfNeeded().catch(function () {}); }, 4000);
   }
 
   // ---------- 画面 ----------
@@ -296,7 +366,10 @@
         var full = await serverInfo(true);
         var u = full.exists ? unpack(full.blob) : null;
         var snooze = Number(localStorage.getItem('e2e_bk_snooze_' + uid()) || 0);
-        if (u && u.pub !== currentPub() && Date.now() > snooze) {
+        var s0 = localState();
+        var personalDiff = u && u.pub && s0.keypair && u.pub !== currentPub();
+        var groupDiff = u && u.idpub && s0.identity && u.idpub !== identityPub(s0.identity);
+        if (u && (personalDiff || groupDiff) && Date.now() > snooze) {
           var r = await showModal('restore-mismatch');
           if (r === 'later') localStorage.setItem('e2e_bk_snooze_' + uid(), String(Date.now() + 24 * 3600 * 1000));
           if (r === 'restored') location.reload();
@@ -315,6 +388,7 @@
     init: init,
     guardCreate: guardCreate,
     syncIfNeeded: syncIfNeeded,
+    syncSoon: syncSoon,
     // 設定画面から: 'setup' で預け直し(パスフレーズ変更)、'restore' で復元
     openSetup: function () { return showModal('setup'); },
     openRestore: function () { return showModal('restore-mismatch'); },

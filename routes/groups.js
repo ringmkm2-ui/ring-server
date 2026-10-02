@@ -255,6 +255,52 @@ router.get('/pending-keys', verifyToken, asyncHandler(async (req, res) => {
   res.json({ groups });
 }));
 
+// --- 鍵の作り直し ---
+// 誰も今の鍵を読めなくなった(端末の入れ替えなどで鍵が合わなくなった)グループを立て直す。
+// 現メンバーなら誰でも、新しい鍵を作って全メンバー宛に配れる。これ以降のメッセージは全員読める。
+// 以前のメッセージは、元の鍵を持っている端末でだけ読める(鍵が無ければ復元できない)。
+// body: { expectedVersion, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
+router.post('/:groupId/rotate-key', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const { expectedVersion, encryptedKeysForMembers } = req.body || {};
+  const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+  // 同時に誰かが作り直していたら、二重に版が進まないようにする
+  if (Number(expectedVersion) !== group.key_version) {
+    return res.status(409).json({ error: '鍵のバージョンが変わっています。開き直してください', keyVersion: group.key_version });
+  }
+  if (!Array.isArray(encryptedKeysForMembers) || !encryptedKeysForMembers.length) {
+    return res.status(400).json({ error: '配布データが不正です' });
+  }
+  const mine = encryptedKeysForMembers.find(e => e && e.userId === req.user.userId && typeof e.encryptedGroupKey === 'string');
+  if (!mine) return res.status(400).json({ error: '自分宛の鍵が含まれていません' });
+
+  const newVersion = group.key_version + 1;
+  // 版の更新は「期待した版のときだけ」。先に取った人が勝つ
+  const upd = await db.run('UPDATE groups SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, groupId, group.key_version]);
+  const again = await db.get('SELECT key_version FROM groups WHERE id = ?', [groupId]);
+  if (!again || again.key_version !== newVersion) {
+    return res.status(409).json({ error: '鍵のバージョンが変わっています。開き直してください' });
+  }
+  let delivered = 0;
+  for (const entry of encryptedKeysForMembers) {
+    if (!entry || typeof entry.encryptedGroupKey !== 'string' || !entry.userId) continue;
+    if (!(await isGroupMember(groupId, entry.userId))) continue;
+    await db.run(
+      'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
+      [uuidv4(), groupId, entry.userId, newVersion, entry.encryptedGroupKey]
+    );
+    delivered++;
+    if (entry.userId !== req.user.userId) {
+      broadcastToUser(entry.userId, { type: 'group_key_rotated', groupId, keyVersion: newVersion, reason: 'rekey' });
+    }
+  }
+  res.json({ ok: true, groupId, keyVersion: newVersion, delivered });
+}));
+
 // --- 後から鍵を配る ---
 // body: { keyVersion, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
 // 現行バージョンの鍵を持つ現メンバーだけが、まだ鍵を持っていない現メンバー宛にのみ配れる(上書き不可)。

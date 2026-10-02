@@ -201,7 +201,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.144 beta</div>
+  <div class="version-badge">Bro Chat v1.28.145 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -232,6 +232,13 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
     <span class="pin-cls" id="pinCls">×</span>
   </div>
 
+  <div id="keyBanner" style="display:none;margin:8px 12px 0;padding:12px 14px;border-radius:16px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);font-size:13px;line-height:1.5;color:#92400e">
+    <div id="keyBannerText" style="font-weight:600;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" id="keyBtnRestore" style="border:0;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:700;background:#10b981;color:#fff"></button>
+      <button type="button" id="keyBtnRekey" style="border:0;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:700;background:rgba(0,0,0,.08);color:#111"></button>
+    </div>
+  </div>
   <div class="cs" id="cs"></div>
 
   <div class="ibc">
@@ -407,6 +414,47 @@ let cachedGroupKeyVersion = null;
 // 過去バージョンの鍵(メンバー変更で鍵が更新される前のメッセージ復号用)
 const oldGroupKeys = {};
 function invalidateGroupKey(){ cachedGroupKey = null; cachedGroupKeyVersion = null; }
+
+// このグループの今の鍵をこの端末で読めるか確かめ、読めなければ復旧用の案内を出す
+async function checkGroupKeyHealth(){
+  const box=document.getElementById('keyBanner');
+  try{
+    await ensureGroupKey();
+    box.style.display='none';
+    return true;
+  }catch(e){
+    console.warn('[groupchat] group key unreadable:', e);
+    document.getElementById('keyBannerText').textContent=i18n.t('gk_unreadable');
+    const rb=document.getElementById('keyBtnRestore');
+    const hasBk=window.bcKeyBackup?(await window.bcKeyBackup.status().catch(()=>({server:false}))).server===true:false;
+    rb.style.display=hasBk?'':'none';
+    rb.textContent=i18n.t('gk_btn_restore');
+    document.getElementById('keyBtnRekey').textContent=i18n.t('gk_btn_rekey');
+    box.style.display='block';
+    return false;
+  }
+}
+document.addEventListener('click',async ev=>{
+  const id=ev.target&&ev.target.id;
+  if(id==='keyBtnRestore'){
+    const r=await window.bcKeyBackup.openRestore();
+    if(r==='restored') location.reload();
+  }else if(id==='keyBtnRekey'){
+    if(!confirm(i18n.t('gk_rekey_confirm'))) return;
+    const btn=ev.target; btn.disabled=true;
+    try{
+      await loadGroupInfo();
+      await groupE2E.rotateGroupKey(groupId, gi.members.map(m=>m.id), gi.keyVersion);
+      invalidateGroupKey();
+      alert(i18n.t('gk_rekey_done'));
+      location.reload();
+    }catch(e){
+      console.error('rotate failed:',e);
+      alert(i18n.t('gk_rekey_fail'));
+      btn.disabled=false;
+    }
+  }
+});
 async function ensureGroupKey(version) {
   if (version == null || version === cachedGroupKeyVersion) {
     if (cachedGroupKey) return cachedGroupKey;
@@ -429,6 +477,7 @@ async function loadGroupInfo(){
       if (found) {
         gi.name = found.name;
         gi.ownerId = found.ownerId;
+        gi.keyVersion = found.keyVersion;
         gi.avatarImg = found.avatarUrl || '';
         gi.members = found.members.map(m => {
           const displayName = m.userId === myUserId ? myName : m.displayName;
@@ -1324,6 +1373,7 @@ async function loadGroupMessages(){
   
   // ページ読み込み完了を待たずにすぐ初期化開始
   Promise.all([loadGroupInfo(), loadGroupMessages()]).then(() => {
+    checkGroupKeyHealth();
     connectGroupWS();
   }).catch(err => console.error('初期化エラー:', err));
 })();
@@ -1423,6 +1473,7 @@ function connectGroupWS(){
       }else if(data.type==='group_key_rotated'&&data.groupId===groupId){
         // 鍵ローテーション通知 → メモリキャッシュとlocalStorageの古いバージョンを破棄して次回取得時に再取得させる
         invalidateGroupKey();
+        checkGroupKeyHealth();
       }
     }catch(err){console.error('WebSocketメッセージ処理エラー:',err);}
   };
