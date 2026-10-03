@@ -283,6 +283,12 @@
     }
   }
 
+  // ページを離れる/リロードした時に、ネイティブ側の前面サービスとロック画面表示が残らないようにする
+  window.addEventListener('pagehide', () => {
+    if (!inCall) return;
+    try { const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall; if (bc && bc.callEnded) bc.callEnded(); } catch (e) {}
+  });
+
   function cleanup() {
     clearInterval(timerId); timerId = null;
     peers.forEach(p => { try { p.pc.close(); } catch (e) {} });
