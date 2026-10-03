@@ -264,6 +264,7 @@
       els.grid.innerHTML = '';
       els.name.textContent = cfg.getGroupName();
       inCall = true;
+      try { const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall; if (bc && bc.callStarted) bc.callStarted({ video: !!isVideo }); } catch (e) {}
       els.ov.classList.add('show');
       const me = tileFor(cfg.myUserId);
       const mv = me.querySelector('video');
@@ -288,6 +289,7 @@
     peers.clear();
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     inCall = false;
+    try { const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall; if (bc && bc.callEnded) bc.callEnded(); } catch (e) {}
     if (els.ov) els.ov.classList.remove('show');
     if (els.grid) els.grid.innerHTML = '';
     renderBanner();
