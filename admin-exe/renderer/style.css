@@ -46,3 +46,20 @@ dialog .card{width:380px;display:flex;flex-direction:column;gap:10px}
 .row{display:flex;justify-content:flex-end;gap:8px}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222733;border:1px solid #333b4d;padding:9px 16px;border-radius:9px;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
+
+.tabs{display:flex;gap:4px;padding:0 20px 10px;border-bottom:1px solid #1e222b;margin-bottom:10px}
+.tab{background:none;border:0;color:#7c8596;padding:8px 14px;border-radius:8px;font:inherit;cursor:pointer}
+.tab:hover{background:#1a1e27;color:#e6e8ec}
+.tab.active{background:#222733;color:#fff}
+.badge{display:inline-block;margin-left:6px;min-width:18px;padding:0 6px;border-radius:99px;background:#ef4444;color:#fff;font-size:11px;line-height:18px;text-align:center}
+.pane{flex:1;display:flex;flex-direction:column;min-height:0}
+select{background:#0f1115;border:1px solid #2b3140;border-radius:8px;color:#e6e8ec;padding:8px 10px;font:inherit}
+.replist{flex:1;overflow:auto;padding:0 20px 20px;display:flex;flex-direction:column;gap:10px}
+.rep{background:#171a21;border:1px solid #262b36;border-radius:10px;padding:12px 14px}
+.rep.done{opacity:.55}
+.rep .top{display:flex;align-items:center;gap:8px;font-size:12px;color:#7c8596;margin-bottom:6px;flex-wrap:wrap}
+.kind{padding:1px 8px;border-radius:99px;font-size:11px;background:#1f2a44;color:#8fb4ff}
+.kind.user{background:#3a2327;color:#ff8f8f}
+.rep .msg{white-space:pre-wrap;word-break:break-word;margin:4px 0 8px}
+.rep .who{font-size:12px;color:#9aa3b2}
+.rep .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
