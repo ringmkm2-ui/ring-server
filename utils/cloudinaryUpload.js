@@ -2,8 +2,6 @@
 // Cloudinary へのメディアアップロード処理
 
 const CLOUDINARY_CLOUD_NAME = 'a6rxinoz';
-const CLOUDINARY_API_KEY = '312198856948918';
-const CLOUDINARY_API_SECRET = '1ZwGejRa5kqG4AfEbEancn1N7Ag';
 const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`;
 
 /**
