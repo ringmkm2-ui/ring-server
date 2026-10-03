@@ -88,8 +88,69 @@
     const r = await call('GET', '/api/admin/users?q=' + encodeURIComponent(q));
     renderUsers(r.users || []);
   }
+  const CAT = { spam: 'スパム・迷惑行為', harassment: '嫌がらせ・脅し', impersonation: 'なりすまし', inappropriate: '不適切な内容', other: 'その他' };
+
+  function renderReports(list) {
+    $('repCount').textContent = list.length + ' 件';
+    const box = $('repList');
+    box.textContent = '';
+    list.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'rep' + (r.status === 'resolved' ? ' done' : '');
+      const top = document.createElement('div'); top.className = 'top';
+      const kind = document.createElement('span'); kind.className = 'kind' + (r.kind === 'user' ? ' user' : '');
+      kind.textContent = r.kind === 'user' ? '通報' : 'バグ';
+      top.appendChild(kind);
+      if (r.category) { const c = document.createElement('span'); c.textContent = CAT[r.category] || r.category; top.appendChild(c); }
+      const t = document.createElement('span'); t.textContent = r.createdAt ? new Date(String(r.createdAt).replace(' ', 'T') + (String(r.createdAt).includes('Z') || String(r.createdAt).includes('+') ? '' : 'Z')).toLocaleString('ja-JP') : '';
+      top.appendChild(t);
+      if (r.appVersion) { const v = document.createElement('span'); v.textContent = 'v' + r.appVersion; top.appendChild(v); }
+      const msg = document.createElement('div'); msg.className = 'msg'; msg.textContent = r.message;
+      const who = document.createElement('div'); who.className = 'who';
+      const nm = x => x ? ((x.displayName || '') + ' <' + (x.username || '') + '>') : '(削除済み)';
+      who.textContent = '報告者: ' + nm(r.reporter) + (r.target ? '  /  対象: ' + nm(r.target) : '');
+      const foot = document.createElement('div'); foot.className = 'foot';
+      const done = r.status === 'resolved';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn';
+      b.textContent = done ? '未対応に戻す' : '対応済みにする';
+      b.onclick = async () => {
+        try { await call('POST', '/api/admin/reports/' + encodeURIComponent(r.id) + '/status', { status: done ? 'open' : 'resolved' }); await loadReports(); }
+        catch (e) { toast(e.message); }
+      };
+      foot.appendChild(b);
+      card.append(top, msg, who, foot);
+      box.appendChild(card);
+    });
+    if (!list.length) { const e = document.createElement('div'); e.className = 'count'; e.style.padding = '12px 2px'; e.textContent = '報告はありません'; box.appendChild(e); }
+  }
+
+  async function loadReports() {
+    const r = await call('GET', '/api/admin/reports?status=' + encodeURIComponent($('repFilter').value));
+    renderReports(r.reports || []);
+    refreshBadge().catch(() => {});
+  }
+  async function refreshBadge() {
+    const r = await call('GET', '/api/admin/reports?status=open');
+    const n = (r.reports || []).length;
+    $('repBadge').textContent = n > 99 ? '99+' : n;
+    $('repBadge').hidden = n === 0;
+  }
+
+  function showTab(name) {
+    const reports = name === 'reports';
+    $('usersPane').hidden = reports; $('reportsPane').hidden = !reports;
+    $('tabUsers').classList.toggle('active', !reports); $('tabReports').classList.toggle('active', reports);
+    if (reports) loadReports().catch(e => toast(e.message));
+  }
+  $('tabUsers').onclick = () => showTab('users');
+  $('tabReports').onclick = () => showTab('reports');
+  $('repFilter').onchange = () => loadReports().catch(e => toast(e.message));
+
   async function reload() {
-    try { await Promise.all([loadStats(), loadUsers()]); } catch (e) { toast(e.message); }
+    try {
+      await Promise.all([loadStats(), loadUsers(), refreshBadge()]);
+      if (!$('reportsPane').hidden) await loadReports();
+    } catch (e) { toast(e.message); }
   }
 
   async function forceLogout(u) {
@@ -124,7 +185,7 @@
     $('login').hidden = true; $('main').hidden = false;
     reload();
     clearInterval(timer);
-    timer = setInterval(() => loadStats().catch(() => {}), 15000);
+    timer = setInterval(() => { loadStats().catch(() => {}); refreshBadge().catch(() => {}); }, 15000);
   }
   function showLogin() {
     clearInterval(timer);

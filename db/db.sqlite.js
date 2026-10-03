@@ -312,6 +312,20 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(call_id, owner_id)
     );
+
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      reporter_id TEXT NOT NULL,
+      target_id TEXT,
+      category TEXT,
+      message TEXT NOT NULL,
+      app_version TEXT,
+      user_agent TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      resolved_at TEXT
+    );
   `);
 
   persist();

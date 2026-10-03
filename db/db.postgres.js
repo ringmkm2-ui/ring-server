@@ -172,6 +172,28 @@ async function initDB() {
     console.log('[db] call_notes/call_summaries migration skip:', e.message);
   }
 
+  // バグ報告・ユーザー通報
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        reporter_id TEXT NOT NULL REFERENCES users(id),
+        target_id TEXT REFERENCES users(id),
+        category TEXT,
+        message TEXT NOT NULL,
+        app_version TEXT,
+        user_agent TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TIMESTAMP DEFAULT now(),
+        resolved_at TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)');
+  } catch (e) {
+    console.log('[db] reports migration skip:', e.message);
+  }
+
   // コミュニティ機能
   try {
     await pool.query(`

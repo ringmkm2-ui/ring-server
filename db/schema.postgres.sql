@@ -209,6 +209,22 @@ CREATE TABLE IF NOT EXISTS call_summaries (
   UNIQUE(call_id, owner_id)
 );
 
+-- バグ報告・ユーザー通報
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  reporter_id TEXT NOT NULL REFERENCES users(id),
+  target_id TEXT REFERENCES users(id),
+  category TEXT,
+  message TEXT NOT NULL,
+  app_version TEXT,
+  user_agent TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMP DEFAULT now(),
+  resolved_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_recipient ON offline_queue(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);

@@ -496,7 +496,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.154 beta</div>
+  <div class="version-badge">Bro Chat v1.28.155 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -619,6 +619,11 @@ window.ensureGroupCrypto = (function () {
     <div class="set-group">
       <button type="button" class="set-row set-btn" id="setClearCache"><span data-i18n="clear_cache">キャッシュを削除</span><span class="set-val" id="setCacheSize"></span></button>
     </div>
+    <div class="set-section-title" data-i18n="support">サポート</div>
+    <div class="set-group">
+      <button type="button" class="set-row set-btn" id="setBugReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 0 1 6 0"/><path d="M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2"/></svg><span data-i18n="bug_report">バグを報告</span></span></button>
+      <button type="button" class="set-row set-btn" id="setUserReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span data-i18n="user_report">ユーザーを通報</span></span></button>
+    </div>
     <div class="set-section-title" data-i18n="about">情報</div>
     <div class="set-group">
       <div class="set-row"><span data-i18n="version">バージョン</span><span class="set-val" id="setVersion"></span></div>
@@ -634,6 +639,33 @@ window.ensureGroupCrypto = (function () {
   <div class="mc">
     <h3 class="mtitle" data-i18n="twofa_title">2段階認証</h3>
     <div id="secBody"></div>
+  </div>
+</div>
+
+<!-- バグ報告 / ユーザー通報モーダル -->
+<div class="mov" id="reportMov">
+  <div class="mc">
+    <h3 class="mtitle" id="reportTitle"></h3>
+    <div class="sg" id="reportUserBox" style="display:none">
+      <label for="reportFriend" data-i18n="report_target">通報する相手</label>
+      <select id="reportFriend" style="width:100%;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;background:#fff;color:#0f172a"></select>
+      <input type="text" id="reportCode" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="12" placeholder="相手のID(例: U3K7F9)" data-i18n-placeholder="other_id_placeholder" style="display:none;width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;box-sizing:border-box">
+      <label for="reportCategory" style="margin-top:12px" data-i18n="report_reason">理由</label>
+      <select id="reportCategory" style="width:100%;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;background:#fff;color:#0f172a">
+        <option value="spam" data-i18n="report_spam">スパム・迷惑行為</option>
+        <option value="harassment" data-i18n="report_harassment">嫌がらせ・脅し</option>
+        <option value="impersonation" data-i18n="report_impersonation">なりすまし</option>
+        <option value="inappropriate" data-i18n="report_inappropriate">不適切な内容</option>
+        <option value="other" data-i18n="report_other">その他</option>
+      </select>
+    </div>
+    <div class="sg">
+      <label for="reportMessage" id="reportMsgLabel"></label>
+      <textarea id="reportMessage" rows="6" maxlength="2000" style="width:100%;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;box-sizing:border-box;resize:vertical;font-family:inherit"></textarea>
+    </div>
+    <p id="reportErr" style="color:#ef4444;font-size:13px;margin:6px 2px 0;min-height:18px"></p>
+    <button class="savebtn btn-glass glass-clear glass-interactive" id="reportSend" type="button" data-i18n="report_send">送信</button>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="reportCancel" type="button" data-i18n="cancel">キャンセル</button>
   </div>
 </div>
 
@@ -2145,6 +2177,89 @@ document.getElementById('setClearCache').addEventListener('click', () => {
   del.forEach(k => localStorage.removeItem(k));
   document.getElementById('setCacheSize').textContent = '0 KB';
 });
+// --- バグ報告 / ユーザー通報(設定 > サポート) ---
+const reportMov = document.getElementById('reportMov');
+let reportKind = 'bug';
+let reportFriendsLoaded = false;
+
+async function loadReportFriends() {
+  const sel = document.getElementById('reportFriend');
+  sel.textContent = '';
+  const first = document.createElement('option');
+  first.value = ''; first.textContent = t2('report_pick_friend', '友だちから選ぶ');
+  sel.appendChild(first);
+  try {
+    const list = await api('/api/friends/list');
+    if (Array.isArray(list)) list.forEach(f => {
+      const o = document.createElement('option');
+      o.value = f.userId; o.textContent = (f.displayName || '') + (f.userIdCode ? ' (' + f.userIdCode + ')' : '');
+      sel.appendChild(o);
+    });
+  } catch (e) { /* 取れなくてもIDの直接入力で通報できる */ }
+  const other = document.createElement('option');
+  other.value = '__code'; other.textContent = t2('report_enter_id', 'IDを直接入力');
+  sel.appendChild(other);
+  reportFriendsLoaded = true;
+}
+
+function openReport(kind) {
+  reportKind = kind;
+  document.getElementById('reportTitle').textContent = kind === 'bug' ? t2('bug_report', 'バグを報告') : t2('user_report', 'ユーザーを通報');
+  document.getElementById('reportMsgLabel').textContent = kind === 'bug'
+    ? t2('report_bug_desc', 'どんな不具合ですか?(何をしたら、どうなったか)')
+    : t2('report_user_desc', '状況を教えてください');
+  document.getElementById('reportUserBox').style.display = kind === 'user' ? '' : 'none';
+  document.getElementById('reportMessage').value = '';
+  document.getElementById('reportCode').value = '';
+  document.getElementById('reportCode').style.display = 'none';
+  document.getElementById('reportErr').textContent = '';
+  document.getElementById('reportSend').disabled = false;
+  if (kind === 'user') loadReportFriends();
+  reportMov.classList.add('open');
+}
+function closeReport() { reportMov.classList.remove('open'); }
+
+document.getElementById('setBugReport').addEventListener('click', () => openReport('bug'));
+document.getElementById('setUserReport').addEventListener('click', () => openReport('user'));
+document.getElementById('reportCancel').addEventListener('click', closeReport);
+reportMov.addEventListener('click', e => { if (e.target === reportMov) closeReport(); });
+document.getElementById('reportFriend').addEventListener('change', e => {
+  document.getElementById('reportCode').style.display = e.target.value === '__code' ? '' : 'none';
+});
+document.getElementById('reportSend').addEventListener('click', async () => {
+  const err = document.getElementById('reportErr');
+  err.textContent = '';
+  const body = {
+    kind: reportKind,
+    message: document.getElementById('reportMessage').value.trim(),
+    appVersion: (document.getElementById('setVersion').textContent || '').trim()
+  };
+  if (reportKind === 'user') {
+    const pick = document.getElementById('reportFriend').value;
+    if (pick === '__code') body.targetCode = document.getElementById('reportCode').value.trim();
+    else body.targetUserId = pick;
+    if (!body.targetUserId && !body.targetCode) { err.textContent = t2('report_need_target', '通報する相手を選んでください'); return; }
+    body.category = document.getElementById('reportCategory').value;
+  }
+  if (body.message.length < 5) { err.textContent = t2('report_need_msg', '内容を5文字以上で書いてください'); return; }
+  const btn = document.getElementById('reportSend');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || t2('report_failed', '送信できませんでした'));
+    closeReport();
+    alert(reportKind === 'bug' ? t2('report_thanks_bug', '報告を送りました。ありがとうございます') : t2('report_thanks_user', '通報を送りました。確認します'));
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('setCopyId').addEventListener('click', () => {
   const v = document.getElementById('setMyId').textContent;
   if (v && navigator.clipboard) navigator.clipboard.writeText(v).catch(() => {});
