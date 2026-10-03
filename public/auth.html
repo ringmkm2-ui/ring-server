@@ -320,6 +320,7 @@
         </div>
         <button type="submit" class="btn btn-login" data-i18n="login">ログイン</button>
       </form>
+      <button type="button" class="link-btn" onclick="showForgot()" data-i18n="forgot_link">パスワードを忘れましたか?</button>
     </div>
 
     <!-- 登録フォーム -->
@@ -359,6 +360,39 @@
         <button type="submit" class="btn btn-login" data-i18n="verify_btn">確認する</button>
       </form>
       <button type="button" class="link-btn" onclick="resendCode()" data-i18n="resend_code">コードを再送する</button>
+      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+    </div>
+
+    <!-- パスワード再設定: メールアドレス入力 -->
+    <div id="forgotSection" class="form-section">
+      <h2 class="sec-title" data-i18n="forgot_title">パスワードの再設定</h2>
+      <p class="sec-desc" data-i18n="forgot_desc">登録したメールアドレスに6桁のコードを送ります</p>
+      <form onsubmit="submitForgot(event)" novalidate>
+        <div class="form-group">
+          <input type="text" id="forgotEmail" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="メールアドレス" required>
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="forgot_send">コードを送る</button>
+      </form>
+      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+    </div>
+
+    <!-- パスワード再設定: コードと新しいパスワード -->
+    <div id="resetSection" class="form-section">
+      <h2 class="sec-title" data-i18n="reset_title">新しいパスワード</h2>
+      <p class="sec-desc" data-i18n="reset_desc">届いたコードと、新しいパスワードを入力してください(10分間有効)</p>
+      <form onsubmit="submitReset(event)">
+        <div class="form-group">
+          <input type="text" id="resetCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6桁のコード" data-i18n-placeholder="verify_code_placeholder" required>
+        </div>
+        <div class="form-group">
+          <input type="password" id="resetPassword" autocomplete="new-password" placeholder="新しいパスワード(8文字以上)" data-i18n-placeholder="reset_pw_placeholder" required minlength="8">
+        </div>
+        <div class="form-group" id="resetTotpGroup" style="display:none">
+          <input type="text" id="resetTotp" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16" placeholder="認証アプリのコード(2段階認証)" data-i18n-placeholder="reset_totp_placeholder">
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="reset_btn">パスワードを変更</button>
+      </form>
+      <button type="button" class="link-btn" onclick="resendReset()" data-i18n="resend_code">コードを再送する</button>
       <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
@@ -403,6 +437,7 @@
     function backToLogin() {
       pendingVerifyEmail = null;
       pendingTwoFaToken = null;
+      pendingResetEmail = null;
       document.querySelector('.auth-mode-switch').style.display = '';
       switchMode('login');
     }
@@ -474,6 +509,89 @@
         }
         storeSession(data);
         window.location.replace('/talklist.html');
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    // --- パスワードを忘れた場合 ---
+    let pendingResetEmail = null;
+    function tr(key, fallback) { return (window.i18n && i18n.t(key)) || fallback; }
+
+    async function showForgot() {
+      // メール送信が未設定のサーバーでは、送ったように見せない
+      try {
+        const r = await fetch(`${API_BASE}/api/auth/features`);
+        const f = await r.json();
+        if (!f.passwordReset) { showError(tr('forgot_no_mail', 'このサーバーはメール送信が未設定のため、再設定できません。管理者に連絡してください')); return; }
+      } catch (e) { /* 取れなくても画面は開く。送信時にサーバーが判断する */ }
+      const typed = document.getElementById('loginEmail').value.trim();
+      document.getElementById('forgotEmail').value = typed;
+      showOnly('forgotSection');
+    }
+
+    async function requestResetCode(email) {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: email })
+      });
+      if (res.status === 429) throw new Error('試行が多すぎます。しばらくしてからお試しください');
+      if (!res.ok) throw new Error('送信に失敗しました');
+    }
+
+    async function submitForgot(e) {
+      e.preventDefault();
+      const email = document.getElementById('forgotEmail').value.trim();
+      if (!email) return;
+      try {
+        await requestResetCode(email);
+        pendingResetEmail = email;
+        document.getElementById('resetCode').value = '';
+        document.getElementById('resetPassword').value = '';
+        document.getElementById('resetTotp').value = '';
+        document.getElementById('resetTotpGroup').style.display = 'none';
+        showOnly('resetSection');
+        showSuccess(tr('forgot_sent', '登録のあるアドレスならコードを送りました。届かない時は1分後に再送できます'));
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function resendReset() {
+      try {
+        await requestResetCode(pendingResetEmail);
+        showSuccess(tr('forgot_sent', '登録のあるアドレスならコードを送りました。届かない時は1分後に再送できます'));
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function submitReset(e) {
+      e.preventDefault();
+      const body = {
+        username: pendingResetEmail,
+        code: document.getElementById('resetCode').value.trim(),
+        newPassword: document.getElementById('resetPassword').value
+      };
+      const totp = document.getElementById('resetTotp').value.trim();
+      if (totp) body.totpCode = totp;
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.needs2fa) document.getElementById('resetTotpGroup').style.display = '';
+          throw new Error(data.error || 'パスワードを変更できませんでした');
+        }
+        const email = pendingResetEmail;
+        backToLogin();
+        document.getElementById('loginEmail').value = email;
+        document.getElementById('loginPassword').value = '';
+        showSuccess(tr('reset_done', 'パスワードを変更しました。新しいパスワードでログインしてください'));
       } catch (err) {
         showError(err.message);
       }

@@ -360,6 +360,11 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
   }
 });
 
+// 画面側が「メールでの再設定が使えるか」を知るための公開情報(真偽値だけ)
+router.get('/features', (req, res) => {
+  res.json({ passwordReset: isMailConfigured() });
+});
+
 // --- パスワードを忘れた場合の再設定(メール) ---
 // メール送信の設定(SMTP)がある時だけ動く。ユーザー名がメールアドレスのアカウントが対象。
 // 存在しないアカウントでも同じ応答を返す(アカウントの有無を探られないように)。
