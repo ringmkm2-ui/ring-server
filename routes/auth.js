@@ -362,7 +362,13 @@ router.post('/login/2fa', loginLimiter, async (req, res) => {
 
 // 画面側が「メールでの再設定が使えるか」を知るための公開情報(真偽値だけ)
 router.get('/features', (req, res) => {
-  res.json({ passwordReset: isMailConfigured() });
+  // Buy Me a Coffee 等の支援ページ。https のURLだけ返す(環境変数 BUYMEACOFFEE_URL、未設定なら画面に出さない)
+  let supportUrl = null;
+  try {
+    const u = new URL(String(process.env.BUYMEACOFFEE_URL || '').trim());
+    if (u.protocol === 'https:') supportUrl = u.href;
+  } catch (e) { /* 未設定または不正 */ }
+  res.json({ passwordReset: isMailConfigured(), supportUrl });
 });
 
 // --- パスワードを忘れた場合の再設定(メール) ---
