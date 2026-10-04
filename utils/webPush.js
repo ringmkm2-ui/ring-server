@@ -7,11 +7,18 @@
 const webpush = require('web-push');
 const db = require('../db/db');
 
+// 公開鍵は公開前提の値。秘密鍵はコードに置かず、必ず環境変数 VAPID_PRIVATE_KEY で渡す。
+// (以前はここに秘密鍵が直書きされていた。履歴に残っているので、漏れた前提で扱うこと)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BC8atUOdT4fxJm4LYrZ-vW1uH56_ZjQjkcGKD8rvnDPZXQY3fdLlMN2Bf_n__b-sMbABxoo1mDNqzJVYsG5ZP9k';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'Q41fiN6CXN2BTzFh5lb5YkahLD2bqv1-xCUOtxVZnxs';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@ring-server.example.com';
 
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+const PUSH_ENABLED = !!VAPID_PRIVATE_KEY;
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('[webPush] VAPID_PRIVATE_KEY が未設定のため、Web Push通知は無効です');
+}
 
 /**
  * 指定ユーザーの全デバイスにPush通知を送信する。
@@ -22,6 +29,7 @@ webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 // options: { ttl, urgency } を渡せる。
 // 通話着信は TTL:30(30秒で破棄)、テキスト通知はデフォルト TTL:86400(1日)。
 async function sendPushToUser(userId, payload, options = {}) {
+  if (!PUSH_ENABLED) return 0;
   let subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
   if (!subs || subs.length === 0) return 0;
   // iPhone(Safari)は「通知を出さないプッシュ」を繰り返すと購読を取り消すため、
