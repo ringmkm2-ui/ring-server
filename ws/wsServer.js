@@ -513,8 +513,8 @@ function initWebSocketServer(server) {
           const callerPic = rawPic && !String(rawPic).startsWith('data:') && String(rawPic).length < 512 ? rawPic : null;
 
           // Web Push（ブラウザ用）
-          // iPhoneのPWAは着信音を指定できず、通知音は1回しか鳴らない。電話のように鳴り続けて
-          // 聞こえるよう、相手の画面で着信が出る(call_ringing)まで7秒おきに最大5回、同じtagで送り直す。
+          // WebのPush通知は通知音を指定できず、1回の音は短い。電話のように鳴り続けて聞こえるよう、
+          // 相手の画面で着信が出る(call_ringing)まで4秒おきに、呼び出し時間いっぱい(最大10回)同じtagで送り直す。
           const ringPayload = {
             type: 'call_incoming',
             callId: data.callId,
@@ -529,12 +529,12 @@ function initWebSocketServer(server) {
           if (pendingCalls.get(data.callId) === pending) {
             let repeats = 0;
             pending.repeat = setInterval(() => {
-              if (pendingCalls.get(data.callId) !== pending || pending.delivered || ++repeats > 5) {
+              if (pendingCalls.get(data.callId) !== pending || pending.delivered || ++repeats > 10) {
                 clearInterval(pending.repeat); pending.repeat = null;
                 return;
               }
               sendRing();
-            }, 7000);
+            }, 4000);
           }
 
           // FCM Push（Capacitorアプリ用）

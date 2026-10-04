@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.156';
+const CACHE_VERSION = 'v1.28.157';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -127,7 +127,7 @@ self.addEventListener('push', event => {
         tag: `call-${callId}`,
         renotify: true, // 同じtagでも再通知（バイブ/音を再度鳴らす）
         requireInteraction: true, // ユーザー操作まで消えない
-        vibrate: [500, 200, 500, 200, 500, 200, 500], // 電話の着信バイブパターン
+        vibrate: [800, 300, 800, 300, 800, 300, 800, 300, 800], // 電話の着信バイブ(次の再通知までの約4秒を埋める長さ)
         actions: [
           { action: 'accept', title: isVideo ? 'ビデオで応答' : '応答' },
           { action: 'decline', title: '拒否' }
