@@ -123,6 +123,7 @@
     twofa_desc: { ja: "認証アプリの6桁のコード、または予備コードを入力してください", en: "Enter the 6-digit code from your authenticator app, or a backup code", "zh-CN": "请输入验证器应用中的6位验证码或备用码", ko: "인증 앱의 6자리 코드 또는 백업 코드를 입력하세요" },
     twofa_code_placeholder: { ja: "コード", en: "Code", "zh-CN": "验证码", ko: "코드" },
     twofa_btn: { ja: "ログイン", en: "Sign in", "zh-CN": "登录", ko: "로그인" },
+    buy_coffee: { ja: "コーヒーをおごる", en: "Buy me a coffee", "zh-CN": "请我喝杯咖啡", ko: "커피 한 잔 사주기" },
     support: { ja: "サポート", en: "Support", "zh-CN": "支持", ko: "지원" },
     bug_report: { ja: "バグを報告", en: "Report a bug", "zh-CN": "报告问题", ko: "버그 신고" },
     user_report: { ja: "ユーザーを通報", en: "Report a user", "zh-CN": "举报用户", ko: "사용자 신고" },
