@@ -3,6 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<script>
+// 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
+// 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
+// 違う色で描かれてから切り替わる(チカチカする)ことがあった。
+(function(){try{var d=document.documentElement,ls=localStorage,mm=window.matchMedia,m=ls.getItem('darkMode');
+if(m==='1'||(m!=='0'&&mm&&mm('(prefers-color-scheme: dark)').matches))d.classList.add('dark-mode');
+if(ls.getItem('uiTheme')==='whatsapp')d.classList.add('theme-wa');
+if(ls.getItem('batterySaverAnimations')==='1'||(mm&&mm('(prefers-reduced-motion: reduce)').matches))d.classList.add('reduce-motion');
+if(ls.getItem('myBgImage'))d.classList.add('has-bg');}catch(e){}})();
+</script>
 <title data-i18n="talk_list">トーク一覧</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1e293b">
@@ -15,7 +25,19 @@
 <link rel="stylesheet" href="/css/liquidGlass.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#e0f2fe;min-height:100vh}
+html{background:#e0f2fe}
+html.dark-mode{background:#15181f}
+/* 背景画像が無い時は、下が単色なのでぼかし(backdrop-filter)をかけても見た目は同じ。
+   ぼかしは描画の最初の数フレームだけ効かずに白っぽく出てから色が変わる(チカチカの原因)うえ、
+   毎フレームの負荷にもなるので、背景画像がある時だけかける */
+html:not(.has-bg) .bgo,html:not(.has-bg) .card{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+/* トーク一覧を初めて開く時(端末にまだ前回の一覧が無い時)だけ出す骨組み */
+.tl-skel{display:flex;align-items:center;gap:12px;padding:10px 4px}
+.tl-skel i{display:block;border-radius:999px;background:rgba(15,23,42,.07)}
+.tl-skel .a{width:46px;height:46px;flex-shrink:0;border-radius:50%}
+.tl-skel .l{height:11px}
+html.dark-mode .tl-skel i{background:rgba(255,255,255,.08)}
 body.has-custom-bg{background:transparent}
 .pc{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:#e0f2fe;background-size:cover;background-position:center;overflow:hidden;z-index:9999;display:flex;flex-direction:column}
 body.has-custom-bg .pc{background:transparent}
@@ -385,7 +407,7 @@ window.ensureGroupCrypto = (function () {
       </nav>
     </header>
     <main class="tc">
-      <section id="pageTalk" class="lg-page-enter">
+      <section id="pageTalk">
         <div class="card">
           <div class="search-row">
             <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
@@ -499,7 +521,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.165 beta</div>
+  <div class="version-badge">Bro Chat v1.28.166 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1321,7 +1343,7 @@ function renderTalksFromCache() {
     const c = JSON.parse(localStorage.getItem(TALK_CACHE_KEY) || 'null');
     if (!c || !Array.isArray(c.merged)) return false;
     if (Array.isArray(c.groups)) renderGroups(c.groups);
-    renderTalkList(c.merged, true);
+    renderTalkList(c.merged, false);
     return true;
   } catch (e) { return false; }
 }
@@ -1387,9 +1409,14 @@ async function loadTalks(animate = false) {
   } catch(e) {
     console.error('loadTalks:', e);
     // ローディングのまま固まらないよう、取得に失敗したら再試行できる表示にする
-    const box = document.querySelector('#talkList .talk-loading');
+    let box = document.querySelector('#talkList .talk-loading');
     if (box) {
-      box.textContent = '';
+      // 骨組みの行を消して、1つの「読み込めませんでした」に置き換える
+      const tl = document.getElementById('talkList');
+      tl.textContent = '';
+      box = document.createElement('div');
+      box.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 0;color:#64748b;font-size:13px';
+      tl.appendChild(box);
       const msg = document.createElement('div');
       msg.textContent = '読み込めませんでした';
       const retry = document.createElement('button');
@@ -2696,18 +2723,23 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && document.getElementById('pageTalk').style.display !== 'none') loadTalks();
 });
 
-// 初期読み込み: まず前回の一覧を即表示 → 裏で最新化
-// 前回の一覧(ゴースト)は出さず、最新が取れるまでローディング表示にする
-window.__talksRenderedFromCache = false;
-(function showTalkLoading() {
-  const spin = '<svg class="talk-spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>';
-  const box = '<div class="talk-loading" style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 0;color:#64748b;font-size:13px">' + spin + '<div>読み込み中</div></div>';
+// 初期読み込み(LINE方式): 前回の一覧を開いた瞬間にそのまま出し、裏で最新を取って
+// 違う所があった時だけ入れ替える。ローディング表示は出さない。
+// 端末にまだ一覧が無い(初回ログイン直後)時だけ、骨組み(灰色の行)を出す。
+window.__talksRenderedFromCache = renderTalksFromCache();
+if (!window.__talksRenderedFromCache) {
   const t = document.getElementById('talkList');
-  const g = document.getElementById('groupList');
-  if (t) t.innerHTML = box;
-  if (g) g.innerHTML = '';
-})();
-loadTalks(true);
+  if (t) {
+    t.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+      const row = document.createElement('div');
+      row.className = 'tl-skel talk-loading';
+      row.innerHTML = '<i class="a"></i><div style="flex:1;display:flex;flex-direction:column;gap:8px"><i class="l" style="width:' + (38 + (i * 13) % 30) + '%"></i><i class="l" style="width:' + (55 + (i * 17) % 35) + '%"></i></div>';
+      t.appendChild(row);
+    }
+  }
+}
+loadTalks(!window.__talksRenderedFromCache);
 loadPendingRequests(true);
 
 // ブラウザ通知の許可リクエスト
@@ -3845,14 +3877,18 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // コミュニティ一覧読み込み
-  window.loadCommunities = async function() {
-    try {
-      const data = await api('/api/communities/list');
-      const list = document.getElementById('communityList');
-      list.textContent = '';
-      if (!data.ok || !data.communities || data.communities.length === 0) return;
-
-      data.communities.forEach(c => {
+  // コミュニティ一覧も前回の内容を端末に持っておき、開いた瞬間に出す。
+  // 内容が変わっていなければ作り直さない(裏で読み込むたびに欄が消えて出てくるのを防ぐ)
+  const COMMUNITY_CACHE_KEY = 'community_cache_' + (localStorage.getItem('ring_userId') || '');
+  let lastCommunityFp = null;
+  function renderCommunities(communities) {
+    const list = document.getElementById('communityList');
+    const fp = JSON.stringify(communities || []);
+    if (fp === lastCommunityFp) return;
+    lastCommunityFp = fp;
+    list.textContent = '';
+    if (!Array.isArray(communities) || communities.length === 0) return;
+    communities.forEach(c => {
         const item = document.createElement('div');
         item.className = 'ti';
 
@@ -3860,7 +3896,7 @@ document.addEventListener('DOMContentLoaded', () => {
         av.className = 'tav';
         // コミュニティアイコン or 頭文字
         if (c.icon_url) {
-          av.style.backgroundImage = `url(${c.icon_url})`;
+          av.style.backgroundImage = `url(${JSON.stringify(String(c.icon_url))})`;
           av.style.backgroundSize = 'cover';
           av.style.backgroundPosition = 'center';
         } else {
@@ -3897,16 +3933,29 @@ document.addEventListener('DOMContentLoaded', () => {
         item.appendChild(av);
         item.appendChild(body);
         item.addEventListener('click', () => {
-          location.href = '/community.html?id=' + c.id;
+          location.href = '/community.html?id=' + encodeURIComponent(c.id);
         });
         list.appendChild(item);
-      });
+    });
+  }
+
+  window.loadCommunities = async function() {
+    try {
+      const data = await api('/api/communities/list');
+      if (!data || !data.ok) return;
+      const communities = Array.isArray(data.communities) ? data.communities : [];
+      renderCommunities(communities);
+      try { localStorage.setItem(COMMUNITY_CACHE_KEY, JSON.stringify(communities)); } catch (e) {}
     } catch (e) {
       console.error('loadCommunities error:', e);
     }
   };
 
-  // 初回読み込み
+  // 初回: 前回の一覧を即表示 → 裏で最新化
+  try {
+    const cachedCommunities = JSON.parse(localStorage.getItem(COMMUNITY_CACHE_KEY) || 'null');
+    if (Array.isArray(cachedCommunities)) renderCommunities(cachedCommunities);
+  } catch (e) {}
   loadCommunities();
 })();
 </script>

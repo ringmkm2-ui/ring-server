@@ -17,6 +17,7 @@
     document.documentElement.style.backgroundAttachment = 'fixed';
     document.documentElement.style.backgroundRepeat = 'no-repeat';
     document.body.classList.add('has-custom-bg');
+    document.documentElement.classList.add('has-bg');
   }
 
   // 設定画面で背景を変更した際、別タブでも即座に反映する
@@ -30,9 +31,11 @@
       document.documentElement.style.backgroundAttachment = 'fixed';
       document.documentElement.style.backgroundRepeat = 'no-repeat';
       document.body.classList.add('has-custom-bg');
+      document.documentElement.classList.add('has-bg');
     }else{
       document.documentElement.style.backgroundImage = '';
       document.body.classList.remove('has-custom-bg');
+      document.documentElement.classList.remove('has-bg');
     }
   });
 })();

@@ -3,6 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<script>
+// 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
+// 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
+// 違う色で描かれてから切り替わる(チカチカする)ことがあった。
+(function(){try{var d=document.documentElement,ls=localStorage,mm=window.matchMedia,m=ls.getItem('darkMode');
+if(m==='1'||(m!=='0'&&mm&&mm('(prefers-color-scheme: dark)').matches))d.classList.add('dark-mode');
+if(ls.getItem('uiTheme')==='whatsapp')d.classList.add('theme-wa');
+if(ls.getItem('batterySaverAnimations')==='1'||(mm&&mm('(prefers-reduced-motion: reduce)').matches))d.classList.add('reduce-motion');
+if(ls.getItem('myBgImage'))d.classList.add('has-bg');}catch(e){}})();
+</script>
 <title>コミュニティ - Bro Chat</title>
 <link rel="stylesheet" href="/css/liquidGlass.css">
 <style>

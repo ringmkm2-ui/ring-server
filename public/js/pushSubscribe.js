@@ -31,6 +31,12 @@
     } catch (e) {}
   }
   setTimeout(copyKeyringForSW, 1500);
+
+  // ログイン済みだと splash.html は即座に移動してしまうので、SWの登録はここでも必ず行う
+  // (ページをSWのキャッシュから即表示するのに必要。通知の購読とは関係なく登録する)
+  if ('serviceWorker' in navigator) {
+    try { navigator.serviceWorker.register('/sw.js').catch(() => {}); } catch (e) {}
+  }
   document.addEventListener('visibilitychange', () => { if (document.hidden) copyKeyringForSW(); });
 
   async function subscribeForPush(fromUserGesture) {
@@ -149,25 +155,31 @@
     }
     return !!ae.isContentEditable && (ae.textContent || '').trim().length > 0;
   }
+  // 新しい版へのリロード。SWのキャッシュに古いページが残っていても、次の1回はネットワークから取らせる
+  function freshReload() {
+    try { navigator.serviceWorker && navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage({ type: 'FRESH_NEXT' }); } catch (e) {}
+    setTimeout(() => location.reload(), 150);
+  }
   function reloadWhenSafe() {
     if (isTyping()) { window.__pendingSwReload = true; return; }
-    location.reload();
+    freshReload();
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && window.__pendingSwReload) { window.__pendingSwReload = false; location.reload(); }
+    if (document.hidden && window.__pendingSwReload) { window.__pendingSwReload = false; freshReload(); }
   });
   setInterval(() => {
     if (window.__pendingSwReload && !document.hidden && !isTyping()) {
       const callOv = document.getElementById('callOv');
       if (callOv && callOv.classList.contains('show')) return;
       window.__pendingSwReload = false;
-      location.reload();
+      freshReload();
     }
   }, 3000);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
       if (event.data && event.data.type === 'SW_UPDATED') {
+        window.__swUpdatedSeen = true;
         const callOv = document.getElementById('callOv');
         const inCall = callOv && callOv.classList.contains('show');
         if (inCall) {
@@ -199,10 +211,17 @@
         const prev = Number(sessionStorage.getItem(key) || 0);
         if (now - prev < 60000) return;
         sessionStorage.setItem(key, String(now));
+        // ページはSWのキャッシュから即表示する方式なので、ここですぐリロードすると古い版がまた出る。
+        // まず新しいSWを入れさせ、入った時の SW_UPDATED(古いキャッシュは消えている)でリロードする。
+        // 15秒たっても来なければ、次の読み込みだけネットワーク優先にしてからリロードする。
         navigator.serviceWorker.getRegistration().then(reg => reg && reg.update().catch(() => {}));
-        const callOv = document.getElementById('callOv');
-        if (callOv && callOv.classList.contains('show')) { window.__pendingSwReload = true; return; }
-        reloadWhenSafe();
+        setTimeout(() => {
+          if (window.__swUpdatedSeen) return;
+          try { navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage({ type: 'FRESH_NEXT' }); } catch (e) {}
+          const callOv = document.getElementById('callOv');
+          if (callOv && callOv.classList.contains('show')) { window.__pendingSwReload = true; return; }
+          setTimeout(reloadWhenSafe, 300);
+        }, 15000);
       } catch (e) {}
     }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
@@ -215,7 +234,7 @@
     window.__applyPendingSwReloadIfAny = function () {
       if (window.__pendingSwReload) {
         window.__pendingSwReload = false;
-        location.reload();
+        freshReload();
       }
     };
   }
