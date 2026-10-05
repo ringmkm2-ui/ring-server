@@ -135,6 +135,36 @@
   // ただし通話中に急にリロードすると通話が切れてしまうため、
   // 通話オーバーレイが表示されている間はリロードを保留し、
   // 通話が終わったタイミングで改めて実行する。
+  // 文字を入力している最中に急にリロードすると、書きかけの文章が消えて「固まった・バグってる」ように見える。
+  // 入力中は保留して、入力が空になった/アプリが裏に回った時に反映する。
+  function isTyping() {
+    const ae = document.activeElement;
+    if (!ae) return false;
+    const tag = ae.tagName;
+    if (tag === 'TEXTAREA') return (ae.value || '').trim().length > 0;
+    if (tag === 'INPUT') {
+      const t = (ae.type || 'text').toLowerCase();
+      if (['checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(t)) return false;
+      return (ae.value || '').trim().length > 0;
+    }
+    return !!ae.isContentEditable && (ae.textContent || '').trim().length > 0;
+  }
+  function reloadWhenSafe() {
+    if (isTyping()) { window.__pendingSwReload = true; return; }
+    location.reload();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && window.__pendingSwReload) { window.__pendingSwReload = false; location.reload(); }
+  });
+  setInterval(() => {
+    if (window.__pendingSwReload && !document.hidden && !isTyping()) {
+      const callOv = document.getElementById('callOv');
+      if (callOv && callOv.classList.contains('show')) return;
+      window.__pendingSwReload = false;
+      location.reload();
+    }
+  }, 3000);
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
       if (event.data && event.data.type === 'SW_UPDATED') {
@@ -143,7 +173,7 @@
         if (inCall) {
           window.__pendingSwReload = true;
         } else {
-          location.reload();
+          reloadWhenSafe();
         }
       }
     });
@@ -172,7 +202,7 @@
         navigator.serviceWorker.getRegistration().then(reg => reg && reg.update().catch(() => {}));
         const callOv = document.getElementById('callOv');
         if (callOv && callOv.classList.contains('show')) { window.__pendingSwReload = true; return; }
-        location.reload();
+        reloadWhenSafe();
       } catch (e) {}
     }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
