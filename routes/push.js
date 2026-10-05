@@ -2,7 +2,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
-const { VAPID_PUBLIC_KEY } = require('../utils/webPush');
+const { VAPID_PUBLIC_KEY, isAllowedPushEndpoint } = require('../utils/webPush');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 
@@ -21,6 +21,13 @@ router.post('/subscribe', auth, async (req, res) => {
       return res.status(400).json({ error: 'invalid subscription' });
     }
     const { endpoint, keys } = subscription;
+    if (!isAllowedPushEndpoint(endpoint)) {
+      return res.status(400).json({ error: 'このPush通知の宛先は使えません' });
+    }
+    const okKey = v => typeof v === 'string' && /^[A-Za-z0-9+/_=-]{8,200}$/.test(v);
+    if (!okKey(keys.p256dh) || !okKey(keys.auth)) {
+      return res.status(400).json({ error: 'invalid subscription keys' });
+    }
 
     // 既存の同endpoint購読があれば上書き（ユーザーが変わった場合等）
     const existing = await db.get('SELECT id FROM push_subscriptions WHERE endpoint = ?', [endpoint]);

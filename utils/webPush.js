@@ -20,6 +20,26 @@ if (PUSH_ENABLED) {
   console.warn('[webPush] VAPID_PRIVATE_KEY が未設定のため、Web Push通知は無効です');
 }
 
+// Push購読のendpointは、ブラウザのPushサービスのURL。クライアントが好きなURLを登録できると、
+// サーバーがそのURLへPOSTしてしまう(SSRF: 内部ネットワークやクラウドのメタデータへの攻撃に使える)。
+// 既知のPushサービスのhttpsだけを許可する。
+const PUSH_HOST_SUFFIXES = [
+  'fcm.googleapis.com',            // Chrome / Edge / Brave / Android
+  'push.services.mozilla.com',     // Firefox
+  'push.apple.com',                // Safari / iPhone (web.push.apple.com)
+  'notify.windows.com',            // Edge / Windows (WNS)
+];
+function isAllowedPushEndpoint(endpoint) {
+  try {
+    const u = new URL(String(endpoint));
+    if (u.protocol !== 'https:' || u.username || u.password) return false;
+    if (u.port && u.port !== '443') return false;
+    const h = u.hostname.toLowerCase();
+    return PUSH_HOST_SUFFIXES.some(sfx => h === sfx || h.endsWith('.' + sfx));
+  } catch (e) { return false; }
+}
+
+
 /**
  * 指定ユーザーの全デバイスにPush通知を送信する。
  * @param {string} userId 送信先ユーザーID
@@ -32,6 +52,9 @@ async function sendPushToUser(userId, payload, options = {}) {
   if (!PUSH_ENABLED) return 0;
   let subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
   if (!subs || subs.length === 0) return 0;
+  // 過去に登録された、許可していない宛先は送らない
+  subs = subs.filter(sb => isAllowedPushEndpoint(sb.endpoint));
+  if (subs.length === 0) return 0;
   // iPhone(Safari)は「通知を出さないプッシュ」を繰り返すと購読を取り消すため、
   // 着信を消すだけの静かなプッシュはApple宛てには送らない
   if (options.skipApple) subs = subs.filter(sb => !String(sb.endpoint).includes('push.apple.com'));
@@ -65,4 +88,4 @@ async function sendPushToUser(userId, payload, options = {}) {
   return successCount;
 }
 
-module.exports = { sendPushToUser, VAPID_PUBLIC_KEY };
+module.exports = { sendPushToUser, VAPID_PUBLIC_KEY, isAllowedPushEndpoint };

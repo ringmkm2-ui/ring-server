@@ -105,6 +105,9 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
 router.post('/', verifyToken, asyncHandler(async (req, res) => {
   const { text, mediaUrl, mediaType } = req.body;
 
+  if ((text != null && typeof text !== 'string') || (mediaUrl != null && typeof mediaUrl !== 'string')) {
+    return res.status(400).json({ error: '入力の形式が正しくありません' });
+  }
   if (!text && !mediaUrl) {
     return res.status(400).json({ error: 'テキストまたはメディアが必要です' });
   }

@@ -5,6 +5,7 @@
 // 音声認識(文字起こし)はDeepgramをWS経由で行う(ws/callAssistProxy.js参照)。
 // -----------------------------------------------------------------------
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
@@ -12,6 +13,20 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const { sendServerError } = require('../utils/errorResponse');
 
 const router = express.Router();
+
+// 翻訳・要約はサーバーのAnthropic APIキーで課金される。ログインさえすれば誰でも叩けるので、
+// ユーザー単位で回数を制限して、課金の悪用(使い込み)を防ぐ。
+function userLimiter(windowMs, max, message) {
+  return rateLimit({
+    windowMs, max,
+    keyGenerator: (req) => 'u:' + (req.userId || (req.user && req.user.userId) || req.ip),
+    standardHeaders: true, legacyHeaders: false,
+    validate: { keyGeneratorIpFallback: false },
+    message: { error: message },
+  });
+}
+const translateLimiter = userLimiter(60 * 1000, 40, '翻訳の回数が多すぎます。少し待ってください');
+const summarizeLimiter = userLimiter(60 * 60 * 1000, 10, '要約の回数が多すぎます。しばらくしてからお試しください');
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
@@ -48,7 +63,7 @@ async function callAnthropic(systemPrompt, userText) {
 
 // --- リアルタイム翻訳 ---
 // body: { text, targetLanguage }  targetLanguage例: '英語','日本語','中国語'
-router.post('/translate', verifyToken, asyncHandler(async (req, res) => {
+router.post('/translate', verifyToken, translateLimiter, asyncHandler(async (req, res) => {
   const { text, targetLanguage } = req.body;
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ error: 'textが必要です' });
@@ -125,12 +140,15 @@ router.get('/notes', verifyToken, asyncHandler(async (req, res) => {
 
 // --- 通話終了後の要約生成 ---
 // body: { callId, otherId, transcriptLog }  transcriptLog: 字幕ログの配列 [{speaker, text}]
-router.post('/summarize', verifyToken, asyncHandler(async (req, res) => {
+router.post('/summarize', verifyToken, summarizeLimiter, asyncHandler(async (req, res) => {
   const { callId, otherId, transcriptLog } = req.body;
   if (!callId || !Array.isArray(transcriptLog) || transcriptLog.length === 0) {
     return res.status(400).json({ error: 'callIdとtranscriptLogが必要です' });
   }
 
+  if (transcriptLog.length > 2000) {
+    return res.status(413).json({ error: '字幕ログが長すぎます' });
+  }
   const logText = transcriptLog
     .map((entry) => `${entry.speaker || '不明'}: ${entry.text || ''}`)
     .join('\n')
