@@ -8,6 +8,12 @@ const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
+const { areFriends } = require('../utils/relations');
+
+// 暗号化済みグループ鍵1件の上限(X3DHで包んだ32バイト鍵なら数百文字。巨大な値でDBを埋めさせない)
+const MAX_ENC_KEY_LENGTH = 8192;
+const isEncKeyEntry = (e) => !!e && typeof e.userId === 'string' && typeof e.encryptedGroupKey === 'string'
+  && e.encryptedGroupKey.length > 0 && e.encryptedGroupKey.length <= MAX_ENC_KEY_LENGTH;
 
 const MAX_GROUP_CONTENT_LENGTH = 64 * 1024; // 64KB
 
@@ -66,7 +72,10 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
 // body: { name, memberIds: [userId, ...] } (memberIdsは作成者以外の初期メンバー)
 router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   const { name, memberIds, encryptedKeysForMembers } = req.body;
-  if (!name) return res.status(400).json({ error: 'グループ名が必要です' });
+  if (!name || typeof name !== 'string') return res.status(400).json({ error: 'グループ名が必要です' });
+  if (memberIds != null && (!Array.isArray(memberIds) || memberIds.length > 200)) {
+    return res.status(400).json({ error: 'メンバーの指定が正しくありません' });
+  }
   // 表示崩壊・DB肥大化防止のため上限を設ける(display_nameと同基準)
   if (name.length > 50) return res.status(400).json({ error: 'グループ名は50文字以内にしてください' });
 
@@ -77,9 +86,9 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   const addedMembers = [req.user.userId];
   if (Array.isArray(memberIds)) {
     for (const uid of memberIds) {
-      if (uid === req.user.userId) continue; // 作成者は既に追加済み
-      const user = await db.get('SELECT id FROM users WHERE id = ?', [uid]);
-      if (!user) continue; // 存在しないユーザーIDは無視
+      if (typeof uid !== 'string' || uid === req.user.userId) continue; // 作成者は既に追加済み
+      // 本人の同意なしに知らない人をグループへ入れられないよう、友だちだけ追加できる
+      if (!(await areFriends(req.user.userId, uid))) continue;
       const already = await db.get('SELECT * FROM group_members WHERE group_id=? AND user_id=?', [groupId, uid]);
       if (already) continue;
       await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, uid]);
@@ -91,7 +100,7 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   // クライアントが生成した初期グループ鍵(全メンバー分、X3DHで個別暗号化済み)を保存
   if (Array.isArray(encryptedKeysForMembers)) {
     for (const entry of encryptedKeysForMembers) {
-      if (!entry || !addedMembers.includes(entry.userId)) continue; // メンバー以外宛の鍵は保存しない
+      if (!isEncKeyEntry(entry) || !addedMembers.includes(entry.userId)) continue; // メンバー以外宛の鍵は保存しない
       await db.run(
         'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, 1, ?)',
         [uuidv4(), groupId, entry.userId, entry.encryptedGroupKey]
@@ -104,9 +113,10 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
 
 // --- メンバー招待 ---
 // クライアント側が新グループ鍵を生成し、暗号化した鍵を全メンバー分アップロードする想定。
-// body: { groupId, targetUsername, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
+// body: { groupId, targetUserId | targetUsername(=ユーザーIDコード), encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
 router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
-  const { groupId, targetUsername, encryptedKeysForMembers } = req.body;
+  const { groupId, targetUserId, targetUsername, encryptedKeysForMembers } = req.body || {};
+  if (typeof groupId !== 'string') return res.status(400).json({ error: 'グループが見つかりません' });
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
@@ -119,8 +129,20 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
 
-  const targetUser = await db.get('SELECT id FROM users WHERE username = ?', [targetUsername]);
-  if (!targetUser) return res.status(404).json({ error: 'そのユーザーは見つかりません' });
+  // 招待できるのは自分の友だちだけ(同意の無い追加を防ぐ)。
+  // 以前はメールアドレス(username)で引いていたため、「そのユーザーは見つかりません」の出し分けで
+  // 好きなメールアドレスが登録済みかどうかを調べられた。しかも画面はユーザーIDコードを送っており、
+  // メールで引く仕様と食い違って招待自体が通らなかった。
+  // 存在しない・友だちでない、はどちらも同じ応答にする。
+  let targetUser = null;
+  if (typeof targetUserId === 'string' && targetUserId) {
+    targetUser = await db.get('SELECT id FROM users WHERE id = ?', [targetUserId]);
+  } else if (typeof targetUsername === 'string' && targetUsername) {
+    targetUser = await db.get('SELECT id FROM users WHERE user_id = ?', [targetUsername.trim()]);
+  }
+  if (!targetUser || !(await areFriends(req.user.userId, targetUser.id))) {
+    return res.status(404).json({ error: '招待できるのは友だちだけです' });
+  }
 
   const already = await db.get('SELECT * FROM group_members WHERE group_id=? AND user_id=? AND left_at IS NULL', [groupId, targetUser.id]);
   if (already) return res.status(409).json({ error: 'すでにメンバーです' });
@@ -133,6 +155,9 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
   // クライアントが生成した「メンバーごとに暗号化した新グループ鍵」を保存・配布
   if (Array.isArray(encryptedKeysForMembers)) {
     for (const entry of encryptedKeysForMembers) {
+      // メンバー以外宛の鍵を保存したり、無関係な人へ通知を飛ばしたりさせない
+      if (!isEncKeyEntry(entry)) continue;
+      if (!(await isGroupMember(groupId, entry.userId))) continue;
       await db.run(
         'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
         [uuidv4(), groupId, entry.userId, newVersion, entry.encryptedGroupKey]
@@ -192,6 +217,9 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
 
   if (Array.isArray(encryptedKeysForRemainingMembers)) {
     for (const entry of encryptedKeysForRemainingMembers) {
+      // 抜けた本人や部外者宛の新しい鍵は保存しない(抜けた人が以後のメッセージを読めてしまう)
+      if (!isEncKeyEntry(entry) || entry.userId === removeUserId) continue;
+      if (!(await isGroupMember(groupId, entry.userId))) continue;
       await db.run(
         'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
         [uuidv4(), groupId, entry.userId, newVersion, entry.encryptedGroupKey]
@@ -287,7 +315,7 @@ router.post('/:groupId/rotate-key', verifyToken, asyncHandler(async (req, res) =
   }
   let delivered = 0;
   for (const entry of encryptedKeysForMembers) {
-    if (!entry || typeof entry.encryptedGroupKey !== 'string' || !entry.userId) continue;
+    if (!isEncKeyEntry(entry)) continue;
     if (!(await isGroupMember(groupId, entry.userId))) continue;
     await db.run(
       'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
@@ -324,7 +352,7 @@ router.post('/:groupId/distribute-keys', verifyToken, asyncHandler(async (req, r
 
   let delivered = 0;
   for (const entry of encryptedKeysForMembers) {
-    if (!entry || typeof entry.encryptedGroupKey !== 'string' || !entry.userId) continue;
+    if (!isEncKeyEntry(entry)) continue;
     if (!(await isGroupMember(groupId, entry.userId))) continue;
     const exists = await db.get(
       'SELECT 1 FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=?',

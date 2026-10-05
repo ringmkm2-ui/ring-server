@@ -59,7 +59,8 @@ async function storeIcon(buf, mime, base) {
 // 他人のサーバーのURLを許すと、開いた人の端末がそこへアクセスしてしまうため自サーバーに限る。
 function isValidIconUrl(value, req) {
   if (typeof value !== 'string' || value.length > 500) return false;
-  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value)) return true;
+  // Cloudinaryは、このアプリのアカウント(CLOUD_NAME)の画像だけ。他人のアカウントの画像は通さない
+  if (value.startsWith(`https://res.cloudinary.com/${CLOUD_NAME}/`) && /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value)) return true;
   const own = req ? baseUrl(req) : '';
   const m = /^(https:\/\/[a-zA-Z0-9.\-]+(?::\d+)?)\/icons\/[0-9a-f\-]{36}$/.exec(value);
   return !!(m && own && m[1] === own);

@@ -10,8 +10,9 @@ const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 
 const { searchLimiter } = require('../utils/rateLimits');
-const { parseDataUrl, storeIcon, baseUrl } = require('../utils/iconStore');
+const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
 const router = express.Router();
+const picUploads = new Map(); // userId -> [アップロード時刻]
 
 // 自分のプロフィール取得
 router.get('/me', auth, async (req, res) => {
@@ -32,18 +33,25 @@ router.get('/me', auth, async (req, res) => {
 // 含む文字列を送り込むとHTML/JS注入(XSS)が成立してしまう危険な組み合わせだった。
 // 入り口(ここ)で形式を厳格に制限することで、出口側の描画コードにバグが
 // 残っていても実害が出ないようにする(多層防御)。
-function isValidProfilePic(value) {
+// https のURLは、このアプリの保存先(Cloudinary / このサーバーの /icons)とGoogleのプロフィール画像だけ。
+// 以前は好きなサーバーのURLを置けたため、自分のサーバーを指すアイコンにしておくと、
+// 着信画面や友だち一覧で表示した相手のIPアドレスや開いた時刻を集められた。
+function isValidProfilePic(value, req) {
   if (!value) return true; // 未設定/空文字は許可(削除扱い)
   if (typeof value !== 'string') return false;
   if (value.length > 3 * 1024 * 1024) return false; // 3MB相当を超えるBase64は拒否
-  return /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(value)
-      || /^https:\/\/[a-zA-Z0-9.\-]+(\/[^\s"'<>]*)?$/.test(value);
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return true;
+  if (isValidIconUrl(value, req)) return true;
+  return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com\/[^\s"'<>]*$/.test(value) && value.length <= 1000;
 }
 
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
-    const { displayName, bio, profilePic, publicKey } = req.body;
+    const { displayName, bio, profilePic, publicKey } = req.body || {};
+    if ((displayName != null && typeof displayName !== 'string') || (bio != null && typeof bio !== 'string')) {
+      return res.status(400).json({ error: '入力の形式が正しくありません' });
+    }
     // 表示名・自己紹介は無制限だとUIレイアウト崩壊やDB肥大化の原因になるため上限を設ける
     if (displayName && displayName.length > 50) {
       return res.status(400).json({ error: '表示名は50文字以内にしてください' });
@@ -52,7 +60,7 @@ router.post('/me', auth, async (req, res) => {
       return res.status(400).json({ error: '自己紹介は500文字以内にしてください' });
     }
     if (profilePic !== undefined) {
-      if (!isValidProfilePic(profilePic)) {
+      if (!isValidProfilePic(profilePic, req)) {
         return res.status(400).json({ error: 'プロフィール画像の形式が不正です' });
       }
       // Base64のまま来た場合(古い版のアプリ)も、DBには画像のURLだけを保存する
@@ -60,6 +68,13 @@ router.post('/me', auth, async (req, res) => {
       if (profilePic && profilePic.startsWith('data:')) {
         const parsed = parseDataUrl(profilePic);
         if (!parsed) return res.status(400).json({ error: 'プロフィール画像の形式が不正です' });
+        // アイコン保存の回数制限(icons.js と同じ考え方。古い版のアプリ経由でDBを埋めさせない)
+        const now = Date.now();
+        const hist = (picUploads.get(req.userId) || []).filter(t => now - t < 60 * 60 * 1000);
+        if (hist.length >= 30) return res.status(429).json({ error: 'アイコンの変更が多すぎます。しばらくしてからお試しください。' });
+        hist.push(now);
+        picUploads.set(req.userId, hist);
+        if (picUploads.size > 5000) picUploads.clear();
         picToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
       }
       await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', picToSave, req.userId]);
@@ -148,7 +163,7 @@ router.get('/publickey/:userId', auth, async (req, res) => {
 router.get('/search', searchLimiter, auth, async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || q.length < 2) return res.json([]);
+    if (typeof q !== 'string' || q.length < 2) return res.json([]);
     if (q.length > 100) return res.status(400).json({ error: '検索クエリが長すぎます' });
     const results = await db.all(
       'SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? OR display_name LIKE ?) AND id != ? LIMIT 10',

@@ -26,6 +26,14 @@ const TTL_DAYS = 7;
 
 // --- チャンクアップロード開始 (メタデータ登録) ---
 // body: { fileName, mimeType, sizeBytes, chunkTotal }
+// 分割アップロード(init/chunk/complete/download)は今の画面からは使われていない。
+// 生きたままだと、ログインした誰でも10MBずつ無制限にサーバーのディスクへ書き込めた
+// (チャンク番号も個数も実質無制限)。使われていない入口は閉じておく。
+// 将来使う時は、1ユーザーあたりの容量上限とチャンク番号の範囲チェックを入れてから戻すこと。
+router.use(['/init', '/chunk', '/complete', '/download'], (req, res) => {
+  res.status(410).json({ error: 'この機能は使われていません' });
+});
+
 router.post('/init', verifyToken, asyncHandler(async (req, res) => {
   const { fileName, mimeType, sizeBytes, chunkTotal } = req.body;
 

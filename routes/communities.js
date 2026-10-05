@@ -9,11 +9,24 @@ const { sendServerError } = require('../utils/errorResponse');
 
 const router = express.Router();
 
+// 招待コードの総当たり対策: 参加の試行はユーザー単位で15分に20回まで
+const joinLimiter = require('express-rate-limit')({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => 'u:' + req.user.userId,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください。' },
+});
+
 // 招待コード生成(6文字英数字)
 function generateInviteCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  // Math.random は暗号用ではなく、作った招待コードから続きを予測されうる。暗号用乱数で10文字にする
+  // (既存の6文字のコードはそのまま使える)
+  const bytes = require('crypto').randomBytes(10);
   let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 10; i++) code += chars[bytes[i] % chars.length];
   return code;
 }
 
@@ -64,9 +77,9 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
 }));
 
 // --- 招待コードでコミュニティに参加 ---
-router.post('/join', verifyToken, asyncHandler(async (req, res) => {
-  const { inviteCode } = req.body;
-  if (!inviteCode) return res.status(400).json({ error: '招待コードが必要です' });
+router.post('/join', verifyToken, joinLimiter, asyncHandler(async (req, res) => {
+  const { inviteCode } = req.body || {};
+  if (!inviteCode || typeof inviteCode !== 'string' || inviteCode.length > 32) return res.status(400).json({ error: '招待コードが必要です' });
 
   const community = await db.get('SELECT * FROM communities WHERE invite_code = ?', [inviteCode]);
   if (!community) return res.status(404).json({ error: '招待コードが無効です' });
