@@ -5,6 +5,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 const db = require('./db/db');
 const { router: authRouter } = require('./routes/auth');
@@ -74,13 +76,28 @@ async function main() {
   // 暗号化済みメディア(Cloudinaryへ直接送る分)はここを通らない。
   app.use(compression({ threshold: 1024 }));
 
+  // CSPのnonce(リクエストごとの使い捨ての合言葉)。HTML内の<script>には配信時にこれを付け、
+  // CSPで「このnonceが付いたscriptだけ実行してよい」とする。
+  // 以前は 'unsafe-inline' で全インラインscriptを許していたため、どこかでHTMLを差し込まれる
+  // バグ(XSS)が1つでもあれば、そのまま任意のJSを実行できた。nonceがあると差し込まれた
+  // <script> や onerror= 等は実行されない。
+  app.use((req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+  });
+
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
-          "'unsafe-inline'",          // 既存インラインscript互換
+          (req, res) => `'nonce-${res.locals.cspNonce}'`,
+          // libsodium(グループの暗号化)はWebAssemblyで動く。これが無いとWASMの読み込みがCSPで拒否され、
+          // グループ画面で暗号ライブラリの初期化が失敗していた。evalそのものは許さない(WASMだけ)
+          "'wasm-unsafe-eval'",
+          // nonceに対応したブラウザでは 'unsafe-inline' は無視される(nonce非対応の古いブラウザ向けの互換)
+          "'unsafe-inline'",
           "https://accounts.google.com",
           "https://cdnjs.cloudflare.com",
         ],
@@ -88,7 +105,8 @@ async function main() {
         // onclick="..." 等のインラインイベントハンドラが全ページで一切動かなくなる
         // (v1.28.74でwelcome.htmlの「はじめる」を押しても無反応になった原因)。
         // インラインハンドラが各ページに残っている間はここで許可しておく。
-        scriptSrcAttr: ["'unsafe-inline'"],
+        // onclick="..." 等のインラインイベント属性は全部 data-* + js/actions.js に置き換えたので禁止する
+        scriptSrcAttr: ["'none'"],
         styleSrc: [
           "'self'",
           "'unsafe-inline'",          // 既存インラインstyle互換
@@ -186,6 +204,29 @@ async function main() {
   app.get('/manifest.json', (req, res) => {
     res.set('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
+  });
+
+  // HTMLページは、<script> にこのリクエストのnonceを付けてから返す(CSPで実行を許すため)。
+  // ファイルの中身はメモリに置き、更新時刻が変わった時だけ読み直す。
+  const htmlCache = new Map(); // fullPath -> { mtimeMs, text }
+  const PUBLIC_DIR = path.join(__dirname, 'public');
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let rel = req.path === '/' ? '/splash.html' : req.path;
+    if (!/^\/[A-Za-z0-9_-]+\.html$/.test(rel)) return next();
+    const full = path.join(PUBLIC_DIR, rel);
+    let st;
+    try { st = fs.statSync(full); } catch (e) { return next(); }
+    let c = htmlCache.get(full);
+    if (!c || c.mtimeMs !== st.mtimeMs) {
+      c = { mtimeMs: st.mtimeMs, text: fs.readFileSync(full, 'utf8') };
+      htmlCache.set(full, c);
+    }
+    const nonce = res.locals.cspNonce;
+    const body = c.text.replace(/<script(?=[\s>])/gi, `<script nonce="${nonce}"`);
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-cache');
+    res.send(body);
   });
 
   // 静的ファイル（クライアント側の HTML/JS）

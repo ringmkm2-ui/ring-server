@@ -358,6 +358,7 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
+<script src="/js/actions.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -388,7 +389,7 @@ window.ensureGroupCrypto = (function () {
         <div class="card">
           <div class="search-row">
             <input type="text" placeholder="トークを検索..." id="talkSearchInput" data-i18n-placeholder="search_talk_placeholder" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;width:100%;margin-bottom:12px;">
-            <button onclick="openAddFriend()" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
+            <button data-call="openAddFriend" class="glass-plus-btn glass-clear glass-interactive" aria-label="友達を追加"></button>
           </div>
           <div id="talkList"></div>
         </div>
@@ -498,7 +499,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.164 beta</div>
+  <div class="version-badge">Bro Chat v1.28.165 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -633,7 +634,7 @@ window.ensureGroupCrypto = (function () {
       <button type="button" class="set-row set-btn" id="setCopyId"><span data-i18n="my_id">自分のID</span><span class="set-val" id="setMyId"></span></button>
     </div>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="saveSettings" type="button" data-i18n="apply_and_close">変更を適用して閉じる</button>
-    <button onclick="logout()" class="glass-clear glass-interactive lg-no-scale" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="logout">ログアウト</button>
+    <button data-call="logout" class="glass-clear glass-interactive lg-no-scale" style="width:100%;padding:14px;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="logout">ログアウト</button>
   </div>
 </div>
 
@@ -1814,8 +1815,8 @@ function openAddFriend() {
     <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px" data-i18n="other_id_placeholder">相手のID（例: U3K7F9）</label>
     <input id="addFriendInput" type="text" placeholder="IDを入力..." data-i18n-placeholder="id_input_placeholder" style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
     <div id="searchResult" style="margin-top:12px;min-height:0;"></div>
-    <button onclick="searchFriend()" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;" data-i18n="search">検索</button>
-    <button onclick="closeAddFriend()" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="cancel">キャンセル</button>
+    <button data-call="searchFriend" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;" data-i18n="search">検索</button>
+    <button data-call="closeAddFriend" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="cancel">キャンセル</button>
   `;
 
   mov.appendChild(sheet);

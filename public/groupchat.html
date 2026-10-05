@@ -192,6 +192,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
+<script src="/js/actions.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -203,7 +204,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.164 beta</div>
+  <div class="version-badge">Bro Chat v1.28.165 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -211,7 +212,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   <div class="hdr-wrap">
     <div class="hdr">
       <a href="talklist.html" class="back" data-back-to-talklist aria-label="戻る"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></a>
-      <div class="gav" id="gavEl" onclick="openGS()"></div>
+      <div class="gav" id="gavEl" data-call="openGS"></div>
       <div class="hinfo" id="hinfoEl">
         <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
         <div class="mcnt" id="mcntEl" data-i18n="members_count">メンバー 0人</div>
@@ -222,7 +223,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
       <button class="hbtn glass-interactive" id="videoBtnG" type="button" aria-label="グループビデオ通話">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </button>
-      <button class="hbtn glass-interactive" onclick="openGS()" type="button">
+      <button class="hbtn glass-interactive" data-call="openGS" type="button">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
@@ -294,7 +295,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
     <div class="sheet">
       <div class="sh-title" data-i18n="read_by">既読メンバー</div>
       <div id="readList"></div>
-      <button class="sh-close glass-interactive" onclick="document.getElementById('readOv').classList.remove('show')" data-i18n="close">閉じる</button>
+      <button class="sh-close glass-interactive" data-close="readOv" data-i18n="close">閉じる</button>
     </div>
   </div>
 
@@ -307,7 +308,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <input class="inv-input" id="invInput" placeholder="招待するユーザー名を入力">
         <button class="inv-btn glass-interactive" id="invBtn" data-i18n="invite">招待</button>
       </div>
-      <button class="sh-close glass-interactive" onclick="document.getElementById('memOv').classList.remove('show')" data-i18n="close">閉じる</button>
+      <button class="sh-close glass-interactive" data-close="memOv" data-i18n="close">閉じる</button>
     </div>
   </div>
 
@@ -340,7 +341,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
         <input type="text" class="sinput" id="gNameIn" placeholder="グループ名を入力">
       </div>
       <button class="sh-save glass-interactive" id="gSaveBtn" data-i18n="save">保存する</button>
-      <button class="sh-close glass-interactive" onclick="document.getElementById('gsOv').classList.remove('show')" data-i18n="cancel">キャンセル</button>
+      <button class="sh-close glass-interactive" data-close="gsOv" data-i18n="cancel">キャンセル</button>
     </div>
   </div>
 
@@ -420,6 +421,17 @@ function invalidateGroupKey(){ cachedGroupKey = null; cachedGroupKeyVersion = nu
 // このグループの今の鍵をこの端末で読めるか確かめ、読めなければ復旧用の案内を出す
 async function checkGroupKeyHealth(){
   const box=document.getElementById('keyBanner');
+  // 今の版の鍵を誰も持っていない(メンバーが自分で抜けた直後など)なら、この端末で作り直して配る。
+  // 同時に何人かが試しても、サーバーが版の番号で1人だけ通す
+  try{
+    const st=await api('/api/groups/'+groupId+'/key-status');
+    if(st&&st.orphaned&&Number.isInteger(st.keyVersion)){
+      await loadGroupInfo();
+      try{ await groupE2E.rotateGroupKey(groupId, gi.members.map(m=>m.id), st.keyVersion); }
+      catch(e){ console.warn('[groupchat] auto rekey skipped:', e&&e.message); }
+      invalidateGroupKey();
+    }
+  }catch(e){ console.warn('[groupchat] key-status failed:', e); }
   try{
     await ensureGroupKey();
     box.style.display='none';

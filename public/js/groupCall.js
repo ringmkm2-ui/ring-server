@@ -135,19 +135,56 @@
     layout();
   }
 
-  async function loadIce() {
+  // 個人通話(admin.html)と同じく、TURNの中継が実際に使えるならTURN経由を強制する。
+  // 直結(P2P)だとICE候補に自分の公開IPアドレスが載り、グループの参加者全員に見えてしまう。
+  // 中継が作れない時だけ直結を許す(繋がらないよりまし)。
+  let relayOnly = false;
+  async function probeRelay(servers) {
+    let t = null;
     try {
-      const res = await fetch('/api/ice', { headers: { Authorization: 'Bearer ' + cfg.token } });
-      if (res.ok) {
+      t = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: 'relay' });
+      t.createDataChannel('probe');
+      let ok = false;
+      const done = new Promise(res => {
+        t.onicecandidate = e => {
+          if (e.candidate && / typ relay /.test(e.candidate.candidate)) { ok = true; res(); }
+          else if (!e.candidate) res();
+        };
+        setTimeout(res, 3500);
+      });
+      await t.setLocalDescription(await t.createOffer());
+      await done;
+      return ok;
+    } catch (e) { return false; }
+    finally { try { t && t.close(); } catch (e) {} }
+  }
+  const hasTurnUrl = (list) => list.some(s => [].concat(s.urls).some(u => typeof u === 'string' && /^turns?:/i.test(u)));
+
+  async function loadIce() {
+    relayOnly = false;
+    const tried = [];
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch('/api/ice' + (tried.length ? '?skip=' + tried.join(',') : ''), { headers: { Authorization: 'Bearer ' + cfg.token } });
+        if (!res.ok) break;
         const d = await res.json();
-        if (Array.isArray(d.iceServers) && d.iceServers.length) iceServers = d.iceServers;
-      }
-    } catch (e) { console.warn('[gcall] ICE取得失敗、STUNのみで続行', e); }
+        if (!Array.isArray(d.iceServers) || !d.iceServers.length) break;
+        iceServers = d.iceServers;
+        if (!hasTurnUrl(iceServers)) break;
+        if (await probeRelay(iceServers)) { relayOnly = true; break; }
+        console.warn('[gcall] TURNの中継候補が取れない: ' + d.provider);
+        if (!d.provider || d.provider === 'stun-only') break;
+        tried.push(d.provider);
+      } catch (e) { console.warn('[gcall] ICE取得失敗、STUNのみで続行', e); break; }
+    }
+    if (!relayOnly && !iceServers.some(s => [].concat(s.urls).some(u => /^stun:/i.test(u)))) {
+      iceServers = iceServers.concat([{ urls: 'stun:stun.l.google.com:19302' }]);
+    }
   }
 
   function makePeer(uid) {
     if (peers.has(uid)) return peers.get(uid);
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection(relayOnly ? { iceServers, iceTransportPolicy: 'relay' } : { iceServers });
     const p = { pc, pendingIce: [], hasRemote: false };
     peers.set(uid, p);
     localStream.getTracks().forEach(tr => {
