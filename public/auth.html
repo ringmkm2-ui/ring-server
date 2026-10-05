@@ -284,6 +284,7 @@
     const lang = localStorage.getItem('ring_language') || 'ja';
     document.documentElement.lang = lang;
   </script>
+<script src="/js/actions.js"></script>
 </head>
 <body>
   <div class="container">
@@ -292,8 +293,8 @@
     <p class="subtitle" data-i18n="secure_chat_app">安全なチャットアプリ</p>
 
     <div class="auth-mode-switch">
-      <button class="mode-btn active" onclick="switchMode('login')" data-i18n="login">ログイン</button>
-      <button class="mode-btn" onclick="switchMode('signup')" data-i18n="signup">新規登録</button>
+      <button class="mode-btn active" data-call="switchMode" data-arg="login" data-i18n="login">ログイン</button>
+      <button class="mode-btn" data-call="switchMode" data-arg="signup" data-i18n="signup">新規登録</button>
     </div>
 
     <div id="errorMsg" class="error-message"></div>
@@ -311,7 +312,7 @@
         <span></span>
       </div>
 
-      <form onsubmit="emailLogin(event)" novalidate>
+      <form data-submit="emailLogin" novalidate>
         <div class="form-group">
           <input type="text" id="loginEmail" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="メールアドレス" required>
         </div>
@@ -320,7 +321,7 @@
         </div>
         <button type="submit" class="btn btn-login" data-i18n="login">ログイン</button>
       </form>
-      <button type="button" class="link-btn" onclick="showForgot()" data-i18n="forgot_link">パスワードを忘れましたか?</button>
+      <button type="button" class="link-btn" data-call="showForgot" data-i18n="forgot_link">パスワードを忘れましたか?</button>
     </div>
 
     <!-- 登録フォーム -->
@@ -335,7 +336,7 @@
         <span></span>
       </div>
 
-      <form onsubmit="emailSignup(event)">
+      <form data-submit="emailSignup">
         <div class="form-group">
           <input type="text" id="signupName" placeholder="表示名" required>
         </div>
@@ -353,34 +354,34 @@
     <div id="verifySection" class="form-section">
       <h2 class="sec-title" data-i18n="verify_title">メールアドレスの確認</h2>
       <p class="sec-desc" data-i18n="verify_desc">届いた6桁のコードを入力してください(10分間有効)</p>
-      <form onsubmit="submitVerify(event)">
+      <form data-submit="submitVerify">
         <div class="form-group">
           <input type="text" id="verifyCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6桁のコード" data-i18n-placeholder="verify_code_placeholder" required>
         </div>
         <button type="submit" class="btn btn-login" data-i18n="verify_btn">確認する</button>
       </form>
-      <button type="button" class="link-btn" onclick="resendCode()" data-i18n="resend_code">コードを再送する</button>
-      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+      <button type="button" class="link-btn" data-call="resendCode" data-i18n="resend_code">コードを再送する</button>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
     <!-- パスワード再設定: メールアドレス入力 -->
     <div id="forgotSection" class="form-section">
       <h2 class="sec-title" data-i18n="forgot_title">パスワードの再設定</h2>
       <p class="sec-desc" data-i18n="forgot_desc">登録したメールアドレスに6桁のコードを送ります</p>
-      <form onsubmit="submitForgot(event)" novalidate>
+      <form data-submit="submitForgot" novalidate>
         <div class="form-group">
           <input type="text" id="forgotEmail" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="メールアドレス" required>
         </div>
         <button type="submit" class="btn btn-login" data-i18n="forgot_send">コードを送る</button>
       </form>
-      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
     <!-- パスワード再設定: コードと新しいパスワード -->
     <div id="resetSection" class="form-section">
       <h2 class="sec-title" data-i18n="reset_title">新しいパスワード</h2>
       <p class="sec-desc" data-i18n="reset_desc">届いたコードと、新しいパスワードを入力してください(10分間有効)</p>
-      <form onsubmit="submitReset(event)">
+      <form data-submit="submitReset">
         <div class="form-group">
           <input type="text" id="resetCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6桁のコード" data-i18n-placeholder="verify_code_placeholder" required>
         </div>
@@ -392,21 +393,21 @@
         </div>
         <button type="submit" class="btn btn-login" data-i18n="reset_btn">パスワードを変更</button>
       </form>
-      <button type="button" class="link-btn" onclick="resendReset()" data-i18n="resend_code">コードを再送する</button>
-      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+      <button type="button" class="link-btn" data-call="resendReset" data-i18n="resend_code">コードを再送する</button>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
     <!-- 2段階認証コード入力 -->
     <div id="twofaSection" class="form-section">
       <h2 class="sec-title" data-i18n="twofa_title">2段階認証</h2>
       <p class="sec-desc" data-i18n="twofa_desc">認証アプリの6桁のコード、または予備コードを入力してください</p>
-      <form onsubmit="submitTwoFa(event)">
+      <form data-submit="submitTwoFa">
         <div class="form-group">
           <input type="text" id="twofaCode" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16" placeholder="コード" data-i18n-placeholder="twofa_code_placeholder" required>
         </div>
         <button type="submit" class="btn btn-login" data-i18n="twofa_btn">ログイン</button>
       </form>
-      <button type="button" class="link-btn" onclick="backToLogin()" data-i18n="back_to_login">ログイン画面に戻る</button>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
   </div>
 
@@ -775,7 +776,7 @@
     }
 
     function renderAppGoogleButton(el) {
-      el.innerHTML = '<button type="button" class="btn btn-google" style="margin-bottom:0" onclick="googleLoginViaBrowser()">' +
+      el.innerHTML = '<button type="button" class="btn btn-google" style="margin-bottom:0" data-call="googleLoginViaBrowser">' +
         '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>' +
         '<span>Googleでログイン</span></button>';
     }

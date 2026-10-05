@@ -215,7 +215,10 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   const newVersion = group.key_version + 1;
   await db.run('UPDATE groups SET key_version = ? WHERE id = ?', [newVersion, groupId]);
 
-  if (Array.isArray(encryptedKeysForRemainingMembers)) {
+  // 自分で抜ける人が作った「新しい鍵」は受け取らない。作った本人が中身を知っているので、
+  // それを残りのメンバーに配ると、抜けた後のメッセージも読める鍵を握らせることになる。
+  // この場合は新しい版の鍵が誰にも無い状態になり、残ったメンバーの端末が自動で作り直す(key-status)。
+  if (!isSelfLeaving && Array.isArray(encryptedKeysForRemainingMembers)) {
     for (const entry of encryptedKeysForRemainingMembers) {
       // 抜けた本人や部外者宛の新しい鍵は保存しない(抜けた人が以後のメッセージを読めてしまう)
       if (!isEncKeyEntry(entry) || entry.userId === removeUserId) continue;
@@ -234,6 +237,11 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   }
 
   broadcastToUser(removeUserId, { type: 'removed_from_group', groupId });
+  if (isSelfLeaving) {
+    // 新しい鍵が誰にも無いので、開いている残りのメンバーに作り直してもらう
+    const rest = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+    rest.forEach(m => broadcastToUser(m.user_id, { type: 'group_key_rotated', groupId, keyVersion: newVersion, reason: 'member_left' }));
+  }
 
   res.json({ ok: true, groupId, keyVersion: newVersion });
 }));
@@ -370,6 +378,24 @@ router.post('/:groupId/distribute-keys', verifyToken, asyncHandler(async (req, r
 }));
 
 // --- 自分宛の最新グループ鍵を取得 ---
+// --- 今の版の鍵を誰か持っているか ---
+// 誰も持っていない(本人が抜けた直後など)なら、残ったメンバーの端末が新しい鍵を作って配る。
+router.get('/:groupId/key-status', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  if (!(await isGroupMember(groupId, req.user.userId))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+  const group = await db.get('SELECT key_version FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  const holder = await db.get(
+    `SELECT 1 AS ok FROM group_key_distributions d
+       JOIN group_members gm ON gm.group_id = d.group_id AND gm.user_id = d.user_id AND gm.left_at IS NULL
+      WHERE d.group_id = ? AND d.key_version = ? LIMIT 1`,
+    [groupId, group.key_version]
+  );
+  res.json({ keyVersion: group.key_version, orphaned: !holder });
+}));
+
 router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
   const wantVer = parseInt(req.query.version, 10);
   const row = Number.isInteger(wantVer)
