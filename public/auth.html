@@ -827,6 +827,37 @@
         );
       }
     });
-  </script>
+  
+    // --- 送信中の表示(押しても何も起きないように見えて、固まったと思われるのを防ぐ) ---
+    // 無料のサーバーは、しばらく使われていないと起動に時間がかかる。待たせる時は理由を出す。
+    function startBusy(ev) {
+      const form = ev && (ev.target && ev.target.closest ? ev.target.closest('form') : null);
+      const btn = form && form.querySelector('button[type="submit"], button.btn-login');
+      if (!btn) return () => {};
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = tr('busy', '処理中…');
+      const hint = tr('slow_server', 'サーバーが混み合っているか、起動中です。1分ほどかかることがあります');
+      let hinted = false;
+      const timer = setTimeout(() => { hinted = true; showSuccess(hint); }, 6000);
+      return () => {
+        clearTimeout(timer);
+        btn.disabled = false;
+        btn.textContent = label;
+        if (hinted) {
+          const ok = document.getElementById('successMsg');
+          if (ok && ok.textContent === hint) clearMessages();
+        }
+      };
+    }
+    ['emailLogin', 'emailSignup', 'submitVerify', 'submitTwoFa', 'submitForgot', 'submitReset'].forEach(name => {
+      const orig = window[name];
+      if (typeof orig !== 'function') return;
+      window[name] = async function (ev) {
+        const done = startBusy(ev);
+        try { return await orig.apply(this, arguments); } finally { done(); }
+      };
+    });
+</script>
 </body>
 </html>

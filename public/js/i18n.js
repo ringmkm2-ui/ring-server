@@ -144,6 +144,8 @@
     report_failed: { ja: "送信できませんでした", en: "Could not send", "zh-CN": "发送失败", ko: "보내지 못했습니다" },
     report_thanks_bug: { ja: "報告を送りました。ありがとうございます", en: "Report sent. Thank you", "zh-CN": "已发送报告，谢谢", ko: "신고를 보냈습니다. 감사합니다" },
     report_thanks_user: { ja: "通報を送りました。確認します", en: "Report sent. We will review it", "zh-CN": "已发送举报，我们会审核", ko: "신고를 보냈습니다. 확인하겠습니다" },
+    busy: { ja: "処理中…", en: "Working…", "zh-CN": "处理中…", ko: "처리 중…" },
+    slow_server: { ja: "サーバーが混み合っているか、起動中です。1分ほどかかることがあります", en: "The server is busy or starting up. This can take up to a minute", "zh-CN": "服务器繁忙或正在启动，可能需要1分钟左右", ko: "서버가 혼잡하거나 시작 중입니다. 1분 정도 걸릴 수 있습니다" },
     forgot_link: { ja: "パスワードを忘れましたか?", en: "Forgot your password?", "zh-CN": "忘记密码？", ko: "비밀번호를 잊으셨나요?" },
     forgot_title: { ja: "パスワードの再設定", en: "Reset your password", "zh-CN": "重置密码", ko: "비밀번호 재설정" },
     forgot_desc: { ja: "登録したメールアドレスに6桁のコードを送ります", en: "We'll email a 6-digit code to your registered address", "zh-CN": "我们会向注册邮箱发送6位验证码", ko: "등록한 이메일로 6자리 코드를 보내드립니다" },
