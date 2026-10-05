@@ -19,6 +19,24 @@ const { createSession } = require('../utils/sessions');
 const sessionEvents = require('../utils/sessionEvents');
 
 const router = express.Router();
+
+// 表示用のユーザーID(U3K7F9のような形)。推測されにくいよう暗号用の乱数で作る。
+const ID_CHARS = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+function newUserIdCode() {
+  const bytes = require('crypto').randomBytes(6);
+  let out = 'U';
+  for (let i = 0; i < 6; i++) out += ID_CHARS[bytes[i] % ID_CHARS.length];
+  return out;
+}
+async function uniqueUserIdCode() {
+  for (let i = 0; i < 8; i++) {
+    const c = newUserIdCode();
+    const taken = await db.get('SELECT 1 AS x FROM users WHERE user_id = ?', [c]);
+    if (!taken) return c;
+  }
+  return newUserIdCode();
+}
+
 const JWT_EXPIRES_IN = '30d';
 
 // Google Sign-In (Google Identity Services) のクライアントID。
@@ -220,7 +238,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
     // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
     userId = uuidv4();
-    userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase(); // User ID like U3K7F9
+    userIdCode = await uniqueUserIdCode(); // User ID like U3K7F9
     await db.run(
       'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verify_required) VALUES (?, ?, ?, ?, ?, ?)',
       [userId, userIdCode, username, passwordHash, displayName || username, mailOn ? 1 : 0]
@@ -485,7 +503,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
     if (!user) {
       // 初回ログイン：ユーザーを自動作成
       const userId = uuidv4();
-      const userIdCode = 'U' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const userIdCode = await uniqueUserIdCode();
       await db.run(
         'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic) VALUES (?, ?, ?, ?, ?, ?)',
         [userId, userIdCode, email, '', name || email, picture || '']

@@ -22,6 +22,31 @@ router.post('/upload', prekeyLimiter, verifyToken, asyncHandler(async (req, res)
   if (!identityPubkey || !signedPrekeyPub || !signedPrekeySig) {
     return res.status(400).json({ error: '鍵バンドルが不完全です' });
   }
+  // 入力の検証: 鍵はbase64の短い文字列だけ。長さや個数に上限が無いと、巨大なデータでDBを埋められる
+  const KEY_RE = /^[A-Za-z0-9+/_=-]{20,200}$/;
+  const SIG_RE = /^[A-Za-z0-9+/_=-]{20,400}$/;
+  if (typeof identityPubkey !== 'string' || !KEY_RE.test(identityPubkey) ||
+      typeof signedPrekeyPub !== 'string' || !KEY_RE.test(signedPrekeyPub) ||
+      typeof signedPrekeySig !== 'string' || !SIG_RE.test(signedPrekeySig) ||
+      (signingPubkey != null && (typeof signingPubkey !== 'string' || !KEY_RE.test(signingPubkey)))) {
+    return res.status(400).json({ error: '鍵の形式が正しくありません' });
+  }
+  if (oneTimePrekeys != null) {
+    if (!Array.isArray(oneTimePrekeys) || oneTimePrekeys.length > 200) {
+      return res.status(400).json({ error: 'ワンタイム鍵は一度に200個までです' });
+    }
+    for (const e of oneTimePrekeys) {
+      const k = (e && typeof e === 'object') ? e.pubkey : e;
+      const id = (e && typeof e === 'object') ? e.keyId : 0;
+      if (typeof k !== 'string' || !KEY_RE.test(k) || !Number.isInteger(id) || id < 0) {
+        return res.status(400).json({ error: 'ワンタイム鍵の形式が正しくありません' });
+      }
+    }
+    const cnt = await db.get('SELECT COUNT(*) AS n FROM one_time_prekeys WHERE user_id = ? AND used = 0', [userId]);
+    if ((Number(cnt && cnt.n) || 0) + oneTimePrekeys.length > 500) {
+      return res.status(400).json({ error: '未使用のワンタイム鍵が多すぎます' });
+    }
+  }
 
   const existing = await db.get('SELECT user_id, identity_pubkey FROM identity_keys WHERE user_id = ?', [userId]);
   if (existing && existing.identity_pubkey !== identityPubkey) {
@@ -103,6 +128,21 @@ router.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {
 // --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
 router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
+  // このAPIは相手のワンタイム鍵を1個消費する。無関係なユーザーが繰り返し叩くと、相手の鍵を使い切れて
+  // しまう(前方秘匿性が落ちる)ので、友だち・同じグループの人・自分だけに限る。
+  if (targetId !== req.user.userId) {
+    const related = await db.get(
+      `SELECT 1 AS ok FROM friendships
+        WHERE status = 'accepted' AND ((user_a_id = ? AND user_b_id = ?) OR (user_a_id = ? AND user_b_id = ?))
+       UNION ALL
+       SELECT 1 AS ok FROM group_members g1
+         JOIN group_members g2 ON g2.group_id = g1.group_id
+        WHERE g1.user_id = ? AND g2.user_id = ? AND g1.left_at IS NULL AND g2.left_at IS NULL
+       LIMIT 1`,
+      [req.user.userId, targetId, targetId, req.user.userId, req.user.userId, targetId]
+    );
+    if (!related) return res.status(403).json({ error: 'このユーザーの鍵は取得できません' });
+  }
   const identity = await db.get('SELECT * FROM identity_keys WHERE user_id = ?', [targetId]);
   if (!identity) {
     return res.status(404).json({ error: 'このユーザーの鍵が登録されていません' });

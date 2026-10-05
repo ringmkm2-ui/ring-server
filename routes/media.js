@@ -155,14 +155,17 @@ router.post('/delete', verifyToken, asyncHandler(async (req, res) => {
   // 勝手に削除できてしまう重大な脆弱性(IDOR)があった。
   // publicIdは自分が送信者(sender_id)であるメッセージのcontentに含まれている場合のみ
   // 削除を許可する(DM・グループメッセージの両方をチェック)。
-  const escapedId = publicId.replace(/[%_]/g, c => '\\' + c); // LIKE用エスケープ
+  // LIKEのエスケープ文字は '!' にする。バックスラッシュだと、SQLiteとPostgreSQLで文字列リテラルの
+  // 扱いが違い、どちらかで「ESCAPEは1文字」エラーになる(以前はこれで削除が常に失敗していた)。
+  const escapedId = publicId.replace(/[!%_]/g, c => '!' + c);
+  const likePattern = `%"mediaPublicId":"${escapedId}"%`;
   const ownDm = await db.get(
-    "SELECT id FROM messages WHERE sender_id = ? AND content LIKE ? ESCAPE '\\\\'",
-    [req.user.userId, `%"mediaPublicId":"${escapedId}"%`]
+    "SELECT id FROM messages WHERE sender_id = ? AND content LIKE ? ESCAPE '!'",
+    [req.user.userId, likePattern]
   );
   const ownGroupMsg = await db.get(
-    "SELECT id FROM group_messages WHERE sender_id = ? AND content LIKE ? ESCAPE '\\\\'",
-    [req.user.userId, `%"mediaPublicId":"${escapedId}"%`]
+    "SELECT id FROM group_messages WHERE sender_id = ? AND content LIKE ? ESCAPE '!'",
+    [req.user.userId, likePattern]
   );
   if (!ownDm && !ownGroupMsg) {
     return res.status(403).json({ error: 'このメディアを削除する権限がありません' });
