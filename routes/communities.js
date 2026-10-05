@@ -133,6 +133,11 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
     [req.params.id, req.user.userId]
   );
   if (!member) return res.status(403).json({ error: 'メンバーではありません' });
+  // channelId が、メンバー確認をしたコミュニティのものかも確認する。
+  // 無いと、自分のコミュニティIDに他コミュニティのchannelIdを組み合わせるだけで、
+  // 参加していないコミュニティの会話を読めてしまう。
+  const channel = await db.get('SELECT id FROM community_channels WHERE id = ? AND community_id = ?', [req.params.channelId, req.params.id]);
+  if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
   const before = req.query.before;
   let query = `SELECT m.*, u.display_name as sender_name, u.profile_pic as sender_pic
@@ -158,6 +163,8 @@ router.post('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async
     [req.params.id, req.user.userId]
   );
   if (!member) return res.status(403).json({ error: 'メンバーではありません' });
+  const channel = await db.get('SELECT id FROM community_channels WHERE id = ? AND community_id = ?', [req.params.channelId, req.params.id]);
+  if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
   const { content, mediaUrl, mediaType } = req.body;
   if (!content && !mediaUrl) return res.status(400).json({ error: 'メッセージが必要です' });
