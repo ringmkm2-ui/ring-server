@@ -172,9 +172,15 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // トークンがあればsplashを描画せず即遷移（チラつき防止）
+    // 隠している間は、次に出るトーク一覧と同じ色で塗っておく(黒や白が一瞬挟まらないように)
     if (localStorage.getItem('ring_token')) {
       window.location.replace('/talklist.html');
-      document.documentElement.style.display = 'none';
+      var dk = localStorage.getItem('darkMode'), mm = window.matchMedia;
+      var isDark = dk === '1' || (dk !== '0' && mm && mm('(prefers-color-scheme: dark)').matches);
+      document.documentElement.style.background = isDark ? '#15181f' : '#e0f2fe';
+      var hide = document.createElement('style');
+      hide.textContent = 'body{display:none!important}';
+      document.head.appendChild(hide);
     }
   </script>
 </head>

@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.165';
+const CACHE_VERSION = 'v1.28.166';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -59,9 +59,25 @@ const urlsToCache = [
   '/talklist.html',
   '/admin.html',
   '/groupchat.html',
+  '/community.html',
   '/js/session.js',
   '/js/keyBackup.js',
+  '/js/actions.js',
+  '/js/i18n.js',
+  '/js/nacl.min.js',
+  '/js/nacl-util.min.js',
+  '/js/e2eKeys.js',
+  '/js/globalBg.js',
+  '/js/globalSettings.js',
+  '/js/liquidGlass.js',
+  '/js/lgControls.js',
+  '/js/pushSubscribe.js',
+  '/css/globalTheme.css',
+  '/css/liquidGlass.css',
 ];
+
+// 次のページ読み込みだけはネットワークを優先する期限(ページ側の版チェックで「古い」と分かった時に使う)
+let freshUntil = 0;
 
 // インカミング通話の保持（バックグラウンド→フォアグラウンド引継ぎ用）
 const pendingCalls = new Map();
@@ -279,6 +295,11 @@ self.addEventListener('notificationclick', event => {
 self.addEventListener('message', event => {
   const { type, callId } = event.data;
   
+  if (type === 'FRESH_NEXT') {
+    // ページ側が「サーバーの方が新しい版」と気づいた。しばらくはキャッシュを使わず取りに行く
+    freshUntil = Date.now() + 20000;
+  }
+
   if (type === 'CALL_ENDED') {
     // 通話終了時、pendingCallsから削除
     pendingCalls.delete(callId);
@@ -308,31 +329,41 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // HTML/CSS/JS等: ネットワーク優先(Network First)。
-  // 「アプリを開くだけで自動的に最新版になってほしい」という要件のため、
-  // オンラインである限り常に最新のファイルを取得しキャッシュを更新する。
-  // オフライン時のみ、最後に取得できたキャッシュ版にフォールバックする。
+  // 他のサイト(Cloudinary・CDN等)はブラウザ任せ
+  if (url.origin !== self.location.origin) return;
+
+  // HTML/CSS/JS等: 端末のキャッシュを先に返し、裏でネットワークから取り直して次回に備える
+  // (stale-while-revalidate)。以前はネットワーク優先で、ページを開くたびにサーバー
+  // (Renderのオレゴン)の応答を待っていたため、起動時に真っ黒→真っ白の画面が1〜2秒出ていた。
+  // 新しい版をデプロイすると sw.js の CACHE_VERSION が変わり、新しいSWが入った時点で古い
+  // キャッシュは丸ごと消える(activate)ので、版をまたいで古いファイルが混ざることはない。
+  const fetchAndStore = () => fetch(request).then(response => {
+    if (response && response.status === 200 && response.type === 'basic') {
+      const copy = response.clone();
+      // ページはクエリ抜きのパスで1つだけ持つ(相手ごとに ?userId= が違ってもキャッシュが増えないように)
+      const key = request.mode === 'navigate' ? url.pathname : request;
+      caches.open(CACHE_NAME).then(cache => cache.put(key, copy)).catch(() => {});
+    }
+    return response;
+  });
+
+  if (Date.now() < freshUntil) {
+    event.respondWith(fetchAndStore().catch(() => caches.match(request.mode === 'navigate' ? url.pathname : request)));
+    return;
+  }
+
   event.respondWith(
-    fetch(request)
-      .then(response => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, responseToCache);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // オフライン、またはネットワークエラー時のみキャッシュから返す
-        return caches.match(request).then(cached => {
-          if (cached) return cached;
-          // ナビゲーション(ページ遷移)でキャッシュも無い場合はsplash.htmlにフォールバック
-          if (request.mode === 'navigate') {
-            return caches.match('/splash.html');
-          }
-          return Response.error();
-        });
-      })
+    // ページはクエリ(?userId=...)違いでも中身は同じファイルなので、クエリを無視して探す
+    caches.match(request.mode === 'navigate' ? url.pathname : request).then(cached => {
+      const network = fetchAndStore();
+      if (cached) {
+        event.waitUntil(network.then(() => {}).catch(() => {}));
+        return cached;
+      }
+      return network.catch(() => {
+        if (request.mode === 'navigate') return caches.match('/splash.html');
+        return Response.error();
+      });
+    })
   );
 });
