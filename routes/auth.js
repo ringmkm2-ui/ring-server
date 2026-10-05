@@ -505,7 +505,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
       const userId = uuidv4();
       const userIdCode = await uniqueUserIdCode();
       await db.run(
-        'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic, email_verified_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
         [userId, userIdCode, email, '', name || email, picture || '']
       );
       user = { id: userId, user_id: userIdCode, username: email, display_name: name || email, profile_pic: picture || '' };
@@ -521,6 +521,21 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
       if (truthy(user.email_verify_required) && !user.email_verified_at) {
         await db.run("UPDATE users SET password_hash = '', email_verified_at = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
         user.password_hash = '';
+      } else if (!user.email_verified_at && user.password_hash) {
+        // メール送信(SMTP)が未設定の時期に作られたパスワード登録は、メールの持ち主かを一度も確かめていない。
+        // 他人のGmailアドレスで先に登録しておけば、本人が後からGoogleでログインした時に
+        // 乗っ取り側がパスワードを知っているアカウントへ本人を入らせ、以後の会話を読めてしまう。
+        // Googleで本人確認が取れたこの時点で、未確認のパスワードと既存の全セッションを無効にする
+        // (本人のパスワードだった場合は、パスワード再設定で付け直せる)。
+        await db.run(
+          "UPDATE users SET password_hash = '', email_verified_at = CURRENT_TIMESTAMP, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
+          [user.id]
+        );
+        await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+        sessionEvents.emit('revoked', { userId: user.id });
+        user.password_hash = '';
+      } else if (!user.email_verified_at) {
+        await db.run('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
       }
     }
     return { status: 200, body: await finishLogin(user, { profilePic: user.profile_pic }, meta) };
@@ -634,7 +649,7 @@ router.post('/google-contacts/sync', verifyToken, async (req, res) => {
 
     // 既存の友達を取得
     const existingFriends = await db.all(
-      'SELECT * FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status IN ("accepted", "pending")',
+      "SELECT * FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status IN ('accepted', 'pending')",
       [userId, userId]
     );
     const existingIds = new Set();
@@ -648,8 +663,8 @@ router.post('/google-contacts/sync', verifyToken, async (req, res) => {
     for (const newFriendId of foundUserIds) {
       if (newFriendId !== userId && !existingIds.has(newFriendId)) {
         await db.run(
-          'INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by, requested_at) VALUES (?, ?, ?, "pending", ?, ?)',
-          [uuidv4(), userId, newFriendId, userId, new Date().toISOString()]
+          'INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [uuidv4(), ...[userId, newFriendId].sort(), 'pending', userId, new Date().toISOString()]
         );
         count++;
       }
@@ -888,6 +903,7 @@ router.post('/delete-account', verifyToken, async (req, res) => {
       "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, totp_secret = NULL, totp_enabled = ?, backup_codes = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
       [`deleted_${userId}`, false, userId]
     );
+    sessionEvents.emit('revoked', { userId }); // 繋がったままのWebSocketも切る
 
     res.json({ ok: true, message: 'アカウントを削除しました' });
   } catch (e) {

@@ -24,6 +24,7 @@ function isDeepgramConfigured() {
 // クライアントごとのDeepgram WS接続を管理する。
 // key: クライアント接続を識別するための任意のID(通話ID等)
 const activeSessions = new Map();
+const MAX_SESSION_MS = 2 * 60 * 60 * 1000;
 
 /**
  * クライアントの音声ストリーミングセッションを開始する。
@@ -70,6 +71,11 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
     activeSessions.delete(sessionId);
     if (onClose) onClose();
   });
+
+  // 切り忘れ・悪用で音声を流しっぱなしにされても、課金が際限なく増えないよう2時間で必ず止める
+  const maxTimer = setTimeout(() => stopSession(sessionId), MAX_SESSION_MS);
+  maxTimer.unref();
+  dgWs.on('close', () => clearTimeout(maxTimer));
 
   activeSessions.set(sessionId, dgWs);
   return dgWs;

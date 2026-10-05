@@ -128,7 +128,27 @@ async function main() {
     origin: ALLOWED_ORIGINS,
     credentials: true,
   }));
-  app.use(express.json({ limit: '50mb' }));
+  // JSON本文の上限。以前は全API(ログイン等の未ログインで叩ける所も含む)に50MBを許していたため、
+  // 誰でも50MBのJSONを何本か同時に送るだけでメモリ(512MB)を使い切らせてサーバーを落とせた。
+  // 普段は4MB(プロフィール画像のBase64が最大3MB)まで。画像・動画を本文に入れて送る
+  // メッセージ送信と投稿だけ50MBにし、しかも読み込む前に署名の正しいトークンかを確かめる。
+  const smallJson = express.json({ limit: '4mb' });
+  const bigJson = express.json({ limit: '50mb' });
+  const BIG_BODY_RE = /^\/api\/(messages\/send|groups\/[^/]+\/messages\/send|posts)\/?$/;
+  const { JWT_SECRET } = require('./utils/jwtSecret');
+  const jwt = require('jsonwebtoken');
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && BIG_BODY_RE.test(req.path)) {
+      const h = req.headers.authorization || '';
+      try {
+        jwt.verify(h.startsWith('Bearer ') ? h.slice(7) : '', JWT_SECRET, { algorithms: ['HS256'] });
+      } catch (e) {
+        return res.status(401).json({ error: 'トークンが無効です' });
+      }
+      return bigJson(req, res, next);
+    }
+    return smallJson(req, res, next);
+  });
 
   // Slowloris/遅延攻撃対策: リクエスト全体のタイムアウトを設定。
   // デフォルトは無制限で、接続を意図的に遅延させてサーバーリソースを枯渇させる攻撃が可能。

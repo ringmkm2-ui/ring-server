@@ -16,10 +16,13 @@ const router = express.Router();
 // 相手が今オンラインかどうかを確認する。
 // ws/wsServer.js は起動時に initWebSocketServer() が呼ばれて初めて isUserOnline が
 // 使えるようになるため、循環require回避も兼ねて呼び出し時に require する。
-router.get('/presence/:userId', auth, (req, res) => {
+// 友だち・同じグループの相手以外は常にオフライン扱い(知らない相手の在席を覗けないように)
+router.get('/presence/:userId', auth, async (req, res) => {
   try {
     const { isUserOnline } = require('../ws/wsServer');
-    res.json({ userId: req.params.userId, online: isUserOnline(req.params.userId) });
+    const { canInteract } = require('../utils/relations');
+    const visible = await canInteract(req.userId, req.params.userId);
+    res.json({ userId: req.params.userId, online: visible ? isUserOnline(req.params.userId) : false });
   } catch (err) {
     res.json({ userId: req.params.userId, online: false });
   }

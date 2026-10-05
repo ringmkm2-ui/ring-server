@@ -9,6 +9,7 @@ const { verifyTokenRaw } = require('../routes/auth');
 const { sendPushToUser } = require('../utils/webPush');
 const callAssist = require('./callAssistProxy');
 const sessionEvents = require('../utils/sessionEvents');
+const { canInteract } = require('../utils/relations');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -19,6 +20,28 @@ const connections = new Map(); // userId -> Set<ws>
 // どう頑張っても繋がらなかった。
 const pendingCalls = new Map(); // callId -> { from, to, sdp, isVideo, ice[], ts, timer }
 const RING_TIMEOUT_MS = 45000;
+
+// 発信から終了までの通話の当事者。callId はクライアントが作る値なので、
+// 「その通話の当事者か」をサーバー側で覚えておき、応答・ICE・拒否・終了はこの2人の間でしか中継しない。
+// 以前は callId と宛先を自由に書けたため、他人の呼び出し中の通話を横取り・強制終了したり、
+// 無関係な人に偽の「通話終了」を送りつけたりできた。
+const activeCalls = new Map(); // callId -> { a: 発信者, b: 着信者, ts }
+const ACTIVE_CALL_MAX_MS = 6 * 60 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, c] of activeCalls) if (now - c.ts > ACTIVE_CALL_MAX_MS) activeCalls.delete(id);
+}, 10 * 60 * 1000).unref();
+const CALL_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
+function callPeerOf(callId, userId) {
+  const c = typeof callId === 'string' ? activeCalls.get(callId) : null;
+  if (!c) return null;
+  if (c.a === userId) return c.b;
+  if (c.b === userId) return c.a;
+  return null;
+}
+function isCallParticipant(callId, userId) {
+  return !!callPeerOf(callId, userId);
+}
 
 function clearPendingCall(callId) {
   const p = pendingCalls.get(callId);
@@ -59,6 +82,7 @@ function rejectPendingCall(userId, callId) {
   const p = pendingCalls.get(callId);
   if (!p || p.to !== userId) return false;
   clearPendingCall(callId);
+  activeCalls.delete(callId);
   broadcastToUser(p.from, { type: 'call_reject', callId, fromUserId: userId, reason: 'declined' });
   cancelRinging(userId, callId);
   return true;
@@ -201,9 +225,24 @@ function initWebSocketServer(server) {
     // Call Assist: track('mic'|'remote')ごとに有効なDeepgramセッションIDを保持する。
     // 自分のマイク音声と相手の受信音声(remoteAudio)を別々に文字起こしするため。
     let callAssistSessions = { mic: null, remote: null };
+    // 入力中表示・オンライン問い合わせのたびにDBを引かないよう、関係の確認結果を1分だけ覚える
+    const relationCache = new Map(); // targetId -> { ok, ts }
+    const canReach = async (targetId) => {
+      if (typeof targetId !== 'string' || !targetId || targetId.length > 100) return false;
+      const hit = relationCache.get(targetId);
+      if (hit && Date.now() - hit.ts < 60000) return hit.ok;
+      const ok = await canInteract(userId, targetId);
+      if (relationCache.size > 500) relationCache.clear();
+      relationCache.set(targetId, { ok, ts: Date.now() });
+      return ok;
+    };
 
     // 同一IPからの過剰接続をブロック
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    // X-Forwarded-For の先頭はクライアントが自由に書ける値なので、それで数えると
+    // 毎回違うIPを名乗るだけで上限をすり抜けられた。Renderのプロキシが付け足した
+    // 末尾の値(Expressの trust proxy 1 と同じ位置)を使う。
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(v => v.trim()).filter(Boolean);
+    const clientIp = xff.length ? xff[xff.length - 1] : (req.socket.remoteAddress || 'unknown');
     const currentCount = ipConnections.get(clientIp) || 0;
     if (currentCount >= MAX_CONNECTIONS_PER_IP) {
       ws.close(1008, 'Too many connections from this IP');
@@ -313,10 +352,12 @@ function initWebSocketServer(server) {
       // --- 相手のオンライン状態を問い合わせ ---
       if (data.type === 'presence_query') {
         if (!userId) return;
+        // 知り合い以外のオンライン状態は見せない(常にオフライン扱い)
+        const visible = await canReach(data.targetUserId);
         ws.send(JSON.stringify({
           type: 'presence_result',
           userId: data.targetUserId,
-          online: isUserOnline(data.targetUserId),
+          online: visible ? isUserOnline(data.targetUserId) : false,
         }));
         return;
       }
@@ -410,6 +451,7 @@ function initWebSocketServer(server) {
 
       // --- タイピングインジケータの中継 ---
       if (data.type === 'typing') {
+        if (!(await canReach(data.recipientId))) return;
         broadcastToUser(data.recipientId, {
           type: 'typing',
           userId: userId,
@@ -460,12 +502,22 @@ function initWebSocketServer(server) {
       if (data.type === 'call_offer') {
         // data: { recipientId, callId, sdp, isVideo? }
         // callIdが無い/宛先が無いofferは不正(キャンセル後の遅延送信など)。鳴らさず、タイマーも作らない
-        if (!data.callId || !data.recipientId) return;
+        if (!data.callId || !data.recipientId || typeof data.recipientId !== 'string') return;
+        if (typeof data.callId !== 'string' || !CALL_ID_RE.test(data.callId)) return;
+        if (data.recipientId === userId) return;
+        // 他人の通話と同じcallIdを使って、その通話を上書き・横取りさせない
+        const existingCall = activeCalls.get(data.callId);
+        if (existingCall && existingCall.a !== userId) return;
         //
-        // 以前は友達関係チェック(user_a_id/user_b_idがfriendships上でacceptedか)を
-        // ここに入れていたが、これがあるとテスト用アカウント間のような
-        // 正式な友達登録をしていない相手には発信自体が即座に'not_friends'で
-        // 弾かれ、着信が一切届かなくなる。使い勝手を優先し、このチェックは撤去した。
+        // 友だち、または同じグループのメンバーにだけ発信できる。
+        // (以前は誰でも誰にでも発信でき、知らない相手の端末をプッシュで何度でも鳴らせた。
+        //  正式な友だち登録をしていないテスト用アカウント同士でも、同じグループにいれば掛けられる)
+        // 断られた理由は相手に伝えず、通常の「繋がらない」と同じ見え方にする。
+        if (!(await canReach(data.recipientId))) {
+          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
+          return;
+        }
+        activeCalls.set(data.callId, { a: userId, b: data.recipientId, ts: Date.now() });
         const delivered = broadcastToUser(data.recipientId, {
           type: 'call_offer',
           callId: data.callId,
@@ -485,6 +537,7 @@ function initWebSocketServer(server) {
           const pc = pendingCalls.get(data.callId);
           if (!pc) return;
           clearPendingCall(data.callId);
+          activeCalls.delete(data.callId);
           // 相手の端末で一度でも鳴っていれば「出られない」(留守番電話へ)、
           // 一度も繋がらなかったら「電波の届かない場所…」のガイダンスにする
           broadcastToUser(userId, { type: 'call_unavailable', callId: data.callId, reason: pc.delivered ? 'no_answer' : 'unreachable' });
@@ -560,9 +613,13 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_answer') {
         // data: { recipientId, callId, sdp }
+        // 応答できるのは、その通話の着信側だけ
+        const ac = typeof data.callId === 'string' ? activeCalls.get(data.callId) : null;
+        if (!ac || ac.b !== userId) return;
+        const answerTo = ac.a;
         clearPendingCall(data.callId);
         cancelRinging(userId, data.callId); // 応答した本人の他端末(APK等)の着信音を止める
-        broadcastToUser(data.recipientId, {
+        broadcastToUser(answerTo, {
           type: 'call_answer',
           callId: data.callId,
           fromUserId: userId,
@@ -573,11 +630,13 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_ice') {
         // data: { recipientId, callId, candidate }
+        const iceTo = callPeerOf(data.callId, userId);
+        if (!iceTo) return;
         const pendingIce = pendingCalls.get(data.callId);
         if (pendingIce && pendingIce.from === userId && pendingIce.ice.length < 100) {
           pendingIce.ice.push(data.candidate);
         }
-        broadcastToUser(data.recipientId, {
+        broadcastToUser(iceTo, {
           type: 'call_ice',
           callId: data.callId,
           fromUserId: userId,
@@ -588,30 +647,37 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_reject') {
         // data: { recipientId, callId, reason? }  reason: 'declined' | 'busy'
-        broadcastToUser(data.recipientId, {
+        const rejectTo = callPeerOf(data.callId, userId);
+        if (!rejectTo) return;
+        broadcastToUser(rejectTo, {
           type: 'call_reject',
           callId: data.callId,
           fromUserId: userId,
-          reason: data.reason || 'declined',
+          reason: data.reason === 'busy' ? 'busy' : 'declined',
         });
         clearPendingCall(data.callId);
+        activeCalls.delete(data.callId);
         // 拒否した本人の他端末と、相手側に残っている着信通知を消す
         cancelRinging(userId, data.callId);
-        cancelRinging(data.recipientId, data.callId);
+        cancelRinging(rejectTo, data.callId);
         return;
       }
 
       if (data.type === 'call_end') {
         // data: { recipientId, callId }
-        broadcastToUser(data.recipientId, {
-          type: 'call_end',
-          callId: data.callId,
-          fromUserId: userId,
-        });
-        const wasRinging = clearPendingCall(data.callId);
-        // 呼び出し中に発信者が切った場合など、相手の端末で鳴っている着信を止める
-        // (まだ鳴っていた=応答されていないので、iPhoneにも不在着信として残す)
-        cancelRinging(data.recipientId, data.callId, wasRinging ? userId : undefined);
+        const endTo = callPeerOf(data.callId, userId);
+        if (endTo) {
+          broadcastToUser(endTo, {
+            type: 'call_end',
+            callId: data.callId,
+            fromUserId: userId,
+          });
+          const wasRinging = clearPendingCall(data.callId);
+          activeCalls.delete(data.callId);
+          // 呼び出し中に発信者が切った場合など、相手の端末で鳴っている着信を止める
+          // (まだ鳴っていた=応答されていないので、iPhoneにも不在着信として残す)
+          cancelRinging(endTo, data.callId, wasRinging ? userId : undefined);
+        }
         ['mic', 'remote'].forEach(track => {
           if (callAssistSessions[track]) {
             callAssist.stopSession(callAssistSessions[track]);
@@ -718,14 +784,21 @@ function initWebSocketServer(server) {
           ws.send(JSON.stringify({ type: 'call_assist_error', error: '音声認識機能が現在利用できません(サーバー未設定)', track: data.track }));
           return;
         }
+        // 字幕(Deepgram、従量課金)は、実際に参加している通話の間だけ使える。
+        // 以前は通話と無関係にいつでも開始でき、音声を流し続けて課金を膨らませられた。
+        if (!isCallParticipant(data.callId, userId)) {
+          ws.send(JSON.stringify({ type: 'call_assist_error', error: '通話中のみ利用できます', track: data.track }));
+          return;
+        }
         const track = data.track === 'remote' ? 'remote' : 'mic';
         if (callAssistSessions[track]) {
           callAssist.stopSession(callAssistSessions[track]);
         }
+        const lang = typeof data.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(data.language) ? data.language : 'ja';
         const sessionId = `${userId}:${data.callId}:${track}:${Date.now()}`;
         callAssistSessions[track] = sessionId;
         callAssist.startSession(sessionId, {
-          language: data.language || 'ja',
+          language: lang,
           onTranscript: (text, isFinal) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'call_assist_transcript', text, isFinal, track }));
