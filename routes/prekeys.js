@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { canInteract } = require('../utils/relations');
 const { prekeyLimiter } = require('../utils/rateLimits');
 const { broadcastToUser } = require('../ws/wsServer');
 
@@ -112,6 +113,11 @@ router.post('/upload', prekeyLimiter, verifyToken, asyncHandler(async (req, res)
 // /bundle/:userId はOTKを消費してしまうためこのエンドポイントを分けている。
 router.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
+  // /bundle と同じく、友だち・同じグループ・自分だけに限る。
+  // ここだけ素通しだと、IDを総当たりして「誰が登録しているか」と各人の身元鍵を集められた。
+  if (targetId !== req.user.userId && !(await canInteract(req.user.userId, targetId))) {
+    return res.status(403).json({ error: 'このユーザーの鍵は取得できません' });
+  }
   const identity = await db.get('SELECT identity_pubkey, signing_pubkey, signed_prekey_pub, signed_prekey_sig, registration_id FROM identity_keys WHERE user_id = ?', [targetId]);
   if (!identity) {
     return res.status(404).json({ error: 'このユーザーの鍵が登録されていません' });

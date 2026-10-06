@@ -740,16 +740,15 @@
     let googleAppPollTimer = null;
     async function googleLoginViaBrowser() {
       clearInterval(googleAppPollTimer);
-      const arr = new Uint8Array(24);
-      crypto.getRandomValues(arr);
-      const state = btoa(String.fromCharCode.apply(null, arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       try {
+        // state と、結果を受け取るための合言葉(pollKey)はサーバーが作る
         const r = await fetch('/api/auth/google/app-start', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state })
+          body: JSON.stringify({})
         });
         const d = await r.json();
-        if (!r.ok || !d.url) { showError(d.error || 'Googleログインを開始できませんでした'); return; }
+        if (!r.ok || !d.url || !d.state || !d.pollKey) { showError(d.error || 'Googleログインを開始できませんでした'); return; }
+        const state = d.state, pollKey = d.pollKey;
         window.open(d.url, '_system');
         showSuccess('ブラウザでGoogleにログインしたら、このアプリに戻ってください');
         const t0 = Date.now();
@@ -759,7 +758,7 @@
           polling = true;
           try {
             if (Date.now() - t0 > 5 * 60 * 1000) { clearInterval(googleAppPollTimer); showError('時間切れです。もう一度やり直してください'); return; }
-            const pr = await fetch('/api/auth/google/app-poll?state=' + encodeURIComponent(state));
+            const pr = await fetch('/api/auth/google/app-poll?state=' + encodeURIComponent(state) + '&key=' + encodeURIComponent(pollKey));
             const pd = await pr.json();
             if (pd.pending) return;
             clearInterval(googleAppPollTimer);
