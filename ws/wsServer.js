@@ -227,6 +227,7 @@ function initWebSocketServer(server) {
     let callAssistSessions = { mic: null, remote: null };
     // 入力中表示・オンライン問い合わせのたびにDBを引かないよう、関係の確認結果を1分だけ覚える
     const relationCache = new Map(); // targetId -> { ok, ts }
+    const groupTypingCache = new Map(); // groupId -> { ts, members }  (入力中の中継先。30秒だけ覚える)
     const canReach = async (targetId) => {
       if (typeof targetId !== 'string' || !targetId || targetId.length > 100) return false;
       const hit = relationCache.get(targetId);
@@ -455,6 +456,24 @@ function initWebSocketServer(server) {
       }
 
       // --- タイピングインジケータの中継 ---
+      // --- グループの「入力中」: 自分以外の今のメンバーに中継する ---
+      if (data.type === 'group_typing' || data.type === 'group_typing_stop') {
+        const gid = typeof data.groupId === 'string' ? data.groupId.slice(0, 100) : '';
+        if (!gid) return;
+        const now = Date.now();
+        let g = groupTypingCache.get(gid);
+        if (!g || now - g.ts > 30000) {
+          const rows = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [gid]);
+          g = { ts: now, members: rows.map(r => r.user_id) };
+          if (groupTypingCache.size > 200) groupTypingCache.clear();
+          groupTypingCache.set(gid, g);
+        }
+        if (!g.members.includes(userId)) return;
+        const out = { type: data.type, groupId: gid, userId };
+        g.members.forEach(m => { if (m !== userId) broadcastToUser(m, out); });
+        return;
+      }
+
       if (data.type === 'typing') {
         if (!(await canReach(data.recipientId))) return;
         broadcastToUser(data.recipientId, {

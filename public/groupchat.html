@@ -181,6 +181,28 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
 .mm-cls{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
+/* グループの「入力中」。打っている人のアイコンを1つの丸の中に小さく並べる */
+#gTyping{display:flex;align-items:flex-end;gap:8px;width:100%;margin:2px 0 6px;transform-origin:left bottom;transition:transform .38s cubic-bezier(.34,1.56,.64,1),opacity .25s ease}
+#gTyping.gt-hide{transform:scale(.55);opacity:0}
+.gt-av{width:30px;height:30px;border-radius:50%;position:relative;flex-shrink:0;overflow:hidden;background:rgba(148,163,184,.25)}
+.gt-av i{position:absolute;border-radius:50%;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-style:normal;line-height:1;box-shadow:0 0 0 1.5px rgba(255,255,255,.9);transition:left .38s cubic-bezier(.34,1.56,.64,1),top .38s cubic-bezier(.34,1.56,.64,1),width .38s cubic-bezier(.34,1.56,.64,1),height .38s cubic-bezier(.34,1.56,.64,1),font-size .3s;animation:gtPop .4s cubic-bezier(.34,1.56,.64,1)}
+.gt-av i.gt-more{background:#64748b}
+.gt-av i.gt-out{animation:gtOut .25s ease forwards}
+@keyframes gtPop{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes gtOut{to{transform:scale(0);opacity:0}}
+.gt-col{display:flex;flex-direction:column;align-items:flex-start}
+.gt-name{font-size:11px;color:#64748b;margin:0 0 3px 6px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gt-bub{display:flex;align-items:center;padding:10px 16px;border-radius:18px 18px 18px 4px;background:rgba(0,0,0,.08)}
+.gt-dots{display:flex;align-items:center;gap:4px;padding:4px 2px;filter:url(#gcGoo)}
+.gt-dots span{width:8px;height:8px;border-radius:50%;background:#8b8f98}
+.gt-dots span:nth-child(1){animation:gcGooA 1.5s ease-in-out infinite}
+.gt-dots span:nth-child(2){animation:gcGooB 1.5s ease-in-out infinite}
+.gt-dots span:nth-child(3){animation:gcGooC 1.5s ease-in-out infinite}
+@keyframes gcGooA{0%,100%{transform:translate(0,0)}25%{transform:translate(0,-4px)}50%{transform:translate(6px,0)}}
+@keyframes gcGooB{0%,100%{transform:scale(1)}35%{transform:translateY(-4px) scale(1)}50%{transform:scale(1.25)}}
+@keyframes gcGooC{0%,100%{transform:translate(0,0)}45%{transform:translate(0,-4px)}50%{transform:translate(-6px,0)}}
+html.dark-mode .gt-bub{background:rgba(255,255,255,.1)}
+html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!important;transition:none!important}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
@@ -215,7 +237,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.168 beta</div>
+  <div class="version-badge">Bro Chat v1.28.169 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -709,10 +731,12 @@ async function handleMediaGroup(f,t){
 
 document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
-  const txt=document.getElementById('mi').value.trim();
+  let txt=document.getElementById('mi').value.trim();
   if(!txt)return;
-  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。送らずに3日間停止
-  if(window.BCProfanity&&await window.BCProfanity.blockIfProfane(txt,'group')){document.getElementById('mi').value='';return;}
+  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。
+  // 禁止語の所だけ f*** にして送り、送り終わったら自分を3日間停止にする(グループに「Banしました」)
+  const profane=!!(window.BCProfanity&&window.BCProfanity.containsBannedWord(txt));
+  if(profane)txt=window.BCProfanity.censor(txt);
   if(window.LiquidGlass) window.LiquidGlass.haptic('light');
 
   document.getElementById('mi').value='';
@@ -755,6 +779,7 @@ document.getElementById('tform').onsubmit=async e=>{
         console.error('編集に失敗しました:',data);
       }
     }catch(err){console.error('編集エラー:',err);}
+    if(profane)window.BCProfanity.reportAfterSend({where:'group',groupId});
     return;
   }
 
@@ -788,6 +813,7 @@ document.getElementById('tform').onsubmit=async e=>{
   }catch(err){
     console.error('送信エラー:',err);
   }
+  if(profane)window.BCProfanity.reportAfterSend({where:'group',groupId});
 };
 
 // text: 表示テキスト(メディアメッセージの場合はキャプション)
@@ -796,6 +822,114 @@ document.getElementById('tform').onsubmit=async e=>{
 // member: 送信者情報(incoming時のみ使用)
 // msgId: サーバー側のメッセージID(編集・削除・既読・ピン留めの対象特定に必須)
 // createdAt: サーバーが記録した送信時刻(未指定時は現在時刻)
+// ========== グループの「入力中」 ==========
+// 打っている人のアイコンを1つの丸の中に並べる(1人なら丸ごと、2人なら斜めに2つ、3人なら三角、
+// 4人以上は4分割で、5人目からは「+N」)。人が増減すると中のアイコンが動いて並び直す。
+const groupTypers=new Map(); // userId -> 消える時刻のタイマー
+const GT_LAYOUT={
+  1:[[0,0,30]],
+  2:[[1,1,18],[11,11,18]],
+  3:[[7.5,0.5,15],[0.5,14,15],[14.5,14,15]],
+  4:[[1,1,14],[15,1,14],[1,15,14],[15,15,14]],
+};
+function gtEnsure(){
+  let el=document.getElementById('gTyping');
+  if(el)return el;
+  el=document.createElement('div');
+  el.id='gTyping';el.className='gt-hide';el.style.display='none';
+  el.innerHTML='<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="gcGoo"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></svg>'
+    +'<div class="gt-av"></div><div class="gt-col"><div class="gt-name"></div><div class="gt-bub"><span class="gt-dots"><span></span><span></span><span></span></span></div></div>';
+  document.getElementById('cs').appendChild(el);
+  return el;
+}
+function gtRender(){
+  const el=gtEnsure();
+  const cs=document.getElementById('cs');
+  const ids=[...groupTypers.keys()].filter(id=>gi&&gi.members.some(m=>m.id===id));
+  if(!ids.length){
+    el.classList.add('gt-hide');
+    clearTimeout(el.__hideT);
+    el.__hideT=setTimeout(()=>{if(!groupTypers.size)el.style.display='none';},260);
+    return;
+  }
+  clearTimeout(el.__hideT);
+  const nearBottom=cs.scrollHeight-cs.scrollTop-cs.clientHeight<120;
+  if(el.parentNode!==cs||el!==cs.lastElementChild)cs.appendChild(el);
+  const av=el.querySelector('.gt-av');
+  const shown=ids.slice(0,ids.length>4?3:4);
+  const extra=ids.length-shown.length;
+  const slots=GT_LAYOUT[Math.min(4,shown.length+(extra?1:0))];
+  // 抜けた人のアイコンは縮めて消す
+  av.querySelectorAll('i[data-uid]').forEach(i=>{
+    const keep=i.dataset.uid==='+'?extra>0:shown.includes(i.dataset.uid);
+    if(!keep&&!i.classList.contains('gt-out')){i.classList.add('gt-out');setTimeout(()=>i.remove(),260);}
+  });
+  const place=(i,k)=>{const[x,y,d]=slots[k];i.style.left=x+'px';i.style.top=y+'px';i.style.width=d+'px';i.style.height=d+'px';i.style.fontSize=Math.max(7,Math.round(d*.42))+'px';};
+  shown.forEach((uid,k)=>{
+    let i=av.querySelector(`i[data-uid="${uid}"]:not(.gt-out)`);
+    if(!i){
+      const m=gi.members.find(x=>x.id===uid)||{};
+      i=document.createElement('i');i.dataset.uid=uid;
+      const nm=m.name||'?';
+      i.style.background='hsl('+(Math.abs(nm.charCodeAt(0)*47)%360)+',60%,55%)';
+      if(m.avatarImg){i.style.backgroundImage='url('+JSON.stringify(String(m.avatarImg))+')';i.style.backgroundSize='cover';i.style.backgroundPosition='center';}
+      else i.textContent=(m.initials||nm.charAt(0)||'?');
+      av.appendChild(i);
+    }
+    place(i,k);
+  });
+  let more=av.querySelector('i[data-uid="+"]:not(.gt-out)');
+  if(extra>0){
+    if(!more){more=document.createElement('i');more.dataset.uid='+';more.className='gt-more';av.appendChild(more);}
+    more.textContent='+'+extra;
+    place(more,3);
+  }
+  const names=ids.map(id=>(gi.members.find(m=>m.id===id)||{}).name||'誰か');
+  el.querySelector('.gt-name').textContent=names.length===1?names[0]+'が入力中'
+    :names.length===2?names[0]+'、'+names[1]+'が入力中'
+    :names[0]+'、'+names[1]+'ほか'+(names.length-2)+'人が入力中';
+  if(el.style.display==='none'){el.style.display='flex';void el.offsetWidth;}
+  el.classList.remove('gt-hide');
+  if(nearBottom)cs.scrollTop=cs.scrollHeight;
+}
+function gtSet(uid,on){
+  clearTimeout(groupTypers.get(uid));
+  if(on)groupTypers.set(uid,setTimeout(()=>{groupTypers.delete(uid);gtRender();},5000));
+  else groupTypers.delete(uid);
+  gtRender();
+}
+// 自分が打っている間は2.5秒おきに知らせる。送信・空になった・画面を離れた時は止める
+let gtLastSent=0,gtSending=false;
+function gtSend(type){
+  try{if(groupWs&&groupWs.readyState===1)groupWs.send(JSON.stringify({type,groupId}));}catch(e){}
+}
+document.getElementById('mi').addEventListener('input',()=>{
+  const v=document.getElementById('mi').value.trim();
+  if(!v){if(gtSending){gtSending=false;gtLastSent=0;gtSend('group_typing_stop');}return;}
+  const now=Date.now();
+  if(now-gtLastSent>2500){gtLastSent=now;gtSending=true;gtSend('group_typing');}
+});
+document.getElementById('tform').addEventListener('submit',()=>{if(gtSending){gtSending=false;gtLastSent=0;gtSend('group_typing_stop');}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&gtSending){gtSending=false;gtLastSent=0;gtSend('group_typing_stop');}});
+
+// サーバーが出すお知らせ(禁止語によるBan等)。未読の区切り線と同じ見た目で真ん中に出す
+function createNotice(msgId,content){
+  const cs=document.getElementById('cs');
+  if(msgId&&cs.querySelector(`[data-msg-id="${msgId}"]`))return;
+  let n=null;try{n=JSON.parse(content).__notice__;}catch(e){}
+  const label=(n&&n.kind==='ban')?`${String(n.name||'ユーザー').slice(0,40)}がFワードを言ったためBanしました。`:'お知らせ';
+  const div=document.createElement('div');
+  if(msgId)div.dataset.msgId=msgId;
+  div.className='bc-notice';
+  div.style.cssText='width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;';
+  const line=()=>{const l=document.createElement('div');l.style.cssText='flex:1;height:1px;background:rgba(239,68,68,.35);';return l;};
+  const t=document.createElement('span');t.textContent=label;
+  div.appendChild(line());div.appendChild(t);div.appendChild(line());
+  const ti=document.getElementById('gTyping');
+  if(ti&&ti.parentNode===cs)cs.insertBefore(div,ti);else cs.appendChild(div);
+  cs.scrollTop=cs.scrollHeight;
+}
+
 function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   const cs=document.getElementById('cs');
   const msgDiv=document.createElement('div');
@@ -846,7 +980,9 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   }
 
   msgDiv.appendChild(wrap);
-  cs.appendChild(msgDiv);
+  // 入力中の表示は常に一番下に置く(その上にメッセージを差し込む)
+  const gti=document.getElementById('gTyping');
+  if(gti&&gti.parentNode===cs)cs.insertBefore(msgDiv,gti);else cs.appendChild(msgDiv);
   cs.scrollTop=99999;
   // 履歴の一括読み込みではなく、自分の送信直後・リアルタイム受信の時だけ
   // ガラスが凝縮するように出現させる(大量の履歴に一斉適用すると
@@ -1346,6 +1482,7 @@ async function loadGroupMessages(){
     const msgs=await api('/api/groups/'+groupId+'/messages');
     if(Array.isArray(msgs)){
       for(const msg of msgs){
+        if(msg.msg_type==='notice'){createNotice(msg.id,msg.content);continue;}
         const member=gi.members.find(m=>m.id===msg.sender_id);
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
         const incoming=msg.sender_id!==myUserId;
@@ -1442,10 +1579,16 @@ function connectGroupWS(){
       const data=JSON.parse(e.data);
       if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
       if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); return; }
+      if((data.type==='group_typing'||data.type==='group_typing_stop')&&data.groupId===groupId){
+        if(data.userId!==myUserId)gtSet(data.userId,data.type==='group_typing');
+        return;
+      }
       if(typeof data.type==='string'&&data.type.startsWith('gcall_')){ window.GroupCall.handle(data); return; }
       if(data.type==='group_message'&&data.groupId===groupId){
         const msg=data.message;
+        if(msg.msgType==='notice'){createNotice(msg.id,msg.content);return;}
         if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
+        if(groupTypers.has(msg.senderId))gtSet(msg.senderId,false);
         const member=gi.members.find(m=>m.id===msg.senderId);
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
         createMsg(text,media,true,member,msg.id,msg.createdAt,true);

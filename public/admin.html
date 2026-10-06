@@ -319,7 +319,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.168 beta</div>
+  <div class="version-badge">Bro Chat v1.28.169 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1140,13 +1140,12 @@ async function sendMediaViaCloudinary(f, t) {
 
 document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
-  const txt = document.getElementById('msgInput').value.trim();
+  let txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
-  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。送らずに3日間停止
-  if (window.BCProfanity && await window.BCProfanity.blockIfProfane(txt, 'dm')) {
-    document.getElementById('msgInput').value = '';
-    return;
-  }
+  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。
+  // 禁止語の所だけ f*** にして送り、送り終わったら自分を3日間停止にする(相手には「Banしました」)
+  const profane = !!(window.BCProfanity && window.BCProfanity.containsBannedWord(txt));
+  if (profane) txt = window.BCProfanity.censor(txt);
   if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   document.getElementById('msgInput').value = '';
   if (window.fitMsgInput) fitMsgInput();
@@ -1160,6 +1159,7 @@ document.getElementById('chatForm').onsubmit = async e => {
       const { encrypted, content: sendContent } = await encryptMessage(txt, otherId);
       api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: sendContent, encrypted }) })
         .then(data => {
+          if (profane) window.BCProfanity.reportAfterSend({ where: 'dm', peerId: otherId });
           if (data.message) {
             // 自分の平文キャッシュも更新
             cacheOwnPlaintext(msgId, txt);
@@ -1176,7 +1176,8 @@ document.getElementById('chatForm').onsubmit = async e => {
     void sendBtn.offsetWidth;
     sendBtn.classList.add('send-launch');
     setTimeout(() => sendBtn.classList.remove('send-launch'), 420);
-    sendRealMessage(txt);
+    await sendRealMessage(txt);
+    if (profane) window.BCProfanity.reportAfterSend({ where: 'dm', peerId: otherId });
   }
 };
 
@@ -1563,6 +1564,27 @@ async function logCall(status) {
   } catch (e) { console.error('logCall send failed:', e); }
 }
 
+function noticeText(msg) {
+  let n = null;
+  try { n = JSON.parse(msg.content).__notice__; } catch (e) {}
+  if (n && n.kind === 'ban') return `${String(n.name || 'ユーザー').slice(0, 40)}がFワードを言ったためBanしました。`;
+  return 'お知らせ';
+}
+function renderNoticeMessage(msg) {
+  const cs = document.getElementById('chatScreen');
+  let div = msgDOMCache.get(msg.id);
+  const isNew = !div;
+  if (isNew) { div = document.createElement('div'); div.dataset.msgId = msg.id; }
+  div.className = 'bc-notice';
+  div.style.cssText = 'width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;';
+  div.textContent = '';
+  const line = () => { const l = document.createElement('div'); l.style.cssText = 'flex:1;height:1px;background:rgba(239,68,68,.35);'; return l; };
+  const t = document.createElement('span'); t.textContent = noticeText(msg);
+  div.appendChild(line()); div.appendChild(t); div.appendChild(line());
+  if (isNew) { cs.appendChild(div); msgDOMCache.set(msg.id, div); }
+  return div;
+}
+
 function renderMessage(msg) {
   queueRender(msg);
 }
@@ -1571,6 +1593,8 @@ function renderMessageImpl(msg) {
   if (!msg || !msg.id) return null;
   // 送信の応答が先に返って正式なメッセージに置き換わった仮メッセージは、もう描かない(二重表示防止)
   if (String(msg.id).startsWith('temp-') && !realMessages.some(m => m.id === msg.id)) return null;
+  // サーバーが出すお知らせ(禁止語によるBan等)。未読の区切り線と同じ見た目で真ん中に出す
+  if (msg.msgType === 'notice') return renderNoticeMessage(msg);
   const cs = document.getElementById('chatScreen');
   const isMine = msg.senderId === myUserId;
   let msgDiv = msgDOMCache.get(msg.id);
