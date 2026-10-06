@@ -17,9 +17,9 @@
       .split('').map(c => LEET[c] || c).join('')
       .replace(/[^a-z*]/g, '')
       .replace(/(.)\1+/g, '$1');
-    // fuck / fvck / fxck / f*ck / f*k / fck / phuck。
+    // fuck / fack / fvck / fxck / f*ck / f*k / fck / phuck。
     // 「fuk」単体はローマ字(fukuoka・fuku 等)とぶつかるので含めない
-    return /f[uvx*]ck|f\*k|fck|phuck|phuk/.test(latin);
+    return /f[uvxa*]ck|f\*k|fck|ph[ua]ck|phuk/.test(latin);
   }
   
   // 引っかかった時: 送らずに3日間の停止をサーバーへ伝え、停止画面を出す。true を返したら送信を止める

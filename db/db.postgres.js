@@ -55,6 +55,10 @@ async function initDB() {
     // 禁止語による利用停止: 解除時刻(ms)と理由
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until BIGINT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT');
+    // 自動Banの動作テストで止まったアカウント(2026-10-06 14:30 JST までに受けた停止)を一度だけ解除する。
+    // 停止は受けた時刻+3日なので、解除時刻がこれ以前 = その時刻までに受けた停止。
+    // それ以降に受けた停止には影響しない(この行は 2026-10-09 を過ぎたら消してよい)
+    await pool.query('UPDATE users SET banned_until = NULL, ban_reason = NULL WHERE banned_until IS NOT NULL AND banned_until <= $1', [Date.parse('2026-10-09T05:30:00Z')]);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_required BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');
