@@ -233,7 +233,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.171 beta</div>
+  <div class="version-badge">Bro Chat v1.28.172 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1504,7 +1504,12 @@ async function loadGroupMessages(pre){
     if(Array.isArray(msgs)){
       for(const msg of msgs){
         if(msg.msg_type==='notice'){createNotice(msg.id,msg.content);continue;}
-        const member=gi.members.find(m=>m.id===msg.sender_id);
+        // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
+        let member=gi.members.find(m=>m.id===msg.sender_id);
+        if(!member&&msg.sender_id!==myUserId){
+          const nm=msg.display_name||'退出したメンバー';
+          member={id:msg.sender_id,name:nm,color:nameColor(nm),initials:nm.charAt(0),avatarImg:'',isOwner:false};
+        }
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
         const incoming=msg.sender_id!==myUserId;
         const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
