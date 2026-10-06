@@ -335,7 +335,8 @@
       ? s.onColor
       : (light ? 'rgba(255,255,255,.2)' : 'rgba(10,10,24,.08)'));
     // 触っていない時の見た目(普通の不透明なボタン)。色付きの状態(ミュート中など)はその色のまま
-    e.style.setProperty('--lg-rest', s.on ? s.onColor : (light ? 'rgba(255,255,255,.94)' : 'rgba(46,46,52,.94)'));
+    // 暗い所(通話画面など)では黒く塗りつぶさず、白の半透明(iOSの通話ボタンと同じ)にする
+    e.style.setProperty('--lg-rest', s.on ? s.onColor : (light ? 'rgba(255,255,255,.94)' : 'rgba(255,255,255,.2)'));
     s.baseSh = 0.14 + Math.min(0.28, sd * 1.5) + (light ? 0 : 0.08);
     e.style.setProperty('--sh', s.baseSh.toFixed(3));
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
