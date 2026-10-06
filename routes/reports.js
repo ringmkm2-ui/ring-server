@@ -37,17 +37,20 @@ router.post('/', verifyToken, reportLimiter, asyncHandler(async (req, res) => {
   if (message.length < 5) return res.status(400).json({ error: '内容を5文字以上で書いてください' });
 
   let targetId = null;
+  let targetName = null;
   let category = null;
   if (kind === 'user') {
     category = USER_CATEGORIES.includes(body.category) ? body.category : 'other';
     const byId = clean(body.targetUserId, 100);
     const byCode = clean(body.targetCode, 20).toUpperCase();
     let target = null;
-    if (byId) target = await db.get("SELECT id FROM users WHERE id = ? AND password_hash <> ''", [byId]);
-    else if (byCode) target = await db.get("SELECT id FROM users WHERE user_id = ? AND password_hash <> ''", [byCode]);
+    // (以前は password_hash が空のアカウント=Googleログインの人を通報できなかった。退会済みだけ除く)
+    if (byId) target = await db.get("SELECT id, display_name FROM users WHERE id = ? AND username NOT LIKE 'deleted%'", [byId]);
+    else if (byCode) target = await db.get("SELECT id, display_name FROM users WHERE user_id = ? AND username NOT LIKE 'deleted%'", [byCode]);
     if (!target) return res.status(404).json({ error: '通報するユーザーが見つかりません' });
     if (target.id === req.userId) return res.status(400).json({ error: '自分自身は通報できません' });
     targetId = target.id;
+    targetName = target.display_name;
   }
 
   await db.run(
@@ -55,6 +58,13 @@ router.post('/', verifyToken, reportLimiter, asyncHandler(async (req, res) => {
     [uuidv4(), kind, req.userId, targetId, category, message, clean(body.appVersion, 40) || pkg.version, clean(req.get('user-agent'), 300)]
   );
   res.json({ ok: true });
+
+  // 運営(Ring)のスマホとブラウザに知らせる。返事を待たせないよう、応答を返した後で送る
+  db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]).then(me => {
+    require('../utils/adminNotify').notifyAdminsOfReport({
+      kind, message, category, reporterName: me && me.display_name, targetName,
+    });
+  }).catch(e => console.error('[reports] notify failed:', e.message));
 }));
 
 module.exports = router;
