@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.178';
+const CACHE_VERSION = 'v1.28.179';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -198,6 +198,18 @@ self.addEventListener('push', event => {
       })());
     }
 
+    // 運営向け: バグ報告・ユーザー通報が届いた
+    if (data.type === 'admin_report') {
+      event.waitUntil(self.registration.showNotification(data.title || '報告が届きました', {
+        body: data.body || '',
+        icon: '/images/icons/icon-192.png',
+        badge: '/images/icons/icon-192.png',
+        tag: 'admin-report',
+        renotify: true,
+        data: { type: 'admin_report' },
+      }));
+    }
+
     // グループチャットの新着メッセージ
     if (data.type === 'new_group_message') {
       const { groupId, groupName, senderName, preview } = data;
@@ -244,6 +256,15 @@ self.addEventListener('notificationclick', event => {
           return clients.openWindow(targetUrl);
         })
     );
+    return;
+  }
+
+  // 運営向けの報告通知 → アプリを開く(中身は管理exeの「報告」タブで見る)
+  if (notifData.type === 'admin_report') {
+    event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      if (list.length) return list[0].focus();
+      return clients.openWindow('/talklist.html');
+    }));
     return;
   }
 
