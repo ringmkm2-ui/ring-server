@@ -580,11 +580,16 @@ function publicBase(req) {
 }
 
 router.post('/google/app-start', loginLimiter, (req, res) => {
-  const state = req.body && req.body.state;
-  if (typeof state !== 'string' || !GOOGLE_STATE_RE.test(state)) return res.status(400).json({ error: 'state invalid' });
+  // state はサーバーが作る。以前はクライアントが好きな値を送れ、app-poll にも認証が無かったため、
+  // 攻撃者が自分で決めた state で app-start を叩いて、その認証URLを相手に踏ませれば、
+  // 相手がGoogleでログインした結果(= そのアカウントのトークン)を app-poll で受け取れてしまった。
+  // 併せて、結果を受け取るための合言葉(pollKey)を app-start の呼び出し元にだけ返す。
   if (googleAppPending.size > 2000) return res.status(429).json({ error: 'busy' });
-  const nonce = require('crypto').randomBytes(16).toString('hex');
-  googleAppPending.set(state, { nonce, ts: Date.now(), result: null });
+  const crypto = require('crypto');
+  const state = crypto.randomBytes(24).toString('base64url');
+  const pollKey = crypto.randomBytes(32).toString('hex');
+  const nonce = crypto.randomBytes(16).toString('hex');
+  googleAppPending.set(state, { nonce, ts: Date.now(), result: null, pollKey });
   const redirectUri = publicBase(req) + '/google-callback.html';
   const q = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -595,7 +600,7 @@ router.post('/google/app-start', loginLimiter, (req, res) => {
     state,
     prompt: 'select_account',
   });
-  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri });
+  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri, state, pollKey });
 });
 
 router.post('/google/app-relay', loginLimiter, async (req, res) => {
@@ -612,6 +617,12 @@ router.get('/google/app-poll', (req, res) => {
   const state = String(req.query.state || '');
   const pend = GOOGLE_STATE_RE.test(state) ? googleAppPending.get(state) : null;
   if (!pend) return res.status(404).json({ error: 'expired' });
+  // app-start を呼んだ本人だけが結果(トークン)を受け取れる
+  const given = Buffer.from(sha256(String(req.query.key || '')), 'hex');
+  const want = Buffer.from(sha256(pend.pollKey || ''), 'hex');
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+    return res.status(404).json({ error: 'expired' });
+  }
   if (!pend.result) return res.json({ pending: true });
   googleAppPending.delete(state); // 結果は1回だけ渡す
   res.status(pend.result.status).json(pend.result.body);

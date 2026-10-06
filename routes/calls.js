@@ -21,6 +21,9 @@ router.post('/reject', verifyToken, asyncHandler(async (req, res) => {
 // APKの着信画面に相手のアイコンを出すため。プロフィール画像(data:URL か URL)を画像として返す
 router.get('/avatar/:userId', verifyToken, asyncHandler(async (req, res) => {
   const db = require('../db/db');
+  // 知らない相手のアイコンは返さない(IDを総当たりして全ユーザーの顔写真を集められないように)
+  const { canInteract } = require('../utils/relations');
+  if (!(await canInteract(req.userId, req.params.userId))) return res.status(404).end();
   const u = await db.get('SELECT profile_pic FROM users WHERE id = ?', [req.params.userId]);
   const pic = u && u.profile_pic;
   if (!pic) return res.status(404).end();

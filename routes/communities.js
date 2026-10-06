@@ -7,8 +7,19 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { sendServerError } = require('../utils/errorResponse');
+const { messageSendLimiter } = require('../utils/rateLimits');
 
 const router = express.Router();
+
+// コミュニティのメッセージは平文でDBに入る。長さもメディアのURLも見ていなかったため、
+// 1通4MBの本文を連投するだけで無料プランのDB(1GB)を埋められたし、mediaUrlに好きなURLを
+// 置いて、見た人の端末をそこへアクセスさせられた(IPや閲覧時刻の収集)。
+const MAX_COMMUNITY_TEXT = 2000;
+function isValidCommunityMediaUrl(value) {
+  if (!value) return true;
+  if (typeof value !== 'string' || value.length > 500) return false;
+  return /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value);
+}
 
 // 招待コードの総当たり対策: 参加の試行はユーザー単位で15分に20回まで
 const joinLimiter = require('express-rate-limit')({
@@ -40,6 +51,9 @@ router.post('/', verifyToken, asyncHandler(async (req, res) => {
   }
   if (name.length > 50) {
     return res.status(400).json({ error: 'コミュニティ名は50文字以内にしてください' });
+  }
+  if (description != null && (typeof description !== 'string' || description.length > 500)) {
+    return res.status(400).json({ error: '説明は500文字以内にしてください' });
   }
 
   const id = uuidv4();
@@ -172,7 +186,7 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
 }));
 
 // --- チャンネルにメッセージ送信 ---
-router.post('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async (req, res) => {
+router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
   const member = await db.get(
     'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ?',
     [req.params.id, req.user.userId]
@@ -182,13 +196,21 @@ router.post('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async
   if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
   censorBodyAndBanAfter(req, res, ['content']);
-  const { content, mediaUrl, mediaType } = req.body;
+  const { content, mediaUrl, mediaType } = req.body || {};
+  if ((content != null && typeof content !== 'string') || (mediaUrl != null && typeof mediaUrl !== 'string')) {
+    return res.status(400).json({ error: '入力の形式が正しくありません' });
+  }
   if (!content && !mediaUrl) return res.status(400).json({ error: 'メッセージが必要です' });
+  if (content && content.length > MAX_COMMUNITY_TEXT) {
+    return res.status(400).json({ error: `メッセージは${MAX_COMMUNITY_TEXT}文字以内にしてください` });
+  }
+  if (!isValidCommunityMediaUrl(mediaUrl)) return res.status(400).json({ error: 'メディアの形式が不正です' });
+  if (mediaUrl && !['image', 'video'].includes(mediaType)) return res.status(400).json({ error: 'mediaTypeが不正です' });
 
   const id = uuidv4();
   await db.run(
     'INSERT INTO community_messages (id, channel_id, sender_id, content, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, req.params.channelId, req.user.userId, content || '', mediaUrl || null, mediaType || null]
+    [id, req.params.channelId, req.user.userId, content || '', mediaUrl || null, mediaUrl ? mediaType : null]
   );
 
   const msg = await db.get(
