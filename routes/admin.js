@@ -69,7 +69,7 @@ router.get('/users', asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at, banned_until, ban_reason
        FROM users
-      WHERE password_hash <> '' AND (? = '' OR username LIKE ? OR display_name LIKE ? OR user_id LIKE ?)
+      WHERE username NOT LIKE 'deleted%' AND (? = '' OR username LIKE ? OR display_name LIKE ? OR user_id LIKE ?)
       ORDER BY created_at DESC LIMIT 200`,
     [q, like, like, like]
   );
@@ -93,7 +93,8 @@ router.get('/users', asyncHandler(async (req, res) => {
 }));
 
 async function findUser(id) {
-  return db.get("SELECT id, username FROM users WHERE id = ? AND password_hash <> ''", [String(id).slice(0, 100)]);
+  // (Googleログインのアカウントはパスワードが空なので、以前は一覧にも出ず操作もできなかった。退会済みだけ除く)
+  return db.get("SELECT id, username FROM users WHERE id = ? AND username NOT LIKE 'deleted%'", [String(id).slice(0, 100)]);
 }
 
 // 全端末からログアウトさせる

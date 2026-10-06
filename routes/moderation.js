@@ -28,4 +28,24 @@ router.post('/self-report', verifyToken, asyncHandler(async (req, res) => {
   res.status(403).json({ error: '禁止されている言葉を使ったため、3日間利用停止になりました', banned: true, bannedUntil: until });
 }));
 
+// 停止画面からの解除(管理キーを知っている人だけ)。テストで止めた自分のアカウントを、
+// サーバーの再起動を待たずにその場で戻せるようにする。総当たりされないよう回数を絞る
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const unbanLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください。' },
+});
+const sha = s => crypto.createHash('sha256').update(String(s)).digest();
+router.post('/unban-self', unbanLimiter, verifyToken, asyncHandler(async (req, res) => {
+  const key = process.env.ADMIN_API_KEY;
+  const given = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+  if (!key || key.length < 16 || !given || !crypto.timingSafeEqual(sha(given), sha(key))) {
+    return res.status(401).json({ error: '管理キーが違います' });
+  }
+  await db.run('UPDATE users SET banned_until = NULL, ban_reason = NULL WHERE id = ?', [req.user.userId]);
+  res.json({ ok: true });
+}));
+
 module.exports = router;

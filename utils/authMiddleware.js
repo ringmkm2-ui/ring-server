@@ -76,7 +76,7 @@ async function verifyTokenWithRevocation(token) {
 }
 
 // 利用停止中でも使える物(ログアウトだけ)
-const BAN_ALLOWED = /^\/api\/auth\/logout\b/;
+const BAN_ALLOWED = /^\/api\/(auth\/logout|moderation\/unban-self)\b/;
 
 // Express用ミドルウェア。req.user (payload全体) と req.userId (互換性のため)
 // の両方を設定する。既存コードには req.user.userId を使う箇所と

@@ -192,16 +192,13 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 @keyframes gtOut{to{transform:scale(0);opacity:0}}
 .gt-col{display:flex;flex-direction:column;align-items:flex-start}
 .gt-name{font-size:11px;color:#64748b;margin:0 0 3px 6px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gt-bub{display:flex;align-items:center;padding:10px 16px;border-radius:18px 18px 18px 4px;background:rgba(0,0,0,.08)}
-.gt-dots{display:flex;align-items:center;gap:4px;padding:4px 2px;filter:url(#gcGoo)}
-.gt-dots span{width:8px;height:8px;border-radius:50%;background:#8b8f98}
-.gt-dots span:nth-child(1){animation:gcGooA 1.5s ease-in-out infinite}
-.gt-dots span:nth-child(2){animation:gcGooB 1.5s ease-in-out infinite}
-.gt-dots span:nth-child(3){animation:gcGooC 1.5s ease-in-out infinite}
-@keyframes gcGooA{0%,100%{transform:translate(0,0)}25%{transform:translate(0,-4px)}50%{transform:translate(6px,0)}}
-@keyframes gcGooB{0%,100%{transform:scale(1)}35%{transform:translateY(-4px) scale(1)}50%{transform:scale(1.25)}}
-@keyframes gcGooC{0%,100%{transform:translate(0,0)}45%{transform:translate(0,-4px)}50%{transform:translate(-6px,0)}}
-html.dark-mode .gt-bub{background:rgba(255,255,255,.1)}
+/* WhatsAppと同じ: 相手の吹き出しと同じ見た目の小さな吹き出しに、3つの点が順番にふわっと濃くなる */
+.gt-bub.bub{flex-direction:row;align-items:center;padding:12px 14px;min-width:0;border-radius:20px 20px 20px 4px}
+.gt-dots{display:flex;align-items:center;gap:5px}
+.gt-dots span{width:7px;height:7px;border-radius:50%;background:#8696a0;animation:gtWaDot 1.3s ease-in-out infinite}
+.gt-dots span:nth-child(2){animation-delay:.18s}
+.gt-dots span:nth-child(3){animation-delay:.36s}
+@keyframes gtWaDot{0%,70%,100%{opacity:.35;transform:scale(.82)}35%{opacity:1;transform:scale(1)}}
 html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!important;transition:none!important}
 </style>
 <script src="/js/nacl.min.js"></script>
@@ -222,7 +219,6 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
-<script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/actions.js"></script>
 <script src="/js/profanity.js"></script>
@@ -237,7 +233,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.169 beta</div>
+  <div class="version-badge">Bro Chat v1.28.170 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -338,7 +334,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       <div class="sh-title" data-i18n="members">メンバー</div>
       <div id="memList"></div>
       <div class="inv-row">
-        <input class="inv-input" id="invInput" placeholder="招待するユーザー名を入力">
+        <input class="inv-input" id="invInput" placeholder="招待する友だちのIDを入力">
         <button class="inv-btn glass-interactive" id="invBtn" data-i18n="invite">招待</button>
       </div>
       <button class="sh-close glass-interactive" data-close="memOv" data-i18n="close">閉じる</button>
@@ -441,6 +437,15 @@ async function api(path, opts={}) {
 
 // gi(グループ情報)はサーバーから取得する。取得完了までは
 // URLパラメータのnameのみで暫定表示し、loadGroupInfo()完了後に更新する。
+// アイコン画像を丸の大きさに合わせて敷く。以前は style.background を後から入れていたせいで
+// 大きさの指定(cover)が消え、画像の左上だけが写って白い丸に緑の角だけ見えていた
+function setAvBg(el,url){
+  if(!el||!url)return;
+  el.style.backgroundImage='url('+JSON.stringify(String(url))+')';
+  el.style.backgroundSize='cover';
+  el.style.backgroundPosition='center';
+  el.style.backgroundRepeat='no-repeat';
+}
 let gi = { id: groupId, name: params.get('name') || 'グループ', avatarImg: '', members: [], ownerId: null };
 
 // グループのE2E共有鍵(復号済みUint8Array)。取得済みならメモリ上に保持し、
@@ -474,6 +479,20 @@ async function checkGroupKeyHealth(){
     document.getElementById('keyBannerText').textContent=i18n.t('gk_unreadable');
     const rb=document.getElementById('keyBtnRestore');
     const hasBk=window.bcKeyBackup?(await window.bcKeyBackup.status().catch(()=>({server:false}))).server===true:false;
+    // 鍵のバックアップが無い(復元のしようが無い)なら、ボタンを押させずにこの端末で作り直して配る。
+    // それまでのメッセージはこの端末では読めないままだが、ここから先は普通に送受信できる
+    if(!hasBk&&!window.__gkAutoRekeyTried){
+      window.__gkAutoRekeyTried=true;
+      try{
+        const st=await api('/api/groups/'+groupId+'/key-status');
+        await loadGroupInfo();
+        await groupE2E.rotateGroupKey(groupId, gi.members.map(m=>m.id), st&&Number.isInteger(st.keyVersion)?st.keyVersion:undefined);
+        invalidateGroupKey();
+        await ensureGroupKey();
+        box.style.display='none';
+        return true;
+      }catch(e2){ console.warn('[groupchat] auto rekey failed:', e2&&e2.message); }
+    }
     rb.style.display=hasBk?'':'none';
     rb.textContent=i18n.t('gk_btn_restore');
     document.getElementById('keyBtnRekey').textContent=i18n.t('gk_btn_rekey');
@@ -561,7 +580,7 @@ function refreshHdr(){
   document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
   const av=document.getElementById('gavEl');
   if(gi.avatarImg){
-    av.style.backgroundImage=`url(${gi.avatarImg})`;
+    setAvBg(av,gi.avatarImg);
     av.style.background='';
     av.textContent='';
   }else{
@@ -837,8 +856,7 @@ function gtEnsure(){
   if(el)return el;
   el=document.createElement('div');
   el.id='gTyping';el.className='gt-hide';el.style.display='none';
-  el.innerHTML='<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="gcGoo"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></svg>'
-    +'<div class="gt-av"></div><div class="gt-col"><div class="gt-name"></div><div class="gt-bub"><span class="gt-dots"><span></span><span></span><span></span></span></div></div>';
+  el.innerHTML='<div class="gt-av"></div><div class="gt-col"><div class="gt-name"></div><div class="bub gt-bub"><span class="gt-dots"><span></span><span></span><span></span></span></div></div>';
   document.getElementById('cs').appendChild(el);
   return el;
 }
@@ -943,7 +961,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
     const sa=document.createElement('div');sa.className='sav';
     sa.style.background='rgba(255,255,255,.2)';
     sa.style.backdropFilter='blur(15px)';
-    if(member.avatarImg)sa.style.backgroundImage=`url(${member.avatarImg})`;
+    if(member.avatarImg)setAvBg(sa,member.avatarImg);
     else sa.textContent=member.initials||member.name?.charAt(0)||'?';
     msgDiv.appendChild(sa);
     const sn=document.createElement('div');sn.className='sname';sn.textContent=member.name;
@@ -1035,7 +1053,7 @@ function renderRD(rdDiv,readers,t){
   const MAX=5;const shown=readers.slice(0,MAX);const extra=readers.length-MAX;
   shown.forEach(m=>{
     const av=document.createElement('div');av.className='rav';av.style.background=m.color||'#64748b';
-    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    if(m.avatarImg)setAvBg(av,m.avatarImg);else av.textContent=m.initials||m.name?.charAt(0)||'?';
     av.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(av);
   });
   if(extra>0){const ex=document.createElement('span');ex.className='rext';ex.textContent=`+${extra}`;ex.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(ex);}
@@ -1165,7 +1183,7 @@ function openReadModal(readers,t){
   readers.forEach((m,idx)=>{
     const d=document.createElement('div');d.className='litem glass-materialize-light';d.style.animationDelay=Math.min(idx*30,240)+'ms';
     const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
-    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    if(m.avatarImg)setAvBg(av,m.avatarImg);else av.textContent=m.initials||m.name?.charAt(0)||'?';
     d.appendChild(av);
     const n=document.createElement('span');n.className='lname';n.textContent=m.name;d.appendChild(n);
     const ti=document.createElement('span');ti.style.cssText='font-size:12px;color:#64748b';ti.textContent=t;d.appendChild(ti);
@@ -1182,7 +1200,7 @@ function openMemModal(){
     const isMe=m.id===myUserId;
     const d=document.createElement('div');d.className='litem glass-materialize-light';d.style.animationDelay=Math.min(idx*30,240)+'ms';
     const av=document.createElement('div');av.className='lav';av.style.background=m.color||'#64748b';
-    if(m.avatarImg)av.style.backgroundImage=`url(${m.avatarImg})`;else av.textContent=m.initials||m.name?.charAt(0)||'?';
+    if(m.avatarImg)setAvBg(av,m.avatarImg);else av.textContent=m.initials||m.name?.charAt(0)||'?';
     d.appendChild(av);
     const n=document.createElement('span');n.className='lname';n.textContent=m.name+(isMe?'（自分）':'');d.appendChild(n);
     const r=document.createElement('span');r.className='lrole';r.textContent=m.isOwner?'管理者':'メンバー';d.appendChild(r);
@@ -1294,7 +1312,7 @@ function openGS(){
   document.getElementById('gNameIn').value=gi.name;
   const prev=document.getElementById('gCropPrev');
   if(gi.avatarImg){
-    prev.style.backgroundImage=`url(${gi.avatarImg})`;
+    setAvBg(prev,gi.avatarImg);
     prev.style.background='';
     prev.textContent='';
   }else{
@@ -1510,13 +1528,6 @@ async function loadGroupMessages(){
 // 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
 // (メンバー名・アバターを正しく紐付けるため)
 (async ()=>{
-  // キャッシュマネージャーを初期化
-  try {
-    await cacheManager.init();
-  } catch (e) {
-    console.error('Cache init error:', e);
-  }
-  
   // E2E暗号化用の鍵を初期化（e2eKeys.js の読み込みを待つ）
   try {
     // getOrCreateMyKeyPair が定義されるまで最大3秒待機

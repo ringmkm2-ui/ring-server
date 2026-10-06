@@ -378,7 +378,6 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
-<script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/actions.js"></script>
 <script src="/js/profanity.js"></script>
@@ -522,7 +521,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.169 beta</div>
+  <div class="version-badge">Bro Chat v1.28.170 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3325,10 +3324,9 @@ async function deletePost(postId, card) {
   } catch (e) { console.error('deletePost error:', e); }
 }
 
-// ページ読み込み完了時にキャッシュから復元開始
-document.addEventListener('DOMContentLoaded', () => {
-  initializeWithCache();
-});
+// (旧) IndexedDBのキャッシュから友だち一覧を出す処理は止めた。トーク一覧(#talkList)を
+// 友だちの一覧で上書きしてしまい、直後の最新のトーク一覧と入れ替わって表示がガタついていた。
+// 一覧の即表示は renderTalksFromCache(localStorage)が受け持つ
 
 // =============================================================================
 // Tactile Switch Engine
