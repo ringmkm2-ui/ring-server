@@ -8,7 +8,7 @@ const fs = require('fs');
 
 const APP_URL = process.env.BROCHAT_URL || 'https://ring-server-50sy.onrender.com';
 const APP_ORIGIN = new URL(APP_URL).origin;
-const ICON = path.join(__dirname, 'build', 'icon.png');
+const ICON = path.join(__dirname, 'assets', 'icon.png');
 
 // Windowsの通知に「Bro Chat」と出すため(インストーラーのショートカットと同じID)
 app.setAppUserModelId('com.brochat.desktop');
