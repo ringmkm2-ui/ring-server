@@ -131,7 +131,9 @@ async function main() {
           "https://res.cloudinary.com",
           "https://api.cloudinary.com",
         ],
-        frameSrc: ["https://accounts.google.com"],
+        // 'self' はPC用の2列表示(トーク一覧の右に自分のチャット画面を埋め込む)に必要。
+        // 以前は無かったため埋め込みが毎回ブロックされ、2列にならず画面ごと切り替わっていた
+        frameSrc: ["'self'", "https://accounts.google.com"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],

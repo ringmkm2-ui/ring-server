@@ -1,0 +1,44 @@
+name: Build Desktop EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-exe/**'
+      - '.github/workflows/build-desktop-exe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop-exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build exe
+        run: npm run dist
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v1.0.${{ github.run_number }}
+          name: Bro Chat Desktop v1.0.${{ github.run_number }}
+          body: |
+            BroChatSetup.exe … インストール版(スタートメニューとデスクトップにショートカットができる。Windowsの通知もこっちが確実)
+            BroChat.exe … インストール不要版(ダブルクリックで起動)
+          files: |
+            desktop-exe/dist/BroChatSetup.exe
+            desktop-exe/dist/BroChat.exe
+          prerelease: true
