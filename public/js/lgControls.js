@@ -203,7 +203,7 @@
     if (laRaf) return;
     laRaf = requestAnimationFrame(() => {
       laRaf = 0;
-      if (Math.abs(lightAng - lastLa) > 0.5) {
+      if (Math.abs(lightAng - lastLa) > 3) {   // 端末の傾きは常に揺れているので、3度以上変わった時だけ描き直す
         lastLa = lightAng;
         const v = 'rotate(' + lightAng.toFixed(1) + 'deg)';
         lightTargets().forEach(el => { el.style.transform = v; });
@@ -213,7 +213,8 @@
   // 光を当てるのは画面に出ている物だけ
   function lightTargets() {
     const out = [];
-    if (typeof rounds !== 'undefined') rounds.forEach(s => { if (s.e.isConnected && !s.e.classList.contains('lg-live') && s.sweeps) out.push(...s.sweeps); });
+    // 丸ボタンは触っている間しかガラスにならないので、押されている物だけ
+    if (typeof rounds !== 'undefined') rounds.forEach(s => { if (s.e.isConnected && s.e.classList.contains('lg-live') && s.sweeps) out.push(...s.sweeps); });
     if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(s => { if (s.sweeps) out.push(...s.sweeps); });
     document.querySelectorAll('.lg-sw-knob .lg-sweep').forEach(k => out.push(k));
     return out;
@@ -333,6 +334,8 @@
     s.tintEl.style.setProperty('--tint', s.on
       ? s.onColor
       : (light ? 'rgba(255,255,255,.2)' : 'rgba(10,10,24,.08)'));
+    // 触っていない時の見た目(普通の不透明なボタン)。色付きの状態(ミュート中など)はその色のまま
+    e.style.setProperty('--lg-rest', s.on ? s.onColor : (light ? 'rgba(255,255,255,.94)' : 'rgba(46,46,52,.94)'));
     s.baseSh = 0.14 + Math.min(0.28, sd * 1.5) + (light ? 0 : 0.08);
     e.style.setProperty('--sh', s.baseSh.toFixed(3));
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
@@ -479,19 +482,13 @@
   let rebuildT = 0;
   function rebuildAll() {
     visiblePanels.forEach(s => { if (s.e.isConnected) buildReplica(s); });
-    rounds.forEach(s => {
-      if (!s.e.isConnected || s.e.classList.contains('lg-live')) return;
-      const r = s.e.getBoundingClientRect();
-      if (!r.width || r.bottom < -PAD || r.top > innerHeight + PAD) return;
-      buildReplica(s);
-    });
+    // 丸ボタンは触った瞬間に作るので、ここでは作らない(普段は複製を持たない)
   }
   function rebuildSoon(ms) { clearTimeout(rebuildT); rebuildT = setTimeout(rebuildAll, ms || 120); }
   let scrollRaf = 0;
   function followScroll() {
     scrollRaf = 0;
     const list = [], rects = [];
-    rounds.forEach(s => { if (s.comp && s.e.isConnected && !s.e.classList.contains('lg-live')) list.push(s); });
     visiblePanels.forEach(s => { if (s.comp && s.e.isConnected) list.push(s); });
     for (let i = 0; i < list.length; i++) rects.push(list[i].e.getBoundingClientRect());   // 読むだけ
     for (let i = 0; i < list.length; i++) {                                              // 書くだけ
@@ -542,7 +539,7 @@
     s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp');
     s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
     s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
-    buildReplica(s);
+    // 下の複製は触った時(pressRound)に作る。普段は作らない(軽くするため)
     // 出現: フェードではなく、屈折を強めながら膨らんで「現れる」(デモと同じ)
     if (materialize && !calm()) {
       s.born = performance.now(); s.mat = 0; s.sc = 0.6; s.ts = 0.6; s.started = false;
@@ -566,7 +563,8 @@
 
   function pressRound(s, ev) {
     const e = s.e;
-    if (!e.classList.contains('lg-live')) buildReplica(s);
+    clearTimeout(s.dropT);
+    if (!e.classList.contains('lg-live') || !s.comp.childElementCount) buildReplica(s);
     askMotion();
     s.pressed = true; s.pid = ev.pointerId; s.moved = 0;
     s.p0x = ev.clientX; s.p0y = ev.clientY; s.dx = s.dy = 0;
@@ -652,6 +650,9 @@
       s.nb.forEach(n => { n.o.nglow.style.background = ''; }); s.nb = [];
       e.classList.remove('lg-live');
       s.gE = 0; s.sc = 1; s.ox = s.oy = 0;
+      // ガラスが消えきったら複製も捨てる(メモリと描画の負担を残さない)
+      clearTimeout(s.dropT);
+      s.dropT = setTimeout(() => { if (!e.classList.contains('lg-live') && s.comp) s.comp.replaceChildren(); }, 400);
       return false;
     }
     return true;
@@ -706,11 +707,11 @@
   // 丸ボタンと同じ「下の複製を曲げる」方式。文字が読めるように、中身は少しぼかして
   // (AppleのRegularガラスと同じ考え方)縁だけ強く曲げる
   // ============================================================
+  // 軽くするため、ガラスにするのは画面に1つずつしかないバー(ヘッダー・入力欄・タブ)だけ。
+  // 吹き出し・カード・設定の枠は数が多く、1つずつ下の複製とSVGフィルタを持っていたので重かった
+  // (普通の半透明の見た目に戻る)
   const PANELS = [
-    '.bubble:not(.media-bub)', '.bub:not(.mbub)',
-    '.app-header-bar', '.hdr', '.input-floating-bar', '.ibar',
-    '.pin-banner', '.reply-preview', '.ctx-menu', '.rbadge',
-    '.card', '.tb26', '.set-group', '.cbs',
+    '.app-header-bar', '.hdr', '.input-floating-bar', '.ibar', '.tb26',
   ].join(',');
   const panels = new WeakMap();
   const visiblePanels = new Set();
