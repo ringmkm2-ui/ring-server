@@ -43,7 +43,7 @@ async function verifyTokenWithRevocation(token) {
   // sid付きのトークンは user_sessions に有効な行が無ければ無効(端末単位のサインアウト)。
   // sid無しの古いトークンは従来どおり token_revoked_at だけで判定する。
   const user = await db.get(
-    `SELECT u.token_revoked_at AS token_revoked_at, s.id AS s_id, s.revoked_at AS s_revoked_at
+    `SELECT u.token_revoked_at AS token_revoked_at, u.banned_until AS banned_until, s.id AS s_id, s.revoked_at AS s_revoked_at
        FROM users u LEFT JOIN user_sessions s ON s.id = ? AND s.user_id = u.id
       WHERE u.id = ?`,
     [payload.sid || '', payload.userId]
@@ -70,8 +70,13 @@ async function verifyTokenWithRevocation(token) {
     }
   }
 
+  const bu = Number(user.banned_until) || 0;
+  if (bu > Date.now()) payload.bannedUntil = bu;
   return payload;
 }
+
+// 利用停止中でも使える物(ログアウトだけ)
+const BAN_ALLOWED = /^\/api\/auth\/logout\b/;
 
 // Express用ミドルウェア。req.user (payload全体) と req.userId (互換性のため)
 // の両方を設定する。既存コードには req.user.userId を使う箇所と
@@ -86,6 +91,9 @@ function verifyToken(req, res, next) {
   verifyTokenWithRevocation(token).then(payload => {
     if (!payload) {
       return res.status(401).json({ error: 'トークンが無効です' });
+    }
+    if (payload.bannedUntil && !BAN_ALLOWED.test(req.originalUrl || '')) {
+      return res.status(403).json({ error: '利用停止中です', banned: true, bannedUntil: payload.bannedUntil });
     }
     req.user = payload;
     req.userId = payload.userId;

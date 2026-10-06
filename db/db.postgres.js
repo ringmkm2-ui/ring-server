@@ -52,6 +52,9 @@ async function initDB() {
   // backup_codes: 予備コードのSHA-256ハッシュ配列(JSON)。使ったものは配列から消す。
   try {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP');
+    // 禁止語による利用停止: 解除時刻(ms)と理由
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until BIGINT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_required BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');

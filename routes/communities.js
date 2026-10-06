@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { rejectIfProfane } = require('../utils/moderation');
 const { sendServerError } = require('../utils/errorResponse');
 
 const router = express.Router();
@@ -33,6 +34,7 @@ function generateInviteCode() {
 // --- コミュニティ作成 ---
 router.post('/', verifyToken, asyncHandler(async (req, res) => {
   const { name, description } = req.body;
+  if (await rejectIfProfane(req, res, name, description)) return;
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     return res.status(400).json({ error: 'コミュニティ名は必須です' });
   }
@@ -180,6 +182,7 @@ router.post('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async
   if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
   const { content, mediaUrl, mediaType } = req.body;
+  if (await rejectIfProfane(req, res, content)) return;
   if (!content && !mediaUrl) return res.status(400).json({ error: 'メッセージが必要です' });
 
   const id = uuidv4();
@@ -205,6 +208,7 @@ router.post('/:id/channels', verifyToken, asyncHandler(async (req, res) => {
   if (!member || member.role !== 'admin') return res.status(403).json({ error: '管理者のみチャンネルを作成できます' });
 
   const { name } = req.body;
+  if (await rejectIfProfane(req, res, name)) return;
   if (!name || name.length > 30) return res.status(400).json({ error: 'チャンネル名は1-30文字で入力してください' });
 
   const maxSort = await db.get(

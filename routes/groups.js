@@ -6,6 +6,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { rejectIfProfane } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
 const { areFriends } = require('../utils/relations');
@@ -72,6 +73,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
 // body: { name, memberIds: [userId, ...] } (memberIdsは作成者以外の初期メンバー)
 router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   const { name, memberIds, encryptedKeysForMembers } = req.body;
+  if (await rejectIfProfane(req, res, name)) return;
   if (!name || typeof name !== 'string') return res.status(400).json({ error: 'グループ名が必要です' });
   if (memberIds != null && (!Array.isArray(memberIds) || memberIds.length > 200)) {
     return res.status(400).json({ error: 'メンバーの指定が正しくありません' });
@@ -418,6 +420,8 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
+  // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
+  if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
   if (!content) return res.status(400).json({ error: 'content required' });
   if (typeof content === 'string' && content.length > MAX_GROUP_CONTENT_LENGTH) {
     return res.status(413).json({ error: 'メッセージが長すぎます' });
@@ -604,6 +608,7 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
 router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   const { content, encrypted, keyVersion } = req.body;
+  if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
   if (!content) return res.status(400).json({ error: 'content required' });
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });

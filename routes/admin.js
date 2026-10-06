@@ -67,7 +67,7 @@ router.get('/users', asyncHandler(async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 60);
   const like = `%${q.replace(/[%_\\]/g, m => '\\' + m)}%`;
   const rows = await db.all(
-    `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at
+    `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at, banned_until, ban_reason
        FROM users
       WHERE password_hash <> '' AND (? = '' OR username LIKE ? OR display_name LIKE ? OR user_id LIKE ?)
       ORDER BY created_at DESC LIMIT 200`,
@@ -84,6 +84,9 @@ router.get('/users', asyncHandler(async (req, res) => {
       createdAt: u.created_at,
       locked: Number(u.locked_until || 0) > Date.now(),
       failedLogins: Number(u.failed_login_count || 0),
+      banned: Number(u.banned_until || 0) > Date.now(),
+      bannedUntil: Number(u.banned_until || 0) > Date.now() ? Number(u.banned_until) : null,
+      banReason: u.ban_reason || null,
       online: isOnline(u.id),
     })),
   });
@@ -108,6 +111,14 @@ router.post('/users/:id/unlock', asyncHandler(async (req, res) => {
   const u = await findUser(req.params.id);
   if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
   await db.run('UPDATE users SET failed_login_count = 0, locked_until = 0 WHERE id = ?', [u.id]);
+  res.json({ ok: true });
+}));
+
+// 禁止語による利用停止を解除する(Googleログインのアカウントも対象)
+router.post('/users/:id/unban', asyncHandler(async (req, res) => {
+  const u = await db.get('SELECT id FROM users WHERE id = ? OR user_id = ?', [String(req.params.id).slice(0, 100), String(req.params.id).slice(0, 20)]);
+  if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  await db.run('UPDATE users SET banned_until = NULL, ban_reason = NULL WHERE id = ?', [u.id]);
   res.json({ ok: true });
 }));
 

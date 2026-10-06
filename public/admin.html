@@ -307,6 +307,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/profanity.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -318,7 +319,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.166 beta</div>
+  <div class="version-badge">Bro Chat v1.28.167 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1141,6 +1142,11 @@ document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
   const txt = document.getElementById('msgInput').value.trim();
   if (!txt) return;
+  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。送らずに3日間停止
+  if (window.BCProfanity && await window.BCProfanity.blockIfProfane(txt, 'dm')) {
+    document.getElementById('msgInput').value = '';
+    return;
+  }
   if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   document.getElementById('msgInput').value = '';
   if (window.fitMsgInput) fitMsgInput();
@@ -1274,9 +1280,12 @@ async function sendRealMessage(content) {
     if (data && data.message) {
       // 自分が送った平文をローカルにキャッシュ（自分は受信者ではないため復号化できないので、自分用に平文を保存）
       cacheOwnPlaintext(data.message.id, content);
-      // 仮メッセージをサーバーの正式なメッセージに差し替え
-      removeMessageById(tempId);
+      // 仮メッセージをサーバーの正式なメッセージに差し替え。
+      // 以前は仮の吹き出しを消してから次のフレームで作り直していたので、送った直後に
+      // 吹き出しが1フレーム消え、出現アニメーションももう一度走ってチカチカしていた。
+      // 同じ要素をそのまま使い回して、中身だけ正式なものに書き換える。
       const displayMsg = { ...data.message, content: content };
+      adoptTempMessage(tempId, displayMsg);
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
     } else {
@@ -1285,6 +1294,18 @@ async function sendRealMessage(content) {
   } catch (err) {
     console.error('send error:', err);
   }
+}
+
+// 仮メッセージの要素を、正式なメッセージIDの要素として引き継ぐ(作り直さない)
+function adoptTempMessage(tempId, realMsg) {
+  const el = msgDOMCache.get(tempId) || document.querySelector(`[data-msg-id="${tempId}"]`);
+  msgDOMCache.delete(tempId);
+  const idx = realMessages.findIndex(m => m.id === tempId);
+  if (idx !== -1) realMessages.splice(idx, 1);
+  if (!el) return;
+  if (msgDOMCache.has(realMsg.id)) { el.remove(); return; } // WS等で先に正式な方が描かれていた
+  el.dataset.msgId = realMsg.id;
+  msgDOMCache.set(realMsg.id, el);
 }
 
 // 仮メッセージ（送信中プレースホルダー）を画面とメモリ上のリストから削除
@@ -1548,6 +1569,8 @@ function renderMessage(msg) {
 
 function renderMessageImpl(msg) {
   if (!msg || !msg.id) return null;
+  // 送信の応答が先に返って正式なメッセージに置き換わった仮メッセージは、もう描かない(二重表示防止)
+  if (String(msg.id).startsWith('temp-') && !realMessages.some(m => m.id === msg.id)) return null;
   const cs = document.getElementById('chatScreen');
   const isMine = msg.senderId === myUserId;
   let msgDiv = msgDOMCache.get(msg.id);
