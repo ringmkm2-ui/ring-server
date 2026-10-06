@@ -1,0 +1,32 @@
+{
+  "name": "brochat-desktop",
+  "version": "1.0.0",
+  "description": "Bro Chat デスクトップ版",
+  "main": "main.js",
+  "private": true,
+  "author": "Ring",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.brochat.desktop",
+    "productName": "Bro Chat",
+    "files": ["main.js", "preload.js", "build/icon.png"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "win": { "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "BroChatSetup.exe",
+      "shortcutName": "Bro Chat",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": { "artifactName": "BroChat.exe" }
+  }
+}
