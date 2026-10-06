@@ -233,7 +233,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.170 beta</div>
+  <div class="version-badge">Bro Chat v1.28.171 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -698,7 +698,10 @@ async function handleMediaGroup(f,t){
   const caption = `[${t === 'image' ? '画像' : '動画'}]`;
   
   // ローディングメッセージを表示
-  const msgDiv = createMsg(caption, { mediaType: t, mediaData: null, uploading: true }, false, null, tempId, null, true);
+  // 送った本人の画面には、端末の中のファイルをそのまま見せる(以前は中身が空で、壊れた画像のアイコンが出ていた)
+  let localUrl = null;
+  try { localUrl = URL.createObjectURL(f); } catch (e) {}
+  const msgDiv = createMsg(caption, { mediaType: t, mediaData: localUrl, uploading: true }, false, null, tempId, null, true);
 
   try {
     // Cloudinary E2E アップロード（グループ共有鍵で暗号化 → 全メンバーが復号可能）
@@ -1495,9 +1498,9 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
 }
 
 // グループメッセージ履歴をサーバーから読み込み
-async function loadGroupMessages(){
+async function loadGroupMessages(pre){
   try{
-    const msgs=await api('/api/groups/'+groupId+'/messages');
+    const msgs=await (pre||api('/api/groups/'+groupId+'/messages'));
     if(Array.isArray(msgs)){
       for(const msg of msgs){
         if(msg.msg_type==='notice'){createNotice(msg.id,msg.content);continue;}
@@ -1551,7 +1554,11 @@ async function loadGroupMessages(){
   }
   
   // ページ読み込み完了を待たずにすぐ初期化開始
-  Promise.all([loadGroupInfo(), loadGroupMessages()]).then(() => {
+  // 履歴の取得は同時に始めるが、描くのはメンバー一覧が届いてから。
+  // 以前は同時に描いていたため、メンバー一覧より先に届いた分は送った人の名前とアイコンが付かなかった
+  const historyP = api('/api/groups/'+groupId+'/messages');
+  historyP.catch(() => {});
+  loadGroupInfo().then(() => loadGroupMessages(historyP)).then(() => {
     applyHistoryReaders();
     checkGroupKeyHealth();
     connectGroupWS();
