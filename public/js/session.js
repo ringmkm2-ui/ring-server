@@ -9,6 +9,24 @@
   var KEEP = /^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/;
   var going = false;
 
+  // 端末に残っている「自分のID」が、今ログインしているトークンの持ち主と違ったら直す。
+  // 別のアカウントでログインし直した直後などにIDが前のアカウントのまま残ると、
+  // 自分のメッセージが相手側(左)に出たり、相手のが右に出たりしていた。
+  try {
+    var tk = localStorage.getItem('ring_token');
+    if (tk && tk.split('.').length === 3) {
+      var b64 = tk.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      var pl = JSON.parse(decodeURIComponent(escape(atob(b64))));
+      if (pl && typeof pl.userId === 'string' && pl.userId && localStorage.getItem('ring_userId') !== pl.userId) {
+        localStorage.setItem('ring_userId', pl.userId);
+        localStorage.setItem('myUserId', pl.userId);
+        // 前のアカウントの名前・アイコン・IDコードも残さない(トーク一覧が開いた時に取り直す)
+        ['ring_userIdCode', 'myName', 'myAvatar'].forEach(function (k) { localStorage.removeItem(k); });
+      }
+    }
+  } catch (e) {}
+
   window.bcForceLogout = function () {
     if (going) return;
     going = true;
