@@ -9,7 +9,7 @@ const { messageSendLimiter } = require('../utils/rateLimits');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
 // 上限なしだと50MB JSONで1リクエストでDB/メモリを食いつぶせる。
-const MAX_CONTENT_LENGTH = 64 * 1024; // 64KB
+const { validateMessageInput } = require('../utils/messageContent');
 const MAX_HISTORY_LIMIT = 100;
 
 const router = express.Router();
@@ -22,8 +22,11 @@ router.get('/presence/:userId', auth, async (req, res) => {
   try {
     const { isUserOnline } = require('../ws/wsServer');
     const { canInteract } = require('../utils/relations');
+    const { getSettings } = require('../utils/userSettings');
     const visible = await canInteract(req.userId, req.params.userId);
-    res.json({ userId: req.params.userId, online: visible ? isUserOnline(req.params.userId) : false });
+    // 「オンライン状態を見せない」設定の人は常にオフライン扱い
+    const shown = visible && (await getSettings(req.params.userId)).showOnlineStatus;
+    res.json({ userId: req.params.userId, online: shown ? isUserOnline(req.params.userId) : false });
   } catch (err) {
     res.json({ userId: req.params.userId, online: false });
   }
@@ -65,12 +68,13 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       mediaUrl, mediaPublicId, encryptedMetadata, chunkCount,
       encrypted, repliedToId,
     } = req.body;
-    // 「通知」はサーバーだけが作る種類(Banのお知らせ等)。送信APIからは作らせない
-    if (mediaType === 'notice') return res.status(400).json({ error: 'mediaTypeが不正です' });
-    if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
-    if (typeof content === 'string' && content.length > MAX_CONTENT_LENGTH) {
-      return res.status(413).json({ error: 'メッセージが長すぎます' });
+    if (!recipientId || typeof recipientId !== 'string' || !content) {
+      return res.status(400).json({ error: 'recipientId and content required' });
     }
+    // 本文の形・長さ、メディアの種類とURLをまとめて確認する("通知"はサーバー専用なので作れない、
+    // mediaUrlはCloudinaryのみ = 相手の端末を他所へ取りに行かせない)
+    const badInput = validateMessageInput(req.body);
+    if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
@@ -88,15 +92,15 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       return res.status(403).json({ error: 'このユーザーとは友達ではありません' });
     }
 
-    // メディアサイズチェック（Base64直送り方式のみ対象。約25MB相当まで許可。
-    // Cloudinary方式(mediaUrl)はURLのみ保存するためサイズチェック不要）
-    if (mediaData && mediaData.length > 35 * 1024 * 1024) {
-      return res.status(413).json({ error: 'ファイルサイズが大きすぎます' });
-    }
-
-    // repliedToId の存在確認（指定されている場合）
+    // 返信先は、この2人の会話の中のメッセージに限る。
+    // 以前はIDの存在だけを見ていたので、当てずっぽうのIDで「そのIDのメッセージが
+    // 存在するかどうか」を外から確かめられた。
     if (repliedToId) {
-      const replied = await db.get('SELECT id FROM messages WHERE id = ?', [repliedToId]);
+      const replied = await db.get(
+        `SELECT id FROM messages
+          WHERE id = ? AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`,
+        [repliedToId, req.userId, recipientId, recipientId, req.userId]
+      );
       if (!replied) return res.status(404).json({ error: 'replied message not found' });
     }
 
@@ -368,11 +372,16 @@ router.post('/edit', auth, async (req, res) => {
     if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content']);
     const { messageId, content, encrypted } = req.body;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
+    // 編集には長さの上限が無く、4MBの本文を何度でも書き込めた。送信と同じ基準に揃える
+    const badEdit = validateMessageInput(req.body, { allowMedia: false });
+    if (badEdit) return res.status(badEdit === 'メッセージが長すぎます' ? 413 : 400).json({ error: badEdit });
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
     if (!msg) return res.status(404).json({ error: 'message not found' });
     if (msg.sender_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
     if (msg.deleted_at) return res.status(400).json({ error: 'message deleted' });
+    // サーバーが作る「通知」を本人が書き換えられないようにする
+    if (msg.msg_type === 'notice') return res.status(400).json({ error: 'この種類のメッセージは編集できません' });
 
     const now = new Date().toISOString();
     await db.run("UPDATE messages SET content = ?, encrypted = ?, edited_at = ? WHERE id = ?", [content, !!encrypted, now, messageId]);

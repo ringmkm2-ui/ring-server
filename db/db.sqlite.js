@@ -107,6 +107,12 @@ async function initDB() {
       revoked_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS email_codes (
       username TEXT PRIMARY KEY,
       code_hash TEXT NOT NULL,

@@ -182,6 +182,12 @@
     }
   }
 
+  // 設定「IPアドレスを相手に見せない」が入っている時、中継が使えないなら黙って直結に
+  // 落とさない。グループ通話はメッシュなので、直結すると参加者全員に自分のIPが見える。
+  function relayRequiredButMissing() {
+    return !!(window.bcSettings && window.bcSettings.get('hideIpInCalls')) && !relayOnly;
+  }
+
   function makePeer(uid) {
     if (peers.has(uid)) return peers.get(uid);
     const pc = new RTCPeerConnection(relayOnly ? { iceServers, iceTransportPolicy: 'relay' } : { iceServers });
@@ -284,6 +290,11 @@
     isVideo = !!video;
     try {
       await loadIce();
+      if (relayRequiredButMissing()) {
+        alert('設定で「IPアドレスを相手に見せない」が有効ですが、中継サーバーが使えないため通話できません。設定を切るか、しばらく経ってからお試しください。');
+        joining = false;
+        return;
+      }
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },

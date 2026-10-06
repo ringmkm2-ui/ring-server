@@ -242,3 +242,10 @@ CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id);
 CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments(post_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_call_notes_owner ON call_notes(owner_id);
 CREATE INDEX IF NOT EXISTS idx_call_summaries_owner ON call_summaries(owner_id);
+
+-- 端末をまたいで同じになるユーザー設定(プライバシー・通話・セキュリティ)
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id TEXT PRIMARY KEY,
+  data TEXT NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMP DEFAULT now()
+);

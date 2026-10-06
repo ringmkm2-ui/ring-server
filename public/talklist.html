@@ -373,6 +373,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/linkify.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script src="/js/userSettings.js"></script>
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
@@ -521,7 +522,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.175 beta</div>
+  <div class="version-badge">Bro Chat v1.28.176 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -636,8 +637,24 @@ window.ensureGroupCrypto = (function () {
       <label class="set-row"><span data-i18n="haptics">触覚フィードバック</span><input type="checkbox" class="ios-switch" id="setHaptics"></label>
       <button type="button" class="set-row set-btn" id="setNotif"><span data-i18n="notifications">通知</span><span class="set-val" id="setNotifVal"></span></button>
     </div>
+    <div class="set-section-title" data-i18n="privacy">プライバシー</div>
+    <div class="set-group">
+      <label class="set-row"><span data-i18n="pv_read_receipts">既読を相手に知らせる</span><input type="checkbox" class="ios-switch" id="setReadReceipts"></label>
+      <label class="set-row"><span data-i18n="pv_typing">入力中を相手に見せる</span><input type="checkbox" class="ios-switch" id="setTypingInd"></label>
+      <label class="set-row"><span data-i18n="pv_online">オンライン状態を相手に見せる</span><input type="checkbox" class="ios-switch" id="setOnlineStatus"></label>
+      <label class="set-row"><span data-i18n="pv_calls_from">着信を受け取る相手</span>
+        <select id="setAllowCalls"><option value="friends" data-i18n="pv_calls_friends">友だちのみ</option><option value="nobody" data-i18n="pv_calls_nobody">受け取らない</option></select></label>
+    </div>
+    <div class="set-section-title" data-i18n="call_settings">通話</div>
+    <div class="set-group">
+      <label class="set-row"><span data-i18n="call_hide_ip">IPアドレスを相手に見せない</span><input type="checkbox" class="ios-switch" id="setHideIp"></label>
+      <label class="set-row"><span data-i18n="call_show_code">通話の確認コードを表示</span><input type="checkbox" class="ios-switch" id="setCallCode"></label>
+      <div class="set-row" style="display:block;font-size:12px;color:var(--sub,#94a3b8);line-height:1.6" data-i18n="call_privacy_note">IPを見せない設定にすると通信が全て中継サーバーを通るため、音が途切れやすくなることがあります。確認コードは通話中に両方の画面へ同じ4桁が出ます。声に出して一致を確かめれば、間に誰も入っていないことを確認できます。</div>
+    </div>
     <div class="set-section-title" data-i18n="security">アカウントのセキュリティ</div>
     <div class="set-group">
+      <label class="set-row"><span data-i18n="sec_login_alert">新しい端末のログインをメールで知らせる</span><input type="checkbox" class="ios-switch" id="setLoginAlert"></label>
+      <button type="button" class="set-row set-btn" id="setSessions"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><rect x="17" y="9" width="5" height="11" rx="1.5"/><path d="M6 18h6"/></svg><span data-i18n="sec_sessions">ログイン中の端末</span></span><span class="set-val" id="setSessionsVal"></span></button>
       <button type="button" class="set-row set-btn" id="setSecurity"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9-4.8-.7-8-4.5-8-9V6l8-3z"/><polyline points="9 12 11 14 15 10"/></svg><span data-i18n="twofa_row">2段階認証</span></span><span class="set-val" id="setSecVal"></span></button>
     </div>
     <div class="set-section-title" data-i18n="storage">ストレージ</div>
@@ -1585,101 +1602,6 @@ function openGroupChat(groupId, name) {
   openChatPage(`/groupchat.html?groupId=${encodeURIComponent(groupId)}&name=${encodeURIComponent(name)}`);
 }
 
-// キャッシュマネージャーの初期化と復元
-async function initializeWithCache() {
-  try {
-    // キャッシュを初期化
-    await cacheManager.init();
-    
-    // キャッシュから友達情報を復元して表示
-    const cachedFriends = await cacheManager.getFriends();
-    if (Array.isArray(cachedFriends) && cachedFriends.length > 0) {
-      renderFriends(cachedFriends);
-    }
-    
-    // キャッシュからグループ情報を復元して表示
-    const cachedGroups = await cacheManager.getGroups();
-    if (Array.isArray(cachedGroups) && cachedGroups.length > 0) {
-      renderGroups(cachedGroups);
-    }
-    
-    // バックグラウンドでサーバーから最新データを取得（非同期）
-    refreshFromServer();
-  } catch (e) {
-    console.error('Cache initialization error:', e);
-    // キャッシュ初期化失敗時も、サーバーから読み込み
-    refreshFromServer();
-  }
-}
-
-async function refreshFromServer() {
-  try {
-    // 'jwt' という存在しないキーを読んでいて常に未認証→401で何も更新されていなかった
-    const token = localStorage.getItem('ring_token');
-    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
-
-    // 友達情報を取得
-    const response = await fetch('/api/friends/list', { headers });
-    if (response.ok) {
-      const friends = await response.json();
-      await cacheManager.saveFriends(friends);
-      renderFriends(friends);
-    }
-
-    // グループ情報を取得
-    const groupsResponse = await fetch('/api/groups/list', { headers });
-    if (groupsResponse.ok) {
-      const groupsData = await groupsResponse.json();
-      const groups = groupsData.groups || groupsData;
-      await cacheManager.saveGroups(groups);
-      renderGroups(groups);
-    }
-  } catch (e) {
-    console.error('Server refresh error:', e);
-  }
-}
-
-function renderFriends(friends) {
-  const list = document.getElementById('talkList');
-  if (!Array.isArray(friends) || friends.length === 0) {
-    list.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">' + i18n.t('no_friends') + '</div>';
-    return;
-  }
-  list.innerHTML = '';
-  friends.forEach(f => {
-    const card = document.createElement('div');
-    card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.5);margin-bottom:8px;cursor:pointer;transition:background .2s';
-    // アバター要素はこの直後に生成されるため、参照を遅延評価する
-    card.onclick = () => {
-      if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
-        window.LiquidGlass.flyAvatarTo(avatar, () => openChat(f.id, f.name, f.profilePic));
-      } else {
-        openChat(f.id, f.name, f.profilePic);
-      }
-    };
-
-    const avatar = document.createElement('div');
-    avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;background-size:cover;background-position:center';
-    if (f.profilePic && f.profilePic.startsWith('data:image/')) {
-      avatar.style.backgroundImage = `url(${f.profilePic})`;
-    } else {
-      avatar.textContent = f.name.charAt(0);
-      avatar.style.backgroundColor = `hsl(${Math.abs(f.id.charCodeAt(0)) % 360}, 70%, 60%)`;
-    }
-    
-    const info = document.createElement('div');
-    info.style.cssText = 'flex:1;min-width:0';
-    const nameEl = document.createElement('div');
-    nameEl.style.cssText = 'font-weight:700;font-size:14px;color:#0f172a';
-    nameEl.textContent = f.name;
-    info.appendChild(nameEl);
-    
-    card.appendChild(avatar);
-    card.appendChild(info);
-    list.appendChild(card);
-  });
-}
-
 function renderGroups(groups) {
   const list = document.getElementById('groupList');
   // 4秒ごとの自動更新で毎回作り直していて、裏で読み込むたびにグループ欄がチラついていた
@@ -1986,6 +1908,8 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('setVersion').textContent = vb ? vb.textContent.replace('Bro Chat ', '') : '';
   document.getElementById('setMyId').textContent = localStorage.getItem('ring_userIdCode') || (document.getElementById('myIdCode') || {}).textContent || '';
   refreshSecRow();
+  applyServerSettingsToUI();
+  if (window.bcSettings) bcSettings.refresh().then(applyServerSettingsToUI).catch(() => {});
   settingsMov.classList.add('open');
   history.pushState({ settings: 1 }, '');
 };
@@ -2187,6 +2111,83 @@ document.getElementById('setFontScale').addEventListener('change', e => {
 });
 document.getElementById('setEnterToSend').addEventListener('change', e => localStorage.setItem('enterToSend', e.target.value));
 document.getElementById('setHaptics').addEventListener('change', e => localStorage.setItem('haptics', e.target.checked ? '1' : '0'));
+
+// --- サーバーに保存する設定(プライバシー / 通話 / セキュリティ) ---
+// 端末ごとの localStorage ではなくサーバーに持たせているので、機種変更しても同じになる。
+// 既読・入力中・オンライン状態はサーバー側でも実際に止めている(画面で隠すだけではない)。
+const SERVER_SWITCHES = {
+  setReadReceipts: 'sendReadReceipts',
+  setTypingInd: 'sendTypingIndicator',
+  setOnlineStatus: 'showOnlineStatus',
+  setHideIp: 'hideIpInCalls',
+  setCallCode: 'showCallCode',
+  setLoginAlert: 'loginAlertEmail',
+};
+function applyServerSettingsToUI() {
+  if (!window.bcSettings) return;
+  for (const [id, key] of Object.entries(SERVER_SWITCHES)) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!bcSettings.get(key);
+  }
+  const sel = document.getElementById('setAllowCalls');
+  if (sel) sel.value = bcSettings.get('allowCallsFrom') || 'friends';
+}
+for (const [id, key] of Object.entries(SERVER_SWITCHES)) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('change', async e => {
+    try { await bcSettings.update({ [key]: e.target.checked }); }
+    catch (err) { e.target.checked = !e.target.checked; alert(t2('settings_save_failed', '設定を保存できませんでした')); }
+  });
+}
+{
+  const sel = document.getElementById('setAllowCalls');
+  if (sel) sel.addEventListener('change', async e => {
+    const prev = bcSettings.get('allowCallsFrom');
+    try { await bcSettings.update({ allowCallsFrom: e.target.value }); }
+    catch (err) { e.target.value = prev; alert(t2('settings_save_failed', '設定を保存できませんでした')); }
+  });
+}
+
+// --- ログイン中の端末(設定 > アカウントのセキュリティ) ---
+document.getElementById('setSessions')?.addEventListener('click', async () => {
+  const token = localStorage.getItem('ring_token');
+  if (!token) return;
+  secMov.classList.add('open');
+  history.pushState({ sec: 1 }, '');
+  secBody.textContent = '';
+  secBody.appendChild(secNode('p', t2('loading', '読み込み中...'), 'font-size:14px;margin:0 2px 10px'));
+  let list = [];
+  try {
+    const r = await fetch('/api/auth/sessions', { headers: { Authorization: 'Bearer ' + token } });
+    const d = await r.json();
+    list = Array.isArray(d.sessions) ? d.sessions : [];
+  } catch (e) {
+    secBody.textContent = '';
+    secBody.appendChild(secNode('p', t2('load_failed', '読み込めませんでした'), 'font-size:14px;margin:0 2px'));
+    return;
+  }
+  secBody.textContent = '';
+  secBody.appendChild(secNode('p', t2('sec_sessions_desc', '今ログインしている端末です。見覚えが無いものがあれば、全てからログアウトしてパスワードを変えてください。'),
+    'font-size:13px;color:#94a3b8;line-height:1.6;margin:0 2px 12px'));
+  document.getElementById('setSessionsVal').textContent = String(list.length);
+  list.forEach(se => {
+    const row = secNode('div', null, 'padding:10px 12px;border-radius:12px;background:rgba(127,127,127,.10);margin-bottom:8px');
+    row.appendChild(secNode('div', (se.device || t2('unknown_device', '不明な端末')) + (se.current ? '  (' + t2('this_device', 'この端末') + ')' : ''),
+      'font-size:14px;font-weight:600'));
+    const seen = se.lastSeenAt || se.createdAt;
+    row.appendChild(secNode('div', seen ? new Date(seen).toLocaleString('ja-JP') : '', 'font-size:12px;color:#94a3b8;margin-top:2px'));
+    secBody.appendChild(row);
+  });
+  secBody.appendChild(secButton(t2('sec_logout_all', '全ての端末からログアウト'), 'savebtn', async () => {
+    if (!confirm(t2('sec_logout_all_confirm', '全ての端末からログアウトします。もう一度ログインが必要になります。'))) return;
+    try {
+      await fetch('/api/auth/revoke-all-sessions', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    } catch (e) {}
+    localStorage.removeItem('ring_token');
+    location.href = '/auth.html';
+  }));
+});
 // テーマ: 見た目の仕組みごと切り替わるので、保存したら読み込み直す
 (function(){
   const sel = document.getElementById('setTheme');
