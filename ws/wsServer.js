@@ -10,6 +10,7 @@ const { sendPushToUser } = require('../utils/webPush');
 const callAssist = require('./callAssistProxy');
 const sessionEvents = require('../utils/sessionEvents');
 const { canInteract } = require('../utils/relations');
+const { getSettings } = require('../utils/userSettings');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -151,6 +152,9 @@ function broadcastToUser(userId, payload) {
 // 過去にメッセージをやり取りしたことがある相手にだけ送る。
 async function broadcastPresence(userId, online) {
   try {
+    // 「オンライン状態を見せない」設定の人は、相手の画面に常にオフラインとして映る
+    const st = await getSettings(userId);
+    if (!st.showOnlineStatus && online) return;
     const rows = await db.all(
       `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
        FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
@@ -360,10 +364,11 @@ function initWebSocketServer(server) {
         if (!userId) return;
         // 知り合い以外のオンライン状態は見せない(常にオフライン扱い)
         const visible = await canReach(data.targetUserId);
+        const targetSt = visible ? await getSettings(data.targetUserId) : null;
         ws.send(JSON.stringify({
           type: 'presence_result',
           userId: data.targetUserId,
-          online: visible ? isUserOnline(data.targetUserId) : false,
+          online: visible && targetSt.showOnlineStatus ? isUserOnline(data.targetUserId) : false,
         }));
         return;
       }
@@ -442,11 +447,15 @@ function initWebSocketServer(server) {
         // DBから取得したtargetMsg.sender_id(実際のメッセージ送信者)を通知先に使う。
         // 以前はクライアントが任意のuserIdを指定して、無関係な第三者に
         // 偽の既読通知を送りつけることが可能だった。
-        broadcastToUser(targetMsg.sender_id, {
-          type: 'read_receipt',
-          fromUserId: userId,
-          msgUuid: data.msgUuid,
-        });
+        // 「既読を送らない」設定なら、相手には知らせない(以前は画面側で隠すだけで、
+        // 情報自体は相手の端末まで届いていた)
+        if ((await getSettings(userId)).sendReadReceipts) {
+          broadcastToUser(targetMsg.sender_id, {
+            type: 'read_receipt',
+            fromUserId: userId,
+            msgUuid: data.msgUuid,
+          });
+        }
         // 受信側（既読を送った側）にも確認応答を返す
         ws.send(JSON.stringify({
           type: 'read_ack',
@@ -469,6 +478,7 @@ function initWebSocketServer(server) {
           groupTypingCache.set(gid, g);
         }
         if (!g.members.includes(userId)) return;
+        if (data.type === 'group_typing' && !(await getSettings(userId)).sendTypingIndicator) return;
         const out = { type: data.type, groupId: gid, userId };
         g.members.forEach(m => { if (m !== userId) broadcastToUser(m, out); });
         return;
@@ -476,6 +486,7 @@ function initWebSocketServer(server) {
 
       if (data.type === 'typing') {
         if (!(await canReach(data.recipientId))) return;
+        if (!(await getSettings(userId)).sendTypingIndicator) return;
         broadcastToUser(data.recipientId, {
           type: 'typing',
           userId: userId,
@@ -538,6 +549,12 @@ function initWebSocketServer(server) {
         //  正式な友だち登録をしていないテスト用アカウント同士でも、同じグループにいれば掛けられる)
         // 断られた理由は相手に伝えず、通常の「繋がらない」と同じ見え方にする。
         if (!(await canReach(data.recipientId))) {
+          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
+          return;
+        }
+        // 相手が「着信を受け取らない」設定なら、呼び出しもプッシュも出さない。
+        // 断られた理由は伝えず、普通に繋がらないのと同じ見え方にする
+        if ((await getSettings(data.recipientId)).allowCallsFrom === 'nobody') {
           ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
           return;
         }

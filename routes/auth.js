@@ -639,7 +639,6 @@ router.post('/google-contacts/sync', verifyToken, async (req, res) => {
 
   try {
     // Google People API から連絡先取得
-    const fetch = require('node-fetch');
     const response = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses&pageSize=1000', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });

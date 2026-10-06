@@ -292,6 +292,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
+<script src="/js/userSettings.js"></script>
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/chatBg.js"></script>
@@ -299,7 +300,6 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/deepgramVoice.js"></script>
-<script defer src="/js/callRecording.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
@@ -319,7 +319,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.175 beta</div>
+  <div class="version-badge">Bro Chat v1.28.176 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -426,6 +426,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus" data-i18n="calling">呼び出し中...</div>
+      <div id="callSas" hidden style="margin-top:6px;font-size:13px;letter-spacing:.14em;opacity:.85"></div>
     </div>
 
     <!-- リアルタイム字幕表示(Live Translateパネルを開いていない間の簡易表示) -->
@@ -2878,6 +2879,40 @@ function buildPcConfig() {
   }
   return cfg;
 }
+
+// 設定「IPアドレスを相手に見せない」が入っているのに中継サーバーが使えない時は、
+// 黙って直結(=相手にIPが見える)に落とさず、通話を始めない。
+function relayRequiredButMissing() {
+  const want = window.bcSettings && bcSettings.get('hideIpInCalls');
+  return !!want && !TURN_AVAILABLE;
+}
+
+// --- 通話の確認コード(SAS) ---
+// サーバーはSDPを中継しているので、その気になれば両側に別々の鍵を渡して間に入れる
+// (メッセージと違い、通話の鍵には署名による本人確認が無い)。
+// DTLSの指紋を両側で突き合わせた4桁を画面に出し、声に出して一致を確かめれば、
+// 間に誰かが入っていればコードが食い違うので気づける。
+function sdpFingerprint(sdp) {
+  const m = /^a=fingerprint:\S+ ([0-9A-Fa-f:]+)/m.exec(sdp || '');
+  return m ? m[1].toUpperCase() : '';
+}
+async function showCallSas(conn, callId) {
+  const el = document.getElementById('callSas');
+  if (!el) return;
+  if (!(window.bcSettings && bcSettings.get('showCallCode'))) { el.hidden = true; return; }
+  try {
+    const a = sdpFingerprint(conn.localDescription && conn.localDescription.sdp);
+    const b = sdpFingerprint(conn.remoteDescription && conn.remoteDescription.sdp);
+    if (!a || !b) { el.hidden = true; return; }
+    const material = [a, b].sort().join('|') + '|' + (callId || '');
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
+    const v = new DataView(buf).getUint16(0) % 10000;
+    el.textContent = '確認コード ' + String(v).padStart(4, '0');
+    el.hidden = false;
+  } catch (e) {
+    el.hidden = true;
+  }
+}
 // ページ読み込み時に一度先読みしておく(通話開始のたびに毎回待たせないため)。
 // 発信/着信のたびにも念のため再取得し、常に有効期限内の最新情報を使う。
 refreshIceServers();
@@ -2938,6 +2973,8 @@ function setCallStatus(text) {
 }
 
 function showCallOverlay() {
+  const sasEl = document.getElementById('callSas');
+  if (sasEl) { sasEl.hidden = true; sasEl.textContent = ''; }
   document.getElementById('callOv').classList.add('show');
   // 下部のコントロールパネルがガラスとして凝縮しながら現れる演出 + 軽い触感フィードバック
   if (window.LiquidGlass) {
@@ -3073,6 +3110,7 @@ function createPeerConnection() {
       callConnected = true;
       setCallStatus('00:00');
       startCallTimer();
+      showCallSas(conn, currentCallId);
       if (window.LiquidGlass) window.LiquidGlass.haptic('success');
       const muteBtn = document.getElementById('muteBtn2');
       const speakerBtn = document.getElementById('speakerBtn2');
@@ -3257,6 +3295,11 @@ async function startOutgoingCall(isVideo = false) {
   // (有効期限があるため、通話ごとに最新のものを使う)
   await refreshIceServers();
   if (currentCallId !== myCallId) return; // 準備中にキャンセルされた
+  if (relayRequiredButMissing()) {
+    setCallStatus('中継サーバーが使えないため発信できません(設定でIPを隠す指定)');
+    setTimeout(hideCallOverlay, 2500);
+    return;
+  }
 
   try {
     localStream = await getMediaStream(isVideo);
@@ -3283,11 +3326,6 @@ async function startOutgoingCall(isVideo = false) {
   pc = createPeerConnection();
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   if (isVideoCall) { if (pc.__applyVideoBitrate) pc.__applyVideoBitrate(); }
-
-  // 通話録音開始
-  if (callRecorder) {
-    callRecorder.startRecording(localStream, currentCallId, otherId, partnerName);
-  }
 
   const offer = await pc.createOffer();
   if (currentCallId !== myCallId) return;
@@ -3364,6 +3402,12 @@ async function acceptIncomingCall() {
 
   // 通話応答のたびに一時的なICE認証情報を取得し直す
   await refreshIceServers();
+  if (relayRequiredButMissing()) {
+    setCallStatus('中継サーバーが使えないため応答できません(設定でIPを隠す指定)');
+    sendSignal('call_reject', { reason: 'declined' });
+    setTimeout(cleanupCall, 2500);
+    return;
+  }
 
   try {
     localStream = await getMediaStream(isVideoCall);
@@ -3589,11 +3633,6 @@ function endCall() {
   // 通話ログを記録（発信者側のみ。接続まで到達＝完了、未接続＝キャンセル）
   logCall(callConnected ? 'completed' : 'cancelled');
 
-  // 通話録音停止
-  if (callRecorder && callRecorder.isRecording) {
-    callRecorder.stopRecording();
-  }
-  
   cleanupCall();
 }
 

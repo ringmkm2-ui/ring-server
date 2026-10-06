@@ -80,6 +80,15 @@ async function initDB() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
+    // 端末をまたいで同じになるユーザー設定(プライバシー・通話・セキュリティ)。
+    // 中身はJSON1本。キーの増減でマイグレーションが要らないようにしている。
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT PRIMARY KEY,
+        data TEXT NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
     // E2E鍵のバックアップ(パスフレーズで端末側が暗号化した塊。サーバーは中身を読めない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS key_backups (

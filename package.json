@@ -1,6 +1,6 @@
 {
   "name": "ring-server",
-  "version": "1.28.175",
+  "version": "1.28.176",
   "description": "Ring chat app backend - WebSocket relay + auth + prekey store + TTL storage",
   "main": "index.js",
   "type": "commonjs",
@@ -20,8 +20,6 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "libsodium-wrappers": "^0.7.15",
-    "multer": "^2.4.0",
-    "node-cron": "^3.0.3",
     "nodemailer": "^10.0.14",
     "pg": "^8.22.0",
     "sql.js": "^1.11.0",

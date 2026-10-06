@@ -24,8 +24,8 @@ const { uploadRouter: iconUploadRouter, publicRouter: iconPublicRouter } = requi
 const callsRouter = require('./routes/calls');
 const adminRouter = require('./routes/admin');
 const reportsRouter = require('./routes/reports');
+const settingsRouter = require('./routes/settings');
 const { initWebSocketServer } = require('./ws/wsServer');
-const { startTTLCleanupJob } = require('./storage/ttlStorageManager');
 const { apiLimiter } = require('./utils/rateLimits');
 const { startKeepAlive } = require('./utils/keepAlive');
 
@@ -251,6 +251,7 @@ async function main() {
   app.use('/api/calls', callsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/settings', settingsRouter);
   app.use('/api/moderation', require('./routes/moderation'));
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
@@ -281,7 +282,6 @@ async function main() {
 
   const server = http.createServer(app);
   initWebSocketServer(server);
-  startTTLCleanupJob();
   startKeepAlive();
 
   // 既存ユーザーのBase64アイコンを、画像のURLに置き換える(裏で1回ずつ。失敗した分は次回起動時に再挑戦)

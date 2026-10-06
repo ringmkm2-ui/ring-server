@@ -6,6 +6,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { validateMessageInput } = require('../utils/messageContent');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
@@ -16,7 +17,6 @@ const MAX_ENC_KEY_LENGTH = 8192;
 const isEncKeyEntry = (e) => !!e && typeof e.userId === 'string' && typeof e.encryptedGroupKey === 'string'
   && e.encryptedGroupKey.length > 0 && e.encryptedGroupKey.length <= MAX_ENC_KEY_LENGTH;
 
-const MAX_GROUP_CONTENT_LENGTH = 64 * 1024; // 64KB
 
 const router = express.Router();
 
@@ -422,17 +422,10 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
   const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
-  if (mediaType === 'notice') return res.status(400).json({ error: 'mediaTypeが不正です' });
   if (!content) return res.status(400).json({ error: 'content required' });
-  if (typeof content === 'string' && content.length > MAX_GROUP_CONTENT_LENGTH) {
-    return res.status(413).json({ error: 'メッセージが長すぎます' });
-  }
-
-  // 個人チャットと同様、ファイルサイズの上限チェック（Base64直送り方式のみ対象。
-  // Cloudinary方式はmediaUrlのみを保存するためサイズチェック不要）
-  if (mediaData && mediaData.length > 35 * 1024 * 1024) {
-    return res.status(413).json({ error: 'ファイルが大きすぎます' });
-  }
+  // 個人チャットと同じ基準(本文の形と長さ、メディアの種類、mediaUrlはCloudinaryのみ)
+  const badInput = validateMessageInput(req.body);
+  if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
 
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
   if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
@@ -611,6 +604,8 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (r
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
   const { content, encrypted, keyVersion } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
+  const badEdit = validateMessageInput(req.body, { allowMedia: false });
+  if (badEdit) return res.status(badEdit === 'メッセージが長すぎます' ? 413 : 400).json({ error: badEdit });
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
@@ -618,6 +613,7 @@ router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (r
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
   if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
   if (msg.sender_id !== req.user.userId) return res.status(403).json({ error: '権限がありません' });
+  if (msg.msg_type === 'notice') return res.status(400).json({ error: 'この種類のメッセージは編集できません' });
 
   const now = new Date().toISOString();
   const grp = await db.get('SELECT key_version FROM groups WHERE id = ?', [groupId]);
