@@ -16,9 +16,9 @@
   "build": {
     "appId": "com.brochat.desktop",
     "productName": "Bro Chat",
-    "files": ["main.js", "preload.js", "build/icon.png"],
-    "directories": { "output": "dist", "buildResources": "build" },
-    "win": { "icon": "build/icon.png" },
+    "files": ["main.js", "preload.js", "assets/icon.png"],
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "win": { "icon": "assets/icon.png" },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
