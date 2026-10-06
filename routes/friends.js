@@ -8,6 +8,7 @@ const { sendServerError } = require('../utils/errorResponse');
 // 存在していた(JWT_SECRETの重複ハードコードと同種の問題)。
 // 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
 const { verifyToken: auth } = require('../utils/authMiddleware');
+const { rejectIfProfane } = require('../utils/moderation');
 
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
@@ -49,6 +50,7 @@ function isValidProfilePic(value, req) {
 router.post('/me', auth, async (req, res) => {
   try {
     const { displayName, bio, profilePic, publicKey } = req.body || {};
+    if (await rejectIfProfane(req, res, typeof displayName === 'string' ? displayName : '', typeof bio === 'string' ? bio : '')) return;
     if ((displayName != null && typeof displayName !== 'string') || (bio != null && typeof bio !== 'string')) {
       return res.status(400).json({ error: '入力の形式が正しくありません' });
     }

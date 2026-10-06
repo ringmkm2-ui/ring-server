@@ -118,6 +118,28 @@
   // フィルタ要素はボタンごとに1個(押したボタンだけ屈折を強めるため)
   const mapCache = new Map();
   let fid = 0;
+  // パネル(吹き出し・バー・カード)のフィルタは、同じ大きさなら使い回す。
+  // 新しいフィルタは屈折マップ(feImage)の読み込みが非同期で、作った直後の数フレームは
+  // 曲がっていない状態で描かれる。吹き出しが増えるたび・大きさが変わるたびに作り直していたので、
+  // そのたびにガラスがちらついていた。パネルの屈折は固定値なので共有しても見た目は同じ。
+  const panelFilters = new Map();
+  function getPanelFilter(w, h, rad) {
+    const key = w + 'x' + h + 'r' + rad;
+    let f = panelFilters.get(key);
+    if (f) { panelFilters.delete(key); panelFilters.set(key, f); return f; }
+    f = getFilter(w, h, rad, 'panelh');
+    panelFilters.set(key, f);
+    // 増えすぎたら古い物から片付ける(使っている要素があれば次の作り直しで作られ直す)
+    if (panelFilters.size > 300) {
+      const oldKey = panelFilters.keys().next().value;
+      const old = panelFilters.get(oldKey);
+      panelFilters.delete(oldKey);
+      const inUse = [...allPanels].some(p => p.filter === old && p.e.isConnected);
+      if (inUse) panelFilters.set(oldKey, old);
+      else if (old && old.node) old.node.remove();
+    }
+    return f;
+  }
   function getFilter(w, h, rad, kind) {
     const key = w + 'x' + h + 'r' + rad + kind;
     let map = mapCache.get(key);
@@ -417,7 +439,17 @@
     seal();
     s.comp.style.width = R.w + 'px'; s.comp.style.height = R.h + 'px';
     s.comp.style.left = -P + 'px'; s.comp.style.top = -P + 'px';
-    s.comp.replaceChildren(cur);
+    // 作り直しは「新しい複製を上に重ねてから、2フレーム後に古い方を消す」。
+    // 以前は replaceChildren で一気に差し替えていたため、差し替えた瞬間の1フレームだけ
+    // ガラスの中身が空になり、ボタンやバーが点滅して見えた(キーボードの開閉・新着・タップのたび)。
+    s.comp.appendChild(cur);
+    if (s.comp.childElementCount > 1) {
+      const comp = s.comp;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        while (comp.childElementCount > 1) comp.firstElementChild.remove();
+      }));
+    }
+    if (s.panel && !s.e.classList.contains('lg-ready')) s.e.classList.add('lg-ready');
     s.fixedEl = fixedEl;
     s.rx = r.left; s.ry = r.top; s.sx = 0; s.sy = 0;
     placeComp(s, 0, 0, 0, 1, 1);
@@ -699,7 +731,6 @@
     if (!w || !h) return;
     if (w !== s.w || h !== s.h || (!s.filter && !s.flat)) {
       s.w = w; s.h = h;
-      if (s.filter && s.filter.node) s.filter.node.remove();
       s.filter = null;
       const lw = Math.max(2, Math.ceil(w * Q)), lh = Math.max(2, Math.ceil(h * Q));
       Object.assign(s.lens.style, { width: lw + 'px', height: lh + 'px' });
@@ -711,7 +742,7 @@
         let rad = parseFloat(cs.borderTopLeftRadius) || 0;
         if ((cs.borderTopLeftRadius || '').endsWith('%')) rad = Math.min(w, h) / 2;
         rad = Math.min(rad, Math.min(w, h) / 2) * Q;
-        s.filter = getFilter(lw, lh, Math.round(rad), 'panelh');
+        s.filter = getPanelFilter(lw, lh, Math.round(rad));
         s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
         setDisp(s.filter, 2 * s.filter.max * GAIN);
       }
@@ -736,8 +767,13 @@
       lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
     panels.set(e, s); allPanels.add(s);
     panelTint(s);
-    rebuildSoon(60);
-    if (io) io.observe(e); else { s.built = true; sizePanel(s); visiblePanels.add(s); }
+    // 画面に出ている物はこの場で(描画される前に)ガラスを作る。以前は IntersectionObserver
+    // の通知(次のフレーム以降)を待っていたため、その間パネルが透明な抜け殻で描かれていた
+    const r0 = e.getBoundingClientRect();
+    if (r0.width && r0.bottom > -120 && r0.top < innerHeight + 120) {
+      s.built = true; sizePanel(s); visiblePanels.add(s); s.clip.classList.add('lg-on');
+    }
+    if (io) io.observe(e); else { if (!s.built) { s.built = true; sizePanel(s); } visiblePanels.add(s); }
     if (ro) ro.observe(e);
   }
   function scanPanels() {
@@ -752,7 +788,6 @@
       if (s.e.isConnected) return;
       allPanels.delete(s); visiblePanels.delete(s);
       if (io) io.unobserve(s.e); if (ro) ro.unobserve(s.e);
-      if (s.filter && s.filter.node) s.filter.node.remove();
     });
     rounds.forEach(s => {
       if (s.e.isConnected) return;
@@ -763,9 +798,16 @@
   let panelT = 0;
   function scanPanelsSoon(ms) { clearTimeout(panelT); panelT = setTimeout(scanPanels, ms || 200); }
   // 新着メッセージ等: チャット欄とリストだけを見張る(ページ全体は見ない)
+  let panelMicro = false;
   function watchLists() {
     document.querySelectorAll('#chatScreen,#cs,#talkList,#groupList,#communityList,.tc').forEach(el => {
-      new MutationObserver(() => scanPanelsSoon(200)).observe(el, { childList: true, subtree: true });
+      // MutationObserverの通知は描画の前に来るので、ここで作れば新しい吹き出しが
+      // 「普通の吹き出し → ガラス」と切り替わって見えることがない(同じ回の変更はまとめて1回)
+      new MutationObserver(() => {
+        if (panelMicro) return;
+        panelMicro = true;
+        queueMicrotask(() => { panelMicro = false; scanPanels(); });
+      }).observe(el, { childList: true, subtree: true });
     });
   }
 
@@ -932,11 +974,14 @@
   function init() {
     if (WA) document.documentElement.classList.add('theme-wa');
     upgradeSwitches();
-    scan(true);
+    // ページを開いた時からあるボタンは、最初からガラスで出す。以前はここでも「出現」
+    // (透明→膨らんで現れる)を毎回やっていたため、画面を開くたびにボタンが点滅して見えた。
+    // 出現の動きは、メニュー等で後から出てくるボタンにだけ使う(タップ後の scanSoon)
+    scan(false);
     scanPanels();
     watchLists();
     // 遅れて描画されるボタン用にもう一度だけ
-    setTimeout(() => { scan(true); scanPanels(); }, 1200);
+    setTimeout(() => { scan(false); scanPanels(); }, 1200);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

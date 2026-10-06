@@ -10,6 +10,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { sendServerError } = require('../utils/errorResponse');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { rejectIfProfane } = require('../utils/moderation');
 
 const router = express.Router();
 
@@ -104,6 +105,7 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
 // --- 投稿作成 ---
 router.post('/', verifyToken, asyncHandler(async (req, res) => {
   const { text, mediaUrl, mediaType } = req.body;
+  if (await rejectIfProfane(req, res, text)) return;
 
   if ((text != null && typeof text !== 'string') || (mediaUrl != null && typeof mediaUrl !== 'string')) {
     return res.status(400).json({ error: '入力の形式が正しくありません' });
@@ -194,6 +196,7 @@ router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
 // --- コメント作成 ---
 router.post('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
   const { text } = req.body;
+  if (await rejectIfProfane(req, res, text)) return;
   if (!text || !text.trim()) return res.status(400).json({ error: 'コメントを入力してください' });
   if (text.length > 500) return res.status(400).json({ error: 'コメントは500文字以内にしてください' });
 

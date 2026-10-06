@@ -821,10 +821,15 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .ngbtn .ngicon{pointer-events:auto;cursor:pointer}
 
 /* パネル(吹き出し・バー・カード・メニュー等)のガラス */
-.lg-panel{isolation:isolate;background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+/* 元の背景を消すのは、ガラス(下の複製)が出来上がってから(lg-ready)。
+   以前は lg-panel を付けた瞬間に背景を消していたので、ガラスが出来るまでの間
+   吹き出しやカードが中身の無い透明な枠で描かれ、チカチカして見えた */
+.lg-panel{isolation:isolate}
+.lg-panel.lg-ready{background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
   border-color:transparent!important;
   box-shadow:0 12px 30px -8px rgba(0,0,0,.25),0 2px 5px rgba(0,0,0,.11)!important}
 .lg-panel > .lg-fx{z-index:-1}
+.lg-panel:not(.lg-ready) > .lg-fx{visibility:hidden}
 .lg-frost{filter:blur(6px)}
 
 /* ==========================================================================

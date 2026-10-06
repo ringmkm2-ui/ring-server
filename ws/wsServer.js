@@ -320,6 +320,11 @@ function initWebSocketServer(server) {
           ws.close();
           return;
         }
+        if (payload.bannedUntil) {
+          ws.send(JSON.stringify({ type: 'banned', bannedUntil: payload.bannedUntil }));
+          setTimeout(() => { try { ws.close(4003, 'banned'); } catch (e) {} }, 300);
+          return;
+        }
         userId = payload.userId;
         ws.sessionId = payload.sid || null;
         clearTimeout(authTimer);
@@ -853,4 +858,15 @@ function initWebSocketServer(server) {
   return wss;
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, rejectPendingCall };
+// 禁止語で利用停止になった人の接続に知らせてから切る(停止画面を出させる)
+function disconnectBanned(userId, until) {
+  const set = connections.get(userId);
+  if (!set) return;
+  const msg = JSON.stringify({ type: 'banned', bannedUntil: until });
+  for (const ws of [...set]) {
+    try { ws.send(msg); } catch (e) {}
+    setTimeout(() => { try { ws.close(4003, 'banned'); } catch (e) {} }, 300);
+  }
+}
+
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, rejectPendingCall, disconnectBanned };

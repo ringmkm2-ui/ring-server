@@ -251,6 +251,7 @@ async function main() {
   app.use('/api/calls', callsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/moderation', require('./routes/moderation'));
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、

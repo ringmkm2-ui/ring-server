@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
+const { rejectIfProfane } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
@@ -59,6 +60,8 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       mediaUrl, mediaPublicId, encryptedMetadata, chunkCount,
       encrypted, repliedToId,
     } = req.body;
+    // 平文で届いた時だけサーバーで調べられる(暗号文は送る側の端末が調べる)
+    if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
     if (typeof content === 'string' && content.length > MAX_CONTENT_LENGTH) {
       return res.status(413).json({ error: 'メッセージが長すぎます' });
@@ -357,6 +360,7 @@ router.get('/talks', auth, async (req, res) => {
 router.post('/edit', auth, async (req, res) => {
   try {
     const { messageId, content, encrypted } = req.body;
+    if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);

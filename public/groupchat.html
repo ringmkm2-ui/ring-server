@@ -203,6 +203,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 <script defer src="/js/cacheManager.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/actions.js"></script>
+<script src="/js/profanity.js"></script>
 </head>
 <body>
 <svg style="position:absolute;width:0;height:0">
@@ -214,7 +215,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.166 beta</div>
+  <div class="version-badge">Bro Chat v1.28.167 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -710,6 +711,8 @@ document.getElementById('tform').onsubmit=async e=>{
   e.preventDefault();
   const txt=document.getElementById('mi').value.trim();
   if(!txt)return;
+  // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。送らずに3日間停止
+  if(window.BCProfanity&&await window.BCProfanity.blockIfProfane(txt,'group')){document.getElementById('mi').value='';return;}
   if(window.LiquidGlass) window.LiquidGlass.haptic('light');
 
   document.getElementById('mi').value='';

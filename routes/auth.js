@@ -192,6 +192,10 @@ async function checkSecondFactor(user, rawCode) {
 // body: { username, password, displayName }
 router.post('/register', registerLimiter, async (req, res) => {
   const { username, password, displayName } = req.body;
+  // 登録前なので停止する相手がいない。名前に禁止語があれば登録自体を断る
+  if (require('../utils/moderation').containsBannedWord(typeof displayName === 'string' ? displayName : '')) {
+    return res.status(400).json({ error: 'その名前は使えません' });
+  }
   if (!username || !password) {
     return res.status(400).json({ error: 'username と password は必須です' });
   }
