@@ -783,6 +783,11 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-fxclip{position:absolute;inset:0;border-radius:inherit;overflow:hidden;isolation:isolate;
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
 .lg-lens{position:absolute;inset:0}
+/* 丸ボタンは触っている間だけガラス。普段は普通の不透明なボタン(--lg-rest)で、屈折も描かない */
+.lg-round .lg-lens{opacity:0;visibility:hidden;transition:opacity .22s ease,visibility 0s linear .22s}
+.lg-round.lg-live .lg-lens{opacity:1;visibility:visible;transition:opacity .12s ease,visibility 0s}
+.lg-round:not(.lg-live) .lg-tint{background:var(--lg-rest,rgba(255,255,255,.94))!important}
+.lg-round:not(.lg-live) .lg-spec,.lg-round:not(.lg-live) .lg-bloom{opacity:.35}
 .lg-comp{position:absolute;left:0;top:0;overflow:hidden}
  /* 画面に出ているパネルのガラス部分だけ別レイヤーに: スクロールで中身が変わっても文字や影を描き直さない */
 .lg-fxclip.lg-on{will-change:transform}
