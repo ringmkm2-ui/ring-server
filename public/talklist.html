@@ -365,6 +365,10 @@ window.ensureGroupCrypto = (function () {
   };
 })();
 </script>
+<script src="/js/libsodium-wrappers.min.js"></script>
+<script src="/js/signalkeymanager.js"></script>
+<script src="/js/groupE2E.js"></script>
+<script src="/js/communityE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/iconUpload.js"></script>
 <script src="/js/session.js"></script>
@@ -522,7 +526,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.176 beta</div>
+  <div class="version-badge">Bro Chat v1.28.177 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3832,11 +3836,23 @@ async function deletePost(postId, card) {
     if (!name) return;
     const desc = document.getElementById('communityDescInput').value.trim();
     try {
+      // 作るときに共有鍵も作って、自分宛に暗号化した塊だけをサーバーへ渡す。
+      // 以後このコミュニティの投稿はこの鍵で暗号化され、サーバーには読めない。
+      let keyPair = null;
+      try { keyPair = await communityE2E.createInitialKey(); }
+      catch (e) { console.warn('[community] 鍵を作れませんでした。暗号化なしで作成します', e); }
+
       const data = await api('/api/communities', {
         method: 'POST',
-        body: JSON.stringify({ name, description: desc || null })
+        body: JSON.stringify({
+          name, description: desc || null,
+          encryptedKeyForSelf: keyPair ? keyPair.encryptedKeyForSelf : undefined,
+        })
       });
       if (data.ok) {
+        if (keyPair && data.community && data.community.encrypted) {
+          communityE2E.rememberKey(data.community.id, data.community.keyVersion || 1, keyPair.key);
+        }
         communityMov.classList.remove('open');
         document.getElementById('communityNameInput').value = '';
         document.getElementById('communityDescInput').value = '';

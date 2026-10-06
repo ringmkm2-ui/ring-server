@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.176';
+const CACHE_VERSION = 'v1.28.177';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -70,6 +70,7 @@ const urlsToCache = [
   '/js/globalBg.js',
   '/js/globalSettings.js',
   '/js/userSettings.js',
+  '/js/communityE2E.js',
   '/js/liquidGlass.js',
   '/js/lgControls.js',
   '/js/pushSubscribe.js',
