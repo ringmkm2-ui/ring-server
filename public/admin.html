@@ -319,7 +319,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.169 beta</div>
+  <div class="version-badge">Bro Chat v1.28.170 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2040,16 +2040,12 @@ function showTypingIndicator() {
       av.textContent = (partnerName||'?')[0];
     }
     // バブル
+    // WhatsAppと同じ: 相手の吹き出しと同じ見た目の小さな吹き出しに、3つの点が順番に
+    // ふわっと濃くなっていく(跳ねたりくっついたりはしない)
     const bubble = document.createElement('div');
-    bubble.style.cssText = 'display:flex;align-items:center;gap:4px;padding:10px 16px;border-radius:18px;background:rgba(0,0,0,.08);';
-    // Fluid Fusion: 3つの点が寄っては液体のようにくっつき、また分かれる(gooフィルター)。
-    // フィルターは点の周りの小さい範囲だけに掛けるので重くない
-    bubble.innerHTML = '<svg width="0" height="0" style="position:absolute"><filter id="bcGoo"><feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter></svg>'
-      + '<span style="display:flex;align-items:center;gap:4px;padding:4px 2px;filter:url(#bcGoo)">'
-      + '<span style="width:8px;height:8px;border-radius:50%;background:#8b8f98;animation:bcGooA 1.5s ease-in-out infinite"></span>'
-      + '<span style="width:8px;height:8px;border-radius:50%;background:#8b8f98;animation:bcGooB 1.5s ease-in-out infinite"></span>'
-      + '<span style="width:8px;height:8px;border-radius:50%;background:#8b8f98;animation:bcGooC 1.5s ease-in-out infinite"></span>'
-      + '</span>';
+    bubble.className = 'bubble bc-typing-bub';
+    bubble.style.cssText = 'display:flex;align-items:center;gap:5px;padding:12px 14px;min-width:0;border-radius:18px 18px 18px 6px;';
+    bubble.innerHTML = '<i class="bc-wa-dot"></i><i class="bc-wa-dot"></i><i class="bc-wa-dot"></i>';
     ti.appendChild(av);
     ti.appendChild(bubble);
     // アニメーションCSS（まだ追加されてなければ）
@@ -2059,7 +2055,11 @@ function showTypingIndicator() {
       style.textContent = '@keyframes typingDot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}'
         + '@keyframes bcGooA{0%,100%{transform:translate(0,0)}25%{transform:translate(0,-4px)}50%{transform:translate(6px,0)}}'
         + '@keyframes bcGooB{0%,100%{transform:scale(1)}35%{transform:translateY(-4px) scale(1)}50%{transform:scale(1.25)}}'
-        + '@keyframes bcGooC{0%,100%{transform:translate(0,0)}45%{transform:translate(0,-4px)}50%{transform:translate(-6px,0)}}';
+        + '@keyframes bcGooC{0%,100%{transform:translate(0,0)}45%{transform:translate(0,-4px)}50%{transform:translate(-6px,0)}}'
+        + '.bc-wa-dot{display:block;width:7px;height:7px;border-radius:50%;background:#8696a0;animation:bcWaDot 1.3s ease-in-out infinite}'
+        + '.bc-wa-dot:nth-child(2){animation-delay:.18s}.bc-wa-dot:nth-child(3){animation-delay:.36s}'
+        + '@keyframes bcWaDot{0%,70%,100%{opacity:.35;transform:scale(.82)}35%{opacity:1;transform:scale(1)}}'
+        + 'html.reduce-motion .bc-wa-dot{animation:none;opacity:.6}';
       document.head.appendChild(style);
     }
     document.getElementById('chatScreen').appendChild(ti);

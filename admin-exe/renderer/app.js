@@ -6,6 +6,7 @@
   const ICON = {
     logout: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z"/><line x1="9" y1="15" x2="15" y2="15"/></svg>',
     unlock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    unban: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9.5"/></svg>',
     key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2"/><path d="M17 6l3 3"/></svg>'
   };
 
@@ -69,11 +70,19 @@
       const c3 = document.createElement('td'); c3.textContent = u.createdAt ? new Date(u.createdAt).toLocaleDateString('ja-JP') : '';
       const c4 = document.createElement('td');
       if (u.locked) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'ロック中'; c4.appendChild(t); }
+      if (u.banned) {
+        const t = document.createElement('span'); t.className = 'tag'; t.style.marginLeft = '4px';
+        const h = Math.max(1, Math.ceil((u.bannedUntil - Date.now()) / 36e5));
+        t.textContent = '停止中 あと' + (h >= 24 ? Math.floor(h / 24) + '日' + (h % 24) + '時間' : h + '時間');
+        t.title = u.banReason || '';
+        c4.appendChild(t);
+      }
       const c5 = document.createElement('td'); c5.className = 'r';
       const act = document.createElement('div'); act.className = 'act';
       act.append(
         actBtn(ICON.logout, '全端末からログアウトさせる', () => forceLogout(u)),
         actBtn(ICON.unlock, 'ログインロックを解除', () => unlock(u)),
+        ...(u.banned ? [actBtn(ICON.unban, '利用停止を解除', () => unban(u))] : []),
         actBtn(ICON.key, 'パスワードを再設定', () => openPw(u))
       );
       c5.appendChild(act);
@@ -160,6 +169,11 @@
   }
   async function unlock(u) {
     try { await call('POST', '/api/admin/users/' + encodeURIComponent(u.id) + '/unlock'); toast('ロックを解除しました'); loadUsers().catch(() => {}); }
+    catch (e) { toast(e.message); }
+  }
+
+  async function unban(u) {
+    try { await call('POST', '/api/admin/users/' + encodeURIComponent(u.id) + '/unban'); toast('利用停止を解除しました'); loadUsers().catch(() => {}); }
     catch (e) { toast(e.message); }
   }
 

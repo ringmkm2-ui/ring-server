@@ -37,8 +37,36 @@
       ov.innerHTML = '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>' +
         '<div style="font-size:20px;font-weight:700">利用停止中</div>' +
         '<div style="font-size:14px;color:#9ca3af;line-height:1.7">禁止されている言葉を使ったため、<br>3日間このアカウントは使えません。</div>' +
-        '<div id="bcBanLeft" style="font-size:15px;font-weight:600;color:#f3f4f6"></div>';
+        '<div id="bcBanLeft" style="font-size:15px;font-weight:600;color:#f3f4f6"></div>' +
+        // 管理キーを知っている人(=運営)だけ、その場で解除できる。普段は小さい文字のリンクだけ見せる
+        '<button id="bcBanUnlockLink" type="button" style="margin-top:28px;background:none;border:0;color:#6b7280;font-size:12px;text-decoration:underline;cursor:pointer">管理者として解除</button>' +
+        '<div id="bcBanUnlockBox" style="display:none;flex-direction:column;gap:10px;width:100%;max-width:280px;margin-top:10px">' +
+        '<input id="bcBanKey" type="password" autocomplete="off" placeholder="管理キー" style="padding:12px 14px;border-radius:12px;border:1px solid #374151;background:#111827;color:#f9fafb;font-size:15px;outline:none">' +
+        '<button id="bcBanKeyBtn" type="button" style="padding:12px;border-radius:12px;border:0;background:#f3f4f6;color:#111827;font-size:15px;font-weight:700;cursor:pointer">解除する</button>' +
+        '<div id="bcBanKeyMsg" style="font-size:12px;color:#f87171;min-height:16px"></div></div>';
       (document.body || document.documentElement).appendChild(ov);
+      ov.querySelector('#bcBanUnlockLink').onclick = function () {
+        ov.querySelector('#bcBanUnlockBox').style.display = 'flex';
+        this.style.display = 'none';
+        ov.querySelector('#bcBanKey').focus();
+      };
+      ov.querySelector('#bcBanKeyBtn').onclick = function () {
+        var msg = ov.querySelector('#bcBanKeyMsg'), btn = this;
+        var k = ov.querySelector('#bcBanKey').value.trim();
+        if (!k) return;
+        btn.disabled = true; msg.textContent = '';
+        origFetch.call(window, '/api/moderation/unban-self', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem('ring_token') || '') },
+          body: JSON.stringify({ key: k }),
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (x) {
+          btn.disabled = false;
+          if (!x.ok) { msg.textContent = (x.j && x.j.error) || '解除できませんでした'; return; }
+          try { localStorage.removeItem('bc_banned_until'); } catch (e) {}
+          clearInterval(window.__bcBanT);
+          location.reload();
+        }).catch(function () { btn.disabled = false; msg.textContent = '通信できませんでした'; });
+      };
     }
     var left = document.getElementById('bcBanLeft');
     var tick = function () {

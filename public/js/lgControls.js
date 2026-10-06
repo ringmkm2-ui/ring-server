@@ -338,8 +338,19 @@
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);
   }
   // ダークモード切替で全部やり直す
-  new MutationObserver(() => { rounds.forEach(s => { if (s.e.isConnected) adapt(s); }); if (typeof visiblePanels !== 'undefined') visiblePanels.forEach(panelTint); if (typeof rebuildSoon === 'function') rebuildSoon(60); })
-    .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  // (画面外のパネルの色も直す。以前は見えている物だけ直していたので、スクロールや設定画面を
+  //  開いた時に、切り替わる前の暗い/明るい色のガラスが残ることがあった)
+  const refreshAll = () => {
+    rounds.forEach(s => { if (s.e.isConnected) adapt(s); });
+    if (typeof allPanels !== 'undefined') allPanels.forEach(p => { if (p.e.isConnected) panelTint(p); });
+    if (typeof rebuildSoon === 'function') rebuildSoon(60);
+  };
+  new MutationObserver(refreshAll).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+  // 背景画像の有無(body.has-custom-bg)や、読み込み完了・フォント確定で下の見た目が変わった時も作り直す
+  const watchBody = () => { if (document.body) new MutationObserver(refreshAll).observe(document.body, { attributes: true, attributeFilter: ['class'] }); };
+  if (document.body) watchBody(); else document.addEventListener('DOMContentLoaded', watchBody);
+  addEventListener('load', () => setTimeout(refreshAll, 50));
+  try { document.fonts && document.fonts.ready.then(() => setTimeout(refreshAll, 50)); } catch (e) {}
 
   // ------------------------------------------------------------
   // ボタンの下に見えているものの複製(デモの .comp に相当)
@@ -711,6 +722,7 @@
       if (en.isIntersecting) {
         visiblePanels.add(s);
         s.clip.classList.add('lg-on');
+        panelTint(s);
         if (!s.built) { s.built = true; sizePanel(s); }
         else buildReplica(s);
       } else { visiblePanels.delete(s); s.clip.classList.remove('lg-on'); }
