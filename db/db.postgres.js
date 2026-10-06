@@ -254,6 +254,23 @@ async function initDB() {
         deleted_at TIMESTAMP
       )
     `);
+    // E2E暗号化。グループと同じ仕組み(共有鍵を各メンバー宛にX3DHで配る)。
+    // 既存の平文メッセージは encrypted=false のまま残り、今まで通り読める。
+    await pool.query('ALTER TABLE communities ADD COLUMN IF NOT EXISTS key_version INTEGER DEFAULT 1');
+    await pool.query('ALTER TABLE communities ADD COLUMN IF NOT EXISTS rekey_needed BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS key_version INTEGER');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS community_key_distributions (
+        id TEXT PRIMARY KEY,
+        community_id TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        key_version INTEGER NOT NULL,
+        encrypted_key TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_ckd_unique ON community_key_distributions(community_id, user_id, key_version)');
   } catch (e) {
     console.log('[db] communities migration skip:', e.message);
   }

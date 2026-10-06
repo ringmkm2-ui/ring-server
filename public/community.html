@@ -55,6 +55,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   .mobile-channel-item.active{background:rgba(255,255,255,.15)}
 }
 </style>
+<script src="/js/libsodium-wrappers.min.js"></script>
+<script src="/js/signalkeymanager.js"></script>
+<script src="/js/groupE2E.js"></script>
+<script src="/js/communityE2E.js"></script>
+<script src="/js/keyBackup.js"></script>
 <script defer src="/js/i18n.js"></script>
 <script src="/js/actions.js"></script>
 <script src="/js/session.js"></script>
@@ -96,6 +101,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <script>
 const token = localStorage.getItem('ring_token');
 const myUserId = localStorage.getItem('ring_userId');
+window.myUserId = myUserId; // groupE2E.js / communityE2E.js が参照する
+let communityKey = null;      // このコミュニティの共有鍵(Uint8Array)
+let communityKeyVersion = null;
 if (!token) location.href = '/auth.html';
 
 const communityId = new URLSearchParams(location.search).get('id');
@@ -123,6 +131,8 @@ async function loadCommunity() {
   communityData = data;
   myRole = data.community.myRole;
   document.getElementById('communityName').textContent = data.community.name;
+
+  await prepareKey();
 
   // 招待バッジ
   if (data.community.inviteCode) {
@@ -178,6 +188,73 @@ function renderChannels(channels) {
   }
 }
 
+// このコミュニティの共有鍵を用意する。
+// 取れなければ暗号化なしで動く(鍵がまだ配られていない間も読み書きはできる)。
+async function prepareKey() {
+  if (!window.communityE2E) return;
+  try {
+    const r = await communityE2E.getKey(communityId);
+    communityKey = r.key;
+    communityKeyVersion = r.version;
+  } catch (e) {
+    communityKey = null;
+    communityKeyVersion = null;
+    // 誰も鍵を持っていない(作った人が古い版のアプリだった等)なら、自分が作って配る
+    try {
+      const st = await api('/api/communities/' + communityId + '/key-status');
+      if (st && st.orphaned && communityData) {
+        const ids = (communityData.members || []).map(m => m.id);
+        const v = await communityE2E.rotateKey(communityId, ids, st.keyVersion);
+        const r2 = await communityE2E.getKey(communityId, v);
+        communityKey = r2.key;
+        communityKeyVersion = r2.version;
+      }
+    } catch (e2) { console.warn('[community] 鍵を用意できませんでした', e2); }
+  }
+  // 誰かが抜けた後は鍵を作り直す(抜けた人に以後の投稿を読ませない)
+  try {
+    const st = await api('/api/communities/' + communityId + '/key-status');
+    if (st && st.rekeyNeeded && communityKey && communityData) {
+      const ids = (communityData.members || []).map(m => m.id);
+      const v = await communityE2E.rotateKey(communityId, ids, st.keyVersion);
+      const r = await communityE2E.getKey(communityId, v);
+      communityKey = r.key;
+      communityKeyVersion = r.version;
+    }
+  } catch (e) { /* 他の人が先に作り直した時は409。次に開いた時に揃う */ }
+
+  // 参加したばかりで鍵を持っていない人がいれば配る
+  communityE2E.distributePendingKeys().catch(() => {});
+}
+
+// 古い版の鍵で暗号化されたメッセージも読めるように、版ごとに鍵を覚えておく
+const keyByVersion = new Map();
+async function keyForVersion(v) {
+  if (v == null) return communityKey;
+  if (communityKeyVersion === v) return communityKey;
+  if (keyByVersion.has(v)) return keyByVersion.get(v);
+  try {
+    const r = await communityE2E.getKey(communityId, v);
+    keyByVersion.set(v, r.key);
+    return r.key;
+  } catch (e) {
+    keyByVersion.set(v, null);
+    return null;
+  }
+}
+
+// 暗号文なら復号して返す。読めない時は中身を出さずその旨だけ返す
+async function readContent(m) {
+  if (!m.encrypted) return m.content;
+  const key = await keyForVersion(m.key_version);
+  if (!key) return '(この投稿を読む鍵がありません)';
+  try {
+    return await communityE2E.decryptText(m.content, key);
+  } catch (e) {
+    return '(復号に失敗しました)';
+  }
+}
+
 async function selectChannel(channelId, name) {
   currentChannelId = channelId;
   document.getElementById('channelName').textContent = '# ' + name;
@@ -195,7 +272,8 @@ async function loadMessages() {
   container.textContent = '';
   if (!data.ok || !data.messages) return;
 
-  data.messages.forEach(m => {
+  const texts = await Promise.all(data.messages.map(readContent));
+  data.messages.forEach((m, i) => {
     const msg = document.createElement('div');
     msg.className = 'msg';
 
@@ -225,7 +303,7 @@ async function loadMessages() {
 
     const text = document.createElement('div');
     text.className = 'msg-text';
-    setLinkedText(text, m.content);
+    setLinkedText(text, texts[i]);
 
     body.appendChild(header);
     body.appendChild(text);
@@ -253,17 +331,37 @@ document.getElementById('msgInput').onkeydown = e => { if (e.key === 'Enter' && 
 
 async function sendMessage() {
   const input = document.getElementById('msgInput');
-  const text = input.value.trim();
+  let text = input.value.trim();
   if (!text || !currentChannelId) return;
   input.value = '';
 
+  // 暗号化するとサーバーからは中身が見えないので、禁止語は送る前に端末側で見る
+  const profane = !!(window.BCProfanity && window.BCProfanity.containsBannedWord(text));
+  if (profane) text = window.BCProfanity.censor(text);
+
+  let body = { content: text };
+  if (communityKey) {
+    try {
+      body = {
+        content: await communityE2E.encryptText(text, communityKey),
+        encrypted: true,
+        keyVersion: communityKeyVersion,
+      };
+    } catch (e) {
+      console.warn('[community] 暗号化に失敗、送信を中止します', e);
+      alert('暗号化できなかったので送信しませんでした');
+      return;
+    }
+  }
+
   const data = await api(`/api/communities/${communityId}/channels/${currentChannelId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content: text })
+    body: JSON.stringify(body)
   });
   if (data.ok && data.message) {
     await loadMessages();
   }
+  if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
 }
 
 async function addChannel() {

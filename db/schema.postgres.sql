@@ -249,3 +249,14 @@ CREATE TABLE IF NOT EXISTS user_settings (
   data TEXT NOT NULL DEFAULT '{}',
   updated_at TIMESTAMP DEFAULT now()
 );
+
+-- コミュニティのE2E暗号化(グループと同じ方式: 共有鍵をメンバーごとに暗号化して配る)
+CREATE TABLE IF NOT EXISTS community_key_distributions (
+  id TEXT PRIMARY KEY,
+  community_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  key_version INTEGER NOT NULL,
+  encrypted_key TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ckd_unique ON community_key_distributions(community_id, user_id, key_version);
