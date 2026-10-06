@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { rejectIfProfane } = require('../utils/moderation');
+const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { sendServerError } = require('../utils/errorResponse');
 
 const router = express.Router();
@@ -181,8 +181,8 @@ router.post('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async
   const channel = await db.get('SELECT id FROM community_channels WHERE id = ? AND community_id = ?', [req.params.channelId, req.params.id]);
   if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
+  censorBodyAndBanAfter(req, res, ['content']);
   const { content, mediaUrl, mediaType } = req.body;
-  if (await rejectIfProfane(req, res, content)) return;
   if (!content && !mediaUrl) return res.status(400).json({ error: 'メッセージが必要です' });
 
   const id = uuidv4();

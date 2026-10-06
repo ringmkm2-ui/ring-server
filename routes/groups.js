@@ -6,7 +6,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { broadcastToUser } = require('../ws/wsServer');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { rejectIfProfane } = require('../utils/moderation');
+const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
 const { areFriends } = require('../utils/relations');
@@ -419,9 +419,10 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // mediaData: base64エンコードされたデータ
 router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
-  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
   // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
-  if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
+  if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
+  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
+  if (mediaType === 'notice') return res.status(400).json({ error: 'mediaTypeが不正です' });
   if (!content) return res.status(400).json({ error: 'content required' });
   if (typeof content === 'string' && content.length > MAX_GROUP_CONTENT_LENGTH) {
     return res.status(413).json({ error: 'メッセージが長すぎます' });
@@ -607,8 +608,8 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
 // --- グループメッセージ編集 ---
 router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
+  if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
   const { content, encrypted, keyVersion } = req.body;
-  if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
   if (!content) return res.status(400).json({ error: 'content required' });
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });

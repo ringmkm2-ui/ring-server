@@ -10,7 +10,7 @@ const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { sendServerError } = require('../utils/errorResponse');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { rejectIfProfane } = require('../utils/moderation');
+const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 
 const router = express.Router();
 
@@ -104,8 +104,8 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
 
 // --- 投稿作成 ---
 router.post('/', verifyToken, asyncHandler(async (req, res) => {
+  censorBodyAndBanAfter(req, res, ['text']); // 禁止語は f*** にして投稿、本人は3日間停止
   const { text, mediaUrl, mediaType } = req.body;
-  if (await rejectIfProfane(req, res, text)) return;
 
   if ((text != null && typeof text !== 'string') || (mediaUrl != null && typeof mediaUrl !== 'string')) {
     return res.status(400).json({ error: '入力の形式が正しくありません' });
@@ -195,8 +195,8 @@ router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
 
 // --- コメント作成 ---
 router.post('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
+  censorBodyAndBanAfter(req, res, ['text']);
   const { text } = req.body;
-  if (await rejectIfProfane(req, res, text)) return;
   if (!text || !text.trim()) return res.status(400).json({ error: 'コメントを入力してください' });
   if (text.length > 500) return res.status(400).json({ error: 'コメントは500文字以内にしてください' });
 

@@ -22,22 +22,59 @@
     return /f[uvxa*]ck|f\*k|fck|ph[ua]ck|phuk/.test(latin);
   }
   
-  // 引っかかった時: 送らずに3日間の停止をサーバーへ伝え、停止画面を出す。true を返したら送信を止める
-  async function blockIfProfane(text, where) {
-    if (!containsBannedWord(text)) return false;
+  const LATIN_RE = /f[uvxa*]ck|f\*k|fck|ph[ua]ck|phuk/g;
+  const KANA_RE = /ファ[ー・\s]*ッ+[ー・\s]*ク(?!ス)|ふぁ[ー・\s]*っ+[ー・\s]*く(?!す)/g;
+  function censor(text) {
+    if (typeof text !== 'string' || !text || !containsBannedWord(text)) return text;
+    // 1文字ずつ正規化し、英字(と伏せ字の*)だけを位置付きで拾う
+    const stream = []; // { c, start, end }  元の文字列での [start, end)
+    for (let i = 0; i < text.length; ) {
+      const cp = text.codePointAt(i), len = cp > 0xffff ? 2 : 1;
+      const n = String.fromCodePoint(cp).normalize('NFKC').toLowerCase();
+      for (const ch of n) {
+        const m = LEET[ch] || ch;
+        if (/[a-z*]/.test(m)) stream.push({ c: m, start: i, end: i + len });
+      }
+      i += len;
+    }
+    // 同じ文字の連続をまとめる(範囲は伸ばす)
+    const col = [];
+    for (const t of stream) {
+      const last = col[col.length - 1];
+      if (last && last.c === t.c) last.end = t.end; else col.push({ ...t });
+    }
+    const str = col.map(t => t.c).join('');
+    const ranges = [];
+    let m;
+    LATIN_RE.lastIndex = 0;
+    while ((m = LATIN_RE.exec(str))) ranges.push([col[m.index].start, col[m.index + m[0].length - 1].end]);
+    const nfk = text; // カナは元の文字列のまま探す
+    KANA_RE.lastIndex = 0;
+    while ((m = KANA_RE.exec(nfk))) ranges.push([m.index, m.index + m[0].length]);
+    ranges.sort((x, y) => x[0] - y[0]);
+    let out = '', pos = 0;
+    for (const [st, en] of ranges) {
+      if (st < pos) continue;
+      out += text.slice(pos, st) + 'f***';
+      pos = en;
+    }
+    return out + text.slice(pos);
+  }
+  
+  // 送った後に呼ぶ: 自分の3日間停止をサーバーへ伝え(相手/グループに「Banしました」が出る)、停止画面を出す
+  async function reportAfterSend(target) {
     try {
       const token = localStorage.getItem('ring_token');
       const r = await fetch('/api/moderation/self-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ where: where || 'chat' }),
+        body: JSON.stringify(target || { where: 'chat' }),
       });
       const j = await r.json().catch(() => ({}));
       if (window.bcShowBanned) window.bcShowBanned(j.bannedUntil || (Date.now() + 3 * 864e5));
     } catch (e) {
       if (window.bcShowBanned) window.bcShowBanned(Date.now() + 3 * 864e5);
     }
-    return true;
   }
-  window.BCProfanity = { containsBannedWord, blockIfProfane };
+  window.BCProfanity = { containsBannedWord, censor, reportAfterSend };
 })();

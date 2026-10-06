@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/db');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
-const { rejectIfProfane } = require('../utils/moderation');
+const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
@@ -41,6 +41,9 @@ function toPreviewText(content, encrypted) {
     if (parsed && parsed.__call__) {
       return '通話';
     }
+    if (parsed && parsed.__notice__ && parsed.__notice__.kind === 'ban') {
+      return `${String(parsed.__notice__.name || 'ユーザー').slice(0, 40)}がFワードを言ったためBanしました。`;
+    }
   } catch (e) {}
   return content;
 }
@@ -55,13 +58,15 @@ function toPreviewText(content, encrypted) {
 // repliedToId: リプライ対象のメッセージID
 router.post('/send', messageSendLimiter, auth, async (req, res) => {
   try {
+    // 平文で届いた時だけサーバーで調べられる(暗号文は送る側の端末が調べる)
+    if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], () => ({ peerId: req.body.recipientId }));
     const {
       recipientId, content, mediaType, mediaData,
       mediaUrl, mediaPublicId, encryptedMetadata, chunkCount,
       encrypted, repliedToId,
     } = req.body;
-    // 平文で届いた時だけサーバーで調べられる(暗号文は送る側の端末が調べる)
-    if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
+    // 「通知」はサーバーだけが作る種類(Banのお知らせ等)。送信APIからは作らせない
+    if (mediaType === 'notice') return res.status(400).json({ error: 'mediaTypeが不正です' });
     if (!recipientId || !content) return res.status(400).json({ error: 'recipientId and content required' });
     if (typeof content === 'string' && content.length > MAX_CONTENT_LENGTH) {
       return res.status(413).json({ error: 'メッセージが長すぎます' });
@@ -241,6 +246,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         senderId: m.sender_id,
         recipientId: m.recipient_id,
         content: m.deleted_at ? '' : m.content,
+        msgType: m.msg_type || 'text',
         encrypted: !!m.encrypted,
         repliedToId: m.replied_to_id || null,
         createdAt: m.created_at,
@@ -359,8 +365,8 @@ router.get('/talks', auth, async (req, res) => {
 // body: { messageId, content }
 router.post('/edit', auth, async (req, res) => {
   try {
+    if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content']);
     const { messageId, content, encrypted } = req.body;
-    if (await rejectIfProfane(req, res, encrypted ? '' : content)) return;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [messageId]);
