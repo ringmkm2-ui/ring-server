@@ -411,6 +411,21 @@ router.post('/:id/rotate-key', verifyToken, asyncHandler(async (req, res) => {
   if (!encryptedKeysForMembers.some(e => isEncKeyEntry(e) && e.userId === req.user.userId)) {
     return res.status(400).json({ error: '自分宛の鍵が含まれていません' });
   }
+  // オーナー以外が鍵を作り直す時は、鍵を受け取れる(身元鍵を登録している)メンバー全員分を必須にする。
+  // 以前は自分の分だけで作り直せて、他の全員が新しいメッセージを読めなくなる嫌がらせができた
+  {
+    const owner = await db.get('SELECT owner_id FROM communities WHERE id = ?', [req.params.id]);
+    if (!owner || owner.owner_id !== req.user.userId) {
+      const need = await db.all(
+        `SELECT m.user_id FROM community_members m JOIN identity_keys k ON k.user_id = m.user_id WHERE m.community_id = ?`,
+        [req.params.id]
+      );
+      const given = new Set(encryptedKeysForMembers.filter(isEncKeyEntry).map(e => e.userId));
+      if (need.some(n => !given.has(n.user_id))) {
+        return res.status(400).json({ error: 'メンバー全員分の鍵が必要です' });
+      }
+    }
+  }
 
   const newVersion = ver + 1;
   await db.run('UPDATE communities SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, req.params.id, ver]);

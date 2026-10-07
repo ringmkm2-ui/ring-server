@@ -86,6 +86,14 @@ router.post('/translate', verifyToken, translateLimiter, asyncHandler(async (req
 }));
 
 // --- 通話メモの保存 ---
+// 通話の相手として保存してよいIDか(知り合いだけ)。
+// 以前はどんなIDでも保存でき、一覧で知らない人の名前と写真を引き出せた
+async function safeOtherId(me, otherId) {
+  if (typeof otherId !== 'string' || !otherId || otherId.length > 64) return null;
+  const { isAcquainted } = require('../utils/relations');
+  return (await isAcquainted(me, otherId)) ? otherId : null;
+}
+
 // body: { callId, otherId, content }
 router.post('/notes', verifyToken, asyncHandler(async (req, res) => {
   const { callId, otherId, content } = req.body;
@@ -108,7 +116,7 @@ router.post('/notes', verifyToken, asyncHandler(async (req, res) => {
   } else {
     await db.run(
       'INSERT INTO call_notes (id, call_id, owner_id, other_id, content) VALUES (?, ?, ?, ?, ?)',
-      [uuidv4(), callId, req.user.userId, otherId || null, content]
+      [uuidv4(), callId, req.user.userId, await safeOtherId(req.user.userId, otherId), content]
     );
   }
   res.json({ ok: true });
@@ -172,7 +180,7 @@ router.post('/summarize', verifyToken, summarizeLimiter, asyncHandler(async (req
     } else {
       await db.run(
         'INSERT INTO call_summaries (id, call_id, owner_id, other_id, summary) VALUES (?, ?, ?, ?, ?)',
-        [uuidv4(), callId, req.user.userId, otherId || null, summary]
+        [uuidv4(), callId, req.user.userId, await safeOtherId(req.user.userId, otherId), summary]
       );
     }
 

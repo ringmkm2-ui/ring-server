@@ -127,6 +127,17 @@ function leaveGroupCall(groupId, userId, ws) {
   }
 }
 
+// グループから外された(抜けた)人を、そのグループの通話からも外す。
+// 以前は外されても通話に残り、後から入ってきた人の映像・音声を受け取り続けられた
+function kickFromGroupCall(groupId, userId) {
+  const room = groupCalls.get(groupId);
+  if (!room) return;
+  const ws = room.peers.get(userId);
+  if (!ws) return;
+  try { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'gcall_ended', groupId })); } catch (_) {}
+  leaveGroupCall(groupId, userId, ws);
+}
+
 function isUserOnline(userId) {
   const set = connections.get(userId);
   return !!set && set.size > 0;
@@ -185,7 +196,8 @@ async function broadcastPresence(userId, online) {
 }
 
 async function flushOfflineQueue(userId) {
-  const rows = await db.all('SELECT * FROM offline_queue WHERE recipient_id = ? ORDER BY created_at ASC', [userId]);
+  // (新しく積まれることはもう無い。昔の残りを一度に全部メモリに読まないよう上限付き)
+  const rows = await db.all('SELECT * FROM offline_queue WHERE recipient_id = ? ORDER BY created_at ASC LIMIT 200', [userId]);
   rows.forEach(row => {
     broadcastToUser(userId, {
       type: 'message',
@@ -398,55 +410,10 @@ function initWebSocketServer(server) {
         return;
       }
 
-      // --- テキスト/暗号化メッセージの中継 ---
-      // data: { type:'message', recipientId, payload (暗号化済み本文), msgUuid }
-      // 注意: 実際のメッセージ送信は現在 /api/messages/send (REST) 経由で行われており、
-      // このWS直接中継は現行UIからは使われていない。ただし接続さえ確立すれば
-      // 誰でも呼べる生きた経路のため、REST側と同じ認可基準を適用しておく。
-      if (data.type === 'message') {
-        const [msgUserA, msgUserB] = [userId, data.recipientId].sort();
-        const msgFriendship = await db.get(
-          "SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ? AND status = 'accepted'",
-          [msgUserA, msgUserB]
-        );
-        if (!msgFriendship) {
-          ws.send(JSON.stringify({ type: 'error', error: '友達ではないユーザーには送信できません' }));
-          return;
-        }
-        // (古い直接中継の経路。今の画面は使っていないが、ブロック中の相手には届けない)
-        if (await isBlockedEither(userId, data.recipientId)) return;
-
-        const msgUuid = data.msgUuid || uuidv4(); // 重複排除用の一意ID
-        const delivered = broadcastToUser(data.recipientId, {
-          type: 'message',
-          senderId: userId,
-          msgUuid,
-          payload: data.payload,
-          queued: false,
-        });
-
-        if (!delivered) {
-          // 相手がオフライン → 一時的にDBへ (配送完了後は即削除する設計)
-          await db.run(
-            'INSERT INTO offline_queue (id, recipient_id, sender_id, payload, msg_uuid) VALUES (?, ?, ?, ?, ?)',
-            [uuidv4(), data.recipientId, userId, JSON.stringify(data.payload), msgUuid]
-          );
-
-          // FCMでオフラインの相手に通知
-          try {
-            const fcm = require('../utils/fcm');
-            const sender = await db.get('SELECT display_name, username FROM users WHERE id = ?', [userId]);
-            const senderName = sender?.display_name || sender?.username || '不明';
-            fcm.sendMessageNotification(data.recipientId, senderName, '新しいメッセージ', 'dm');
-          } catch (fcmErr) {
-            console.error('[fcm] message push failed:', fcmErr.message);
-          }
-        }
-
-        // 送信者に確認応答 (チェックマーク点灯用)
-        ws.send(JSON.stringify({ type: 'sent_ack', msgUuid, delivered }));
-        return;
-      }
+      // 以前ここにあった WebSocket での直接中継('message' と 'group_message')は削除した。
+      // 今の画面はどちらも使っておらず(送信は全部 REST)、検査も回数制限も無く、
+      // 相手がオフラインだと中身をそのままDBの offline_queue に積むので、
+      // 1人でDBを埋め尽くせる穴になっていた。
 
       // --- 既読通知の中継・DB更新 ---
       if (data.type === 'read_receipt') {
@@ -519,43 +486,6 @@ function initWebSocketServer(server) {
         return;
       }
 
-      // --- グループメッセージの中継 (メンバー全員に配送) ---
-      if (data.type === 'group_message') {
-        // セキュリティ修正: 送信者がグループのアクティブメンバーか検証する。
-        // 以前はgroupIdさえ知っていれば部外者でもグループ全員に偽メッセージを
-        // 送信でき、オフラインキューにも永続的に保存されてしまう状態だった。
-        const senderMembership = await db.get(
-          'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL',
-          [data.groupId, userId]
-        );
-        if (!senderMembership) {
-          ws.send(JSON.stringify({ type: 'error', error: 'このグループのメンバーではありません' }));
-          return;
-        }
-        const members = await db.all(
-          'SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL AND user_id != ?',
-          [data.groupId, userId]
-        );
-        const msgUuid = data.msgUuid || uuidv4();
-        for (const m of members) {
-          const delivered = broadcastToUser(m.user_id, {
-            type: 'group_message',
-            groupId: data.groupId,
-            senderId: userId,
-            msgUuid,
-            payload: data.payload,
-            keyVersion: data.keyVersion,
-          });
-          if (!delivered) {
-            await db.run(
-              'INSERT INTO offline_queue (id, recipient_id, sender_id, payload, msg_uuid) VALUES (?, ?, ?, ?, ?)',
-              [uuidv4(), m.user_id, userId, JSON.stringify({ group: true, groupId: data.groupId, ...data.payload }), msgUuid]
-            );
-          }
-        }
-        return;
-      }
-
       // --- 音声通話シグナリング (WebRTC) ---
       // サーバーは映像・音声本体には一切触れず、SDP/ICE候補の中継のみを行う。
       // callId はクライアント側(発信者)が生成し、通話1本を通して一貫して使う。
@@ -565,6 +495,11 @@ function initWebSocketServer(server) {
         if (!data.callId || !data.recipientId || typeof data.recipientId !== 'string') return;
         if (typeof data.callId !== 'string' || !CALL_ID_RE.test(data.callId)) return;
         if (data.recipientId === userId) return;
+        // 呼び出し情報(SDP)はサーバーのメモリに45秒置くので、大きさと同時に掛けられる数を絞る
+        // (以前は無制限で、1人が大量に発信するだけでメモリを使い切れた)
+        const sdpSize = (() => { try { return JSON.stringify(data.sdp || '').length; } catch (_) { return Infinity; } })();
+        if (sdpSize > 32000) return;
+
         // 他人の通話と同じcallIdを使って、その通話を上書き・横取りさせない
         const existingCall = activeCalls.get(data.callId);
         if (existingCall && existingCall.a !== userId) return;
@@ -593,6 +528,15 @@ function initWebSocketServer(server) {
         if ((await getSettings(data.recipientId)).allowCallsFrom === 'nobody') {
           ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
           return;
+        }
+        // 同時に呼び出せるのは1人3本まで(ここから set までの間に await が無いので、同時に来ても数え漏れない)
+        {
+          let mine = 0;
+          for (const pc of pendingCalls.values()) if (pc.from === userId) mine++;
+          if (mine >= 3) {
+            ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
+            return;
+          }
         }
         activeCalls.set(data.callId, { a: userId, b: data.recipientId, ts: Date.now() });
         const delivered = broadcastToUser(data.recipientId, {
@@ -710,7 +654,7 @@ function initWebSocketServer(server) {
         const iceTo = callPeerOf(data.callId, userId);
         if (!iceTo) return;
         const pendingIce = pendingCalls.get(data.callId);
-        if (pendingIce && pendingIce.from === userId && pendingIce.ice.length < 100) {
+        if (pendingIce && pendingIce.from === userId && pendingIce.ice.length < 100 && JSON.stringify(data.candidate || '').length < 2000) {
           pendingIce.ice.push(data.candidate);
         }
         broadcastToUser(iceTo, {
@@ -945,4 +889,4 @@ function disconnectBanned(userId, until) {
   }
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, rejectPendingCall, disconnectBanned };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, rejectPendingCall, disconnectBanned };

@@ -17,16 +17,14 @@ const router = express.Router();
 // メディアはメッセージの画像送信と同様、Base64データURIをそのまま保存する
 // シンプルな方式。動画も含めるため、上限をやや大きめの30MBにしておく
 // (express.jsonのlimitは index.js で 50mb に設定済み)。
-const MAX_MEDIA_BASE64_LENGTH = 30 * 1024 * 1024 * 1.4; // Base64は元データの約1.37倍になる
 
 function isValidMediaUrl(value) {
   if (!value) return true;
   if (typeof value !== 'string') return false;
-  // Cloudinary URL (投稿メディアはCloudinaryに直接アップロードされる)
-  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\//.test(value)) return true;
-  // 旧形式: Base64 Data URI (後方互換)
-  if (value.length > MAX_MEDIA_BASE64_LENGTH) return false;
-  return /^data:(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+$/.test(value);
+  // 投稿メディアはCloudinaryに直接アップロードされたURLだけ。
+  // 以前は Base64 の data: URI (最大約40MB)も受け付けていて、数件投稿するだけで
+  // タイムラインを開いた人ごとにサーバーのメモリを使い切れた
+  return value.length <= 500 && /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/[A-Za-z0-9_\-./%]+$/.test(value);
 }
 
 // 投稿者情報を付与して返すための共通SELECT。JOINで都度取得すると
@@ -197,7 +195,7 @@ router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
 router.post('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
   censorBodyAndBanAfter(req, res, ['text']);
   const { text } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'コメントを入力してください' });
+  if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'コメントを入力してください' });
   if (text.length > 500) return res.status(400).json({ error: 'コメントは500文字以内にしてください' });
 
   const post = await db.get('SELECT id FROM posts WHERE id = ? AND deleted_at IS NULL', [req.params.postId]);

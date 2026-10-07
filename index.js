@@ -153,8 +153,10 @@ async function main() {
   // 普段は4MB(プロフィール画像のBase64が最大3MB)まで。画像・動画を本文に入れて送る
   // メッセージ送信と投稿だけ50MBにし、しかも読み込む前に署名の正しいトークンかを確かめる。
   const smallJson = express.json({ limit: '4mb' });
-  const bigJson = express.json({ limit: '50mb' });
-  const BIG_BODY_RE = /^\/api\/(messages\/send|groups\/[^/]+\/messages\/send|posts)\/?$/;
+  // (メッセージ本文は暗号文64KBまで、画像・動画はCloudinary経由なので、もう50MBは要らない)
+  const bigJson = express.json({ limit: '2mb' });
+  // (投稿はCloudinaryのURLだけになったので、大きな本文はもう要らない)
+  const BIG_BODY_RE = /^\/api\/(messages\/send|groups\/[^/]+\/messages\/send)\/?$/;
   const { JWT_SECRET } = require('./utils/jwtSecret');
   const jwt = require('jsonwebtoken');
   app.use((req, res, next) => {

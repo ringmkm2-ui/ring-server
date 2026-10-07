@@ -278,6 +278,10 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     const row = await db.get('SELECT * FROM email_codes WHERE username = ?', [username]);
     const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
     if (!user || !row) return invalid();
+    if (resetMissCount(username) >= RESET_MISS_MAX_PER_DAY) {
+      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+      return res.status(429).json({ error: '失敗が続いたため、このアカウントの再設定を24時間止めました' });
+    }
     if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
       await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
       return invalid();
@@ -433,6 +437,22 @@ router.post('/forgot-password', loginLimiter, async (req, res) => {
 });
 
 // body: { username, code, newPassword, totpCode? }  2段階認証が有効なアカウントは totpCode も必要
+// パスワード再設定コードの外れ回数(アカウントごと、24時間)。IPを変えながら
+// 「1分ごとに新しいコード→5回ずつ当てずっぽう」を繰り返されると、IP単位の制限では止まらなかった
+const resetMisses = new Map(); // username -> { n, since }
+const RESET_MISS_MAX_PER_DAY = 15;
+function resetMissCount(username) {
+  const r = resetMisses.get(username);
+  if (!r || Date.now() - r.since > 24 * 3600 * 1000) return 0;
+  return r.n;
+}
+function resetMiss(username) {
+  const r = resetMisses.get(username);
+  if (!r || Date.now() - r.since > 24 * 3600 * 1000) resetMisses.set(username, { n: 1, since: Date.now() });
+  else r.n++;
+  if (resetMisses.size > 10000) resetMisses.clear();
+}
+
 router.post('/reset-password', loginLimiter, async (req, res) => {
   try {
     const { username, code, newPassword, totpCode } = req.body || {};
@@ -454,6 +474,7 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
       await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE username = ?', [username]);
+      resetMiss(username);
       return invalid();
     }
     // メールを押さえられただけで2段階認証を迂回されないよう、2FAが有効なら認証アプリのコードも必須にする
@@ -589,7 +610,10 @@ router.post('/google/app-start', loginLimiter, (req, res) => {
   const state = crypto.randomBytes(24).toString('base64url');
   const pollKey = crypto.randomBytes(32).toString('hex');
   const nonce = crypto.randomBytes(16).toString('hex');
-  googleAppPending.set(state, { nonce, ts: Date.now(), result: null, pollKey });
+  // 確認番号: アプリの画面とブラウザの画面の両方に出して、同じか見比べてもらう。
+  // 他人が始めたログインのURLを踏まされた人は、アプリ側の番号を見ていないので気づける
+  const code = String(crypto.randomInt(1000, 10000));
+  googleAppPending.set(state, { nonce, ts: Date.now(), result: null, pollKey, code });
   const redirectUri = publicBase(req) + '/google-callback.html';
   const q = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -600,7 +624,15 @@ router.post('/google/app-start', loginLimiter, (req, res) => {
     state,
     prompt: 'select_account',
   });
-  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri, state, pollKey });
+  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString(), redirectUri, state, pollKey, code });
+});
+
+// ブラウザ側(google-callback.html)に確認番号を出すため
+router.get('/google/app-code', loginLimiter, (req, res) => {
+  const state = String(req.query.state || '');
+  const pend = GOOGLE_STATE_RE.test(state) ? googleAppPending.get(state) : null;
+  if (!pend) return res.status(404).json({ error: '有効時間が切れました。アプリからやり直してください' });
+  res.json({ code: pend.code || null });
 });
 
 router.post('/google/app-relay', loginLimiter, async (req, res) => {
@@ -633,6 +665,11 @@ router.get('/google/app-poll', (req, res) => {
 // 誰でも任意のuserIdを指定して他人のアカウントへ大量の友達申請を
 // 送りつけられる状態だった。JWTから取得した本人のuserIdのみを使う。
 router.post('/google-contacts/sync', verifyToken, async (req, res) => {
+  // 今のアプリはこの機能を使っていない。どのアプリ向けのGoogleトークンでも受け付け、
+  // 「そのメールの人がBro Chatにいるか」を調べられ、ブロックも無視して友だち申請を
+  // まとめて送れる状態だったので、作り直すまで止めておく
+  return res.status(410).json({ error: 'この機能は現在止めています' });
+  // eslint-disable-next-line no-unreachable
   const { accessToken } = req.body;
   const userId = req.user.userId;
   if (!accessToken) return res.status(400).json({ error: 'accessToken required' });

@@ -42,6 +42,11 @@ router.post('/subscribe', auth, async (req, res) => {
         [uuidv4(), req.userId, endpoint, keys.p256dh, keys.auth]
       );
     }
+    // 1人あたり新しい方から10件まで(無制限に登録できると、通知1回ごとの送信が際限なく増える)
+    await db.run(
+      'DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN (SELECT id FROM push_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10)',
+      [req.userId, req.userId]
+    );
     res.json({ success: true });
   } catch (e) {
     sendServerError(res, e);
@@ -65,6 +70,9 @@ router.post('/fcm-register', auth, async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'token required' });
+    if (typeof token !== 'string' || token.length > 4096 || !/^[A-Za-z0-9_:\-.]+$/.test(token)) {
+      return res.status(400).json({ error: 'token が正しくありません' });
+    }
     const fcm = require('../utils/fcm');
     await fcm.saveToken(req.userId, token);
     console.log(`[FCM] token registered user=${req.userId} ua=${(req.get('user-agent') || '').slice(0, 40)}`);

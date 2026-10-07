@@ -241,6 +241,8 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   }
 
   broadcastToUser(removeUserId, { type: 'removed_from_group', groupId });
+  // グループ通話に入っていたら、そこからも外す
+  try { require('../ws/wsServer').kickFromGroupCall(groupId, removeUserId); } catch (_) {}
   if (isSelfLeaving) {
     // 新しい鍵が誰にも無いので、開いている残りのメンバーに作り直してもらう
     const rest = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);

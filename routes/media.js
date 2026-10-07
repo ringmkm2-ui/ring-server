@@ -41,6 +41,18 @@ router.post('/delete', verifyToken, mediaUploadLimiter, asyncHandler(async (req,
     return res.status(500).json({ error: 'Cloudinary設定がサーバーに未設定です' });
   }
 
+  // 置き場所でも確かめる: 自分が当事者のDM(brochat/dm/<自分>_<相手>/...)か、
+  // 自分がメンバーのグループ(brochat/groups/<グループ>/...)のファイルだけ。
+  // mediaPublicId は送る側が自由に書けるので、下のメッセージ照合だけでは他人のファイルを指定できた
+  {
+    const dm = /^brochat\/dm\/([^/]+)\//.exec(publicId);
+    const gr = /^brochat\/groups\/([^/]+)\//.exec(publicId);
+    let okScope = false;
+    if (dm) okScope = dm[1].split('_').includes(req.user.userId);
+    else if (gr) okScope = !!(await db.get('SELECT 1 AS ok FROM group_members WHERE group_id = ? AND user_id = ?', [gr[1], req.user.userId]));
+    if (!okScope) return res.status(403).json({ error: 'このメディアを削除する権限がありません' });
+  }
+
   // 認可チェック: publicIdは自分が送信者(sender_id)であるメッセージのcontentに
   // 含まれている場合のみ削除を許可する(DM・グループメッセージの両方をチェック)。
   // これが無いと、publicIdを知るだけで他人の画像/動画を消せてしまう(IDOR)。

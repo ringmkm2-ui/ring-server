@@ -239,7 +239,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.187 beta</div>
+  <div class="version-badge">Bro Chat v1.28.188 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -659,15 +659,13 @@ document.getElementById('locationBtn').onclick = async () => {
     });
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
     const text = '現在地を共有しました\nhttps://www.google.com/maps?q=' + lat + ',' + lng;
-    const resp = await fetch('/api/groups/' + groupId + '/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ content: text })
-    });
-    const data = await resp.json();
-    if (data && data.message) {
-      appendMsg(data.message.senderId, myName, text, null, null, new Date().toISOString(), data.message.id);
-    }
+    // 普通のメッセージと同じ道(グループ鍵で暗号化して送る)を使う。
+    // 以前は存在しない宛先(GET専用)に平文で送っていて、送れていなかった
+    const mi = document.getElementById('mi');
+    const draft = mi.value;
+    mi.value = text;
+    document.getElementById('tform').requestSubmit();
+    mi.value = draft;
   } catch (e) {
     if (e.code === 1) alert('位置情報の権限が拒否されました');
     else alert('位置情報エラー');

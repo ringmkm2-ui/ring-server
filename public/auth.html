@@ -750,7 +750,9 @@
         if (!r.ok || !d.url || !d.state || !d.pollKey) { showError(d.error || 'Googleログインを開始できませんでした'); return; }
         const state = d.state, pollKey = d.pollKey;
         window.open(d.url, '_system');
-        showSuccess('ブラウザでGoogleにログインしたら、このアプリに戻ってください');
+        showSuccess(d.code
+          ? '確認番号 ' + d.code + ' ― ブラウザに同じ番号が出たら「ログインする」を押して、このアプリに戻ってください'
+          : 'ブラウザでGoogleにログインしたら、このアプリに戻ってください');
         const t0 = Date.now();
         let polling = false;
         const pollOnce = async () => {
