@@ -365,7 +365,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.193 beta</div>
+  <div class="version-badge">Bro Chat v1.28.194 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1077,7 +1077,7 @@ function handleMedia(f, t) {
 
   // サイズ上限（groupchat.htmlと同じ基準。CloudinaryにE2E暗号化して直接アップロードする方式のため、
   // サーバーのJSON body上限(50MB)には影響されない）
-  const maxSize = t === 'video' ? 500 * 1024 * 1024 : 100 * 1024 * 1024;
+  const maxSize = 100 * 1024 * 1024; // 動画も100MBまで(Cloudinaryの無料枠をすぐ使い切らないように)
   if (f.size > maxSize) {
     alert(i18n.t(t === 'video' ? 'media_type_video' : 'media_type_image') + i18n.t('err_media_too_large_template').replace('{limit}', maxSize / 1024 / 1024));
     document.getElementById('inputBar').classList.remove('media-open');
@@ -1146,6 +1146,7 @@ async function sendMediaViaCloudinary(f, t) {
     if (!metadata || !metadata.cloudinaryUrl) {
       throw new Error('Upload failed');
     }
+    try { (window.__localMedia = window.__localMedia || new Map()).set(metadata.cloudinaryUrl, URL.createObjectURL(f)); } catch (_) {}
     // アップロードが終わった直後に×が押されていたら、トークには出さない
     if (chip.signal.aborted) { const ab = new Error('cancelled'); ab.name = 'AbortError'; throw ab; }
 
@@ -1275,7 +1276,10 @@ async function loadLazyMedia(placeholder) {
   const mediaType = placeholder.dataset.mediaType;
   let mediaSrc = placeholder.dataset.mediaSrc;
 
-  if (mediaSrc && mediaSrc.startsWith('cloudinary:') && placeholder._cloudinaryMedia) {
+  // 自分が今送った画像・動画は、手元のファイルをそのまま出す(わざわざダウンロード・復号しない)
+  const localSrc = placeholder._cloudinaryMedia && window.__localMedia && window.__localMedia.get(placeholder._cloudinaryMedia.mediaUrl);
+  if (localSrc) mediaSrc = localSrc;
+  else if (mediaSrc && mediaSrc.startsWith('cloudinary:') && placeholder._cloudinaryMedia) {
     try {
       const keys = await candidateSharedKeys();
       if (!keys.length) throw new Error('相手の公開鍵が見つかりません');
@@ -1285,7 +1289,11 @@ async function loadLazyMedia(placeholder) {
       let blob = null, lastErr = null;
       for (const sharedKey of keys) {
         try {
-          blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(mediaUrl, encryptedMetadata, sharedKey);
+          // 回線が悪いと終わらないまま「読み込み中」で止まっていたので、時間で切る
+          blob = await Promise.race([
+            cloudinaryE2EUploader.downloadAndDecryptMedia(mediaUrl, encryptedMetadata, sharedKey),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 90000)),
+          ]);
           if (blob) break;
         } catch (e) { lastErr = e; }
       }
@@ -1293,7 +1301,10 @@ async function loadLazyMedia(placeholder) {
       mediaSrc = URL.createObjectURL(blob);
     } catch (e) {
       console.error('[lazyLoadMedia] decrypt error:', e);
-      placeholder.textContent = '(メディアの復号に失敗しました)';
+      placeholder.textContent = e && e.message === 'timeout' ? '読み込めませんでした(タップでもう一度)' : '(メディアの復号に失敗しました)';
+      // タップでやり直せるように
+      placeholder.style.cursor = 'pointer';
+      placeholder.onclick = () => { placeholder.onclick = null; placeholder.textContent = '読み込み中...'; loadLazyMedia(placeholder); };
       return;
     }
   }
@@ -1922,6 +1933,10 @@ function connectRealWS() {
       const data = JSON.parse(e.data);
       if (window.bcHandleWsAuth && window.bcHandleWsAuth(data)) return;
       if (data.type === 'auth_ok') {
+        // つなぎ直した時は、切れている間に届いた分を取りに行く
+        // (以前は取りに行かず、通知では見えたメッセージがトークに出ない=「消えた」ように見えた)
+        if (window.__wsEverAuthed) syncMessagesSoon();
+        window.__wsEverAuthed = true;
         // チャット画面を開いたことをサーバーに通知（オンライン表示用）
         ws.send(JSON.stringify({ type: 'chat_open' }));
         // 相手の現在のオンライン状態を問い合わせる
@@ -3039,8 +3054,18 @@ function releaseWakeLock() {
   if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
 }
 // バックグラウンドから復帰した際にWakeLockを再取得（MIUIはこれが特に必要）
+// 画面に戻った時・つなぎ直した時に、取りこぼした分を取りに行く(連続しても1回にまとめる)
+let syncSoonT = 0;
+function syncMessagesSoon() { clearTimeout(syncSoonT); syncSoonT = setTimeout(syncMessages, 300); }
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
+    // iPhoneは裏にいる間に接続が切れる(切れたのに「つながっている」ままに見えることもある)ので、
+    // 戻ったら必ず最新を取りに行き、切れていればつなぎ直す
+    syncMessagesSoon();
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      if (ws) { ws.onclose = null; try { ws.close(); } catch (_) {} }
+      connectRealWS();
+    }
     // Wake Lock再取得
     if (pc && !wakeLock) await acquireWakeLock();
     // フォアグラウンド復帰時に未読メッセージをまとめて既読にする
