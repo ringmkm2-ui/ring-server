@@ -159,8 +159,73 @@ describe('ブロック', () => {
       wa.send({ type: 'call_offer', recipientId: b.userId, callId: cid, sdp: { type: 'offer', sdp: 'v=0' } });
       await sleep(400);
       assert.ok(!wb.msgs.some(m => m.type === 'call_offer'), 'ブロック後は着信が届かない');
-      assert.ok(wa.msgs.some(m => m.type === 'call_unavailable' && m.callId === cid));
+      // すぐ「繋がらない」にするとブロックがバレるので、オフラインの時と同じく「呼び出し中」になる
+      assert.ok(wa.msgs.some(m => m.type === 'call_waiting' && m.callId === cid), '呼び出し中に見える');
+      assert.ok(!wa.msgs.some(m => m.type === 'call_unavailable' && m.callId === cid), 'すぐには切れない');
+      wa.send({ type: 'call_end', callId: cid, recipientId: b.userId });
     } finally { wa.close(); wb.close(); }
+  });
+});
+
+describe('ブロック(抜け道)', () => {
+  test('ブロックされた人が禁止語を送っても、相手のトークに通知は出ない', async () => {
+    const a = await S.user('A'); const b = await S.user('B');
+    await S.befriend(a, b);
+    await b.call('POST', '/api/friends/block', { userId: a.userId });
+    await a.call('POST', '/api/messages/send', { recipientId: b.userId, content: 'you fuck', encrypted: false });
+    const h = await b.call('GET', '/api/messages/history/' + a.userId);
+    assert.ok(!h.data.some(m => m.senderId === a.userId), JSON.stringify(h.data));
+  });
+
+  test('ブロックしても、同じグループの人の身元鍵は取れる(グループの暗号が壊れない)', async () => {
+    const a = await S.user('A'); const b = await S.user('B');
+    await S.befriend(a, b);
+    await a.call('POST', '/api/groups/create', { name: 'G', memberIds: [b.userId] });
+    await b.call('POST', '/api/friends/block', { userId: a.userId });
+    assert.notEqual((await a.call('GET', '/api/prekeys/identity/' + b.userId)).status, 403);
+    assert.notEqual((await b.call('GET', '/api/prekeys/identity/' + a.userId)).status, 403);
+  });
+
+  test('ブロックされた人は、相手をグループに入れたり招待したりできない', async () => {
+    const a = await S.user('A'); const b = await S.user('B'); const c = await S.user('C');
+    await S.befriend(a, b); await S.befriend(a, c);
+    await b.call('POST', '/api/friends/block', { userId: a.userId });
+    const g = await a.call('POST', '/api/groups/create', { name: 'G', memberIds: [b.userId, c.userId] });
+    assert.ok(!g.data.members.includes(b.userId));
+    assert.ok(g.data.members.includes(c.userId));
+    const inv = await a.call('POST', '/api/groups/invite', { groupId: g.data.groupId, targetUserId: b.userId });
+    assert.equal(inv.status, 404);
+  });
+
+  test('ブロックされた人の編集・リアクションは相手に届かず、ピン留めは相手に残らない', async () => {
+    const a = await S.user('A'); const b = await S.user('B');
+    await S.befriend(a, b);
+    const old = await a.call('POST', '/api/messages/send', { recipientId: b.userId, content: 'before block' });
+    const bMsg = await b.call('POST', '/api/messages/send', { recipientId: a.userId, content: 'from b' });
+    await b.call('POST', '/api/friends/block', { userId: a.userId });
+    const wb = await S.connect(b);
+    try {
+      await a.call('POST', '/api/messages/edit', { messageId: old.data.message.id, content: 'edited after block' });
+      await a.call('POST', '/api/messages/react', { messageId: bMsg.data.message.id, emoji: 'x' });
+      const pin = await a.call('POST', '/api/messages/pin', { messageId: bMsg.data.message.id, pinned: true });
+      assert.equal(pin.status, 200, 'ピン留めした本人には成功に見える');
+      await sleep(400);
+      assert.ok(!wb.msgs.some(m => m.type === 'message_edited' || m.type === 'message_reaction' || m.type === 'message_pinned'), JSON.stringify(wb.msgs.map(m => m.type)));
+      const pinned = await b.call('GET', '/api/messages/pinned/' + a.userId);
+      const list = Array.isArray(pinned.data) ? pinned.data : (pinned.data && pinned.data.messages) || [];
+      assert.ok(!list.some(m => m.id === bMsg.data.message.id));
+    } finally { wb.close(); }
+  });
+
+  test('ブロックした瞬間、相手の画面のオンライン表示が消える', async () => {
+    const a = await S.user('A'); const b = await S.user('B');
+    await S.befriend(a, b);
+    const wa = await S.connect(a);
+    try {
+      await b.call('POST', '/api/friends/block', { userId: a.userId });
+      await sleep(300);
+      assert.ok(wa.msgs.some(m => m.type === 'presence_update' && m.userId === b.userId && m.online === false));
+    } finally { wa.close(); }
   });
 });
 

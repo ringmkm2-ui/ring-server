@@ -146,11 +146,14 @@
     if (!map) {
       // 画面を移るたびに同じ地図を計算し直さないよう、このタブの間は覚えておく
       // (トークを開くたびにここだけで数十ms使っていた)
+      // 覚えるのは丸ボタン用(convex)だけ。吹き出し等の大きさは無数にあり、全部覚えると
+      // sessionStorage(約5MB)があふれて、他の保存(通知の登録など)まで失敗する
+      const persist = kind === 'convex';
       const sk = 'lgmap1:' + key;
-      try { const c = sessionStorage.getItem(sk); if (c) map = JSON.parse(c); } catch (_) {}
+      if (persist) { try { const c = sessionStorage.getItem(sk); if (c) map = JSON.parse(c); } catch (_) {} }
       if (!map || !map.url) {
         map = buildMap(w, h, rad, kind);
-        try { sessionStorage.setItem(sk, JSON.stringify(map)); } catch (_) {}
+        if (persist) { try { sessionStorage.setItem(sk, JSON.stringify(map)); } catch (_) {} }
       }
       mapCache.set(key, map);
     }

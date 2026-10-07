@@ -379,6 +379,13 @@ router.get('/talks', auth, async (req, res) => {
   }
 });
 
+// actor の操作を相手に知らせてよいか。相手が actor をブロックしていたら知らせない
+async function blockedByOther(actor, msg) {
+  const other = msg.sender_id === actor ? msg.recipient_id : msg.sender_id;
+  const { blockState } = require('../utils/relations');
+  return (await blockState(actor, other)).byThem;
+}
+
 // メッセージ編集
 // POST /api/messages/edit
 // body: { messageId, content }
@@ -412,7 +419,7 @@ router.post('/edit', auth, async (req, res) => {
       recipientId: updated.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    if (!updated.hidden_for_recipient) broadcastToUser(updated.recipient_id, payload);
+    if (!updated.hidden_for_recipient && !(await blockedByOther(req.userId, updated))) broadcastToUser(updated.recipient_id, payload);
     broadcastToUser(updated.sender_id, payload);
 
     res.json({ ok: true, message: payload });
@@ -444,7 +451,7 @@ router.post('/delete', auth, async (req, res) => {
       recipientId: msg.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    if (!msg.hidden_for_recipient) broadcastToUser(msg.recipient_id, payload);
+    if (!msg.hidden_for_recipient && !(await blockedByOther(req.userId, msg))) broadcastToUser(msg.recipient_id, payload);
     broadcastToUser(msg.sender_id, payload);
 
     res.json({ ok: true });
@@ -472,6 +479,9 @@ router.post('/pin', auth, async (req, res) => {
     if (msg.recipient_id === req.userId && msg.hidden_for_recipient) {
       return res.status(404).json({ error: 'message not found' });
     }
+
+    // 相手にブロックされている人のピン留めは、相手の画面に出ないよう保存しない(本人には成功に見せる)
+    if (await blockedByOther(req.userId, msg)) return res.json({ ok: true });
 
     const now = new Date().toISOString();
     if (pinned) {
@@ -550,8 +560,10 @@ router.post('/react', auth, async (req, res) => {
       recipientId: msg.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    if (!msg.hidden_for_recipient) broadcastToUser(msg.recipient_id, payload);
-    broadcastToUser(msg.sender_id, payload);
+    // 相手にブロックされている人のリアクションは、相手にはリアルタイムで知らせない
+    const otherId = msg.sender_id === req.userId ? msg.recipient_id : msg.sender_id;
+    if (!(await blockedByOther(req.userId, msg)) && !(otherId === msg.recipient_id && msg.hidden_for_recipient)) broadcastToUser(otherId, payload);
+    broadcastToUser(req.userId, payload);
 
     res.json({ ok: true, action, reactions: payload.reactions });
   } catch (e) {

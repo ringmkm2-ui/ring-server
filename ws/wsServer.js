@@ -247,6 +247,7 @@ function initWebSocketServer(server) {
     let callAssistSessions = { mic: null, remote: null };
     // 入力中表示・オンライン問い合わせのたびにDBを引かないよう、関係の確認結果を1分だけ覚える
     const relationCache = new Map(); // targetId -> { ok, ts }
+    const fakeCalls = new Map(); // ブロックされた相手への「呼び出し中」だけの通話 callId -> timer
     const groupTypingCache = new Map(); // groupId -> { ts, members }  (入力中の中継先。30秒だけ覚える)
     const canReach = async (targetId) => {
       if (typeof targetId !== 'string' || !targetId || targetId.length > 100) return false;
@@ -274,6 +275,7 @@ function initWebSocketServer(server) {
     ipConnections.set(clientIp, currentCount + 1);
 
     ws.on('close', () => {
+      fakeCalls.forEach(t => clearTimeout(t)); fakeCalls.clear();
       const cnt = (ipConnections.get(clientIp) || 1) - 1;
       if (cnt <= 0) ipConnections.delete(clientIp);
       else ipConnections.set(clientIp, cnt);
@@ -450,13 +452,15 @@ function initWebSocketServer(server) {
       if (data.type === 'read_receipt') {
         // 認可チェック: 自分が受信者のメッセージのみ既読にできる
         const targetMsg = await db.get(
-          'SELECT id, sender_id, recipient_id FROM messages WHERE id = ?',
+          'SELECT id, sender_id, recipient_id, hidden_for_recipient FROM messages WHERE id = ?',
           [data.msgUuid]
         );
         if (!targetMsg || targetMsg.recipient_id !== userId) {
           // 存在しないIDや他人宛のメッセージへの操作は無視する
           return;
         }
+        // ブロック中に届いた(自分には見えない)メッセージは既読にしない
+        if (targetMsg.hidden_for_recipient) return;
         // DBの read_at をすぐに更新
         await db.run(
           'UPDATE messages SET read_at = ? WHERE id = ?',
@@ -469,7 +473,8 @@ function initWebSocketServer(server) {
         // 偽の既読通知を送りつけることが可能だった。
         // 「既読を送らない」設定なら、相手には知らせない(以前は画面側で隠すだけで、
         // 情報自体は相手の端末まで届いていた)
-        if ((await getSettings(userId)).sendReadReceipts) {
+        // ブロックしている/されている相手には既読を知らせない
+        if ((await getSettings(userId)).sendReadReceipts && !(await isBlockedEither(userId, targetMsg.sender_id))) {
           broadcastToUser(targetMsg.sender_id, {
             type: 'read_receipt',
             fromUserId: userId,
@@ -569,6 +574,17 @@ function initWebSocketServer(server) {
         //  正式な友だち登録をしていないテスト用アカウント同士でも、同じグループにいれば掛けられる)
         // 断られた理由は相手に伝えず、通常の「繋がらない」と同じ見え方にする。
         if (!(await canReach(data.recipientId))) {
+          // 相手にブロックされている時は、すぐ「繋がらない」にするとブロックに気づかれるので、
+          // 相手がオフラインの時と同じく「呼び出し中」を出して、時間切れで「繋がらない」にする
+          if (await isBlockedEither(userId, data.recipientId)) {
+            ws.send(JSON.stringify({ type: 'call_waiting', callId: data.callId }));
+            const t = setTimeout(() => {
+              fakeCalls.delete(data.callId);
+              if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
+            }, RING_TIMEOUT_MS);
+            fakeCalls.set(data.callId, t);
+            return;
+          }
           ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
           return;
         }
@@ -726,6 +742,10 @@ function initWebSocketServer(server) {
 
       if (data.type === 'call_end') {
         // data: { recipientId, callId }
+        if (typeof data.callId === 'string' && fakeCalls.has(data.callId)) {
+          clearTimeout(fakeCalls.get(data.callId)); fakeCalls.delete(data.callId);
+          return;
+        }
         const endTo = callPeerOf(data.callId, userId);
         if (endTo) {
           broadcastToUser(endTo, {

@@ -526,7 +526,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.186 beta</div>
+  <div class="version-badge">Bro Chat v1.28.187 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -4129,8 +4129,7 @@ async function deletePost(postId, card) {
     if (!token || !authToken) return;
     // 起動(セッション)ごとに1回だけ送る。サーバーから消された場合も次の起動で復活する。
     // (APKはネイティブ側でも登録しているので、ここは古いAPK向けの保険)
-    if (sessionStorage.getItem('fcm_sent') === token) return;
-    sessionStorage.setItem('fcm_sent', token);
+    try { if (sessionStorage.getItem('fcm_sent') === token) return; sessionStorage.setItem('fcm_sent', token); } catch (_) {}
     try {
       const res = await fetch('/api/push/fcm-register', {
         method: 'POST',
