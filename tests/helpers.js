@@ -9,9 +9,11 @@ const WebSocket = require('ws');
 
 const ROOT = path.join(__dirname, '..');
 
-async function startServer(extraEnv = {}) {
+// opts.dbFile: 前のサーバーと同じSQLiteファイルを使う(環境変数を変えて再起動するテスト用)
+async function startServer(extraEnv = {}, opts = {}) {
   const port = 4100 + Math.floor(Math.random() * 800);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brochat-test-'));
+  const dbFile = opts.dbFile || path.join(tmp, 'test.sqlite');
   const env = {
     ...process.env,
     PORT: String(port),
@@ -21,7 +23,7 @@ async function startServer(extraEnv = {}) {
   };
   delete env.DATABASE_URL;
   if (process.env.TEST_DATABASE_URL) env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  else env.SQLITE_FILE = path.join(tmp, 'test.sqlite');
+  else env.SQLITE_FILE = dbFile;
   // 本番用の秘密は子プロセスに渡さない
   for (const k of ['ADMIN_API_KEY', 'CLAUDE_FEED_KEY', 'FIREBASE_SERVICE_ACCOUNT', 'VAPID_PRIVATE_KEY', 'SMTP_PASS', 'RESEND_API_KEY']) {
     if (!(k in extraEnv)) delete env[k];
@@ -97,12 +99,19 @@ async function startServer(extraEnv = {}) {
     });
   }
 
-  function stop() {
-    proc.kill();
-    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
+  // keepDb: SQLiteファイルを消さずに止める(同じDBで再起動するため)
+  function stop(keepDb) {
+    return new Promise(resolve => {
+      proc.once('exit', () => {
+        if (!keepDb && !opts.dbFile) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {} }
+        resolve();
+      });
+      proc.kill();
+      setTimeout(resolve, 3000);
+    });
   }
 
-  return { base, req, user, befriend, connect, stop, log: () => log };
+  return { base, req, user, befriend, connect, stop, dbFile, log: () => log };
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

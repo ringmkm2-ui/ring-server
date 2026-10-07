@@ -4,12 +4,8 @@ const assert = require('node:assert/strict');
 const { startServer, sleep } = require('./helpers');
 
 let S;
-let staffEmail;
 
-before(async () => {
-  staffEmail = `staff_${Date.now()}@example.com`;
-  S = await startServer({ STAFF_USERS: staffEmail });
-});
+before(async () => { S = await startServer(); });
 after(() => S && S.stop());
 
 describe('登録・ログイン', () => {
@@ -175,20 +171,32 @@ describe('運営用(staff)', () => {
     assert.equal((await a.call('GET', '/api/staff/online')).status, 404);
   });
 
-  test('STAFF_USERS のアカウントはオンライン一覧を見られる', async () => {
-    const ip = '10.250.0.1';
-    const reg = await S.req('POST', '/api/auth/register', { ip, body: { username: staffEmail, password: 'Vq8!mZstaffxL2', displayName: 'Staff' } });
-    assert.equal(reg.status, 200);
-    const staff = { ...reg.data, ip };
-    const other = await S.user('Online');
-    const w = await S.connect(other);
+  test('STAFF_USERS のIDコードのアカウントだけオンライン一覧を見られ、同じ名前で登録しても運営にはなれない', async () => {
+    // 1回目: アカウントを作る → 2回目: そのIDコードを運営にして同じDBで再起動
+    const S1 = await startServer();
+    const staff = await S1.user('Staff');
+    await S1.stop(true);
+    const S2 = await startServer({ STAFF_USERS: staff.userIdCode }, { dbFile: S1.dbFile });
     try {
-      const me = await S.req('GET', '/api/staff/me', { token: staff.token, ip });
-      assert.equal(me.data.staff, true);
-      const on = await S.req('GET', '/api/staff/online', { token: staff.token, ip });
-      assert.equal(on.status, 200);
-      assert.ok(on.data.users.some(u => u.userId === other.userId));
-    } finally { w.close(); }
+      const login = await S2.req('POST', '/api/auth/login', { ip: staff.ip, body: { username: staff.username, password: staff.password } });
+      assert.equal(login.status, 200);
+      const tok = login.data.token;
+      const other = await S2.user('Online');
+      const w = await S2.connect(other);
+      try {
+        assert.equal((await S2.req('GET', '/api/staff/me', { token: tok, ip: staff.ip })).data.staff, true);
+        const on = await S2.req('GET', '/api/staff/online', { token: tok, ip: staff.ip });
+        assert.equal(on.status, 200);
+        assert.ok(on.data.users.some(u => u.userId === other.userId));
+      } finally { w.close(); }
+      // 運営のIDコードと同じユーザー名で登録した人は運営ではない
+      const ip = '10.251.0.9';
+      const fake = await S2.req('POST', '/api/auth/register', { ip, body: { username: staff.userIdCode, password: 'Vq8!mZfakexL2q', displayName: 'Fake' } });
+      if (fake.status === 200) {
+        assert.equal((await S2.req('GET', '/api/staff/me', { token: fake.data.token, ip })).data.staff, false);
+        assert.equal((await S2.req('GET', '/api/staff/online', { token: fake.data.token, ip })).status, 404);
+      }
+    } finally { await S2.stop(); }
   });
 });
 

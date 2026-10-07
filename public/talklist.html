@@ -526,7 +526,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.185 beta</div>
+  <div class="version-badge">Bro Chat v1.28.186 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1661,8 +1661,9 @@ function renderGroups(groups) {
 
     const msgEl = document.createElement('div');
     msgEl.className = 'tmsg';
-    const memberSuffix = ` ・ ${g.members ? g.members.length : 0}人`;
-    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? 'メッセージ' : previewFromGroupContent(g.lastMessage.content)) : 'まだメッセージがありません';
+    const nMem = g.members ? g.members.length : 0;
+    const memberSuffix = ' ・ ' + (window.i18n && i18n.getLang() !== 'ja' ? nMem + (nMem === 1 ? ' member' : ' members') : nMem + '人');
+    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? t2('message_generic', 'メッセージ') : previewFromGroupContent(g.lastMessage.content)) : t2('no_messages_yet', 'まだメッセージがありません');
     msgEl.textContent = lastMsg + memberSuffix;
     // 暗号化メッセージは、そのグループの鍵が端末に保存済みの時だけ復号してプレビューに出す。
     // (libsodiumは重いので、鍵が無いグループのためだけに読み込むことはしない)
