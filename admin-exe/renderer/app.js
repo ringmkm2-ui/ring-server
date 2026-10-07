@@ -115,6 +115,8 @@
       top.appendChild(t);
       if (r.appVersion) { const v = document.createElement('span'); v.textContent = 'v' + r.appVersion; top.appendChild(v); }
       const msg = document.createElement('div'); msg.className = 'msg'; msg.textContent = r.message;
+      // Claudeが調べた結果(PRの番号や、直せなかった理由)
+      const cn = r.claudeNote ? Object.assign(document.createElement('div'), { className: 'who', textContent: 'Claude: ' + r.claudeNote }) : null;
       const who = document.createElement('div'); who.className = 'who';
       const nm = x => x ? ((x.displayName || '') + ' <' + (x.username || '') + '>') : '(削除済み)';
       who.textContent = '報告者: ' + nm(r.reporter) + (r.target ? '  /  対象: ' + nm(r.target) : '');
@@ -127,7 +129,7 @@
         catch (e) { toast(e.message); }
       };
       foot.appendChild(b);
-      card.append(top, msg, who, foot);
+      card.append(top, msg, ...(cn ? [cn] : []), who, foot);
       box.appendChild(card);
     });
     if (!list.length) { const e = document.createElement('div'); e.className = 'count'; e.style.padding = '12px 2px'; e.textContent = '報告はありません'; box.appendChild(e); }

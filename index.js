@@ -253,6 +253,7 @@ async function main() {
   app.use('/api/calls', callsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/claude-feed', require('./routes/claudeFeed'));
   app.use('/api/settings', settingsRouter);
   app.use('/api/moderation', require('./routes/moderation'));
 

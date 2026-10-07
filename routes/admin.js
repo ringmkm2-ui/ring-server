@@ -141,7 +141,7 @@ router.post('/users/:id/password', asyncHandler(async (req, res) => {
 router.get('/reports', asyncHandler(async (req, res) => {
   const st = ['open', 'resolved', 'all'].includes(req.query.status) ? req.query.status : 'open';
   const rows = await db.all(
-    `SELECT r.id, r.kind, r.category, r.message, r.app_version, r.user_agent, r.status, r.created_at,
+    `SELECT r.id, r.kind, r.category, r.message, r.app_version, r.user_agent, r.status, r.created_at, r.claude_note,
             rp.username AS reporter_username, rp.display_name AS reporter_name,
             tg.id AS target_id, tg.username AS target_username, tg.display_name AS target_name
        FROM reports r
@@ -155,6 +155,7 @@ router.get('/reports', asyncHandler(async (req, res) => {
     reports: rows.map(r => ({
       id: r.id, kind: r.kind, category: r.category, message: r.message,
       appVersion: r.app_version, userAgent: r.user_agent, status: r.status, createdAt: r.created_at,
+      claudeNote: r.claude_note || null,
       reporter: { username: r.reporter_username, displayName: r.reporter_name },
       target: r.target_id ? { id: r.target_id, username: r.target_username, displayName: r.target_name } : null,
     })),
