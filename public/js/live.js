@@ -119,7 +119,8 @@
   async function start() {
     if (role) return;
     if (!navigator.mediaDevices || !window.RTCPeerConnection) { alert('この端末では配信できません'); return; }
-    if (!confirm(T('live_confirm', 'グループのみんなにライブ配信を始めますか?(カメラとマイクを使います)'))) return;
+    if (cfg.feed) cfg.groupId = 'u:' + cfg.myUserId;
+    if (!confirm(cfg.confirmText || T('live_confirm', 'グループのみんなにライブ配信を始めますか?(カメラとマイクを使います)'))) return;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: true });
     } catch (e) { alert('カメラ/マイクにアクセスできません'); return; }
@@ -203,6 +204,7 @@
   }
 
   function setBanner(live) {
+    if (cfg.noBanner) return;
     if (live && hostId && hostId !== cfg.myUserId && role !== 'viewer') {
       el.banner.querySelector('.lb-t').textContent = T('live_now', '{name}がライブ配信中').replace('{name}', hostName || '');
       el.banner.classList.add('on');
@@ -256,7 +258,14 @@
     el.video.addEventListener('click', () => { if (role === 'viewer' && el.video.muted) { el.video.muted = false; el.msg.textContent = ''; } });
     window.addEventListener('pagehide', () => { if (role) stop(true); });
   }
-  function requestStatus() { send({ type: 'live_status', groupId: cfg.groupId }); }
+  function requestStatus() { if (cfg.groupId) send({ type: 'live_status', groupId: cfg.groupId }); }
+  // 投稿タブ: 一覧から選んだ人のライブを見る
+  function watchFeed(key, hId, hName) {
+    if (role) return;
+    cfg.groupId = key; hostId = hId; hostName = hName || '';
+    watch();
+  }
+  const isBusy = () => !!role;
 
-  window.Live = { init, start, watch, stop, handle, requestStatus, ICON: I.live };
+  window.Live = { init, start, watch, watchFeed, stop, handle, requestStatus, isBusy, ICON: I.live };
 })();

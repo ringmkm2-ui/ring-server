@@ -518,15 +518,19 @@ window.ensureGroupCrypto = (function () {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
               </button>
               <input type="file" id="postVideoFile" accept="video/*" style="display:none">
+              <button type="button" id="postLiveBtn" class="glass-clear glass-interactive" aria-label="ライブ配信" style="height:36px;padding:0 12px;border-radius:18px;border:none;display:flex;align-items:center;gap:6px;cursor:pointer;color:#e11d48;font-weight:800;font-size:13px;letter-spacing:.04em">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2" fill="#e11d48"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/></svg>LIVE
+              </button>
             </div>
             <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;" data-i18n="post_btn">投稿する</button>
           </div>
         </div>
+        <div id="liveStrip" style="display:none;flex-direction:column;gap:8px;margin:0 0 12px"></div>
         <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.191 beta</div>
+  <div class="version-badge">Bro Chat v1.28.192 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2939,6 +2943,11 @@ function connectTalkWs() {
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (window.bcHandleWsAuth && window.bcHandleWsAuth(d)) return;
     if (!d || d.type === 'auth_ok' || d.type === 'presence_update' || d.type === 'pong') return;
+    if (typeof d.type === 'string' && d.type.startsWith('live_')) {
+      if ((d.type === 'live_started' || d.type === 'live_ended') && String(d.groupId || '').startsWith('u:') && window.refreshLiveStrip) window.refreshLiveStrip();
+      if (window.Live) window.Live.handle(d);
+      if (d.type !== 'live_started') return;
+    }
     // ブラウザ版: トーク一覧にいる時の着信はチャット画面に移って出す(APKはネイティブの着信画面が出る)
     // 着信: 発信側に「この端末で鳴っている」を知らせる(圏外ガイダンスとの出し分け用)
     if (d.type === 'call_offer' && d.callId) {
@@ -3226,6 +3235,7 @@ document.getElementById('postSubmitBtn').onclick = async () => {
 };
 
 async function loadPosts() {
+  if (window.refreshLiveStrip) window.refreshLiveStrip();
   if (postsLoading) return;
   postsLoading = true;
   const list = document.getElementById('postsList');
@@ -4214,6 +4224,44 @@ async function deletePost(postId, card) {
   const start = () => setTimeout(work, 3000);
   if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 10000 });
   else setTimeout(work, 5000);
+})();
+</script>
+<script src="/js/live.js"></script>
+<script>
+// 投稿タブのライブ配信: 「LIVE」ボタンで友だちに向けて配信、配信中の人は投稿の上に並ぶ
+(function () {
+  if (!window.Live) return;
+  window.Live.init({ groupId: null, token, myUserId, getWs: () => talkWs, feed: true, noBanner: true,
+    confirmText: 'ライブ配信を始めますか?(カメラとマイクを使います。友だちに通知が届き、投稿タブから誰でも見られます)' });
+  document.getElementById('postLiveBtn').addEventListener('click', () => window.Live.start());
+  const strip = document.getElementById('liveStrip');
+  const ago = ts => { const m = Math.max(0, Math.floor((Date.now() - ts) / 60000)); return m < 1 ? 'たった今から' : m + '分前から'; };
+  window.refreshLiveStrip = async () => {
+    try {
+      const r = await fetch('/api/live/active', { headers: { Authorization: 'Bearer ' + token } });
+      const list = r.ok ? await r.json() : [];
+      strip.textContent = '';
+      list.filter(l => l.hostId !== myUserId).forEach(l => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:0;border-radius:18px;background:linear-gradient(135deg,#e11d48,#f43f5e);color:#fff;cursor:pointer;text-align:left;font-family:inherit;box-shadow:0 6px 18px rgba(225,29,72,.25)';
+        const badge = document.createElement('span');
+        badge.textContent = 'LIVE';
+        badge.style.cssText = 'background:#fff;color:#e11d48;border-radius:6px;padding:2px 7px;font-weight:800;font-size:11px;letter-spacing:.06em';
+        const t = document.createElement('span');
+        t.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700';
+        t.textContent = l.hostName + 'がライブ配信中';
+        const sub = document.createElement('span');
+        sub.style.cssText = 'font-size:12px;opacity:.9;flex-shrink:0';
+        sub.textContent = ago(l.startedAt) + ' · ' + l.viewers + '人';
+        row.append(badge, t, sub);
+        row.addEventListener('click', () => window.Live.watchFeed(l.key, l.hostId, l.hostName));
+        strip.appendChild(row);
+      });
+      strip.style.display = strip.children.length ? 'flex' : 'none';
+    } catch (_) {}
+  };
+  window.refreshLiveStrip();
 })();
 </script>
 </body>
