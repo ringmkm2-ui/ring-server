@@ -15,7 +15,8 @@ let cache = { ids: null, ts: 0 };
 async function staffIds() {
   if (cache.ids && Date.now() - cache.ts < 60000) return cache.ids;
   const ids = new Set(await adminUserIds('STAFF_USERS', DEFAULT_STAFF));
-  cache = { ids, ts: Date.now() };
+  // 運営アカウントがまだ1つも無い時は覚えない(後から作った時にすぐ使えるように)
+  if (ids.size) cache = { ids, ts: Date.now() };
   return ids;
 }
 async function requireStaff(req, res, next) {
