@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.195 beta</div>
+  <div class="version-badge">Bro Chat v1.28.196 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2994,7 +2994,8 @@ function connectTalkWs() {
 }
 connectTalkWs();
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { if (talkWs) { talkWs.onclose = null; talkWs.close(); talkWs = null; } }
+  // (ライブ配信中・視聴中は切らない。切ると配信が止まる)
+  if (document.hidden) { if (talkWs && !(window.Live && window.Live.isBusy())) { talkWs.onclose = null; talkWs.close(); talkWs = null; } }
   else if (!talkWs) connectTalkWs();
 });
 // WebSocketが繋がらない時だけの保険(1分に1回)
