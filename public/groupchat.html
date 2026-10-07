@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.194 beta</div>
+  <div class="version-badge">Bro Chat v1.28.195 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1484,6 +1484,20 @@ document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementByI
 // 3. JSON.stringify({text, mediaType, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount}) - Cloudinary方式
 // 4. JSON.stringify({ciphertext, nonce}) - groupE2E.encryptGroupTextで暗号化されたテキスト(msg.encrypted===trueの時)
 // msg.encryptedフラグと中身を見て判別し、復号が必要なものは復号してから返す。
+// 後から読み込む画像・動画を、出した吹き出しに入れる
+function fillDeferredMedia(div, media){
+  if(!div||!media||!media.deferred)return;
+  const el=div.querySelector('img, video');
+  if(el){el.style.minHeight='160px';el.style.minWidth='160px';el.style.background='rgba(148,163,184,.25)';}
+  media.deferred.then(u=>{ if(el){el.src=u;el.style.minHeight='';el.style.minWidth='';el.style.background='';} })
+    .catch(()=>{
+      if(!el)return;
+      const p=document.createElement('div');
+      p.textContent='(メディアを読み込めませんでした)';
+      p.style.cssText='padding:12px;font-size:13px;opacity:.7';
+      el.replaceWith(p);
+    });
+}
 async function parseMsgContent(rawContent, isEncrypted, keyVersion){
   if(typeof rawContent!=='string')return{text:'',media:null};
 
@@ -1493,17 +1507,19 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
 
     // Cloudinary方式のメディア(暗号化された動画/画像)
     if(parsed && parsed.mediaUrl && parsed.mediaType){
-      try{
+      // ダウンロード・復号は後回しにして、吹き出しはすぐ出す。
+      // 以前は画像1枚ずつ全部読み終わるまで次のメッセージが出ず、画像の多いグループを開くと固まって見えた
+      const deferred=(async()=>{
         const groupKey = await ensureGroupKey(keyVersion);
-        const blob = await cloudinaryE2EUploader.downloadAndDecryptMedia(
-          parsed.mediaUrl, parsed.encryptedMetadata, groupKey
-        );
-        const objectUrl = URL.createObjectURL(blob);
-        return{text:parsed.text||'', media:{mediaType:parsed.mediaType, mediaData:objectUrl}};
-      }catch(e){
-        console.error('メディア復号エラー:', e);
-        return{text:parsed.text||'(メディアの復号に失敗しました)', media:null};
-      }
+        const blob = await Promise.race([
+          cloudinaryE2EUploader.downloadAndDecryptMedia(parsed.mediaUrl, parsed.encryptedMetadata, groupKey),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),90000)),
+        ]);
+        return URL.createObjectURL(blob);
+      })();
+      deferred.catch(()=>{});
+      const ph = parsed.mediaType==='image' ? 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==' : '';
+      return{text:parsed.text||'', media:{mediaType:parsed.mediaType, mediaData:ph, deferred}};
     }
 
     // 旧Base64直送り方式のメディア(暗号化されていない)
@@ -1544,6 +1560,7 @@ async function loadGroupMessages(pre){
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
         const incoming=msg.sender_id!==myUserId;
         const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
+        fillDeferredMedia(msgDiv,media);
         if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
         if(msg.edited_at){
           const meta=msgDiv.querySelector('.mmeta .time');
@@ -1646,7 +1663,7 @@ function connectGroupWS(){
         if(groupTypers.has(msg.senderId))gtSet(msg.senderId,false);
         const member=gi.members.find(m=>m.id===msg.senderId);
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
-        createMsg(text,media,true,member,msg.id,msg.createdAt,true);
+        fillDeferredMedia(createMsg(text,media,true,member,msg.id,msg.createdAt,true),media);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)
         if(document.hidden){
