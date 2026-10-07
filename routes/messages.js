@@ -204,7 +204,8 @@ router.get('/history/:userId', auth, async (req, res) => {
   try {
     const { userId: otherId } = req.params;
     const limit = Math.min(parseInt(req.query.limit) || 50, MAX_HISTORY_LIMIT);
-    const before = req.query.before;
+    // 日時として読めない値(配列や変な文字列)はDBでエラー(500)になるので無視する
+    const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
 
     // 外側のカッコが無かったため、下の before(もっと前を読む)が相手のメッセージにしか効いていなかった。
     // ブロックした相手から届いた分(hidden_for_recipient)は自分には見せない

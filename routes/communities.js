@@ -216,7 +216,8 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
   const channel = await db.get('SELECT id FROM community_channels WHERE id = ? AND community_id = ?', [req.params.channelId, req.params.id]);
   if (!channel) return res.status(404).json({ error: 'チャンネルが見つかりません' });
 
-  const before = req.query.before;
+  // 日時として読めない値(配列や変な文字列)はDBでエラー(500)になるので無視する
+  const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
   let query = `SELECT m.id, m.channel_id, m.sender_id, m.content, m.media_url, m.media_type,
                       m.created_at, m.edited_at, m.encrypted, m.key_version,
                       u.display_name as sender_name, u.profile_pic as sender_pic
