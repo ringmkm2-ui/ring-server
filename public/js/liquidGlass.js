@@ -350,12 +350,20 @@
       clone.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
     });
 
-    // アニメーション完了を待ってから遷移する
+    // 以前は380ms待ってから遷移していて、その後さらに読み込み待ちがあったので
+    // 押してから開くまでが長く、間に何も無い画面が挟まってカクついて見えた。
+    // 飛行が着地する頃(220ms)にはもう遷移を始める(読み込み中は今の画面がそのまま残る)
     setTimeout(() => {
-      sourceEl.style.visibility = prevVisibility;
       navigateFn();
-    }, 380);
+      setTimeout(() => { sourceEl.style.visibility = prevVisibility; }, 600);
+    }, 220);
   }
+
+  // 「戻る」でこの画面がキャッシュから復元された時、沈ませた状態と飛ばしたアバターが残らないようにする
+  window.addEventListener('pageshow', () => {
+    document.querySelectorAll('.lg-page-recede').forEach(el => el.classList.remove('lg-page-recede'));
+    document.querySelectorAll('.lg-flying-avatar').forEach(el => el.remove());
+  });
 
   // 遷移先で「飛んできた直後か」を判定し、着地アニメーションを再生する。
   function consumeAvatarFlight(targetEl) {
