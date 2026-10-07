@@ -483,12 +483,12 @@
   pointer-events: none;
   will-change: transform, width, height, top, left;
   transition:
-    top 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
-    left 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
-    width 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
-    height 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
-    font-size 0.42s cubic-bezier(0.32, 0.72, 0.2, 1),
-    box-shadow 0.42s ease;
+    top 0.22s cubic-bezier(0.32, 0.72, 0.2, 1),
+    left 0.22s cubic-bezier(0.32, 0.72, 0.2, 1),
+    width 0.22s cubic-bezier(0.32, 0.72, 0.2, 1),
+    height 0.22s cubic-bezier(0.32, 0.72, 0.2, 1),
+    font-size 0.22s cubic-bezier(0.32, 0.72, 0.2, 1),
+    box-shadow 0.22s ease;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
 }
 
@@ -504,19 +504,20 @@
 /* 遷移元ページ全体が奥に沈む(iOSのpush遷移風) */
 @keyframes lg-page-recede {
   from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 0.55; transform: scale(0.97); }
 }
+/* 完全に消すと、次の画面が出るまでの間が真っ白(真っ青)に見えてカクつくので、薄くするだけ */
 .lg-page-recede {
-  animation: lg-page-recede 0.32s var(--glass-ease) both;
+  animation: lg-page-recede 0.22s var(--glass-ease) both;
 }
 
 /* 遷移先ページが右から差し込まれる(iOSのpush遷移風) */
 @keyframes lg-page-push-in {
-  from { opacity: 0; transform: translateX(40px); }
+  from { opacity: 0.4; transform: translateX(28px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 .lg-page-push-in {
-  animation: lg-page-push-in 0.38s var(--glass-ease) both;
+  animation: lg-page-push-in 0.26s var(--glass-ease) both;
 }
 
 /* View Transitions */
