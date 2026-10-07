@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.192 beta</div>
+  <div class="version-badge">Bro Chat v1.28.193 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -725,8 +725,12 @@ window.ensureGroupCrypto = (function () {
 <!-- 運営: オンラインのユーザー -->
 <div class="mov" id="staffMov">
   <div class="mc">
-    <h3 class="mtitle" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>オンライン <span id="staffCount" style="color:#22c55e"></span></span>
+    <h3 class="mtitle" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span><span id="staffTitle">オンライン</span> <span id="staffCount" style="color:#22c55e"></span></span>
       <button type="button" id="staffRefresh" aria-label="更新" style="width:34px;height:34px;border-radius:50%;border:0;background:rgba(148,163,184,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></h3>
+    <div id="staffTabs" style="display:flex;gap:6px;margin:4px 0 6px">
+      <button type="button" data-mode="online" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">オンライン</button>
+      <button type="button" data-mode="all" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">全員</button>
+    </div>
     <div id="staffList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 14px"></div>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="staffClose" type="button" data-i18n="close">閉じる</button>
   </div>
@@ -2307,14 +2311,32 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
     const h = Math.floor(m / 60);
     return h < 24 ? h + '時間前から' : Math.floor(h / 24) + '日前から';
   };
+  let mode = 'online';
+  const when = ts => {
+    if (!ts) return 'まだ来ていない';
+    const t = new Date(ts).getTime(); if (!t) return '';
+    const m = Math.floor((Date.now() - t) / 60000);
+    if (m < 1) return 'さっき'; if (m < 60) return m + '分前'; const h = Math.floor(m / 60);
+    if (h < 24) return h + '時間前'; const dd = Math.floor(h / 24); return dd < 60 ? dd + '日前' : new Date(t).toLocaleDateString();
+  };
+  function paintTabs() {
+    document.querySelectorAll('#staffTabs button').forEach(b => {
+      const on = b.dataset.mode === mode;
+      b.style.background = on ? '#007aff' : 'rgba(148,163,184,.18)';
+      b.style.color = on ? '#fff' : 'inherit';
+    });
+    document.getElementById('staffTitle').textContent = mode === 'all' ? '全ユーザー' : 'オンライン';
+  }
+  document.querySelectorAll('#staffTabs button').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; paintTabs(); load(); }));
   async function load() {
     const box = document.getElementById('staffList');
+    paintTabs();
     try {
-      const res = await fetch('/api/staff/online', { headers: { 'Authorization': 'Bearer ' + token } });
+      const res = await fetch(mode === 'all' ? '/api/staff/users' : '/api/staff/online', { headers: { 'Authorization': 'Bearer ' + token } });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || '');
-      document.getElementById('staffCount').textContent = d.count + '人';
-      document.getElementById('staffOnlineCount').textContent = d.count + '人';
+      document.getElementById('staffCount').textContent = mode === 'all' ? d.count + '人(オンライン' + d.online + ')' : d.count + '人';
+      if (mode !== 'all') document.getElementById('staffOnlineCount').textContent = d.count + '人';
       box.textContent = '';
       if (!d.users.length) {
         const p = document.createElement('p');
@@ -2340,7 +2362,10 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
         nm.textContent = u.displayName;
         const sub = document.createElement('div');
         sub.style.cssText = 'font-size:12px;color:#64748b';
-        sub.textContent = [u.userIdCode, ago(u.since), u.devices > 1 ? u.devices + '台' : ''].filter(Boolean).join(' · ');
+        sub.textContent = mode === 'all'
+          ? [u.userIdCode, u.online ? 'オンライン' : '最後: ' + when(u.lastSeen), '登録 ' + (u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '?'), u.banned ? 'BAN中' : ''].filter(Boolean).join(' · ')
+          : [u.userIdCode, ago(u.since), u.devices > 1 ? u.devices + '台' : ''].filter(Boolean).join(' · ');
+        if (mode === 'all' && !u.online) dot.style.display = 'none';
         info.append(nm, sub);
         row.append(av, info);
         box.appendChild(row);

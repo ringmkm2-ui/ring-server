@@ -45,4 +45,22 @@ router.get('/online', auth, requireStaff, asyncHandler(async (req, res) => {
   res.json({ count: users.length, users });
 }));
 
+// 全ユーザー一覧(最後にいた順)。メールアドレスは出さない
+router.get('/users', auth, requireStaff, asyncHandler(async (req, res) => {
+  const { isUserOnline } = require('../ws/wsServer');
+  const rows = await db.all(
+    `SELECT u.id, u.user_id, u.display_name, u.profile_pic, u.created_at, u.banned_until,
+            (SELECT MAX(s.last_seen_at) FROM user_sessions s WHERE s.user_id = u.id) AS last_seen
+       FROM users u
+      WHERE u.username NOT LIKE 'deleted%'
+      LIMIT 2000`
+  );
+  const users = rows.map(r => ({
+    userId: r.id, userIdCode: r.user_id, displayName: r.display_name || '(名前なし)', profilePic: r.profile_pic || '',
+    createdAt: r.created_at, lastSeen: r.last_seen, online: isUserOnline(r.id),
+    banned: Number(r.banned_until) > Date.now(),
+  })).sort((a, b) => (b.online - a.online) || (new Date(b.lastSeen || 0) - new Date(a.lastSeen || 0)));
+  res.json({ count: users.length, online: users.filter(u => u.online).length, users });
+}));
+
 module.exports = router;

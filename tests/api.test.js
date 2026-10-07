@@ -253,6 +253,10 @@ describe('運営用(staff)', () => {
         const on = await S2.req('GET', '/api/staff/online', { token: tok, ip: staff.ip });
         assert.equal(on.status, 200);
         assert.ok(on.data.users.some(u => u.userId === other.userId));
+        const all = await S2.req('GET', '/api/staff/users', { token: tok, ip: staff.ip });
+        assert.equal(all.status, 200);
+        assert.ok(all.data.users.some(u => u.userId === other.userId && u.online));
+        assert.ok(!JSON.stringify(all.data).includes('@example.com'), 'メールアドレスは出さない');
       } finally { w.close(); }
       // 運営のIDコードと同じユーザー名で登録した人は運営ではない
       const ip = '10.251.0.9';
