@@ -27,11 +27,11 @@
     const st = document.createElement('style');
     st.id = 'gcallCss';
     st.textContent = `
-#gcallBanner{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:60;display:none;align-items:center;gap:10px;padding:10px 14px;border-radius:16px;background:rgba(16,185,129,.92);color:#fff;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+#gcallBanner{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:20000;display:none;align-items:center;gap:10px;padding:10px 14px;border-radius:16px;background:rgba(16,185,129,.92);color:#fff;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 #gcallBanner.show{display:flex}
 #gcallBanner .t{flex:1;font-weight:600}
 #gcallBanner button{border:0;border-radius:999px;padding:7px 14px;background:#fff;color:#0f766e;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
-#gcallOv{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;background:#0b1220;color:#fff}
+#gcallOv{position:fixed;inset:0;z-index:25000;display:none;flex-direction:column;background:#0b1220;color:#fff}
 #gcallOv.show{display:flex}
 #gcallTop{padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 8px;text-align:center}
 #gcallTop .n{font-size:17px;font-weight:700}

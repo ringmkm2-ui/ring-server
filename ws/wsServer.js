@@ -138,6 +138,43 @@ function kickFromGroupCall(groupId, userId) {
   leaveGroupCall(groupId, userId, ws);
 }
 
+// ===== ライブ配信(グループ) =====
+// 配信者1人が、見ている人それぞれへ直接WebRTCで映像を送る(サーバーは名簿と合図の中継だけ)。
+// 配信者の回線で送れる量に限りがあるので、同時に見られるのは10人まで。
+const liveRooms = new Map(); // groupId -> { host, hostWs, hostName, viewers: Map<userId, ws>, startedAt }
+const LIVE_MAX_VIEWERS = 10;
+function liveSend(ws, obj) { try { if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); } catch (_) {} }
+function liveCount(groupId) {
+  const r = liveRooms.get(groupId);
+  if (!r) return;
+  const msg = { type: 'live_count', groupId, viewers: r.viewers.size };
+  liveSend(r.hostWs, msg);
+  r.viewers.forEach(w => liveSend(w, msg));
+}
+function endLive(groupId) {
+  const r = liveRooms.get(groupId);
+  if (!r) return;
+  liveRooms.delete(groupId);
+  broadcastToGroupMembers(groupId, { type: 'live_ended', groupId }).catch(() => {});
+}
+function leaveLive(groupId, userId, ws) {
+  const r = liveRooms.get(groupId);
+  if (!r) return;
+  if (r.host === userId && r.hostWs === ws) return endLive(groupId);
+  if (r.viewers.get(userId) !== ws) return;
+  r.viewers.delete(userId);
+  liveSend(r.hostWs, { type: 'live_viewer_left', groupId, userId });
+  liveCount(groupId);
+}
+// グループから外された人を、見ている/配信しているライブからも外す
+function kickFromLive(groupId, userId) {
+  const r = liveRooms.get(groupId);
+  if (!r) return;
+  if (r.host === userId) return endLive(groupId);
+  const w = r.viewers.get(userId);
+  if (w) { liveSend(w, { type: 'live_ended', groupId }); leaveLive(groupId, userId, w); }
+}
+
 function isUserOnline(userId) {
   const set = connections.get(userId);
   return !!set && set.size > 0;
@@ -795,6 +832,73 @@ function initWebSocketServer(server) {
         return;
       }
 
+      if (typeof data.type === 'string' && data.type.startsWith('live_')) {
+        if (!userId || typeof data.groupId !== 'string' || !data.groupId) return;
+        const gid = data.groupId;
+        if (data.type === 'live_status') {
+          const r = liveRooms.get(gid);
+          if (!(await isActiveGroupMember(gid, userId))) return;
+          liveSend(ws, { type: 'live_status', groupId: gid, live: !!r, hostId: r ? r.host : null, hostName: r ? r.hostName : null, viewers: r ? r.viewers.size : 0, startedAt: r ? r.startedAt : null });
+          return;
+        }
+        if (data.type === 'live_start') {
+          if (!(await isActiveGroupMember(gid, userId))) return;
+          const cur = liveRooms.get(gid);
+          if (cur && cur.host !== userId) { liveSend(ws, { type: 'live_error', groupId: gid, error: cur.hostName + 'が配信中です' }); return; }
+          const me = await db.get('SELECT display_name FROM users WHERE id = ?', [userId]);
+          const hostName = (me && me.display_name) || 'ユーザー';
+          liveRooms.set(gid, { host: userId, hostWs: ws, hostName, viewers: cur ? cur.viewers : new Map(), startedAt: cur ? cur.startedAt : Date.now() });
+          liveSend(ws, { type: 'live_ready', groupId: gid });
+          // 配信者がつなぎ直した時は、見ている人へ送り直す
+          if (cur) cur.viewers.forEach((w, vid) => liveSend(ws, { type: 'live_viewer', groupId: gid, userId: vid }));
+          if (!cur) {
+            try {
+              const group = await db.get('SELECT name FROM groups WHERE id = ?', [gid]);
+              const groupName = (group && group.name) || 'グループ';
+              const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [gid]);
+              members.forEach(m => {
+                if (m.user_id === userId) return;
+                broadcastToUser(m.user_id, { type: 'live_started', groupId: gid, groupName, hostId: userId, hostName });
+                require('../utils/fcm').sendMessageNotification(
+                  m.user_id, `${hostName} (${groupName})`, 'ライブ配信を始めました', 'group', { senderId: userId, chatId: gid }
+                ).catch(() => {});
+                if (!isUserOnline(m.user_id)) {
+                  sendPushToUser(m.user_id, { type: 'new_group_message', groupId: gid, groupName, senderName: hostName, preview: 'ライブ配信を始めました' }).catch(() => {});
+                }
+              });
+            } catch (e) { console.error('[live] notify failed:', e.message); }
+          }
+          return;
+        }
+        const r = liveRooms.get(gid);
+        if (!r) { if (data.type === 'live_join') liveSend(ws, { type: 'live_ended', groupId: gid }); return; }
+        if (data.type === 'live_join') {
+          if (userId === r.host) return;
+          if (!(await isActiveGroupMember(gid, userId))) return;
+          if (!r.viewers.has(userId) && r.viewers.size >= LIVE_MAX_VIEWERS) { liveSend(ws, { type: 'live_error', groupId: gid, error: '満員です(最大' + LIVE_MAX_VIEWERS + '人)' }); return; }
+          r.viewers.set(userId, ws);
+          liveSend(r.hostWs, { type: 'live_viewer', groupId: gid, userId });
+          liveCount(gid);
+          return;
+        }
+        if (data.type === 'live_signal') {
+          // 配信者 ⇔ 見ている人 の間だけ中継する
+          if (!['offer', 'answer', 'ice'].includes(data.kind) || typeof data.to !== 'string') return;
+          const fromHost = userId === r.host && r.hostWs === ws;
+          const fromViewer = r.viewers.get(userId) === ws;
+          let target = null;
+          if (fromHost) target = r.viewers.get(data.to);
+          else if (fromViewer && data.to === r.host) target = r.hostWs;
+          if (!target) return;
+          let size = 0; try { size = JSON.stringify(data.sdp || data.candidate || '').length; } catch (_) { return; }
+          if (size > 32000) return;
+          liveSend(target, { type: 'live_signal', groupId: gid, from: userId, kind: data.kind, sdp: data.sdp, candidate: data.candidate });
+          return;
+        }
+        if (data.type === 'live_leave' || data.type === 'live_end') { leaveLive(gid, userId, ws); return; }
+        return;
+      }
+
       if (data.type === 'gcall_leave') {
         if (!userId || !data.groupId) return;
         leaveGroupCall(data.groupId, userId, ws);
@@ -858,6 +962,7 @@ function initWebSocketServer(server) {
 
     ws.on('close', () => {
       if (userId) groupCalls.forEach((room, gid) => { if (room.peers.get(userId) === ws) leaveGroupCall(gid, userId, ws); });
+      if (userId) liveRooms.forEach((r, gid) => { if (r.hostWs === ws || r.viewers.get(userId) === ws) leaveLive(gid, userId, ws); });
       ['mic', 'remote'].forEach(track => {
         if (callAssistSessions[track]) {
           callAssist.stopSession(callAssistSessions[track]);
@@ -889,4 +994,4 @@ function disconnectBanned(userId, until) {
   }
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, rejectPendingCall, disconnectBanned };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, rejectPendingCall, disconnectBanned };
