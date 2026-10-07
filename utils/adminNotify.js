@@ -4,18 +4,36 @@
 // 未設定なら ringmkm2@gmail.com のアカウントへ送る。
 const db = require('../db/db');
 
-const DEFAULT_ADMINS = 'ringmkm2@gmail.com';
+const DEFAULT_ADMINS = 'ringmkm2@gmail.com,UMTUK9D';
 
+// 運営アカウントを探す。
+// - IDコード(U...)は user_id とだけ照らし合わせる(サーバーが振る番号なので、他人が同じ物を名乗れない)
+// - メールアドレスは、メールの持ち主だと確認済みのアカウント(メール認証済み or Googleログイン)だけ
+// 以前はどちらも username とも照らし合わせていたので、メール認証が無い環境では
+// 「UMTUK9D」というユーザー名で登録するだけで運営になれてしまった
 async function adminUserIds(envName = 'ADMIN_NOTIFY', fallback = DEFAULT_ADMINS) {
   const list = String(process.env[envName] || fallback)
     .split(',').map(s => s.trim()).filter(Boolean).slice(0, 10);
-  if (!list.length) return [];
-  const ph = list.map(() => '?').join(',');
-  const rows = await db.all(
-    `SELECT id FROM users WHERE (LOWER(username) IN (${ph}) OR user_id IN (${ph})) AND username NOT LIKE 'deleted%'`,
-    [...list.map(s => s.toLowerCase()), ...list.map(s => s.toUpperCase())]
-  );
-  return [...new Set(rows.map(r => r.id))];
+  const codes = list.filter(s => !s.includes('@')).map(s => s.toUpperCase());
+  const emails = list.filter(s => s.includes('@')).map(s => s.toLowerCase());
+  const ids = [];
+  if (codes.length) {
+    const rows = await db.all(
+      `SELECT id FROM users WHERE user_id IN (${codes.map(() => '?').join(',')}) AND username NOT LIKE 'deleted%'`,
+      codes
+    );
+    rows.forEach(r => ids.push(r.id));
+  }
+  if (emails.length) {
+    const rows = await db.all(
+      `SELECT id FROM users WHERE LOWER(username) IN (${emails.map(() => '?').join(',')})
+         AND username NOT LIKE 'deleted%'
+         AND (email_verified_at IS NOT NULL OR password_hash = '')`,
+      emails
+    );
+    rows.forEach(r => ids.push(r.id));
+  }
+  return [...new Set(ids)];
 }
 
 const CATEGORY_JA = { spam: 'スパム', harassment: '嫌がらせ', impersonation: 'なりすまし', inappropriate: '不適切', other: 'その他' };
