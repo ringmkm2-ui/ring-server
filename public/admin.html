@@ -289,6 +289,46 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
 .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
 .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
+/* ===== 相手メニュー(ブロック/通報)・ブロック中バー・送信キャンセル ===== */
+#partnerAv,#partnerName{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.peer-sheet-bg{position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,.32);opacity:0;pointer-events:none;transition:opacity .2s}
+.peer-sheet-bg.open{opacity:1;pointer-events:auto}
+.peer-sheet{position:fixed;left:50%;bottom:0;z-index:20001;width:min(440px,100%);transform:translate(-50%,105%);transition:transform .26s cubic-bezier(.2,.9,.3,1);padding:10px 12px calc(12px + env(safe-area-inset-bottom));box-sizing:border-box}
+.peer-sheet.open{transform:translate(-50%,0)}
+.peer-card{background:rgba(255,255,255,.96);border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(15,23,42,.18);margin-bottom:8px}
+.peer-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(148,163,184,.25)}
+.peer-head .nm{font-weight:700;font-size:15px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.peer-row{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:none;font-size:15px;color:#0f172a;text-align:left;cursor:pointer;font-family:inherit}
+.peer-row+.peer-row{border-top:1px solid rgba(148,163,184,.18)}
+.peer-row:active{background:rgba(148,163,184,.15)}
+.peer-row.danger{color:#e11d48}
+.peer-row svg{flex-shrink:0}
+.peer-sub{font-size:12px;color:#64748b;padding:0 16px 12px;line-height:1.5}
+.peer-form{padding:12px 16px 14px;display:flex;flex-direction:column;gap:8px}
+.peer-form select,.peer-form textarea{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;background:#fff;color:#0f172a;font-family:inherit}
+.peer-form textarea{min-height:84px;resize:vertical}
+.peer-form .err{color:#e11d48;font-size:12px;min-height:14px}
+.peer-form .send{padding:12px;border-radius:12px;border:0;background:#e11d48;color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.peer-form .send:disabled{opacity:.5}
+.peer-cancel{display:block;width:100%;padding:15px;border:0;border-radius:20px;background:rgba(255,255,255,.96);font-size:16px;font-weight:700;color:#007aff;cursor:pointer;box-shadow:0 10px 40px rgba(15,23,42,.18);font-family:inherit}
+#blockedBar{display:none;align-items:center;justify-content:space-between;gap:10px;margin:0 10px;padding:12px 14px;border-radius:22px;background:rgba(255,255,255,.92);box-shadow:0 4px 18px rgba(15,23,42,.12);font-size:14px;color:#475569}
+#blockedBar .bb-txt{display:flex;align-items:center;gap:8px;min-width:0}
+#blockedBar .bb-txt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#blockedBar button{flex-shrink:0;padding:8px 14px;border-radius:14px;border:0;background:#007aff;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+body.peer-blocked #blockedBar{display:flex}
+body.peer-blocked #inputBar,body.peer-blocked #replyPreview,body.peer-blocked #videoCallBtn,body.peer-blocked #phoneBtn,body.peer-blocked #uploadChips{display:none!important}
+#uploadChips{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin:0 12px 6px}
+#uploadChips:empty{display:none}
+.up-chip{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:18px;background:rgba(255,255,255,.94);box-shadow:0 3px 14px rgba(15,23,42,.14);font-size:13px;color:#334155;animation:upChipIn .18s ease}
+@keyframes upChipIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.up-chip .pct{font-variant-numeric:tabular-nums;min-width:34px;text-align:right;color:#007aff;font-weight:700}
+.up-chip button{width:28px;height:28px;border-radius:50%;border:0;background:rgba(225,29,72,.12);color:#e11d48;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.up-chip button:active{background:rgba(225,29,72,.25)}
+html.dark-mode .peer-card,html.dark-mode .peer-cancel,html.dark-mode #blockedBar,html.dark-mode .up-chip{background:rgba(30,41,59,.96);color:#e2e8f0}
+html.dark-mode .peer-head .nm,html.dark-mode .peer-row{color:#e2e8f0}
+html.dark-mode .peer-row.danger{color:#fb7185}
+html.dark-mode .peer-form select,html.dark-mode .peer-form textarea{background:#0f172a;color:#e2e8f0;border-color:#334155}
+html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 </style>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
@@ -319,7 +359,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.180 beta</div>
+  <div class="version-badge">Bro Chat v1.28.181 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -356,6 +396,11 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
       <button type="button" class="rp-close" id="replyCancelBtn" aria-label="キャンセル">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
+    </div>
+    <div id="uploadChips" aria-live="polite"></div>
+    <div id="blockedBar">
+      <div class="bb-txt"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span id="blockedLabel">ブロック中</span></div>
+      <button type="button" id="unblockBtn">解除</button>
     </div>
     <div class="input-floating-bar" id="inputBar">
       <div class="input-main-row">
@@ -1049,7 +1094,32 @@ function handleMedia(f, t) {
   sendMediaViaCloudinary(f, t);
 }
 
+// 送信中の画像/動画ごとに「送信中 42% [×]」を入力欄の上に出す。×で送信を止める
+function makeUploadChip(t) {
+  const ctrl = new AbortController();
+  const box = document.getElementById('uploadChips');
+  const chip = document.createElement('div');
+  chip.className = 'up-chip';
+  const label = document.createElement('span');
+  label.textContent = (t === 'video' ? '動画' : t === 'audio' ? '音声' : '画像') + 'を送信中';
+  const pct = document.createElement('span'); pct.className = 'pct'; pct.textContent = '0%';
+  const x = document.createElement('button'); x.type = 'button'; x.setAttribute('aria-label', '送信をキャンセル');
+  x.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  x.addEventListener('click', () => { if (window.LiquidGlass) window.LiquidGlass.haptic('light'); ctrl.abort(); });
+  chip.append(label, pct, x);
+  if (box) box.appendChild(chip);
+  return {
+    signal: ctrl.signal,
+    abort: () => ctrl.abort(),
+    progress: p => { pct.textContent = Math.min(100, Math.round(p)) + '%'; },
+    done: () => chip.remove(),
+  };
+}
+const activeDmUploads = new Set();
+
 async function sendMediaViaCloudinary(f, t) {
+  const chip = makeUploadChip(t);
+  activeDmUploads.add(chip);
   const sendBtn = document.getElementById('sendBtn');
   sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" fill="none" stroke="rgba(0,122,255,.18)" stroke-width="3"/><circle class="upload-ring-fill" cx="10" cy="10" r="8" fill="none" stroke="#007aff" stroke-width="3" stroke-linecap="round" stroke-dasharray="50.27" stroke-dashoffset="50.27" style="transition:stroke-dashoffset .18s ease"/></svg>';
 
@@ -1072,14 +1142,18 @@ async function sendMediaViaCloudinary(f, t) {
       sharedKey,
       `brochat/dm/${[myUserId, otherId].sort().join('_')}`,
       (progress) => {
+        chip.progress(progress);
         const ringEl = sendBtn.querySelector('.upload-ring-fill');
         if (ringEl) ringEl.style.strokeDashoffset = (50.27 * (1 - Math.min(progress, 100) / 100)).toFixed(2);
-      }
+      },
+      chip.signal
     );
 
     if (!metadata || !metadata.cloudinaryUrl) {
       throw new Error('Upload failed');
     }
+    // アップロードが終わった直後に×が押されていたら、トークには出さない
+    if (chip.signal.aborted) { const ab = new Error('cancelled'); ab.name = 'AbortError'; throw ab; }
 
     const data = await api('/api/messages/send', {
       method: 'POST',
@@ -1107,6 +1181,8 @@ async function sendMediaViaCloudinary(f, t) {
       const displayMsg = { ...data.message, content: ownContent };
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
+    } else if (data.blockedByMe) {
+      if (window.BroBlock) BroBlock.applyBlocked(true);
     } else if (data.error) {
       alert(i18n.t('err_send_failed') + data.error);
     } else {
@@ -1114,10 +1190,14 @@ async function sendMediaViaCloudinary(f, t) {
       alert(i18n.t('err_send_failed_generic'));
     }
   } catch (err) {
+    if (err && err.name === 'AbortError') return; // ×で止めた。何も出さない
     console.error('media send error:', err);
     alert(i18n.t('err_file_upload_failed') + err.message);
   } finally {
-    sendBtn.innerHTML = paperPlane;
+    chip.done();
+    activeDmUploads.delete(chip);
+    // 他にまだ送信中のものがあればリングは残す
+    if (!activeDmUploads.size) sendBtn.innerHTML = paperPlane;
   }
 }
 
@@ -1142,7 +1222,11 @@ async function sendMediaViaCloudinary(f, t) {
 document.getElementById('chatForm').onsubmit = async e => {
   e.preventDefault();
   let txt = document.getElementById('msgInput').value.trim();
-  if (!txt) return;
+  if (!txt) {
+    // 送信中(リング表示中)に空のまま送信ボタンを押したら、最後に始めた送信を止める
+    if (activeDmUploads.size) [...activeDmUploads].pop().abort();
+    return;
+  }
   // 禁止語: 暗号化する前にこの端末で調べる(サーバーは中身が見えない)。
   // 禁止語の所だけ f*** にして送り、送り終わったら自分を3日間停止にする(相手には「Banしました」)
   const profane = !!(window.BCProfanity && window.BCProfanity.containsBannedWord(txt));
@@ -1290,6 +1374,12 @@ async function sendRealMessage(content) {
       adoptTempMessage(tempId, displayMsg);
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
+    } else if (data && data.blockedByMe) {
+      // ブロック中: 仮の吹き出しを消して、書いた文は入力欄に戻す
+      removeMessageById(tempId);
+      const ta = document.getElementById('msgInput');
+      if (ta && !ta.value) { ta.value = content; if (window.fitMsgInput) fitMsgInput(); }
+      if (window.BroBlock) BroBlock.applyBlocked(true);
     } else {
       console.error('send response missing message:', data);
     }
@@ -4213,5 +4303,6 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
   });
 });
 </script>
+<script src="/js/chatBlock.js"></script>
 </body>
 </html>

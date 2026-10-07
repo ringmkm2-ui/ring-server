@@ -207,9 +207,10 @@
   function init() {
     render(current);
     // iOS 26 と同じく、上の相手の名前/アイコンをタップすると背景を選べる
+    // (相手メニュー chatBlock.js がある画面では、そのメニューの「背景を変更」から開く)
     ['partnerName', 'partnerAv'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', openSheet); }
+      if (el && !el.dataset.peerMenu) { el.style.cursor = 'pointer'; el.addEventListener('click', openSheet); }
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

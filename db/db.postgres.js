@@ -89,6 +89,19 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT now()
       )
     `);
+    // ブロック(blocker_id が blocked_id をブロック)。相手には知らせない
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        blocker_id TEXT NOT NULL,
+        blocked_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (blocker_id, blocked_id)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id)');
+    // ブロックされている相手から届いた個人メッセージ。送った側には普通に見えるが、
+    // ブロックした側には一切届かない(LINEと同じ。ブロックされたことを相手に気づかせない)
+    await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS hidden_for_recipient BOOLEAN DEFAULT false');
     // E2E鍵のバックアップ(パスフレーズで端末側が暗号化した塊。サーバーは中身を読めない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS key_backups (

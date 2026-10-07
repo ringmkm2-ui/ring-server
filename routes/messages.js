@@ -92,6 +92,14 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       return res.status(403).json({ error: 'このユーザーとは友達ではありません' });
     }
 
+    // ブロック: 自分がブロックしている相手には送れない(解除すれば送れる)。
+    // 相手にブロックされている時は、送った側には普通に送れたように見せ、相手には一切届けない
+    // (LINEと同じ。ブロックされたことを気づかせない)
+    const { blockState } = require('../utils/relations');
+    const bs = await blockState(req.userId, recipientId);
+    if (bs.byMe) return res.status(403).json({ error: 'ブロック中のため送れません。解除すると送れます', blockedByMe: true });
+    const hiddenForRecipient = bs.byThem;
+
     // 返信先は、この2人の会話の中のメッセージに限る。
     // 以前はIDの存在だけを見ていたので、当てずっぽうのIDで「そのIDのメッセージが
     // 存在するかどうか」を外から確かめられた。
@@ -124,8 +132,8 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     }
 
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id, hidden_for_recipient) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null, hiddenForRecipient]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -145,8 +153,9 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         createdAt: msg.created_at,
       }
     };
-    broadcastToUser(recipientId, payload);
+    if (!hiddenForRecipient) broadcastToUser(recipientId, payload);
     broadcastToUser(req.userId, payload); // 自分の他端末にも
+    if (hiddenForRecipient) return res.json({ ok: true, message: payload.message });
 
     // 相手がオフライン(WebSocket未接続)の場合のみPush通知を送る。
     // オンラインならWS経由で既にリアルタイム表示されるため、二重通知を避ける。
@@ -197,9 +206,11 @@ router.get('/history/:userId', auth, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 50, MAX_HISTORY_LIMIT);
     const before = req.query.before;
 
+    // 外側のカッコが無かったため、下の before(もっと前を読む)が相手のメッセージにしか効いていなかった。
+    // ブロックした相手から届いた分(hidden_for_recipient)は自分には見せない
     let sql = `
       SELECT * FROM messages
-      WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+      WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
     `;
     const params = [req.userId, otherId, otherId, req.userId];
 
@@ -217,11 +228,11 @@ router.get('/history/:userId', auth, async (req, res) => {
     // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
     // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
     const newlyRead = await db.all(
-      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
+      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
       [otherId, req.userId]
     );
     await db.run(
-      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
+      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
       [now, otherId, req.userId]
     );
 
@@ -284,20 +295,21 @@ router.get('/talks', auth, async (req, res) => {
       WHERE m.id IN (
         SELECT (
           SELECT x.id FROM messages x
-          WHERE (x.sender_id = p.other_id AND x.recipient_id = ?) OR (x.sender_id = ? AND x.recipient_id = p.other_id)
+          WHERE (x.sender_id = p.other_id AND x.recipient_id = ? AND COALESCE(x.hidden_for_recipient, false) = false)
+             OR (x.sender_id = ? AND x.recipient_id = p.other_id)
           ORDER BY x.created_at DESC, x.id DESC LIMIT 1
         )
         FROM (
           SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END AS other_id
           FROM messages
-          WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id
+          WHERE (sender_id = ? OR (recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false)) AND sender_id != recipient_id
         ) p
       )
     `, [me, me, me, me, me]);
 
     // 2) 相手ごとの未読数
     const unreadRows = await db.all(
-      'SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL GROUP BY sender_id',
+      'SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false GROUP BY sender_id',
       [me]
     );
     const unreadBy = new Map(unreadRows.map(r => [r.sender_id, Number(r.cnt)]));
@@ -309,8 +321,11 @@ router.get('/talks', auth, async (req, res) => {
       WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'
     `, [me, me, me]);
 
+    // 自分がブロックした相手はトーク一覧に出さない(設定のブロックリストから解除できる)
+    const myBlocks = new Set((await db.all('SELECT blocked_id FROM user_blocks WHERE blocker_id = ?', [me])).map(r => r.blocked_id));
     const rows = latest
       .map(m => ({ ...m, other_id: m.sender_id === me ? m.recipient_id : m.sender_id }))
+      .filter(m => !myBlocks.has(m.other_id))
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const withMsg = new Set(rows.map(r => r.other_id));
     const ids = [...new Set([...rows.map(r => r.other_id), ...friendRows.map(f => f.friend_id)])];
@@ -342,7 +357,7 @@ router.get('/talks', auth, async (req, res) => {
     }
     // メッセージのない友達も含める
     for (const f of friendRows) {
-      if (withMsg.has(f.friend_id)) continue;
+      if (withMsg.has(f.friend_id) || myBlocks.has(f.friend_id)) continue;
       const user = users.get(f.friend_id);
       if (!user) continue;
       withMsg.add(f.friend_id);
@@ -397,7 +412,7 @@ router.post('/edit', auth, async (req, res) => {
       recipientId: updated.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    broadcastToUser(updated.recipient_id, payload);
+    if (!updated.hidden_for_recipient) broadcastToUser(updated.recipient_id, payload);
     broadcastToUser(updated.sender_id, payload);
 
     res.json({ ok: true, message: payload });
@@ -429,7 +444,7 @@ router.post('/delete', auth, async (req, res) => {
       recipientId: msg.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    broadcastToUser(msg.recipient_id, payload);
+    if (!msg.hidden_for_recipient) broadcastToUser(msg.recipient_id, payload);
     broadcastToUser(msg.sender_id, payload);
 
     res.json({ ok: true });
@@ -454,6 +469,9 @@ router.post('/pin', auth, async (req, res) => {
     if (msg.sender_id !== req.userId && msg.recipient_id !== req.userId) {
       return res.status(403).json({ error: 'not authorized' });
     }
+    if (msg.recipient_id === req.userId && msg.hidden_for_recipient) {
+      return res.status(404).json({ error: 'message not found' });
+    }
 
     const now = new Date().toISOString();
     if (pinned) {
@@ -471,7 +489,7 @@ router.post('/pin', auth, async (req, res) => {
       recipientId: msg.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    broadcastToUser(msg.recipient_id, payload);
+    if (!msg.hidden_for_recipient) broadcastToUser(msg.recipient_id, payload);
     broadcastToUser(msg.sender_id, payload);
 
     res.json({ ok: true });
@@ -497,6 +515,9 @@ router.post('/react', auth, async (req, res) => {
     if (!msg) return res.status(404).json({ error: 'message not found' });
     if (msg.sender_id !== req.userId && msg.recipient_id !== req.userId) {
       return res.status(403).json({ error: 'not authorized' });
+    }
+    if (msg.recipient_id === req.userId && msg.hidden_for_recipient) {
+      return res.status(404).json({ error: 'message not found' });
     }
 
     const existing = await db.get(
@@ -529,7 +550,7 @@ router.post('/react', auth, async (req, res) => {
       recipientId: msg.recipient_id,
     };
     const { broadcastToUser } = require('../ws/wsServer');
-    broadcastToUser(msg.recipient_id, payload);
+    if (!msg.hidden_for_recipient) broadcastToUser(msg.recipient_id, payload);
     broadcastToUser(msg.sender_id, payload);
 
     res.json({ ok: true, action, reactions: payload.reactions });
@@ -546,7 +567,7 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     const { userId: otherId } = req.params;
     const rows = await db.all(`
       SELECT * FROM messages
-      WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+      WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
       AND pinned_at IS NOT NULL
       ORDER BY pinned_at DESC
     `, [req.userId, otherId, otherId, req.userId]);

@@ -60,6 +60,11 @@ async function initDB() {
     db.run('DROP TABLE IF EXISTS message_reactions');
     db.run('DROP TABLE IF EXISTS messages');
   }
+  // ブロック用: ブロックした相手から届いた分を受信者に見せない印
+  const msgTableInfo3 = db.exec('PRAGMA table_info(messages)');
+  if (msgTableInfo3.length > 0 && !msgTableInfo3[0].values.some(row => row[1] === 'hidden_for_recipient')) {
+    db.run('ALTER TABLE messages ADD COLUMN hidden_for_recipient INTEGER DEFAULT 0');
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -111,6 +116,13 @@ async function initDB() {
       user_id TEXT PRIMARY KEY,
       data TEXT NOT NULL DEFAULT '{}',
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_blocks (
+      blocker_id TEXT NOT NULL,
+      blocked_id TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (blocker_id, blocked_id)
     );
 
     CREATE TABLE IF NOT EXISTS email_codes (
@@ -219,6 +231,7 @@ async function initDB() {
       deleted_at TEXT,
       pinned_at TEXT,
       replied_to_id TEXT,
+      hidden_for_recipient INTEGER DEFAULT 0,
       FOREIGN KEY (sender_id) REFERENCES users(id),
       FOREIGN KEY (recipient_id) REFERENCES users(id)
     );
