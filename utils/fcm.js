@@ -59,9 +59,14 @@ async function saveToken(userId, fcmToken) {
   // 最後に登録したアカウントだけがこのトークンを持つようにする。
   await db.run('DELETE FROM fcm_tokens WHERE token = ? AND user_id <> ?', [fcmToken, userId]);
   await db.run(
-    `INSERT INTO fcm_tokens (user_id, token, updated_at) VALUES (?, ?, now())
-     ON CONFLICT (user_id, token) DO UPDATE SET updated_at = now()`,
+    `INSERT INTO fcm_tokens (user_id, token, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id, token) DO UPDATE SET updated_at = CURRENT_TIMESTAMP`,
     [userId, fcmToken]
+  );
+  // 1人あたり新しい方から10台分まで
+  await db.run(
+    'DELETE FROM fcm_tokens WHERE user_id = ? AND token NOT IN (SELECT token FROM fcm_tokens WHERE user_id = ? ORDER BY updated_at DESC LIMIT 10)',
+    [userId, userId]
   );
 }
 

@@ -43,8 +43,9 @@ function validateMessageInput(body, opts = {}) {
   }
   if (mediaData != null) {
     if (!allowMedia) return 'この操作ではメディアを変更できません';
-    if (typeof mediaData !== 'string') return 'メディアの形式が不正です';
-    if (mediaData.length > MAX_MEDIA_DATA_LENGTH) return 'ファイルサイズが大きすぎます';
+    // 画像・動画は今は全部Cloudinaryへ暗号化して送る。本文にBase64を直接入れる古い形式は
+    // 1通数十MBをDBに積めて、履歴を開くだけでサーバーのメモリを使い切れたので受け付けない
+    return 'この形式の送信は使えなくなりました。アプリを最新にしてください';
     if (!mediaType) return 'mediaTypeが必要です';
   }
   return null;

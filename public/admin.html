@@ -365,7 +365,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.187 beta</div>
+  <div class="version-badge">Bro Chat v1.28.188 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1056,21 +1056,9 @@ document.getElementById('locationBtn').onclick = async () => {
     const lng = pos.coords.longitude;
     const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
     const text = `現在地を共有しました\n${mapUrl}`;
-    // 通常メッセージとして送信
-    const msgId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
-    const msg = {
-      type: 'message',
-      recipientId: otherId,
-      content: text,
-      id: msgId
-    };
-    ws.send(JSON.stringify(msg));
-    renderMessage({
-      id: msgId,
-      senderId: myUserId,
-      content: text,
-      createdAt: new Date().toISOString()
-    });
+    // 普通のメッセージと同じ道(暗号化して保存・相手に届く)で送る。
+    // 以前は古いWebSocketの中継を使っていて、暗号化されず、相手の画面には何も出ていなかった
+    await sendRealMessage(text);
     scrollChatToBottom(document.getElementById('chatScreen'));
   } catch (e) {
     if (e.code === 1) alert('位置情報の権限が拒否されました');
