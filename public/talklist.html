@@ -526,7 +526,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.180 beta</div>
+  <div class="version-badge">Bro Chat v1.28.181 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -668,6 +668,7 @@ window.ensureGroupCrypto = (function () {
     <div class="set-section-title" data-i18n="support">サポート</div>
     <div class="set-group">
       <button type="button" class="set-row set-btn" id="setBugReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 0 1 6 0"/><path d="M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2"/></svg><span data-i18n="bug_report">バグを報告</span></span></button>
+      <button type="button" class="set-row set-btn" id="setBlocks"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span data-i18n="blocked_users">ブロックしたユーザー</span></span></button>
       <button type="button" class="set-row set-btn" id="setUserReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span data-i18n="user_report">ユーザーを通報</span></span></button>
       <a class="set-row set-btn" id="setCoffee" href="#" target="_blank" rel="noopener noreferrer" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M9 3v2M13 3v2"/></svg><span data-i18n="buy_coffee">コーヒーをおごる</span></span></a>
     </div>
@@ -713,6 +714,15 @@ window.ensureGroupCrypto = (function () {
     <p id="reportErr" style="color:#ef4444;font-size:13px;margin:6px 2px 0;min-height:18px"></p>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="reportSend" type="button" data-i18n="report_send">送信</button>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="reportCancel" type="button" data-i18n="cancel">キャンセル</button>
+  </div>
+</div>
+
+<!-- ブロックしたユーザー -->
+<div class="mov" id="blockMov">
+  <div class="mc">
+    <h3 class="mtitle" data-i18n="blocked_users">ブロックしたユーザー</h3>
+    <div id="blockList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 14px"></div>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="blockClose" type="button" data-i18n="close">閉じる</button>
   </div>
 </div>
 
@@ -2267,6 +2277,58 @@ fetch('/api/auth/features').then(r => r.json()).then(f => {
 
 document.getElementById('setBugReport').addEventListener('click', () => openReport('bug'));
 document.getElementById('setUserReport').addEventListener('click', () => openReport('user'));
+
+// ブロックしたユーザーの一覧と解除
+const blockMov = document.getElementById('blockMov');
+async function loadBlocks() {
+  const box = document.getElementById('blockList');
+  box.textContent = t2('loading', '読み込み中...');
+  try {
+    const res = await fetch('/api/friends/blocks', { headers: { 'Authorization': 'Bearer ' + token } });
+    const list = await res.json();
+    if (!res.ok) throw new Error(list.error || '');
+    box.textContent = '';
+    if (!list.length) {
+      const p = document.createElement('p');
+      p.style.cssText = 'color:#94a3b8;font-size:14px;text-align:center;margin:18px 0';
+      p.textContent = t2('no_blocked_users', 'ブロックしている人はいません');
+      box.appendChild(p);
+      return;
+    }
+    list.forEach(u => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(148,163,184,.12)';
+      const av = document.createElement('div');
+      av.style.cssText = 'width:36px;height:36px;border-radius:50%;flex-shrink:0;background:#94a3b8 center/cover;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700';
+      if (u.profilePic && /^(https:|\/)/.test(u.profilePic)) av.style.backgroundImage = 'url(' + JSON.stringify(u.profilePic) + ')';
+      else av.textContent = (u.displayName || '?').charAt(0);
+      const nm = document.createElement('div');
+      nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600';
+      nm.textContent = u.displayName || u.userIdCode || '?';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.style.cssText = 'flex-shrink:0;padding:8px 14px;border-radius:12px;border:0;background:#007aff;color:#fff;font-weight:700;font-size:14px;cursor:pointer';
+      b.textContent = t2('unblock_short', '解除');
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          const r = await fetch('/api/friends/unblock', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: u.userId }) });
+          if (!r.ok) throw new Error();
+          row.remove();
+          if (!box.children.length) loadBlocks();
+          if (typeof loadTalks === 'function') loadTalks();
+        } catch (_) { b.disabled = false; }
+      });
+      row.append(av, nm, b);
+      box.appendChild(row);
+    });
+  } catch (e) {
+    box.textContent = t2('load_failed', '読み込めませんでした');
+  }
+}
+document.getElementById('setBlocks').addEventListener('click', () => { blockMov.classList.add('open'); loadBlocks(); });
+document.getElementById('blockClose').addEventListener('click', () => blockMov.classList.remove('open'));
+blockMov.addEventListener('click', e => { if (e.target === blockMov) blockMov.classList.remove('open'); });
 document.getElementById('reportCancel').addEventListener('click', closeReport);
 reportMov.addEventListener('click', e => { if (e.target === reportMov) closeReport(); });
 document.getElementById('reportFriend').addEventListener('change', e => {

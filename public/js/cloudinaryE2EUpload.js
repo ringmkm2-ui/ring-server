@@ -63,8 +63,11 @@ class CloudinaryE2EUploader {
    * @param {Uint8Array} sharedKey - E2E暗号化用の共有鍵
    * @param {string} folder - Cloudinaryフォルダ
    * @param {Function} onProgress - 進捗コールバック
+   * @param {AbortSignal} [signal] - 送信キャンセル用。abort()されたら途中で止めて AbortError を投げる
    */
-  async uploadEncryptedChunked(file, sharedKey, folder = 'brochat', onProgress) {
+  async uploadEncryptedChunked(file, sharedKey, folder = 'brochat', onProgress, signal) {
+    const abortErr = () => { const e = new Error('送信をキャンセルしました'); e.name = 'AbortError'; return e; };
+    if (signal && signal.aborted) throw abortErr();
     // Cloudinaryの上限(10MB)を超える画像は、暗号化・送信前に圧縮しておく。
     // 動画や既に上限内のファイルはそのまま(compressImageIfNeeded内で判定)。
     file = await compressImageIfNeeded(file);
@@ -91,6 +94,7 @@ class CloudinaryE2EUploader {
 
       // ファイルをチャンク単位で読み込んで暗号化
       for (let i = 0; i < chunks; i++) {
+        if (signal && signal.aborted) throw abortErr();
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
@@ -116,10 +120,12 @@ class CloudinaryE2EUploader {
       const encryptedBlob = new Blob(encryptedChunks, { type: 'application/octet-stream' });
 
       // Cloudinary に直接アップロード
+      if (signal && signal.aborted) throw abortErr();
       const cloudinaryUrl = await this.uploadToCloudinary(
         encryptedBlob,
         `${folder}/${fileId}`,
-        onProgress
+        onProgress,
+        signal
       );
 
       // メタデータも暗号化して保存（chunkLengthsを必ず含める）
@@ -136,7 +142,7 @@ class CloudinaryE2EUploader {
 
       return metadata;
     } catch (e) {
-      console.error('[cloudinaryE2E] Upload error:', e);
+      if (e && e.name !== 'AbortError') console.error('[cloudinaryE2E] Upload error:', e);
       this.uploadingFiles.delete(fileId);
       throw e;
     }
@@ -227,7 +233,7 @@ class CloudinaryE2EUploader {
   /**
    * Cloudinary に直接アップロード
    */
-  async uploadToCloudinary(blob, path, onProgress) {
+  async uploadToCloudinary(blob, path, onProgress, signal) {
     const formData = new FormData();
     formData.append('file', blob);
     formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET);
@@ -264,6 +270,12 @@ class CloudinaryE2EUploader {
       xhr.addEventListener('error', () => {
         reject(new Error('Upload failed'));
       });
+      if (signal) {
+        const onAbort = () => { try { xhr.abort(); } catch {} const e = new Error('送信をキャンセルしました'); e.name = 'AbortError'; reject(e); };
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+        xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
+      }
 
       xhr.open('POST', `https://api.cloudinary.com/v1_1/a6rxinoz/raw/upload`);
       xhr.send(formData);

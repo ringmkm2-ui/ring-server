@@ -9,6 +9,7 @@ const { sendServerError } = require('../utils/errorResponse');
 // 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane } = require('../utils/moderation');
+const { blockState, bumpBlockVersion } = require('../utils/relations');
 
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
@@ -168,8 +169,8 @@ router.get('/search', searchLimiter, auth, async (req, res) => {
     if (typeof q !== 'string' || q.length < 2) return res.json([]);
     if (q.length > 100) return res.status(400).json({ error: '検索クエリが長すぎます' });
     const results = await db.all(
-      'SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? OR display_name LIKE ?) AND id != ? LIMIT 10',
-      [q + '%', '%' + q + '%', req.userId]
+      'SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? OR display_name LIKE ?) AND id != ? AND id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) LIMIT 10',
+      [q + '%', '%' + q + '%', req.userId, req.userId]
     );
     res.json(results.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic })));
   } catch (e) {
@@ -186,6 +187,12 @@ router.post('/request', auth, async (req, res) => {
     const targetUser = await db.get('SELECT id FROM users WHERE user_id = ?', [targetUserIdCode]);
     if (!targetUser) return res.status(404).json({ error: 'user not found' });
     if (targetUser.id === req.userId) return res.status(400).json({ error: 'cannot add yourself' });
+    {
+      // 相手にブロックされていたら「いない人」と同じ返事にする(ブロックされたことを悟らせない)
+      const bs = await blockState(req.userId, targetUser.id);
+      if (bs.byThem) return res.status(404).json({ error: 'user not found' });
+      if (bs.byMe) return res.status(400).json({ error: 'ブロック中です。解除してから追加してください' });
+    }
 
     const [userA, userB] = [req.userId, targetUser.id].sort();
     const existing = await db.get('SELECT id, status FROM friendships WHERE user_a_id = ? AND user_b_id = ?', [userA, userB]);
@@ -234,7 +241,10 @@ router.get('/list', auth, async (req, res) => {
     if (!rows.length) return res.json([]);
     const ids = rows.map(r => r.friend_id);
     const placeholders = ids.map(() => '?').join(',');
-    const friends = await db.all(`SELECT id, user_id, display_name, profile_pic, public_key FROM users WHERE id IN (${placeholders})`, ids);
+    const blockedRows = await db.all('SELECT blocked_id FROM user_blocks WHERE blocker_id = ?', [req.userId]);
+    const myBlocks = new Set(blockedRows.map(r => r.blocked_id));
+    const friends = (await db.all(`SELECT id, user_id, display_name, profile_pic, public_key FROM users WHERE id IN (${placeholders})`, ids))
+      .filter(u => !myBlocks.has(u.id));
     res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, publicKey: u.public_key })));
   } catch (e) {
     sendServerError(res, e);
@@ -259,6 +269,59 @@ router.get('/pending', auth, async (req, res) => {
   } catch (e) {
     sendServerError(res, e);
   }
+});
+
+// ===== ブロック =====
+// ブロックすると: 相手からのトーク・着信・入力中・オンライン表示が全部届かなくなる。
+// 相手側には「ブロックされた」とは出さない(送信は普通に送れたように見えるが、こちらには届かない)
+function validTarget(req, res) {
+  const id = req.body && req.body.userId || req.params.userId;
+  if (typeof id !== 'string' || !id || id.length > 64) { res.status(400).json({ error: 'userId required' }); return null; }
+  if (id === req.userId) { res.status(400).json({ error: '自分はブロックできません' }); return null; }
+  return id;
+}
+
+router.post('/block', auth, async (req, res) => {
+  try {
+    const target = validTarget(req, res); if (!target) return;
+    const u = await db.get('SELECT id FROM users WHERE id = ?', [target]);
+    if (!u) return res.status(404).json({ error: 'user not found' });
+    const cnt = await db.get('SELECT COUNT(*) AS c FROM user_blocks WHERE blocker_id = ?', [req.userId]);
+    if (Number(cnt && cnt.c) >= 1000) return res.status(400).json({ error: 'これ以上ブロックできません' });
+    await db.run('INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [req.userId, target]);
+    bumpBlockVersion();
+    res.json({ ok: true, blocked: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.post('/unblock', auth, async (req, res) => {
+  try {
+    const target = validTarget(req, res); if (!target) return;
+    await db.run('DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', [req.userId, target]);
+    bumpBlockVersion();
+    res.json({ ok: true, blocked: false });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.get('/blocks', auth, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT u.id, u.user_id, u.display_name, u.profile_pic, b.created_at
+         FROM user_blocks b JOIN users u ON u.id = b.blocked_id
+        WHERE b.blocker_id = ? ORDER BY b.created_at DESC`,
+      [req.userId]
+    );
+    res.json(rows.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, blockedAt: u.created_at })));
+  } catch (e) { sendServerError(res, e); }
+});
+
+// 自分が相手をブロックしているかだけ返す(相手にブロックされているかは返さない)
+router.get('/block-status/:userId', auth, async (req, res) => {
+  try {
+    const target = validTarget(req, res); if (!target) return;
+    const s = await blockState(req.userId, target);
+    res.json({ blocked: s.byMe });
+  } catch (e) { sendServerError(res, e); }
 });
 
 module.exports = router;

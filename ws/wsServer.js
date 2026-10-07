@@ -9,7 +9,7 @@ const { verifyTokenRaw } = require('../routes/auth');
 const { sendPushToUser } = require('../utils/webPush');
 const callAssist = require('./callAssistProxy');
 const sessionEvents = require('../utils/sessionEvents');
-const { canInteract } = require('../utils/relations');
+const { canInteract, getBlockVersion, isBlockedEither } = require('../utils/relations');
 const { getSettings } = require('../utils/userSettings');
 
 const connections = new Map(); // userId -> Set<ws>
@@ -160,7 +160,11 @@ async function broadcastPresence(userId, online) {
        FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
       [userId, userId, userId]
     );
+    // ブロックしている/されている相手には、オンラインになったことを知らせない
+    const blocks = await db.all('SELECT blocker_id, blocked_id FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', [userId, userId]);
+    const hide = new Set(blocks.map(b => (b.blocker_id === userId ? b.blocked_id : b.blocker_id)));
     rows.forEach(row => {
+      if (hide.has(row.other_id)) return;
       broadcastToUser(row.other_id, { type: 'presence_update', userId, online });
     });
   } catch (err) {
@@ -235,10 +239,11 @@ function initWebSocketServer(server) {
     const canReach = async (targetId) => {
       if (typeof targetId !== 'string' || !targetId || targetId.length > 100) return false;
       const hit = relationCache.get(targetId);
-      if (hit && Date.now() - hit.ts < 60000) return hit.ok;
+      // ブロックの付け外しがあったら、覚えていた結果は使わない(ブロックした直後から着信も止まるように)
+      if (hit && Date.now() - hit.ts < 60000 && hit.bv === getBlockVersion()) return hit.ok;
       const ok = await canInteract(userId, targetId);
       if (relationCache.size > 500) relationCache.clear();
-      relationCache.set(targetId, { ok, ts: Date.now() });
+      relationCache.set(targetId, { ok, ts: Date.now(), bv: getBlockVersion() });
       return ok;
     };
 
@@ -393,6 +398,8 @@ function initWebSocketServer(server) {
           ws.send(JSON.stringify({ type: 'error', error: '友達ではないユーザーには送信できません' }));
           return;
         }
+        // (古い直接中継の経路。今の画面は使っていないが、ブロック中の相手には届けない)
+        if (await isBlockedEither(userId, data.recipientId)) return;
 
         const msgUuid = data.msgUuid || uuidv4(); // 重複排除用の一意ID
         const delivered = broadcastToUser(data.recipientId, {
