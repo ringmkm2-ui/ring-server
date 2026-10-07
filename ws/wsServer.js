@@ -155,7 +155,43 @@ function endLive(groupId) {
   const r = liveRooms.get(groupId);
   if (!r) return;
   liveRooms.delete(groupId);
+  if (groupId.startsWith('u:')) {
+    // 投稿タブのライブ: 見ていた人と、配信者の友だちに知らせる
+    r.viewers.forEach(w => liveSend(w, { type: 'live_ended', groupId }));
+    liveFriends(r.host).then(ids => ids.forEach(id => broadcastToUser(id, { type: 'live_ended', groupId }))).catch(() => {});
+    return;
+  }
   broadcastToGroupMembers(groupId, { type: 'live_ended', groupId }).catch(() => {});
+}
+// 投稿タブのライブ('u:<配信者ID>')を知らせる相手 = 配信者の友だち(ブロック関係の人は除く)
+async function liveFriends(hostId) {
+  const rows = await db.all(
+    "SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END AS id FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'",
+    [hostId, hostId, hostId]
+  );
+  const blocks = await db.all('SELECT blocker_id, blocked_id FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', [hostId, hostId]);
+  const hide = new Set(blocks.map(b => (b.blocker_id === hostId ? b.blocked_id : b.blocker_id)));
+  return rows.map(r => r.id).filter(id => !hide.has(id));
+}
+// ライブの部屋に入ってよいか。グループならメンバー、投稿タブのライブなら配信者本人(配信)か、ブロック関係でない人(見る)
+async function liveAllowed(gid, userId, asHost) {
+  if (gid.startsWith('u:')) {
+    const hostId = gid.slice(2);
+    if (asHost) return hostId === userId;
+    if (!hostId || hostId === userId) return false;
+    return !(await isBlockedEither(userId, hostId));
+  }
+  return isActiveGroupMember(gid, userId);
+}
+// 投稿タブに出す、今やっているライブの一覧(見る人から見てブロック関係の配信は出さない)
+async function listFeedLives(viewerId) {
+  const out = [];
+  for (const [gid, r] of liveRooms) {
+    if (!gid.startsWith('u:')) continue;
+    if (r.host !== viewerId && await isBlockedEither(viewerId, r.host)) continue;
+    out.push({ key: gid, hostId: r.host, hostName: r.hostName, viewers: r.viewers.size, startedAt: r.startedAt });
+  }
+  return out;
 }
 function leaveLive(groupId, userId, ws) {
   const r = liveRooms.get(groupId);
@@ -835,14 +871,16 @@ function initWebSocketServer(server) {
       if (typeof data.type === 'string' && data.type.startsWith('live_')) {
         if (!userId || typeof data.groupId !== 'string' || !data.groupId) return;
         const gid = data.groupId;
+        if (gid.length > 80) return;
         if (data.type === 'live_status') {
           const r = liveRooms.get(gid);
-          if (!(await isActiveGroupMember(gid, userId))) return;
+          if (!gid.startsWith('u:') && !(await isActiveGroupMember(gid, userId))) return;
+          if (gid.startsWith('u:') && r && !(await liveAllowed(gid, userId, false)) && r.host !== userId) return;
           liveSend(ws, { type: 'live_status', groupId: gid, live: !!r, hostId: r ? r.host : null, hostName: r ? r.hostName : null, viewers: r ? r.viewers.size : 0, startedAt: r ? r.startedAt : null });
           return;
         }
         if (data.type === 'live_start') {
-          if (!(await isActiveGroupMember(gid, userId))) return;
+          if (!(await liveAllowed(gid, userId, true))) return;
           const cur = liveRooms.get(gid);
           if (cur && cur.host !== userId) { liveSend(ws, { type: 'live_error', groupId: gid, error: cur.hostName + 'が配信中です' }); return; }
           const me = await db.get('SELECT display_name FROM users WHERE id = ?', [userId]);
@@ -851,7 +889,14 @@ function initWebSocketServer(server) {
           liveSend(ws, { type: 'live_ready', groupId: gid });
           // 配信者がつなぎ直した時は、見ている人へ送り直す
           if (cur) cur.viewers.forEach((w, vid) => liveSend(ws, { type: 'live_viewer', groupId: gid, userId: vid }));
-          if (!cur) {
+          if (!cur && gid.startsWith('u:')) {
+            try {
+              (await liveFriends(userId)).forEach(id => {
+                broadcastToUser(id, { type: 'live_started', groupId: gid, hostId: userId, hostName, feed: true });
+                require('../utils/fcm').sendMessageNotification(id, hostName, 'ライブ配信を始めました', 'system', { senderId: userId, chatId: '' }).catch(() => {});
+              });
+            } catch (e) { console.error('[live] notify failed:', e.message); }
+          } else if (!cur) {
             try {
               const group = await db.get('SELECT name FROM groups WHERE id = ?', [gid]);
               const groupName = (group && group.name) || 'グループ';
@@ -874,7 +919,7 @@ function initWebSocketServer(server) {
         if (!r) { if (data.type === 'live_join') liveSend(ws, { type: 'live_ended', groupId: gid }); return; }
         if (data.type === 'live_join') {
           if (userId === r.host) return;
-          if (!(await isActiveGroupMember(gid, userId))) return;
+          if (!(await liveAllowed(gid, userId, false))) return;
           if (!r.viewers.has(userId) && r.viewers.size >= LIVE_MAX_VIEWERS) { liveSend(ws, { type: 'live_error', groupId: gid, error: '満員です(最大' + LIVE_MAX_VIEWERS + '人)' }); return; }
           r.viewers.set(userId, ws);
           liveSend(r.hostWs, { type: 'live_viewer', groupId: gid, userId });
@@ -994,4 +1039,4 @@ function disconnectBanned(userId, until) {
   }
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, rejectPendingCall, disconnectBanned };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, listFeedLives, rejectPendingCall, disconnectBanned };
