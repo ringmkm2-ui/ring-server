@@ -28,6 +28,16 @@ async function initDB() {
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   await pool.query(schema);
 
+  // よく引く列の索引(後から増えたテーブル分)。無いと人やメッセージが増えるほど全件を読みに行く
+  for (const sql of [
+    'CREATE INDEX IF NOT EXISTS idx_friendships_b ON friendships(user_b_id)',
+    'CREATE INDEX IF NOT EXISTS idx_gkd_group_user ON group_key_distributions(group_id, user_id, key_version)',
+    'CREATE INDEX IF NOT EXISTS idx_otk_user ON one_time_prekeys(user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id)',
+  ]) {
+    try { await pool.query(sql); } catch (e) { console.log('[db] index skip:', e.message); }
+  }
+
   // マイグレーション: 既存のusersテーブルにpublic_keyカラムがなければ追加
   try {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS public_key TEXT');
@@ -287,6 +297,8 @@ async function initDB() {
       )
     `);
     await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_ckd_unique ON community_key_distributions(community_id, user_id, key_version)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_cmsg_channel ON community_messages(channel_id, created_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_cmembers_user ON community_members(user_id)');
   } catch (e) {
     console.log('[db] communities migration skip:', e.message);
   }
