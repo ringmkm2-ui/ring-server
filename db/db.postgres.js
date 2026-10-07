@@ -206,6 +206,9 @@ async function initDB() {
       )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC)');
+    // Claude(予約タスク)が手を付けた印とメモ(routes/claudeFeed.js)
+    await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS claude_note TEXT');
+    await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS claude_at TIMESTAMP');
   } catch (e) {
     console.log('[db] reports migration skip:', e.message);
   }
