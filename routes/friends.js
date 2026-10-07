@@ -290,6 +290,12 @@ router.post('/block', auth, async (req, res) => {
     if (Number(cnt && cnt.c) >= 1000) return res.status(400).json({ error: 'これ以上ブロックできません' });
     await db.run('INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [req.userId, target]);
     bumpBlockVersion();
+    // お互いの画面の「オンライン」をここで消す(以後は届かないので、ずっとオンラインのまま残っていた)
+    try {
+      const { broadcastToUser } = require('../ws/wsServer');
+      broadcastToUser(target, { type: 'presence_update', userId: req.userId, online: false });
+      broadcastToUser(req.userId, { type: 'presence_update', userId: target, online: false });
+    } catch (_) {}
     res.json({ ok: true, blocked: true });
   } catch (e) { sendServerError(res, e); }
 });
@@ -299,6 +305,17 @@ router.post('/unblock', auth, async (req, res) => {
     const target = validTarget(req, res); if (!target) return;
     await db.run('DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', [req.userId, target]);
     bumpBlockVersion();
+    // 解除したら、本当のオンライン状態をお互いに知らせ直す(相手もブロックしていなければ)
+    try {
+      const { blockState } = require('../utils/relations');
+      if (!(await blockState(req.userId, target)).byThem) {
+        const { broadcastToUser, isUserOnline } = require('../ws/wsServer');
+        const { getSettings } = require('../utils/userSettings');
+        const [mine, theirs] = await Promise.all([getSettings(req.userId), getSettings(target)]);
+        broadcastToUser(target, { type: 'presence_update', userId: req.userId, online: !!mine.showOnlineStatus && isUserOnline(req.userId) });
+        broadcastToUser(req.userId, { type: 'presence_update', userId: target, online: !!theirs.showOnlineStatus && isUserOnline(target) });
+      }
+    } catch (_) {}
     res.json({ ok: true, blocked: false });
   } catch (e) { sendServerError(res, e); }
 });

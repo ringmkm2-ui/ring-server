@@ -91,6 +91,9 @@ async function postBanNotice(userId, { peerId, groupId } = {}) {
   const content = JSON.stringify({ __notice__: { kind: 'ban', name: (u && u.display_name) || 'ユーザー' } });
   const { broadcastToUser } = require('../ws/wsServer');
   const id = uuidv4();
+  // ブロックしている/されている相手には出さない(ブロックされた人がわざと禁止語を送って、
+  // 相手のトークに通知を差し込めてしまった)
+  if (peerId && await require('./relations').isBlockedEither(userId, peerId)) return;
   if (peerId) {
     await db.run(
       "INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, read_at) VALUES (?, ?, ?, ?, 'notice', false, NULL)",

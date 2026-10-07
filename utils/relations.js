@@ -47,6 +47,16 @@ async function shareGroup(a, b) {
   return !!row;
 }
 
+// 自分自身・友だち・同じグループの相手なら true。ブロックは見ない。
+// グループの暗号鍵(身元鍵)やグループ通話のアイコンなど、ブロックしてもグループの中では
+// 普通に使えないといけない物に使う(canInteract だと、ブロックした瞬間にグループの暗号が開けなくなった)
+async function isAcquainted(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (await areFriends(a, b)) return true;
+  return shareGroup(a, b);
+}
+
 // 自分自身・友だち・同じグループの相手なら true(どちらかがブロックしていれば false)。
 // 着信・入力中・オンライン状態は全部ここを通るので、ブロックすると全部止まる
 async function canInteract(a, b) {
@@ -57,4 +67,4 @@ async function canInteract(a, b) {
   return shareGroup(a, b);
 }
 
-module.exports = { areFriends, shareGroup, canInteract, blockState, isBlockedEither, bumpBlockVersion, getBlockVersion };
+module.exports = { areFriends, shareGroup, canInteract, isAcquainted, blockState, isBlockedEither, bumpBlockVersion, getBlockVersion };

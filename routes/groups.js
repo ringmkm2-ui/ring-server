@@ -10,7 +10,7 @@ const { validateMessageInput } = require('../utils/messageContent');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
-const { areFriends } = require('../utils/relations');
+const { areFriends, isBlockedEither } = require('../utils/relations');
 
 // 暗号化済みグループ鍵1件の上限(X3DHで包んだ32バイト鍵なら数百文字。巨大な値でDBを埋めさせない)
 const MAX_ENC_KEY_LENGTH = 8192;
@@ -91,6 +91,8 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
       if (typeof uid !== 'string' || uid === req.user.userId) continue; // 作成者は既に追加済み
       // 本人の同意なしに知らない人をグループへ入れられないよう、友だちだけ追加できる
       if (!(await areFriends(req.user.userId, uid))) continue;
+      // ブロックしている/されている相手は入れない(ブロックされた人がグループを作って相手に連絡できてしまう)
+      if (await isBlockedEither(req.user.userId, uid)) continue;
       const already = await db.get('SELECT * FROM group_members WHERE group_id=? AND user_id=?', [groupId, uid]);
       if (already) continue;
       await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, uid]);
@@ -142,7 +144,7 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
   } else if (typeof targetUsername === 'string' && targetUsername) {
     targetUser = await db.get('SELECT id FROM users WHERE user_id = ?', [targetUsername.trim()]);
   }
-  if (!targetUser || !(await areFriends(req.user.userId, targetUser.id))) {
+  if (!targetUser || !(await areFriends(req.user.userId, targetUser.id)) || await isBlockedEither(req.user.userId, targetUser.id)) {
     return res.status(404).json({ error: '招待できるのは友だちだけです' });
   }
 
