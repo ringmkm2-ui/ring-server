@@ -143,7 +143,17 @@
   function getFilter(w, h, rad, kind) {
     const key = w + 'x' + h + 'r' + rad + kind;
     let map = mapCache.get(key);
-    if (!map) { map = buildMap(w, h, rad, kind); mapCache.set(key, map); }
+    if (!map) {
+      // 画面を移るたびに同じ地図を計算し直さないよう、このタブの間は覚えておく
+      // (トークを開くたびにここだけで数十ms使っていた)
+      const sk = 'lgmap1:' + key;
+      try { const c = sessionStorage.getItem(sk); if (c) map = JSON.parse(c); } catch (_) {}
+      if (!map || !map.url) {
+        map = buildMap(w, h, rad, kind);
+        try { sessionStorage.setItem(sk, JSON.stringify(map)); } catch (_) {}
+      }
+      mapCache.set(key, map);
+    }
     const id = 'lgc-f' + (fid++);
     const dms = [];
     let f;
@@ -538,8 +548,10 @@
     if (stateObs) stateObs.observe(e, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'aria-pressed'] });
     // デモと同じ方式: レンズの中に「ボタンの下にあるもの」の複製を置いて、SVGフィルタで曲げる
     s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp');
-    s.filter = getFilter(w, h, Math.round(Math.min(w, h) / 2), 'convex');
-    s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
+    // 曲げるためのSVGフィルタは、普段は見えないので後回し(触った時か、手が空いた時に作る)。
+    // 以前はページを開いた瞬間に全ボタン分作っていて、トークを開くのが重くなっていた
+    if (materialize) ensureFilter(s);
+    else (window.requestIdleCallback || (f => setTimeout(f, 300)))(() => ensureFilter(s), { timeout: 2500 });
     // 下の複製は触った時(pressRound)に作る。普段は作らない(軽くするため)
     // 出現: フェードではなく、屈折を強めながら膨らんで「現れる」(デモと同じ)
     if (materialize && !calm()) {
@@ -551,6 +563,12 @@
       if (s.filter) setDisp(s.filter, 2 * s.filter.max * GAIN);
     }
     return s;
+  }
+  function ensureFilter(s) {
+    if (s.filter || !s.e.isConnected) return;
+    s.filter = getFilter(s.w, s.h, Math.round(Math.min(s.w, s.h) / 2), 'convex');
+    s.lens.style.filter = `url(#${s.filter.id}) saturate(1.5) brightness(1.05)`;
+    if (s.mat >= 1 && !s.pressed) setDisp(s.filter, 2 * s.filter.max * GAIN);
   }
   function scan(materialize) {
     if (WA) return;
@@ -565,6 +583,7 @@
   function pressRound(s, ev) {
     const e = s.e;
     clearTimeout(s.dropT);
+    ensureFilter(s);
     if (!e.classList.contains('lg-live') || !s.comp.childElementCount) buildReplica(s);
     askMotion();
     s.pressed = true; s.pid = ev.pointerId; s.moved = 0;

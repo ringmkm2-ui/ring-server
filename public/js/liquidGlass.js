@@ -378,8 +378,9 @@
       void targetEl.offsetWidth;
       targetEl.classList.add('lg-avatar-land');
     }
-    // 次回の飛行のために現在位置を記録しておく
-    rememberAvatarTarget(targetEl);
+    // 次回の飛行のために現在位置を記録しておく。
+    // 画面の差し込みアニメーションが終わってから測る(途中で測るとずれた位置を覚え、読み込み中に重い計算も走っていた)
+    setTimeout(() => rememberAvatarTarget(targetEl), 600);
   }
 
   // ============================================================
