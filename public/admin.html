@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <script>
+// トークの履歴は、画面の準備(重いJSの読み込み・鍵の準備)を待たずに今すぐ取りに行く。
+// 以前は全部の準備が終わってから取りに行っていたので、開いてから吹き出しが出るまでが長かった
+(function(){try{var p=new URLSearchParams(location.search),id=p.get('userId')||p.get('id'),t=localStorage.getItem('ring_token');
+if(id&&t&&!p.get('callId'))window.__histPrefetch=fetch('/api/messages/history/'+encodeURIComponent(id),{headers:{Authorization:'Bearer '+t}}).then(function(r){return r.ok?r.json():null}).catch(function(){return null});}catch(e){}})();
+</script>
+<script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
 // 違う色で描かれてから切り替わる(チカチカする)ことがあった。
@@ -359,7 +365,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.184 beta</div>
+  <div class="version-badge">Bro Chat v1.28.185 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2284,7 +2290,9 @@ function clearRenderedMessages() {
 
 async function initialLoadHistory() {
   try {
-    const data = await api('/api/messages/history/' + otherId);
+    let data = null;
+    if (window.__histPrefetch) { data = await window.__histPrefetch; window.__histPrefetch = null; }
+    if (!Array.isArray(data)) data = await api('/api/messages/history/' + otherId);
     if (!Array.isArray(data)) return;
     // 以前は描画をrAFキューに積んだ直後に isBulkHistoryLoad=false に戻していたため、
     // 実際の描画時には「リアルタイム受信」扱いになり、履歴の全件に出現アニメーションと

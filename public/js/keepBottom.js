@@ -6,15 +6,17 @@
     if (!cs || cs._keepBottom) return;
     cs._keepBottom = true;
     let atBottom = true;
-    let lastH = cs.clientHeight;
+    let lastH = -1; // 最初の大きさは ResizeObserver が教えてくれる(ここで測ると読み込み中に重い再計算が走る)
     cs.addEventListener('scroll', () => {
       atBottom = cs.scrollHeight - cs.scrollTop - cs.clientHeight < 80;
     }, { passive: true });
     if (!window.ResizeObserver) return;
-    new ResizeObserver(() => {
-      const h = cs.clientHeight;
+    new ResizeObserver(entries => {
+      const h = Math.round(entries[entries.length - 1].contentRect.height);
       if (h === lastH) return;
+      const first = lastH < 0;
       lastH = h;
+      if (first) return;
       if (atBottom) cs.scrollTop = cs.scrollHeight;
     }).observe(cs);
   }
