@@ -309,7 +309,10 @@ function initWebSocketServer(server) {
 
   // IP別接続数トラッキング（DDoS/接続枯渇対策）
   const ipConnections = new Map(); // IP -> count
-  const MAX_CONNECTIONS_PER_IP = 10;
+  // 学校や家の同じWi-Fiだと全員が同じIPになる。以前は10本までで、5人ほどしかリアルタイムで繋がらなかった。
+  // IPごとは緩めにして、代わりに1人あたりの本数を絞る(下の auth で古い接続から閉じる)
+  const MAX_CONNECTIONS_PER_IP = 200;
+  const MAX_CONNECTIONS_PER_USER = 8;
 
   // 死んだ接続の掃除: 相手が機内モード等で突然消えるとTCPが半開きのまま残り、
   // サーバーは「まだ繋がっている」と思い込む(着信を送ったつもりになる)。
@@ -440,6 +443,13 @@ function initWebSocketServer(server) {
         if (!connections.has(userId)) connections.set(userId, new Set());
         if (!ws._connectedAt) ws._connectedAt = Date.now();
         connections.get(userId).add(ws);
+        // 1人で開きすぎた時は、いちばん古い接続を閉じる(切れたまま残った接続の掃除にもなる)
+        const mineSet = connections.get(userId);
+        if (mineSet.size > MAX_CONNECTIONS_PER_USER) {
+          let oldest = null;
+          for (const w of mineSet) if (w !== ws && (!oldest || (w._connectedAt || 0) < (oldest._connectedAt || 0))) oldest = w;
+          if (oldest) { try { oldest.close(4000, 'too many connections'); } catch (_) {} }
+        }
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
         await flushOfflineQueue(userId); // オンラインになった瞬間、溜まっていたメッセージを配送
         // 呼び出し中の着信があれば offer と ICE をこの接続に再配送する
