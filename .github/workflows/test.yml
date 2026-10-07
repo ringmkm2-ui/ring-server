@@ -1,0 +1,36 @@
+name: test
+
+# mainにpushされるたびに、本番と同じPostgreSQLでAPIテストを回す。
+# 落ちたらGitHubのActionsタブに赤く出る(Renderへのデプロイは止めない)
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: t
+          POSTGRES_PASSWORD: t
+          POSTGRES_DB: ring_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U t" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: API tests (PostgreSQL)
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgres://t:t@localhost:5432/ring_test
+      - name: API tests (SQLite)
+        run: npm test

@@ -9,7 +9,8 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'ring.sqlite');
+// テスト時は SQLITE_FILE で別のファイルを使う(開発用DBを汚さない)
+const DB_FILE = process.env.SQLITE_FILE || path.join(__dirname, 'ring.sqlite');
 
 let SQL = null;
 let db = null;
@@ -345,19 +346,97 @@ async function initDB() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       resolved_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS fcm_tokens (
+      user_id TEXT NOT NULL,
+      token TEXT NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, token)
+    );
+
+    CREATE TABLE IF NOT EXISTS icon_images (
+      id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS communities (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon_url TEXT,
+      owner_id TEXT NOT NULL,
+      invite_code TEXT UNIQUE,
+      key_version INTEGER DEFAULT 1,
+      rekey_needed INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS community_channels (
+      id TEXT PRIMARY KEY,
+      community_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS community_key_distributions (
+      id TEXT PRIMARY KEY,
+      community_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      key_version INTEGER NOT NULL,
+      encrypted_key TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS community_members (
+      community_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT DEFAULT 'member',
+      joined_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (community_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS community_messages (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      media_url TEXT,
+      media_type TEXT,
+      encrypted INTEGER DEFAULT 0,
+      key_version INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      edited_at TEXT,
+      deleted_at TEXT
+    );
   `);
+
+  // 本番(PostgreSQL)側で後から足した列を、既存のローカルDBにも足す。
+  // 以前は banned_until が無く、ローカル(SQLite)ではログインした瞬間に「トークンが無効」になっていた
+  const addCols = {
+    users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT']],
+    reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT']],
+    groups: [['avatar_url', 'TEXT']],
+    communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
+    community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],
+  };
+  for (const [table, cols] of Object.entries(addCols)) {
+    const info = db.exec(`PRAGMA table_info(${table})`);
+    const have = new Set(info.length ? info[0].values.map(r => r[1]) : []);
+    for (const [col, type] of cols) if (!have.has(col)) db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+  }
 
   persist();
   console.log('[db] initialized (' + DB_FILE + ')');
 }
 
 // --- ヘルパー ---
-function run(sql, params = []) {
+// PostgreSQL版と同じく Promise を返す(以前は同期関数で、db.run(...).catch(...) と書いた所で落ちていた)
+async function run(sql, params = []) {
   db.run(sql, params);
   persist();
 }
 
-function get(sql, params = []) {
+async function get(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
   const row = stmt.step() ? stmt.getAsObject() : null;
@@ -371,7 +450,7 @@ function get(sql, params = []) {
   return row;
 }
 
-function all(sql, params = []) {
+async function all(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
   const rows = [];
