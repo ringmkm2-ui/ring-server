@@ -80,7 +80,8 @@ async function attachAuthorAndStats(posts, myUserId) {
 // --- 投稿一覧取得(タイムライン、新しい順) ---
 // query: ?before=<ISO日時> でページング(その日時より古い投稿を取得)
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
-  const before = req.query.before;
+  // 日時として読めない値(配列や変な文字列)はDBでエラー(500)になるので無視する
+  const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
 
   let rows;

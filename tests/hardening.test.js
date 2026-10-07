@@ -68,6 +68,17 @@ describe('大きすぎるデータ', () => {
   });
 });
 
+describe('変な入力で500にならない', () => {
+  test('before に配列や日時でない文字列を入れても500にならない', async () => {
+    const a = await S.user('A'); const b = await S.user('B');
+    await S.befriend(a, b);
+    for (const q of ['before[]=1&before[]=2', 'before=not-a-date', "before=2026-01-01'"]) {
+      assert.notEqual((await a.call('GET', '/api/posts?' + q)).status, 500, q);
+      assert.notEqual((await a.call('GET', '/api/messages/history/' + b.userId + '?' + q)).status, 500, q);
+    }
+  });
+});
+
 describe('他人の情報', () => {
   test('通話メモに知らない人のIDを入れても、その人の名前や写真は出ない', async () => {
     const a = await S.user('A'); const stranger = await S.user('Stranger');
