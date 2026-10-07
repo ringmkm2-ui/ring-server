@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.193 beta</div>
+  <div class="version-badge">Bro Chat v1.28.194 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -686,7 +686,7 @@ async function handleMediaGroup(f,t){
     return;
   }
 
-  const maxSize = t === 'video' ? 500 * 1024 * 1024 : 100 * 1024 * 1024; // Cloudinary対応で制限アップ
+  const maxSize = 100 * 1024 * 1024; // 動画も100MBまで(Cloudinaryの無料枠をすぐ使い切らないように) // Cloudinary対応で制限アップ
   if(f.size > maxSize){
     alert(i18n.t('err_file_too_large'));
     return;
@@ -954,6 +954,13 @@ document.getElementById('mi').addEventListener('input',()=>{
 });
 document.getElementById('tform').addEventListener('submit',()=>{if(gtSending){gtSending=false;gtLastSent=0;gtSend('group_typing_stop');}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&gtSending){gtSending=false;gtLastSent=0;gtSend('group_typing_stop');}});
+// 画面に戻った時・つなぎ直した時に、切れている間に届いた分を取りに行く(以前は取りこぼしたまま)
+let gSyncT=0;
+function gSyncSoon(){clearTimeout(gSyncT);gSyncT=setTimeout(()=>loadGroupMessages(),300);}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible')return;
+  gSyncSoon();
+});
 
 // サーバーが出すお知らせ(禁止語によるBan等)。未読の区切り線と同じ見た目で真ん中に出す
 function createNotice(msgId,content){
@@ -1525,6 +1532,8 @@ async function loadGroupMessages(pre){
     const msgs=await (pre||api('/api/groups/'+groupId+'/messages'));
     if(Array.isArray(msgs)){
       for(const msg of msgs){
+        // 取りこぼし分の読み直し(画面に戻った時など)では、もう出ている分は飛ばす
+        if(msg.id&&document.querySelector('[data-msg-id="'+CSS.escape(String(msg.id))+'"]'))continue;
         if(msg.msg_type==='notice'){createNotice(msg.id,msg.content);continue;}
         // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
         let member=gi.members.find(m=>m.id===msg.sender_id);
@@ -1623,7 +1632,7 @@ function connectGroupWS(){
     try{
       const data=JSON.parse(e.data);
       if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
-      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); window.Live.requestStatus(); return; }
+      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); window.Live.requestStatus(); if(window.__gEverAuthed)gSyncSoon(); window.__gEverAuthed=true; return; }
       if((data.type==='group_typing'||data.type==='group_typing_stop')&&data.groupId===groupId){
         if(data.userId!==myUserId)gtSet(data.userId,data.type==='group_typing');
         return;
