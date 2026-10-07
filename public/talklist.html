@@ -526,7 +526,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.182 beta</div>
+  <div class="version-badge">Bro Chat v1.28.183 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -668,6 +668,7 @@ window.ensureGroupCrypto = (function () {
     <div class="set-section-title" data-i18n="support">サポート</div>
     <div class="set-group">
       <button type="button" class="set-row set-btn" id="setBugReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 0 1 6 0"/><path d="M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2"/></svg><span data-i18n="bug_report">バグを報告</span></span></button>
+      <button type="button" class="set-row set-btn" id="setStaffOnline" hidden><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="18.5" cy="7.5" r="2.5" fill="#22c55e" stroke="none"/></svg><span>オンラインのユーザー(運営)</span></span><span class="set-val" id="staffOnlineCount"></span></button>
       <button type="button" class="set-row set-btn" id="setBlocks"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span data-i18n="blocked_users">ブロックしたユーザー</span></span></button>
       <button type="button" class="set-row set-btn" id="setUserReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span data-i18n="user_report">ユーザーを通報</span></span></button>
       <a class="set-row set-btn" id="setCoffee" href="#" target="_blank" rel="noopener noreferrer" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M9 3v2M13 3v2"/></svg><span data-i18n="buy_coffee">コーヒーをおごる</span></span></a>
@@ -714,6 +715,16 @@ window.ensureGroupCrypto = (function () {
     <p id="reportErr" style="color:#ef4444;font-size:13px;margin:6px 2px 0;min-height:18px"></p>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="reportSend" type="button" data-i18n="report_send">送信</button>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="reportCancel" type="button" data-i18n="cancel">キャンセル</button>
+  </div>
+</div>
+
+<!-- 運営: オンラインのユーザー -->
+<div class="mov" id="staffMov">
+  <div class="mc">
+    <h3 class="mtitle" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>オンライン <span id="staffCount" style="color:#22c55e"></span></span>
+      <button type="button" id="staffRefresh" aria-label="更新" style="width:34px;height:34px;border-radius:50%;border:0;background:rgba(148,163,184,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></h3>
+    <div id="staffList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 14px"></div>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="staffClose" type="button" data-i18n="close">閉じる</button>
   </div>
 </div>
 
@@ -2277,6 +2288,75 @@ fetch('/api/auth/features').then(r => r.json()).then(f => {
 
 document.getElementById('setBugReport').addEventListener('click', () => openReport('bug'));
 document.getElementById('setUserReport').addEventListener('click', () => openReport('user'));
+
+// 運営(STAFF_USERS)だけ: 今オンラインの人の一覧。普通のユーザーには項目自体出さない
+(function () {
+  const btn = document.getElementById('setStaffOnline');
+  const mov = document.getElementById('staffMov');
+  let timer = null;
+  const ago = ts => {
+    if (!ts) return '';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return 'たった今から';
+    if (m < 60) return m + '分前から';
+    const h = Math.floor(m / 60);
+    return h < 24 ? h + '時間前から' : Math.floor(h / 24) + '日前から';
+  };
+  async function load() {
+    const box = document.getElementById('staffList');
+    try {
+      const res = await fetch('/api/staff/online', { headers: { 'Authorization': 'Bearer ' + token } });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || '');
+      document.getElementById('staffCount').textContent = d.count + '人';
+      document.getElementById('staffOnlineCount').textContent = d.count + '人';
+      box.textContent = '';
+      if (!d.users.length) {
+        const p = document.createElement('p');
+        p.style.cssText = 'color:#94a3b8;font-size:14px;text-align:center;margin:18px 0';
+        p.textContent = '今は誰もいません';
+        box.appendChild(p);
+        return;
+      }
+      d.users.forEach(u => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(148,163,184,.12)';
+        const av = document.createElement('div');
+        av.style.cssText = 'position:relative;width:38px;height:38px;border-radius:50%;flex-shrink:0;background:#94a3b8 center/cover;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700';
+        if (u.profilePic && /^(https:|\/)/.test(u.profilePic)) av.style.backgroundImage = 'url(' + JSON.stringify(u.profilePic) + ')';
+        else av.textContent = (u.displayName || '?').charAt(0);
+        const dot = document.createElement('span');
+        dot.style.cssText = 'position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid #fff';
+        av.appendChild(dot);
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0';
+        const nm = document.createElement('div');
+        nm.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        nm.textContent = u.displayName;
+        const sub = document.createElement('div');
+        sub.style.cssText = 'font-size:12px;color:#64748b';
+        sub.textContent = [u.userIdCode, ago(u.since), u.devices > 1 ? u.devices + '台' : ''].filter(Boolean).join(' · ');
+        info.append(nm, sub);
+        row.append(av, info);
+        box.appendChild(row);
+      });
+    } catch (e) {
+      box.textContent = t2('load_failed', '読み込めませんでした');
+    }
+  }
+  function close() { mov.classList.remove('open'); clearInterval(timer); timer = null; }
+  fetch('/api/staff/me', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d || !d.staff) return;
+      btn.hidden = false;
+      btn.addEventListener('click', () => { mov.classList.add('open'); load(); clearInterval(timer); timer = setInterval(load, 10000); });
+      document.getElementById('staffRefresh').addEventListener('click', load);
+      document.getElementById('staffClose').addEventListener('click', close);
+      mov.addEventListener('click', e => { if (e.target === mov) close(); });
+      load();
+    }).catch(() => {});
+})();
 
 // ブロックしたユーザーの一覧と解除
 const blockMov = document.getElementById('blockMov');

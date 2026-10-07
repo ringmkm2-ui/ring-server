@@ -6,8 +6,8 @@ const db = require('../db/db');
 
 const DEFAULT_ADMINS = 'ringmkm2@gmail.com';
 
-async function adminUserIds() {
-  const list = String(process.env.ADMIN_NOTIFY || DEFAULT_ADMINS)
+async function adminUserIds(envName = 'ADMIN_NOTIFY', fallback = DEFAULT_ADMINS) {
+  const list = String(process.env[envName] || fallback)
     .split(',').map(s => s.trim()).filter(Boolean).slice(0, 10);
   if (!list.length) return [];
   const ph = list.map(() => '?').join(',');
@@ -47,4 +47,4 @@ async function notifyAdminsOfReport(report) {
   }
 }
 
-module.exports = { notifyAdminsOfReport };
+module.exports = { adminUserIds, notifyAdminsOfReport };

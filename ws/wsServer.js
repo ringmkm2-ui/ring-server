@@ -132,6 +132,18 @@ function isUserOnline(userId) {
   return !!set && set.size > 0;
 }
 
+// 今つながっている人の一覧(運営用)。since: その人の一番古い接続が始まった時刻
+function onlineUsers() {
+  const out = [];
+  for (const [uid, set] of connections) {
+    if (!set || !set.size) continue;
+    let since = Infinity;
+    for (const w of set) if (w._connectedAt && w._connectedAt < since) since = w._connectedAt;
+    out.push({ userId: uid, since: since === Infinity ? null : since, devices: set.size });
+  }
+  return out;
+}
+
 function broadcastToUser(userId, payload) {
   const set = connections.get(userId);
   if (!set) return false;
@@ -339,6 +351,7 @@ function initWebSocketServer(server) {
         ws.sessionId = payload.sid || null;
         clearTimeout(authTimer);
         if (!connections.has(userId)) connections.set(userId, new Set());
+        if (!ws._connectedAt) ws._connectedAt = Date.now();
         connections.get(userId).add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
         await flushOfflineQueue(userId); // オンラインになった瞬間、溜まっていたメッセージを配送
@@ -912,4 +925,4 @@ function disconnectBanned(userId, until) {
   }
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, rejectPendingCall, disconnectBanned };
+module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, rejectPendingCall, disconnectBanned };

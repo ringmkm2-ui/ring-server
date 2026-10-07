@@ -256,6 +256,7 @@ async function main() {
   app.use('/api/claude-feed', require('./routes/claudeFeed'));
   app.use('/api/settings', settingsRouter);
   app.use('/api/moderation', require('./routes/moderation'));
+  app.use('/api/staff', require('./routes/staff'));
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、
