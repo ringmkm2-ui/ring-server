@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プライバシーポリシー - Bro Chat</title>
+<meta name="theme-color" content="#0b0f0d">
+<link rel="stylesheet" href="/css/legal.css">
+</head>
+<body>
+<main class="legal">
+  <nav class="legal-top">
+    <a href="/talklist.html" class="legal-back" aria-label="戻る"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
+    <span class="legal-langs"><a href="#ja">日本語</a><a href="#en">English</a></span>
+  </nav>
+
+  <article id="ja" lang="ja">
+    <h1>プライバシーポリシー</h1>
+    <p class="legal-date">制定日: 2026年10月8日</p>
+    <p>Bro Chat 運営(以下「運営」)は、Bro Chat(以下「本サービス」)で扱う情報について、次のとおり取り扱います。本サービスは、メッセージの中身を運営も読めない仕組み(エンドツーエンド暗号化)を基本にしています。</p>
+
+    <h2>1. 運営も読めないもの</h2>
+    <ul>
+      <li><b>個人チャット・グループ・コミュニティのメッセージ</b>: 送る前にあなたの端末で暗号化されます。サーバーには暗号文だけが届き、運営は中身を読めません。</li>
+      <li><b>メッセージで送る画像・動画・ファイル</b>: 端末で暗号化してから保存します。</li>
+      <li><b>暗号鍵のバックアップ</b>: あなたが決めたパスフレーズで暗号化した状態で預かります。パスフレーズは運営に送られません。</li>
+      <li><b>通話・ライブ配信の音声と映像</b>: 通信路が暗号化され(DTLS-SRTP)、中継サーバーを通る場合も中身は読めません。録音・録画はしていません。</li>
+    </ul>
+
+    <h2>2. 運営が受け取る・保存する情報</h2>
+    <ul>
+      <li><b>アカウント情報</b>: 表示名、メールアドレス、パスワード(元に戻せない形に変換して保存)、プロフィール画像、ユーザーIDコード。Googleでログインした場合は、Googleから受け取る名前・メールアドレス・プロフィール画像。</li>
+      <li><b>やり取りの記録(中身以外)</b>: 誰と誰がいつメッセージを送ったか、既読、友だち・グループ・ブロックの関係。メッセージを届けるために必要です。</li>
+      <li><b>投稿(タイムライン)</b>: 投稿・コメント・いいねは暗号化されません。友だちなどに見せる前提の機能です。</li>
+      <li><b>ログイン中の端末</b>: 端末の種類、IPアドレス、ログイン日時。乗っ取りに気づけるよう「ログイン中の端末」に表示し、不審なログインを止めるために使います。</li>
+      <li><b>通知の宛先</b>: プッシュ通知を送るための端末の登録情報。</li>
+      <li><b>設定</b>: 既読表示・オンライン表示などの設定(端末をまたいで同じにするため)。</li>
+      <li><b>バグ報告・ユーザー通報</b>: 書いた内容、アプリのバージョン、ブラウザの種類。</li>
+      <li><b>通話アシスト(使った場合だけ)</b>: 字幕・翻訳のため通話の音声を文字起こしサービスに送り、翻訳・要約にAIを使います。メモと要約はサーバーに保存され、暗号化されません。</li>
+    </ul>
+
+    <h2>3. 使う目的</h2>
+    <p>本サービスを動かすこと(メッセージ・通話・通知を届ける)、アカウントの保護、不正利用・規約違反への対応、不具合の修正と改善のためだけに使います。広告には使わず、情報を売ることもありません。</p>
+
+    <h2>4. 外部サービスの利用</h2>
+    <p>本サービスは次の外部サービスを使っています。それぞれに必要な分だけ情報が渡ります。</p>
+    <ul>
+      <li>Render(サーバーの運用)、クラウドのデータベース</li>
+      <li>Cloudinary(暗号化したメディアとプロフィール画像の保存)</li>
+      <li>Google(Googleログイン、Firebaseによるプッシュ通知)</li>
+      <li>Twilio、Metered(通話をつなぐための中継。中身は読めません)</li>
+      <li>Deepgram、Anthropic(通話アシストを使った場合の文字起こし・翻訳・要約)</li>
+      <li>Anthropic(バグ報告の本文を、修正作業のためにAI(Claude)に読ませることがあります。誰が送ったかは渡しません)</li>
+    </ul>
+    <p>これらのサービスは日本以外の国(主にアメリカ)にサーバーがあることがあります。</p>
+
+    <h2>5. 運営による管理</h2>
+    <p>運営は、サービス管理のためにアカウントの一覧(表示名・ID)とオンライン状態を確認できます。メッセージの中身は運営も読めません。通報があった場合は、通報の内容と投稿など公開されている情報をもとに対応します。</p>
+    <p>禁止されている言葉の自動チェックは、チャットでは暗号化する前にあなたの端末の中で行います(投稿はサーバーで確認します)。チャットで該当した場合、サーバーに残るのは利用停止の記録と、相手に表示されるお知らせだけです。</p>
+
+    <h2>6. 第三者への提供</h2>
+    <p>法令に基づく場合、または人の生命・身体を守るために必要な場合を除き、あなたの同意なく第三者に提供しません。なお暗号化されたメッセージは、求められても運営には中身を出す手段がありません。</p>
+
+    <h2>7. 保存期間と削除</h2>
+    <p>情報はアカウントがある間保存します。アカウントの削除を希望する場合は、下の連絡先までご連絡ください。本人確認のうえ、アカウントと関連する情報を削除します。メッセージの取り消し・投稿の削除は、アプリからいつでもできます。</p>
+
+    <h2>8. 安全対策</h2>
+    <p>通信はすべてHTTPSで暗号化し、パスワードは元に戻せない形で保存しています。二段階認証、ログイン中の端末の一覧と強制ログアウト、新しい端末からのログインの通知を用意しています。</p>
+
+    <h2>9. 13歳未満の方</h2>
+    <p>13歳未満の方は本サービスを利用できません。</p>
+
+    <h2>10. 変更</h2>
+    <p>このポリシーを変更する場合は、本サービス内でお知らせします。</p>
+
+    <h2>11. お問い合わせ</h2>
+    <p>Bro Chat 運営<br><a href="mailto:brochatofficialglobal@gmail.com">brochatofficialglobal@gmail.com</a><br>アプリ内の「設定 &gt; サポート &gt; バグを報告」からも送れます。</p>
+  </article>
+
+  <hr class="legal-sep">
+
+  <article id="en" lang="en">
+    <h1>Privacy Policy</h1>
+    <p class="legal-date">Effective: October 8, 2026</p>
+    <p>This policy explains how the Bro Chat team ("we") handles information in Bro Chat (the "Service"). The Service is built on end-to-end encryption, so we cannot read the content of your messages.</p>
+
+    <h2>1. What we cannot read</h2>
+    <ul>
+      <li><b>Personal, group and community messages</b> are encrypted on your device before they are sent. Our servers only receive ciphertext.</li>
+      <li><b>Photos, videos and files sent in messages</b> are encrypted on your device before they are stored.</li>
+      <li><b>Key backups</b> are encrypted with a passphrase you choose. The passphrase is never sent to us.</li>
+      <li><b>Call and live stream audio/video</b> is encrypted in transit (DTLS-SRTP), including when it passes through a relay server. We do not record calls or streams.</li>
+    </ul>
+
+    <h2>2. What we receive and store</h2>
+    <ul>
+      <li><b>Account information</b>: display name, email address, password (stored as a one-way hash), profile picture and user ID code. If you sign in with Google, the name, email address and profile picture Google provides.</li>
+      <li><b>Metadata needed to deliver messages</b>: who messaged whom and when, read receipts, and friend, group and block relationships.</li>
+      <li><b>Posts (timeline)</b>: posts, comments and likes are not encrypted. This feature is meant for sharing with others.</li>
+      <li><b>Signed-in devices</b>: device type, IP address and sign-in time, shown under "Signed-in devices" so you can spot and stop suspicious sign-ins.</li>
+      <li><b>Notification tokens</b> used to send push notifications.</li>
+      <li><b>Settings</b> such as read receipts and online status, so they stay the same across your devices.</li>
+      <li><b>Bug reports and user reports</b>: what you write, the app version and your browser type.</li>
+      <li><b>Call Assist (only if you use it)</b>: call audio is sent to a transcription service for captions, and AI is used for translation and summaries. Notes and summaries are stored on our server without encryption.</li>
+    </ul>
+
+    <h2>3. How we use it</h2>
+    <p>Only to run the Service (delivering messages, calls and notifications), protect accounts, handle abuse and rule violations, and fix and improve the app. We do not use your information for advertising and we do not sell it.</p>
+
+    <h2>4. Service providers</h2>
+    <ul>
+      <li>Render (server hosting) and a cloud database</li>
+      <li>Cloudinary (storage of encrypted media and profile pictures)</li>
+      <li>Google (Google sign-in, push notifications via Firebase)</li>
+      <li>Twilio and Metered (call relays; they cannot read call content)</li>
+      <li>Deepgram and Anthropic (transcription, translation and summaries, only when you use Call Assist)</li>
+      <li>Anthropic (the text of bug reports may be given to an AI (Claude) to help fix bugs; who sent the report is not shared)</li>
+    </ul>
+    <p>Some of these providers store data outside Japan, mainly in the United States.</p>
+
+    <h2>5. Moderation</h2>
+    <p>For administration, the team can see the list of accounts (display names and IDs) and who is online. The team cannot read messages. Reports are handled based on what was reported and on public content such as posts.</p>
+    <p>In chats, the automatic check for banned words runs on your device before encryption (posts are checked on the server). If it triggers in a chat, only the suspension record and the notice shown to others are stored on the server.</p>
+
+    <h2>6. Sharing with third parties</h2>
+    <p>We do not share your information without your consent, except where required by law or where necessary to protect someone's life or safety. Encrypted messages cannot be disclosed by us because we have no way to decrypt them.</p>
+
+    <h2>7. Retention and deletion</h2>
+    <p>We keep your information while your account exists. To delete your account, contact us at the address below; after confirming it is you, we will delete your account and related information. You can unsend messages and delete posts in the app at any time.</p>
+
+    <h2>8. Security</h2>
+    <p>All traffic uses HTTPS and passwords are stored as one-way hashes. Two-factor authentication, a list of signed-in devices with remote sign-out, and new-device sign-in alerts are available.</p>
+
+    <h2>9. Children</h2>
+    <p>The Service is not for children under 13.</p>
+
+    <h2>10. Changes</h2>
+    <p>If we change this policy, we will announce it in the Service.</p>
+
+    <h2>11. Contact</h2>
+    <p>Bro Chat team<br><a href="mailto:brochatofficialglobal@gmail.com">brochatofficialglobal@gmail.com</a><br>You can also use Settings &gt; Support &gt; Report a bug in the app.</p>
+  </article>
+  <p class="legal-foot"><a href="/terms.html">利用規約 / Terms of Service</a></p>
+</main>
+</body>
+</html>
