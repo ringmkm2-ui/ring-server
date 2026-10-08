@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.205 beta</div>
+  <div class="version-badge">Bro Chat v1.28.206 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -701,7 +701,7 @@ async function handleMediaGroup(f,t){
     return;
   }
 
-  const maxSize = 100 * 1024 * 1024; // 動画も100MBまで(Cloudinaryの無料枠をすぐ使い切らないように) // Cloudinary対応で制限アップ
+  const maxSize = cloudinaryE2EUploader.maxBytes(); // ドライブにつながっていれば200MB、Cloudinaryなら100MB
   if(f.size > maxSize){
     alert(i18n.t('err_file_too_large'));
     return;
