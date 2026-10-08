@@ -73,6 +73,9 @@ router.get('/callback', asyncHandler(async (req, res) => {
   states.delete(state);
   try {
     await gd.exchangeCode(req, code);
+    // つないだ時点でフォルダを作っておく(ドライブを開いた時に、つながったことが目で確かめられるように)
+    await gd.folderId();
+    console.log('[drive] connected, folder ready');
   } catch (e) {
     console.error('[drive] connect failed:', e.message);
     return page(res, false, '鍵の受け取りに失敗しました。リダイレクトURIとクライアントの設定を確認してください。');
@@ -103,6 +106,7 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
     return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
   }
   await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
+  console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
   const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   res.json({ url: `${base}/m/d/${out.id}`, publicId: 'gd_' + out.id });
 }));

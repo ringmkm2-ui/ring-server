@@ -154,4 +154,4 @@ async function quota() {
 
 function newState() { return crypto.randomBytes(24).toString('hex'); }
 
-module.exports = { isConfigured, isConnected, authUrl, exchangeCode, uploadStream, openDownload, remove, quota, newState };
+module.exports = { isConfigured, isConnected, authUrl, exchangeCode, uploadStream, openDownload, remove, quota, newState, folderId };
