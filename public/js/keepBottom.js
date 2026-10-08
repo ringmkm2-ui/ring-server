@@ -10,6 +10,11 @@
     cs.addEventListener('scroll', () => {
       atBottom = cs.scrollHeight - cs.scrollTop - cs.clientHeight < 80;
     }, { passive: true });
+    // 画像・動画は後から読み込まれて高さが増える。一番下を見ていたなら、増えた分だけ下に付いていく
+    // (以前は届いた画像の下半分が入力欄の裏に隠れたままになっていた)
+    const follow = () => { if (atBottom) cs.scrollTop = cs.scrollHeight; };
+    cs.addEventListener('load', follow, true);
+    cs.addEventListener('loadedmetadata', follow, true);
     if (!window.ResizeObserver) return;
     new ResizeObserver(entries => {
       const h = Math.round(entries[entries.length - 1].contentRect.height);
