@@ -37,6 +37,15 @@ router.post('/delete', verifyToken, mediaUploadLimiter, asyncHandler(async (req,
   if (!publicId || typeof publicId !== 'string' || publicId.length > 300) {
     return res.status(400).json({ error: 'publicId is required' });
   }
+  // Googleドライブに置いたもの(gd_<id>)は、置いた本人だけが消せる
+  if (publicId.startsWith('gd_')) {
+    try {
+      const ok = await require('./drive').removeOwned(req.user.userId, publicId);
+      return ok ? res.json({ ok: true }) : res.status(403).json({ error: 'このメディアを削除する権限がありません' });
+    } catch (e) {
+      return res.status(502).json({ error: '削除に失敗しました' });
+    }
+  }
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
     return res.status(500).json({ error: 'Cloudinary設定がサーバーに未設定です' });
   }

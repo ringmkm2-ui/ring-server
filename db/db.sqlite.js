@@ -119,6 +119,16 @@ async function initDB() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT);
+
+    CREATE TABLE IF NOT EXISTS drive_files (
+      file_id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      size INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS group_message_reactions (
       message_id TEXT NOT NULL,
       user_id TEXT NOT NULL,

@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.204 beta</div>
+  <div class="version-badge">Bro Chat v1.28.205 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -673,6 +673,7 @@ window.ensureGroupCrypto = (function () {
     <div class="set-group">
       <button type="button" class="set-row set-btn" id="setBugReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 0 1 6 0"/><path d="M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2"/></svg><span data-i18n="bug_report">バグを報告</span></span></button>
       <button type="button" class="set-row set-btn" id="setStaffOnline" hidden><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="18.5" cy="7.5" r="2.5" fill="#22c55e" stroke="none"/></svg><span>オンラインのユーザー(運営)</span></span><span class="set-val" id="staffOnlineCount"></span></button>
+      <a class="set-row set-btn" id="setStaffDrive" href="/drive-connect.html" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8l6 10-4 7H6l-4-7z"/><path d="M8 3l6 10H2M16 3l-6 10 4 7"/></svg><span>メディアの保存先(運営)</span></span><span class="set-val" id="staffDriveState"></span></a>
       <button type="button" class="set-row set-btn" id="setBlocks"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span data-i18n="blocked_users">ブロックしたユーザー</span></span></button>
       <button type="button" class="set-row set-btn" id="setUserReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span data-i18n="user_report">ユーザーを通報</span></span></button>
       <a class="set-row set-btn" id="setCoffee" href="#" target="_blank" rel="noopener noreferrer" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M9 3v2M13 3v2"/></svg><span data-i18n="buy_coffee">コーヒーをおごる</span></span></a>
@@ -2456,6 +2457,14 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
     .then(d => {
       if (!d || !d.staff) return;
       btn.hidden = false;
+      const dv = document.getElementById('setStaffDrive');
+      if (dv) {
+        dv.hidden = false;
+        fetch('/api/drive/status', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : null).then(d => {
+          const el = document.getElementById('staffDriveState');
+          if (el && d) el.textContent = d.enabled ? 'Googleドライブ' : 'Cloudinary';
+        }).catch(() => {});
+      }
       btn.addEventListener('click', () => { mov.classList.add('open'); load(); clearInterval(timer); timer = setInterval(load, 10000); });
       document.getElementById('staffRefresh').addEventListener('click', load);
       document.getElementById('staffClose').addEventListener('click', close);

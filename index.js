@@ -260,6 +260,10 @@ async function main() {
   app.use('/api/moderation', require('./routes/moderation'));
   app.use('/api/staff', require('./routes/staff'));
   app.use('/api/live', require('./routes/live'));
+  // Googleドライブ(公式アカウント)をトークの画像・動画の置き場所に使う
+  const driveRoutes = require('./routes/drive');
+  app.use('/api/drive', driveRoutes.router);
+  app.get('/m/d/:id', require('./utils/authMiddleware').verifyToken, require('./utils/asyncHandler').asyncHandler(driveRoutes.serveFile));
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、

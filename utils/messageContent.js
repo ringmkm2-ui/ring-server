@@ -11,10 +11,14 @@ const MAX_MEDIA_DATA_LENGTH = 35 * 1024 * 1024; // Base64直送りメディア�
 const MAX_MEDIA_URL_LENGTH = 500;
 const ALLOWED_MEDIA_TYPES = ['image', 'video', 'audio', 'file'];
 
-// メディアの置き場所はCloudinaryだけ。他所のURLは相手の端末に取りに行かせない。
+// メディアの置き場所はCloudinaryか、このサーバー経由のGoogleドライブ(/m/d/<id>)だけ。
+// 他所のURLは相手の端末に取りに行かせない。
+const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
 function isValidMessageMediaUrl(value) {
   if (typeof value !== 'string' || !value || value.length > MAX_MEDIA_URL_LENGTH) return false;
-  return /^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_\-./,:%]+$/.test(value);
+  if (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_\-./,:%]+$/.test(value)) return true;
+  const m = /^https:\/\/([A-Za-z0-9.-]+(?::\d+)?)\/m\/d\/[A-Za-z0-9_-]{10,100}$/.exec(value);
+  return !!(m && (SELF_HOSTS.has(m[1]) || process.env.NODE_ENV !== 'production' && /^localhost(:\d+)?$/.test(m[1])));
 }
 
 // 送信・編集の共通チェック。問題があればエラー文、無ければ null を返す。

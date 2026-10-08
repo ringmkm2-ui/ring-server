@@ -46,7 +46,7 @@
     <p>本サービスは次の外部サービスを使っています。それぞれに必要な分だけ情報が渡ります。</p>
     <ul>
       <li>Render(サーバーの運用)、クラウドのデータベース</li>
-      <li>Cloudinary(暗号化したメディアとプロフィール画像の保存)</li>
+      <li>Cloudinary、Googleドライブ(暗号化したメディアとプロフィール画像の保存。Googleドライブは運営の公式アカウントのもので、置くのは暗号化済みのデータだけです)</li>
       <li>Google(Googleログイン、Firebaseによるプッシュ通知)</li>
       <li>Twilio、Metered(通話をつなぐための中継。中身は読めません)</li>
       <li>Deepgram、Anthropic(通話アシストを使った場合の文字起こし・翻訳・要約)</li>
@@ -110,7 +110,7 @@
     <h2>4. Service providers</h2>
     <ul>
       <li>Render (server hosting) and a cloud database</li>
-      <li>Cloudinary (storage of encrypted media and profile pictures)</li>
+      <li>Cloudinary and Google Drive (storage of encrypted media and profile pictures; the Google Drive is the team's official account and only receives already-encrypted data)</li>
       <li>Google (Google sign-in, push notifications via Firebase)</li>
       <li>Twilio and Metered (call relays; they cannot read call content)</li>
       <li>Deepgram and Anthropic (transcription, translation and summaries, only when you use Call Assist)</li>
