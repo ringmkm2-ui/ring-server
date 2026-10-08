@@ -366,7 +366,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.203 beta</div>
+  <div class="version-badge">Bro Chat v1.28.204 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2295,6 +2295,55 @@ function clearRenderedMessages() {
   realMessages.length = 0;
 }
 
+// 履歴の1件を表示用にする(暗号文を開く)
+async function toDisplayMsg(msg) {
+  let displayContent = msg.content;
+  if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
+    const decrypted = await decryptMessageContent(msg.content, msg.senderId);
+    if (decrypted !== null) displayContent = decrypted;
+    else displayContent = '(復号化に失敗しました)';
+  } else if (msg.encrypted && msg.senderId === myUserId) {
+    // 自分が送った暗号化メッセージはローカルキャッシュから復元
+    const cached = getOwnPlaintext(msg.id);
+    const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+    displayContent = own !== null ? own : '(このデバイスでは表示できません)';
+  }
+  return { ...msg, content: displayContent };
+}
+
+// 上にスクロールしたら、もっと前のメッセージを読み込む(以前は最新50件より前は見られなかった)
+const DM_PAGE = 50;
+let dmOldest = null, dmHasMore = true, dmLoadingOld = false;
+async function loadOlderDM() {
+  if (!dmHasMore || dmLoadingOld || !dmOldest) return;
+  dmLoadingOld = true;
+  const cs = document.getElementById('chatScreen');
+  try {
+    const data = await api('/api/messages/history/' + otherId + '?before=' + encodeURIComponent(dmOldest));
+    if (!Array.isArray(data)) return;
+    if (data.length < DM_PAGE) dmHasMore = false;
+    if (!data.length) return;
+    const list = [];
+    for (const m of data) if (!realMessages.some(r => r.id === m.id)) list.push(await toDisplayMsg(m));
+    dmOldest = data[0].createdAt || dmOldest;
+    if (!list.length) return;
+    const prevH = cs.scrollHeight, prevTop = cs.scrollTop;
+    const anchor = [...cs.children].find(el => el.dataset && el.dataset.msgId) || cs.firstElementChild;
+    isBulkHistoryLoad = true;
+    realMessages.unshift(...list);
+    const made = [];
+    list.forEach(m => { const el = renderMessageImpl(m); if (el && el.nodeType === 1) made.push(el); else { const c = msgDOMCache.get(m.id); if (c) made.push(c); } });
+    made.forEach(el => { if (anchor && anchor.parentNode === cs && el !== anchor) cs.insertBefore(el, anchor); });
+    cs.scrollTop = cs.scrollHeight - prevH + prevTop;
+  } catch (e) {
+    console.error('older history error:', e);
+  } finally {
+    isBulkHistoryLoad = false;
+    dmLoadingOld = false;
+  }
+}
+document.getElementById('chatScreen').addEventListener('scroll', function () { if (this.scrollTop < 120) loadOlderDM(); }, { passive: true });
+
 async function initialLoadHistory() {
   try {
     let data = null;
@@ -2314,20 +2363,9 @@ async function initialLoadHistory() {
 
     // 復号化してから保持・描画（自分が送ったメッセージは復号化不要、相手からのみ復号化）
     const displayList = [];
-    for (const msg of data) {
-      let displayContent = msg.content;
-      if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
-        const decrypted = await decryptMessageContent(msg.content, msg.senderId);
-        if (decrypted !== null) displayContent = decrypted;
-        else displayContent = '(復号化に失敗しました)';
-      } else if (msg.encrypted && msg.senderId === myUserId) {
-        // 自分が送った暗号化メッセージはローカルキャッシュから復元
-        const cached = getOwnPlaintext(msg.id);
-        const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
-        displayContent = own !== null ? own : '(このデバイスでは表示できません)';
-      }
-      displayList.push({ ...msg, content: displayContent });
-    }
+    for (const msg of data) displayList.push(await toDisplayMsg(msg));
+    if (data.length) dmOldest = data[0].createdAt || dmOldest;
+    dmHasMore = data.length >= DM_PAGE;
 
     // キャッシュで仮表示していたものは同じ処理内で入れ替える(描画は処理の後なのでチラつかない)
     if (chatRenderedFromCache) { clearRenderedMessages(); chatRenderedFromCache = false; }
