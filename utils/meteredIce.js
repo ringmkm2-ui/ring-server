@@ -43,7 +43,13 @@ function isMeteredConfigured() {
  * provider: 'metered' (TURN取得成功)として扱われてしまい、実際はTURN無しの
  * STUN-onlyな状態がクライアントからも運用側からも見えなくなっていた。
  */
+// APIキーが無効(401/403)な間は、通話のたびに失敗するリクエストを投げない(10分休む)。
+// 以前は発信のたびにMeteredへ聞きに行って401になり、ログが同じエラーで埋まっていた。
+let authFailedUntil = 0;
+const AUTH_FAIL_PAUSE_MS = 10 * 60 * 1000;
+
 function fetchMeteredIceServers() {
+  if (Date.now() < authFailedUntil) return Promise.resolve(null);
   return new Promise((resolve) => {
     if (!isMeteredConfigured()) {
       if (!METERED_APP_NAME) console.warn('[meteredIce] METERED_APP_NAME が未設定です');
@@ -66,7 +72,12 @@ function fetchMeteredIceServers() {
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          console.error(`[meteredIce] Metered API エラー (status=${res.statusCode}):`, body.slice(0, 300));
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            authFailedUntil = Date.now() + AUTH_FAIL_PAUSE_MS;
+            console.error(`[meteredIce] APIキーが無効です(status=${res.statusCode})。METERED_API_KEY を取り直してください。10分間は問い合わせを止めます`);
+          } else {
+            console.error(`[meteredIce] Metered API エラー (status=${res.statusCode}):`, body.slice(0, 300));
+          }
           resolve(null);
           return;
         }

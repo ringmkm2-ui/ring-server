@@ -32,23 +32,32 @@ router.get('/presence/:userId', auth, async (req, res) => {
   }
 });
 
-// メッセージ内容をトークリスト用のプレビューテキストに変換
-function toPreviewText(content, encrypted) {
-  if (!content) return '';
-  if (encrypted) return '暗号化されたメッセージ';
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed && parsed.media && parsed.mediaType) {
-      return parsed.mediaType === 'image' ? '画像が送信されました' : parsed.mediaType === 'audio' ? '留守番電話が届きました' : '動画が送信されました';
+// メッセージ内容をトークリスト用のプレビューに変換。
+// kind で種類を返し、文言は画面側で言語に合わせて出す(以前はサーバーが日本語固定の文を返していた)。
+// 暗号文のテキストは cipher に入れて返し、端末が自分の鍵で開いて一覧に本文を出す(LINEのように)。
+// メディアは content が {mediaUrl|media, mediaType} のJSONなので、暗号化フラグより先に中身を見る
+// (以前は暗号化フラグを先に見ていたため、画像も「暗号化されたメッセージ」になっていた)。
+function toPreview(content, encrypted) {
+  if (!content) return { kind: 'empty', text: '' };
+  let parsed = null;
+  if (content[0] === '{') { try { parsed = JSON.parse(content); } catch (e) {} }
+  if (parsed && typeof parsed === 'object') {
+    if ((parsed.media || parsed.mediaUrl) && parsed.mediaType) {
+      const k = parsed.mediaType === 'image' ? 'image' : parsed.mediaType === 'audio' ? 'audio' : 'video';
+      return { kind: k, text: k === 'image' ? '画像が送信されました' : k === 'audio' ? '留守番電話が届きました' : '動画が送信されました' };
     }
-    if (parsed && parsed.__call__) {
-      return '通話';
+    if (parsed.__call__) return { kind: 'call', text: '通話' };
+    if (parsed.__notice__ && parsed.__notice__.kind === 'ban') {
+      const name = String(parsed.__notice__.name || 'ユーザー').slice(0, 40);
+      return { kind: 'ban', name, text: `${name}がFワードを言ったためBanしました。` };
     }
-    if (parsed && parsed.__notice__ && parsed.__notice__.kind === 'ban') {
-      return `${String(parsed.__notice__.name || 'ユーザー').slice(0, 40)}がFワードを言ったためBanしました。`;
-    }
-  } catch (e) {}
-  return content;
+  }
+  if (encrypted) {
+    const out = { kind: 'encrypted', text: '暗号化されたメッセージ' };
+    if (typeof content === 'string' && content.startsWith('e2:') && content.length <= 8000) out.cipher = content;
+    return out;
+  }
+  return { kind: 'text', text: content };
 }
 
 // メッセージ送信
@@ -351,7 +360,15 @@ router.get('/talks', auth, async (req, res) => {
         userIdCode: user.user_id,
         displayName: user.display_name,
         profilePic: user.profile_pic,
-        lastMessage: row.deleted_at ? '（送信取り消し済み）' : toPreviewText(row.content, row.encrypted),
+        ...(() => {
+          if (row.deleted_at) return { lastMessage: '（送信取り消し済み）', lastKind: 'unsent' };
+          const pv = toPreview(row.content, row.encrypted);
+          const o = { lastMessage: pv.text, lastKind: pv.kind };
+          if (pv.cipher) o.lastCipher = pv.cipher;
+          if (pv.name) o.lastName = pv.name;
+          return o;
+        })(),
+        lastFromMe: row.sender_id === me,
         lastTime: row.created_at,
         unreadCount: unreadBy.get(row.other_id) || 0,
       });
