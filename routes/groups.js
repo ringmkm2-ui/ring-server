@@ -34,7 +34,7 @@ async function isGroupMember(groupId, userId) {
 // --- 自分が所属するグループ一覧を取得 ---
 router.get('/list', verifyToken, asyncHandler(async (req, res) => {
   const rows = await db.all(
-    `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at, g.avatar_url
+    `SELECT g.id, g.name, g.owner_id, g.key_version, g.created_at, g.avatar_url, gm.joined_at, gm.last_read_at
      FROM groups g
      JOIN group_members gm ON gm.group_id = g.id
      WHERE gm.user_id = ? AND gm.left_at IS NULL
@@ -49,12 +49,24 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
        WHERE gm.group_id = ? AND gm.left_at IS NULL`,
       [g.id]
     );
+    // 参加前のメッセージは一覧にも出さない(履歴と同じ)
+    const since = g.joined_at || null;
     const lastMsg = await db.get(
       `SELECT content, created_at, encrypted, key_version FROM group_messages
-       WHERE group_id = ? AND deleted_at IS NULL
+       WHERE group_id = ? AND deleted_at IS NULL${since ? ' AND created_at >= ?' : ''}
        ORDER BY created_at DESC LIMIT 1`,
-      [g.id]
+      since ? [g.id, since] : [g.id]
     );
+    // 未読数: 最後に開いた時(まだ開いていなければ参加した時)より後に、他の人が送った分
+    const from = g.last_read_at || g.joined_at || null;
+    let unreadCount = 0;
+    if (from) {
+      const u = await db.get(
+        'SELECT COUNT(*) AS c FROM group_messages WHERE group_id = ? AND sender_id != ? AND deleted_at IS NULL AND created_at > ?',
+        [g.id, req.user.userId, from]
+      );
+      unreadCount = Number(u && u.c) || 0;
+    }
     groups.push({
       groupId: g.id,
       name: g.name,
@@ -64,8 +76,12 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
       lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version } : null,
+      unreadCount,
     });
   }
+  // 新しいメッセージがあったグループを上に(LINEと同じ。以前は作った順のままだった)
+  const t = g => new Date((g.lastMessage && g.lastMessage.createdAt) || 0).getTime();
+  groups.sort((a, b) => t(b) - t(a));
   res.json({ groups });
 }));
 
@@ -154,7 +170,13 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
   // 鍵ラチェット: バージョンを上げる (前方秘匿性 - 新メンバーは過去メッセージを読めない)
   const newVersion = group.key_version + 1;
   await db.run('UPDATE groups SET key_version = ? WHERE id = ?', [newVersion, groupId]);
-  await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, targetUser.id]);
+  // 前に抜けた(外された)人を招待し直す時は、行が残っているので INSERT すると主キーが重複して失敗していた
+  const formerRow = await db.get('SELECT 1 AS ok FROM group_members WHERE group_id=? AND user_id=?', [groupId, targetUser.id]);
+  if (formerRow) {
+    await db.run('UPDATE group_members SET left_at = NULL, joined_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?', [groupId, targetUser.id]);
+  } else {
+    await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, targetUser.id]);
+  }
 
   // クライアントが生成した「メンバーごとに暗号化した新グループ鍵」を保存・配布
   if (Array.isArray(encryptedKeysForMembers)) {
@@ -522,12 +544,20 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
 
+  // before: これより前を読む(上にスクロールした時)。日時として読めない値は無視する
+  const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
+  // 参加する前のメッセージは出さない(LINEと同じ。鍵も配られていないので、出しても「復号に失敗」が並ぶだけだった)
+  const mem = await db.get('SELECT joined_at FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [groupId, req.user.userId]);
+  const params = [groupId];
+  let where = 'gm.group_id = ? AND gm.deleted_at IS NULL';
+  if (mem && mem.joined_at) { where += ' AND gm.created_at >= ?'; params.push(mem.joined_at); }
+  if (before) { where += ' AND gm.created_at < ?'; params.push(before); }
   const messages = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id
-     WHERE gm.group_id = ? AND gm.deleted_at IS NULL
+     WHERE ${where}
      ORDER BY gm.created_at DESC LIMIT 100`,
-    [groupId]
+    params
   );
 
   // 誰が読んだか(既読アイコン用)。以前は読まれた瞬間のリアルタイム通知でしか表示されず、
@@ -545,8 +575,62 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
     }
   }
   for (const m of messages) m.reader_ids = readersBy.get(m.id) || [];
+  // リアクション(絵文字ごとに押した人の一覧)
+  if (messages.length) {
+    const ids = messages.map(m => m.id);
+    const rx = await db.all(
+      `SELECT message_id, emoji, user_id FROM group_message_reactions WHERE message_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at ASC`,
+      ids
+    );
+    const byMsg = new Map();
+    for (const r of rx) {
+      if (!byMsg.has(r.message_id)) byMsg.set(r.message_id, new Map());
+      const em = byMsg.get(r.message_id);
+      if (!em.has(r.emoji)) em.set(r.emoji, []);
+      em.get(r.emoji).push(r.user_id);
+    }
+    for (const m of messages) {
+      const em = byMsg.get(m.id);
+      m.reactions = em ? [...em].map(([emoji, userIds]) => ({ emoji, userIds })) : [];
+    }
+  }
 
   res.json(messages.reverse());
+}));
+
+// --- グループを開いた(未読を0にする) ---
+router.post('/:groupId/seen', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  await db.run('UPDATE group_members SET last_read_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [groupId, req.user.userId]);
+  res.json({ ok: true });
+}));
+
+// --- グループメッセージのリアクション(押す/もう一度押すと外す) ---
+// body: { emoji }
+router.post('/:groupId/messages/:msgId/react', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId, msgId } = req.params;
+  const me = req.user.userId;
+  const emoji = req.body && req.body.emoji;
+  if (typeof emoji !== 'string' || !emoji || emoji.length > 10) return res.status(400).json({ error: '不正なemojiです' });
+  if (!(await isGroupMember(groupId, me))) return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  const msg = await db.get('SELECT id FROM group_messages WHERE id = ? AND group_id = ? AND deleted_at IS NULL', [msgId, groupId]);
+  if (!msg) return res.status(404).json({ error: 'メッセージが見つかりません' });
+  const existing = await db.get('SELECT 1 AS ok FROM group_message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [msgId, me, emoji]);
+  if (existing) {
+    await db.run('DELETE FROM group_message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [msgId, me, emoji]);
+  } else {
+    // 1人が付けられる種類は12まで(連打でDBを埋められないように)
+    const cnt = await db.get('SELECT COUNT(*) AS c FROM group_message_reactions WHERE message_id = ? AND user_id = ?', [msgId, me]);
+    if (Number(cnt && cnt.c) >= 12) return res.status(429).json({ error: 'リアクションが多すぎます' });
+    await db.run('INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [msgId, me, emoji]);
+  }
+  const rows = await db.all('SELECT emoji, user_id FROM group_message_reactions WHERE message_id = ? ORDER BY created_at ASC', [msgId]);
+  const em = new Map();
+  for (const r of rows) { if (!em.has(r.emoji)) em.set(r.emoji, []); em.get(r.emoji).push(r.user_id); }
+  const reactions = [...em].map(([e, userIds]) => ({ emoji: e, userIds }));
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => broadcastToUser(m.user_id, { type: 'group_message_reaction', groupId, messageId: msgId, reactions }));
+  res.json({ ok: true, reactions });
 }));
 
 // --- グループメッセージ既読マーク ---

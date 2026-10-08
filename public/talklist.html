@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.202 beta</div>
+  <div class="version-badge">Bro Chat v1.28.203 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1686,6 +1686,12 @@ function renderGroups(groups) {
 
     item.appendChild(av);
     item.appendChild(body);
+    if (g.unreadCount > 0) {
+      const badge = document.createElement('div');
+      badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:999px;min-width:20px;height:20px;padding:0 5px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;box-sizing:border-box';
+      badge.textContent = g.unreadCount > 99 ? '99+' : String(g.unreadCount);
+      item.appendChild(badge);
+    }
     item.addEventListener('click', () => {
       if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
         window.LiquidGlass.flyAvatarTo(av, () => openGroupChat(g.groupId || g.id, g.name));
@@ -3053,6 +3059,8 @@ function connectTalkWs() {
       return;
     }
     if (/^call_/.test(d.type)) return;
+    // 入力中の合図・既読の知らせは一覧に関係ない(以前は誰かが文字を打つたびに一覧をAPI3本で取り直していた)
+    if (/typing|_read$|^gcall_|reaction$/.test(d.type)) return;
     if (d.type === 'member_keys_ready' && window.__e2eBackgroundWork) { window.__e2eBackgroundWork(); return; }
     scheduleTalkRefresh();
   };
