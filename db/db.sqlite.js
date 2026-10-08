@@ -119,6 +119,14 @@ async function initDB() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS group_message_reactions (
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (message_id, user_id, emoji)
+    );
+
     CREATE TABLE IF NOT EXISTS user_blocks (
       blocker_id TEXT NOT NULL,
       blocked_id TEXT NOT NULL,
@@ -416,6 +424,7 @@ async function initDB() {
     users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT']],
     groups: [['avatar_url', 'TEXT']],
+    group_members: [['last_read_at', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
     community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],
   };

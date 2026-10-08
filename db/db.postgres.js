@@ -99,6 +99,21 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT now()
       )
     `);
+    // 古いDBで joined_at が無い場合に備える(無ければ足すだけ。既存の行は空のまま=今まで通り全部見える)
+    await pool.query('ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMP');
+    await pool.query('ALTER TABLE group_members ALTER COLUMN joined_at SET DEFAULT now()');
+    // グループの未読数のため、最後にそのグループを開いた時刻(既読の送信設定とは別。既読を切っていても未読は消える)
+    await pool.query('ALTER TABLE group_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMP');
+    // グループのリアクション(以前は押した人の画面に出るだけで、保存も相手への通知もしていなかった)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_message_reactions (
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (message_id, user_id, emoji)
+      )
+    `);
     // ブロック(blocker_id が blocked_id をブロック)。相手には知らせない
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_blocks (

@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.202 beta</div>
+  <div class="version-badge">Bro Chat v1.28.203 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -633,22 +633,37 @@ REACTIONS.forEach(e=>{
   rp.appendChild(b);
 });
 
-function addReact(wrap,emoji){
+// リアクションはサーバーに保存して全員に配る(以前は押した人の画面に出るだけで、相手には見えず、開き直すと消えていた)
+function renderReacts(wrap,reactions){
+  if(!wrap)return;
   let bar=wrap.querySelector('.rbar');
+  const list=Array.isArray(reactions)?reactions.filter(r=>r&&r.emoji&&Array.isArray(r.userIds)&&r.userIds.length):[];
+  if(!list.length){if(bar)bar.remove();return;}
   if(!bar){bar=document.createElement('div');bar.className='rbar';wrap.appendChild(bar);}
-  let badge=[...bar.children].find(b=>b.dataset.e===emoji);
-  if(badge){
-    const c=parseInt(badge.dataset.c||1);
-    if(badge.classList.contains('active')){
-      const nc=c-1;if(nc<=0)badge.remove();
-      else{badge.dataset.c=nc;badge.textContent=`${emoji} ${nc}`;badge.classList.remove('active');}
-    }else{badge.dataset.c=c+1;badge.textContent=`${emoji} ${c+1}`;badge.classList.add('active');}
-  }else{
-    badge=document.createElement('button');badge.className='rbadge active';badge.dataset.e=emoji;badge.dataset.c=1;badge.textContent=`${emoji} 1`;
-    badge.onclick=()=>{const c=parseInt(badge.dataset.c||1)-1;if(c<=0)badge.remove();else{badge.dataset.c=c;badge.textContent=`${emoji} ${c}`;badge.classList.remove('active');}};
-    bar.appendChild(badge);
-  }
+  bar.textContent='';
+  list.forEach(r=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='rbadge'+(r.userIds.includes(myUserId)?' active':'');
+    b.dataset.e=r.emoji;b.dataset.c=r.userIds.length;
+    b.textContent=r.emoji+' '+r.userIds.length;
+    b.onclick=ev=>{ev.stopPropagation();sendReact(wrap,r.emoji);};
+    bar.appendChild(b);
+  });
 }
+const reactBusy=new Set();
+async function sendReact(wrap,emoji){
+  const msgDiv=wrap&&wrap.closest('[data-msg-id]');
+  const mid=msgDiv&&msgDiv.dataset.msgId;
+  if(!mid||reactBusy.has(mid+emoji))return; // 送信中(まだIDが無い)のメッセージには付けられない
+  reactBusy.add(mid+emoji);
+  try{
+    const d=await api('/api/groups/'+groupId+'/messages/'+encodeURIComponent(mid)+'/react',{method:'POST',body:JSON.stringify({emoji})});
+    if(d&&d.ok)renderReacts(wrap,d.reactions);
+  }catch(e){console.error('リアクションエラー:',e);}
+  finally{reactBusy.delete(mid+emoji);}
+}
+function addReact(wrap,emoji){sendReact(wrap,emoji);}
 
 document.getElementById('pbtn').onclick=()=>document.getElementById('ibar').classList.toggle('open');
 document.getElementById('imgI').onchange=e=>{handleMediaGroup(e.target.files[0],'image');};
@@ -978,6 +993,7 @@ function createNotice(msgId,content){
   const ti=document.getElementById('gTyping');
   if(ti&&ti.parentNode===cs)cs.insertBefore(div,ti);else cs.appendChild(div);
   cs.scrollTop=cs.scrollHeight;
+  return div;
 }
 
 function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
@@ -1543,29 +1559,78 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
 }
 
 // グループメッセージ履歴をサーバーから読み込み
+// 履歴の1件を描く(新しい順に並べる時も、上に足す時も同じ見た目にする)。描いた要素を返す
+async function renderHistoryMsg(msg){
+  if(msg.id&&document.querySelector('[data-msg-id="'+CSS.escape(String(msg.id))+'"]'))return null;
+  if(msg.msg_type==='notice')return createNotice(msg.id,msg.content)||null;
+  // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
+  let member=gi.members.find(m=>m.id===msg.sender_id);
+  if(!member&&msg.sender_id!==myUserId){
+    const nm=msg.display_name||'退出したメンバー';
+    member={id:msg.sender_id,name:nm,color:nameColor(nm),initials:nm.charAt(0),avatarImg:'',isOwner:false};
+  }
+  const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
+  const incoming=msg.sender_id!==myUserId;
+  const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
+  fillDeferredMedia(msgDiv,media);
+  if(Array.isArray(msg.reactions)&&msg.reactions.length)renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);
+  if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
+  if(msg.edited_at){
+    const meta=msgDiv.querySelector('.mmeta .time');
+    if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
+  }
+  return msgDiv;
+}
+
+// 開いている間は未読を0にしておく(トーク一覧の未読バッジ用)。続けて届いても3秒に1回だけ送る
+let seenT=0;
+function markSeenSoon(){
+  if(document.hidden)return;
+  clearTimeout(seenT);
+  seenT=setTimeout(()=>{api('/api/groups/'+groupId+'/seen',{method:'POST'}).catch(()=>{});},800);
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)markSeenSoon();});
+
+// 上にスクロールしたら、もっと前のメッセージを読み込む(以前は最新100件より前は二度と見られなかった)
+const HISTORY_PAGE=100;
+let gOldest=null,gHasMore=true,gLoadingOld=false;
+function noteOldest(msgs){
+  if(!Array.isArray(msgs)||!msgs.length)return;
+  const t=msgs[0].created_at;
+  if(t&&(!gOldest||new Date(t)<new Date(gOldest)))gOldest=t;
+}
+async function loadOlderGroup(){
+  if(!gHasMore||gLoadingOld||!gOldest)return;
+  gLoadingOld=true;
+  const cs=document.getElementById('cs');
+  try{
+    const msgs=await api('/api/groups/'+groupId+'/messages?before='+encodeURIComponent(gOldest));
+    if(!Array.isArray(msgs)){return;}
+    if(msgs.length<HISTORY_PAGE)gHasMore=false;
+    if(!msgs.length)return;
+    const prevH=cs.scrollHeight,prevTop=cs.scrollTop;
+    const anchor=cs.querySelector('[data-msg-id],.bc-notice,.cancel-notice');
+    const made=[];
+    for(const msg of msgs){const el=await renderHistoryMsg(msg);if(el)made.push(el);}
+    // 描いた分(今は一番下にある)を、元の一番上の前へ移す
+    made.forEach(el=>{if(anchor&&anchor.parentNode===cs)cs.insertBefore(el,anchor);});
+    noteOldest(msgs);
+    applyHistoryReaders();
+    cs.scrollTop=cs.scrollHeight-prevH+prevTop;
+  }catch(e){console.error('older messages error:',e);}
+  finally{gLoadingOld=false;}
+}
+document.getElementById('cs').addEventListener('scroll',function(){if(this.scrollTop<120)loadOlderGroup();},{passive:true});
+
 async function loadGroupMessages(pre){
   try{
     const msgs=await (pre||api('/api/groups/'+groupId+'/messages'));
     if(Array.isArray(msgs)){
+      if(pre&&msgs.length<HISTORY_PAGE)gHasMore=false;
+      noteOldest(msgs);
       for(const msg of msgs){
         // 取りこぼし分の読み直し(画面に戻った時など)では、もう出ている分は飛ばす
-        if(msg.id&&document.querySelector('[data-msg-id="'+CSS.escape(String(msg.id))+'"]'))continue;
-        if(msg.msg_type==='notice'){createNotice(msg.id,msg.content);continue;}
-        // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
-        let member=gi.members.find(m=>m.id===msg.sender_id);
-        if(!member&&msg.sender_id!==myUserId){
-          const nm=msg.display_name||'退出したメンバー';
-          member={id:msg.sender_id,name:nm,color:nameColor(nm),initials:nm.charAt(0),avatarImg:'',isOwner:false};
-        }
-        const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
-        const incoming=msg.sender_id!==myUserId;
-        const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
-        fillDeferredMedia(msgDiv,media);
-        if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
-        if(msg.edited_at){
-          const meta=msgDiv.querySelector('.mmeta .time');
-          if(meta)meta.insertAdjacentHTML('afterend','<span class="edited-label" style="margin-left:4px;opacity:.6">(編集済)</span>');
-        }
+        await renderHistoryMsg(msg);
       }
     }
     // ピン留め中のメッセージがあればバナーを表示
@@ -1612,6 +1677,7 @@ async function loadGroupMessages(pre){
   const historyP = api('/api/groups/'+groupId+'/messages');
   historyP.catch(() => {});
   loadGroupInfo().then(() => loadGroupMessages(historyP)).then(() => {
+    markSeenSoon();
     applyHistoryReaders();
     checkGroupKeyHealth();
     connectGroupWS();
@@ -1657,6 +1723,7 @@ function connectGroupWS(){
       if(typeof data.type==='string'&&data.type.startsWith('gcall_')){ window.GroupCall.handle(data); return; }
       if(typeof data.type==='string'&&data.type.startsWith('live_')){ window.Live.handle(data); return; }
       if(data.type==='group_message'&&data.groupId===groupId){
+        markSeenSoon();
         const msg=data.message;
         if(msg.msgType==='notice'){createNotice(msg.id,msg.content);return;}
         if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
@@ -1695,6 +1762,9 @@ function connectGroupWS(){
             renderRD(rd,msgReaders[data.messageId],t);
           }
         }
+      }else if(data.type==='group_message_reaction'&&data.groupId===groupId){
+        const md=document.querySelector('[data-msg-id="'+CSS.escape(String(data.messageId))+'"]');
+        if(md)renderReacts(md.querySelector('.mwrap'),data.reactions);
       }else if(data.type==='group_message_pinned'&&data.groupId===groupId){
         if(data.pinned){
           const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text,[data-msg-id="${data.messageId}"] .fname`);
