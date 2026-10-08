@@ -104,6 +104,18 @@ async function initDB() {
     await pool.query('ALTER TABLE group_members ALTER COLUMN joined_at SET DEFAULT now()');
     // グループの未読数のため、最後にそのグループを開いた時刻(既読の送信設定とは別。既読を切っていても未読は消える)
     await pool.query('ALTER TABLE group_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMP');
+    // アプリ全体の設定値(Googleドライブの接続など。1キー1行)
+    await pool.query('CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT)');
+    // Googleドライブに置いたメディア(暗号化済み)。誰がどの会話に置いたか(読む・消す権限の確認用)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS drive_files (
+        file_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        size BIGINT,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
     // グループのリアクション(以前は押した人の画面に出るだけで、保存も相手への通知もしていなかった)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS group_message_reactions (

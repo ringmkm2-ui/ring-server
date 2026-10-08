@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.204';
+const CACHE_VERSION = 'v1.28.205';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -354,6 +354,8 @@ self.addEventListener('fetch', event => {
 
   // 他のサイト(Cloudinary・CDN等)はブラウザ任せ
   if (url.origin !== self.location.origin) return;
+  // ドライブのメディア(暗号化済み・大きい)はSWのキャッシュに入れない。ブラウザのHTTPキャッシュに任せる
+  if (url.pathname.startsWith('/m/')) return;
 
   // HTML/CSS/JS等: 端末のキャッシュを先に返し、裏でネットワークから取り直して次回に備える
   // (stale-while-revalidate)。以前はネットワーク優先で、ページを開くたびにサーバー

@@ -233,7 +233,57 @@ class CloudinaryE2EUploader {
   /**
    * Cloudinary に直接アップロード
    */
+  // 公式アカウントのGoogleドライブがつながっていれば、そちらに置く(Cloudinaryの無料枠を使い切らないため)。
+  // 状態は1分だけ覚える。ドライブ側で失敗したら、そのままCloudinaryに送る
+  async driveEnabled() {
+    const now = Date.now();
+    if (this._drive && now - this._drive.ts < 60000) return this._drive.on;
+    let on = false;
+    try {
+      const r = await fetch('/api/drive/status', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('ring_token') || '') } });
+      on = !!(r.ok && (await r.json()).enabled);
+    } catch (e) {}
+    this._drive = { on, ts: now };
+    return on;
+  }
+
+  uploadToDrive(blob, scope, onProgress, signal) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) onProgress(50 + Math.round((e.loaded / e.total) * 50));
+      });
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { const j = JSON.parse(xhr.responseText); if (j && j.url) return resolve(j.url); } catch (e) {}
+        }
+        reject(new Error('drive upload failed: ' + xhr.status));
+      });
+      xhr.addEventListener('error', () => reject(new Error('drive upload failed')));
+      if (signal) {
+        const onAbort = () => { try { xhr.abort(); } catch {} const e = new Error('送信をキャンセルしました'); e.name = 'AbortError'; reject(e); };
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+        xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
+      }
+      xhr.open('POST', '/api/drive/upload');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + (localStorage.getItem('ring_token') || ''));
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.setRequestHeader('X-Scope', scope);
+      xhr.send(blob);
+    });
+  }
+
   async uploadToCloudinary(blob, path, onProgress, signal) {
+    if (await this.driveEnabled()) {
+      try {
+        return await this.uploadToDrive(blob, String(path).split('/').slice(0, -1).join('/'), onProgress, signal);
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        console.warn('[media] drive upload failed, falling back to Cloudinary:', e && e.message);
+        this._drive = { on: false, ts: Date.now() };
+      }
+    }
     const formData = new FormData();
     formData.append('file', blob);
     formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET);
@@ -286,6 +336,8 @@ class CloudinaryE2EUploader {
    * Cloudinary URL から Public ID を抽出
    */
   extractPublicId(url) {
+    const gd = /\/m\/d\/([A-Za-z0-9_-]+)$/.exec(url || '');
+    if (gd) return 'gd_' + gd[1];
     const match = url.match(/\/([^\/]+?)(?:\.[^\.]+)?$/);
     return match ? match[1] : null;
   }
@@ -313,7 +365,12 @@ class CloudinaryE2EUploader {
         throw new Error('chunkLengths missing from metadata (old/incompatible upload format)');
       }
 
-      const response = await fetch(cloudinaryUrl);
+      // ドライブに置いたもの(このサーバーの /m/d/)はログイン中の人だけ取れる。他所には鍵を付けない
+      let sameOriginDrive = false;
+      try { const u = new URL(cloudinaryUrl, location.href); sameOriginDrive = u.origin === location.origin && u.pathname.startsWith('/m/d/'); } catch (e) {}
+      const response = sameOriginDrive
+        ? await fetch(cloudinaryUrl, { headers: { Authorization: 'Bearer ' + (localStorage.getItem('ring_token') || '') } })
+        : await fetch(cloudinaryUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch media: ${response.status}`);
       }
