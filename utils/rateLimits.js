@@ -93,6 +93,7 @@ const searchLimiter = rateLimit({
 });
 
 module.exports = {
+  perUser,
   loginLimiter,
   registerLimiter,
   apiLimiter,

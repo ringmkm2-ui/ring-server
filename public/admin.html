@@ -366,7 +366,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.205 beta</div>
+  <div class="version-badge">Bro Chat v1.28.206 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1078,7 +1078,7 @@ function handleMedia(f, t) {
 
   // サイズ上限（groupchat.htmlと同じ基準。CloudinaryにE2E暗号化して直接アップロードする方式のため、
   // サーバーのJSON body上限(50MB)には影響されない）
-  const maxSize = 100 * 1024 * 1024; // 動画も100MBまで(Cloudinaryの無料枠をすぐ使い切らないように)
+  const maxSize = cloudinaryE2EUploader.maxBytes(); // ドライブにつながっていれば200MB、Cloudinaryなら100MB
   if (f.size > maxSize) {
     alert(i18n.t(t === 'video' ? 'media_type_video' : 'media_type_image') + i18n.t('err_media_too_large_template').replace('{limit}', maxSize / 1024 / 1024));
     document.getElementById('inputBar').classList.remove('media-open');

@@ -7,12 +7,11 @@ const { Readable } = require('stream');
 const db = require('../db/db');
 const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { mediaUploadLimiter } = require('../utils/rateLimits');
 const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
 
 const router = express.Router();
-const MAX_BYTES = 110 * 1024 * 1024; // 端末側の上限(100MB)+暗号化の分
+const MAX_BYTES = 210 * 1024 * 1024; // 端末側の上限(200MB)+暗号化の分
 
 async function isStaff(userId) {
   try { return (await adminUserIds('STAFF_USERS', 'ringmkm2@gmail.com,UMTUK9D')).includes(userId); } catch (e) { return false; }
@@ -82,7 +81,14 @@ router.get('/callback', asyncHandler(async (req, res) => {
 }));
 
 // 暗号化済みのファイルを受け取ってドライブへ。本文はそのまま流す(JSONにしない)
-router.post('/upload', mediaUploadLimiter, verifyToken, asyncHandler(async (req, res) => {
+// 写真をまとめて送ると1分10件(Cloudinary用の制限)にすぐ当たるので、ドライブは1分40件まで
+const rateLimit = require('express-rate-limit');
+const driveUploadLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
+});
+router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req, res) => {
   if (!(await gd.isConnected())) return res.status(503).json({ error: 'drive not connected' });
   const scope = String(req.get('x-scope') || '');
   if (!(await canUseScope(req.userId, scope))) return res.status(403).json({ error: 'この場所には置けません' });

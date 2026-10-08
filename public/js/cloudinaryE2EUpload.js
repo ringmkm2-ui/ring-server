@@ -16,7 +16,9 @@ const CLOUDINARY_IMAGE_LIMIT = 9.5 * 1024 * 1024; // 少し余裕を持たせて
  */
 async function compressImageIfNeeded(file) {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
-  if (file.size <= CLOUDINARY_IMAGE_LIMIT) return file;
+  // Googleドライブに置く時は10MBの壁が無いので、25MBまでは撮ったままの画質で送る
+  const onDrive = window.cloudinaryE2EUploader && window.cloudinaryE2EUploader._drive && window.cloudinaryE2EUploader._drive.on;
+  if (file.size <= (onDrive ? 25 * 1024 * 1024 : CLOUDINARY_IMAGE_LIMIT)) return file;
 
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) return file; // デコードできない形式は諦めて元ファイルのまま送る
@@ -400,5 +402,12 @@ class CloudinaryE2EUploader {
   }
 }
 
+// 1ファイルの上限。ドライブ: 200MB / Cloudinary: 100MB
+// (端末は暗号化・復号の時にファイル全体をメモリに持つので、これ以上はスマホのブラウザが落ちやすい)
+CloudinaryE2EUploader.prototype.maxBytes = function () {
+  return this._drive && this._drive.on ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
+};
 const cloudinaryE2EUploader = new CloudinaryE2EUploader();
 window.cloudinaryE2EUploader = cloudinaryE2EUploader;
+// 上限の表示と画像の圧縮判定に使うので、ページを開いた時に保存先を確かめておく
+if (localStorage.getItem('ring_token')) setTimeout(() => { cloudinaryE2EUploader.driveEnabled().catch(() => {}); }, 1500);
