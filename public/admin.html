@@ -366,7 +366,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.201 beta</div>
+  <div class="version-badge">Bro Chat v1.28.202 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2145,7 +2145,7 @@ function showTypingIndicator() {
     // ふわっと濃くなっていく(跳ねたりくっついたりはしない)
     const bubble = document.createElement('div');
     bubble.className = 'bubble bc-typing-bub';
-    bubble.style.cssText = 'display:flex;align-items:center;gap:5px;padding:12px 14px;min-width:0;border-radius:18px 18px 18px 6px;';
+    bubble.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:5px;padding:12px 14px;min-width:0;width:auto;border-radius:18px 18px 18px 6px;';
     bubble.innerHTML = '<i class="bc-wa-dot"></i><i class="bc-wa-dot"></i><i class="bc-wa-dot"></i>';
     ti.appendChild(av);
     ti.appendChild(bubble);
@@ -2163,8 +2163,11 @@ function showTypingIndicator() {
         + 'html.reduce-motion .bc-wa-dot{animation:none;opacity:.6}';
       document.head.appendChild(style);
     }
-    document.getElementById('chatScreen').appendChild(ti);
   }
+  // 毎回いちばん下へ移す。最初に作った場所に残したままだと、その後のメッセージが下に積まれて
+  // 「入力中の吹き出し」が会話の途中に出てしまっていた(相手の新しいメッセージが消えたように見える)
+  const csEl = document.getElementById('chatScreen');
+  if (csEl.lastElementChild !== ti) csEl.appendChild(ti);
   ti.style.display = 'flex';
   document.getElementById('partnerAv')?.classList.add('typing-pulse');
   clearTimeout(typingHideTimeoutId);
