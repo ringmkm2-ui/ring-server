@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.200 beta</div>
+  <div class="version-badge">Bro Chat v1.28.201 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1429,7 +1429,7 @@ async function loadTalks(animate = false) {
             displayName: f.displayName,
             profilePic: f.profilePic,
             userIdCode: f.userIdCode,
-            lastMessage: 'まだメッセージがありません',
+            lastMessage: t2('no_messages_yet', 'まだメッセージがありません'),
             lastTime: null
           });
         }
@@ -1578,7 +1578,7 @@ function renderTalkList(merged, animate) {
         row.appendChild(timeEl);
         const msgEl = document.createElement('div');
         msgEl.className = 'tmsg';
-        msgEl.textContent = t.lastMessage || '';
+        msgEl.textContent = dmPreview(t);
         body.appendChild(row);
         body.appendChild(msgEl);
 
@@ -1951,6 +1951,73 @@ document.getElementById('openSettings').onclick=()=>{
   history.pushState({ settings: 1 }, '');
 };
 function t2(k, fb) { return window.i18n ? i18n.t(k, fb) : fb; }
+
+// --- トーク一覧の最後のメッセージ(個人チャット) ---
+// サーバーは暗号文(lastCipher)をそのまま返すので、この端末の鍵で開いて本文を出す。
+// 個人チャットの暗号は nacl.box(使い捨てではない鍵の組)なので、一覧で開いても状態は変わらない。
+// 開けない時(別の端末で作った鍵など)は「メッセージ」と出す。
+let _pvRing = null;
+function previewKeyring() {
+  if (_pvRing) return _pvRing;
+  const out = [];
+  const seen = new Set();
+  const push = k => {
+    try {
+      const pk = new Uint8Array(k.publicKey), sk = new Uint8Array(k.secretKey);
+      const id = nacl.util.encodeBase64(pk);
+      if (sk.length === nacl.box.secretKeyLength && !seen.has(id)) { seen.add(id); out.push({ pk: id, sk }); }
+    } catch (e) {}
+  };
+  try { const kp = JSON.parse(localStorage.getItem('e2e_keypair_' + myUserId) || 'null'); if (kp) push(kp); } catch (e) {}
+  try { JSON.parse(localStorage.getItem('e2e_keyring_' + myUserId) || '[]').forEach(push); } catch (e) {}
+  _pvRing = out;
+  setTimeout(() => { _pvRing = null; }, 30000); // 鍵の復元・作り直しを拾えるように時々読み直す
+  return out;
+}
+const _pvCache = new Map(); // 暗号文 -> 平文(同じものを何度も開かない)
+function openPreviewCipher(cipher, fromMe) {
+  if (!cipher || typeof nacl === 'undefined' || !nacl.util) return null;
+  if (_pvCache.has(cipher)) return _pvCache.get(cipher);
+  let text = null;
+  try {
+    const parts = cipher.slice(3).split(':');
+    if (parts.length === 3) {
+      const [senderPub, recipientPub, body] = parts;
+      const peer = nacl.util.decodeBase64(fromMe ? recipientPub : senderPub);
+      const mine = fromMe ? senderPub : recipientPub;
+      const full = nacl.util.decodeBase64(body);
+      const nonce = full.slice(0, nacl.box.nonceLength), box = full.slice(nacl.box.nonceLength);
+      const ring = previewKeyring().slice().sort((a, b) => (b.pk === mine) - (a.pk === mine));
+      for (const k of ring) {
+        const opened = nacl.box.open(box, nonce, peer, k.sk);
+        if (opened) { text = nacl.util.encodeUTF8(opened); break; }
+      }
+    }
+  } catch (e) { text = null; }
+  if (text && text[0] === '{') {
+    try { const j = JSON.parse(text); if (j && typeof j.text === 'string') text = j.text || (j.mediaType ? t2('preview_image', '画像が送信されました') : text); } catch (e) {}
+  }
+  if (text !== null) {
+    text = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (_pvCache.size > 300) _pvCache.clear();
+    _pvCache.set(cipher, text);
+  }
+  return text;
+}
+function dmPreview(t) {
+  switch (t.lastKind) {
+    case 'unsent': return t2('unsent_preview', '（送信取り消し済み）');
+    case 'image': return t2('preview_image', '画像が送信されました');
+    case 'video': return t2('preview_video', '動画が送信されました');
+    case 'audio': return t2('preview_voicemail', '留守番電話が届きました');
+    case 'call': return t2('preview_call', '通話');
+    case 'encrypted': {
+      const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe);
+      return txt !== null && txt !== '' ? txt : t2('message_generic', 'メッセージ');
+    }
+    default: return t.lastMessage || '';
+  }
+}
 
 // --- 2段階認証(設定 > アカウントのセキュリティ) ---
 const secMov = document.getElementById('secMov');
