@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.210 beta</div>
+  <div class="version-badge">Bro Chat v1.28.211 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -682,6 +682,7 @@ window.ensureGroupCrypto = (function () {
     <div class="set-group">
       <div class="set-row"><span data-i18n="version">バージョン</span><span class="set-val" id="setVersion"></span></div>
       <button type="button" class="set-row set-btn" id="setCopyId"><span data-i18n="my_id">自分のID</span><span class="set-val" id="setMyId"></span></button>
+      <button type="button" class="set-row set-btn" id="setRealName"><span data-i18n="real_name">本名</span><span class="set-val" id="setRealNameVal"></span></button>
       <a class="set-row set-btn" href="/privacy.html" style="text-decoration:none;color:inherit"><span data-i18n="privacy_policy">プライバシーポリシー</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5"><path d="M9 18l6-6-6-6"/></svg></a>
       <a class="set-row set-btn" href="/terms.html" style="text-decoration:none;color:inherit"><span data-i18n="terms">利用規約</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5"><path d="M9 18l6-6-6-6"/></svg></a>
       <a class="set-row set-btn" href="mailto:brochatofficialglobal@gmail.com" style="text-decoration:none;color:inherit"><span data-i18n="contact_us">お問い合わせ</span><span class="set-val">brochatofficialglobal@gmail.com</span></a>
@@ -2375,6 +2376,26 @@ fetch('/api/auth/features').then(r => r.json()).then(f => {
   }
 }).catch(() => {});
 
+// 本名(本人と運営だけが見る)。設定の「情報」で確認・修正できる
+(function () {
+  const row = document.getElementById('setRealName');
+  const val = document.getElementById('setRealNameVal');
+  if (!row) return;
+  const hdr = () => ({ Authorization: 'Bearer ' + (localStorage.getItem('ring_token') || ''), 'Content-Type': 'application/json' });
+  fetch('/api/auth/real-name', { headers: hdr() }).then(r => r.ok ? r.json() : null).then(d => { if (d) val.textContent = d.realName || t2('not_set', '未設定'); }).catch(() => {});
+  row.addEventListener('click', async () => {
+    const cur = val.textContent === t2('not_set', '未設定') ? '' : val.textContent;
+    const v = prompt(t2('real_name_edit', '本名(フルネーム)を入力してください。ほかの人には表示されません。'), cur);
+    if (v == null || v.trim() === cur) return;
+    try {
+      const r = await fetch('/api/auth/real-name', { method: 'PUT', headers: hdr(), body: JSON.stringify({ realName: v }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.error || t2('save_failed', '保存できませんでした')); return; }
+      val.textContent = d.realName;
+    } catch (e) { alert(t2('save_failed', '保存できませんでした')); }
+  });
+})();
+
 document.getElementById('setBugReport').addEventListener('click', () => openReport('bug'));
 document.getElementById('setUserReport').addEventListener('click', () => openReport('user'));
 
@@ -2439,7 +2460,7 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
         info.style.cssText = 'flex:1;min-width:0';
         const nm = document.createElement('div');
         nm.style.cssText = 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-        nm.textContent = u.displayName;
+        nm.textContent = u.displayName + (u.realName ? '(' + u.realName + ')' : '');
         const sub = document.createElement('div');
         sub.style.cssText = 'font-size:12px;color:#64748b';
         sub.textContent = mode === 'all'

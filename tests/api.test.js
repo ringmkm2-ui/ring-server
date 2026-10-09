@@ -260,7 +260,7 @@ describe('運営用(staff)', () => {
       } finally { w.close(); }
       // 運営のIDコードと同じユーザー名で登録した人は運営ではない
       const ip = '10.251.0.9';
-      const fake = await S2.req('POST', '/api/auth/register', { ip, body: { username: staff.userIdCode, password: 'Vq8!mZfakexL2q', displayName: 'Fake' } });
+      const fake = await S2.req('POST', '/api/auth/register', { ip, body: { username: staff.userIdCode, password: 'Vq8!mZfakexL2q', displayName: 'Fake', realName: '偽 太郎' } });
       if (fake.status === 200) {
         assert.equal((await S2.req('GET', '/api/staff/me', { token: fake.data.token, ip })).data.staff, false);
         assert.equal((await S2.req('GET', '/api/staff/online', { token: fake.data.token, ip })).status, 404);

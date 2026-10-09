@@ -68,7 +68,7 @@ async function startServer(extraEnv = {}, opts = {}) {
     const ip = nextIp();
     const username = `t_${rnd()}${rnd()}@example.com`;
     const password = 'Vq8!mZ' + rnd() + 'xL2';
-    const r = await req('POST', '/api/auth/register', { ip, body: { username, password, displayName } });
+    const r = await req('POST', '/api/auth/register', { ip, body: { username, password, displayName, realName: '山田 太郎' } });
     if (r.status !== 200 || !r.data || !r.data.token) throw new Error('register failed: ' + JSON.stringify(r));
     const u = { ...r.data, username, password, ip };
     u.call = (method, p, body) => req(method, p, { token: u.token, body, ip });
