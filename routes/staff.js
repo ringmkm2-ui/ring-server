@@ -9,7 +9,7 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const { adminUserIds } = require('../utils/adminNotify');
 
 const router = express.Router();
-const DEFAULT_STAFF = 'ringmkm2@gmail.com,UMTUK9D';
+const { DEFAULT_STAFF } = require('../utils/adminNotify');
 
 let cache = { ids: null, ts: 0 };
 async function staffIds() {
