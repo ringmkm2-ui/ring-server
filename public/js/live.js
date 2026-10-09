@@ -9,12 +9,16 @@
     flip: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-2-3H9L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M9 13.5a3 3 0 0 1 5.2-2M15 12.5a3 3 0 0 1-5.2 2"/><path d="M14.5 9.5v2h-2M9.5 15.5v-2h2"/></svg>',
     mic: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>',
     micOff: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg>',
+    screen: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 10l3-3 3 3M12 7v6"/></svg>',
     eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   };
 
   let cfg = null, ice = ICE_FALLBACK, iceLoaded = false;
   let role = null; // 'host' | 'viewer' | null
   let stream = null, facing = 'user', micOn = true;
+  // 画面共有中: 見ている人に送る映像をカメラから画面に差し替える(カメラ映像は手元に残しておき、やめたら戻す)
+  let screen = null; // { stream, video, mix: AudioContext|null, audio: MediaStreamTrack|null }
+  const canShare = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   let hostId = null, hostName = '', startedAt = 0, tick = null;
   const pcs = new Map(); // 配信者: viewerId -> pc / 見る人: 'host' -> pc
   const el = {};
@@ -35,6 +39,8 @@
 #liveOv.on{display:block}
 #liveOv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 #liveOv video.mirror{transform:scaleX(-1)}
+#liveOv video.wide{object-fit:contain}
+#liveOv .lo-btn[disabled]{opacity:.35;cursor:default}
 #liveOv .lo-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 30px;display:flex;align-items:center;gap:8px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
 #liveOv .lo-badge{background:#e11d48;border-radius:6px;padding:3px 8px;font-weight:800;font-size:12px;letter-spacing:.06em}
 #liveOv .lo-cnt{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.45);border-radius:6px;padding:3px 8px;font-size:12px}
@@ -105,7 +111,12 @@
       const end = document.createElement('button');
       end.type = 'button'; end.className = 'lo-btn lo-end'; end.textContent = T('live_end', '配信を終わる');
       end.addEventListener('click', confirmEnd);
-      el.bot.append(flip, end, mic);
+      el.flip = flip;
+      if (canShare()) {
+        const sc = btn(I.screen, '画面共有', () => (screen ? stopScreen() : startScreen()));
+        el.scr = sc;
+        el.bot.append(flip, sc, end, mic);
+      } else el.bot.append(flip, end, mic);
     }
   }
   function btn(svg, label, fn) {
@@ -135,7 +146,7 @@
   }
 
   async function flipCam() {
-    if (!stream) return;
+    if (!stream || screen) return;
     facing = facing === 'user' ? 'environment' : 'user';
     try {
       const ns = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 720 }, height: { ideal: 1280 } } });
@@ -152,11 +163,70 @@
     const old = pcs.get(viewerId); if (old) old.close();
     const pc = newPc(viewerId);
     pcs.set(viewerId, pc);
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    outTracks().forEach(t => pc.addTrack(t, stream));
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { pc.close(); pcs.delete(viewerId); } };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     send({ type: 'live_signal', groupId: cfg.groupId, to: viewerId, kind: 'offer', sdp: pc.localDescription });
+  }
+
+  // 今見ている人に送るべきトラック(画面共有中は画面と、マイク+画面の音を混ぜたもの)
+  function outTracks() {
+    const v = screen ? screen.video : stream.getVideoTracks()[0];
+    const a = screen && screen.audio ? screen.audio : stream.getAudioTracks()[0];
+    return [a, v].filter(Boolean);
+  }
+  function swap(kind, track) {
+    pcs.forEach(pc => pc.getSenders().forEach(s => { if (s.track && s.track.kind === kind) s.replaceTrack(track).catch(() => {}); }));
+  }
+
+  async function startScreen() {
+    if (!stream || screen) return;
+    let ds;
+    try {
+      ds = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
+    } catch (e) {
+      if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') alert('画面共有を始められませんでした');
+      return;
+    }
+    const v = ds.getVideoTracks()[0];
+    if (!v) { ds.getTracks().forEach(t => t.stop()); return; }
+    try { v.contentHint = 'detail'; } catch (_) {} // 文字がつぶれないように(動きより細かさを優先)
+    screen = { stream: ds, video: v, mix: null, audio: null };
+    // 画面(タブ・PC)の音もある時は、マイクと混ぜて1本にする(つなぎ直しをせずに差し替えられる)
+    const da = ds.getAudioTracks()[0];
+    const mic = stream.getAudioTracks()[0];
+    if (da && window.AudioContext) {
+      try {
+        const ctx = new AudioContext();
+        const dest = ctx.createMediaStreamDestination();
+        ctx.createMediaStreamSource(new MediaStream([da])).connect(dest);
+        if (mic) ctx.createMediaStreamSource(new MediaStream([mic])).connect(dest);
+        screen.mix = ctx; screen.audio = dest.stream.getAudioTracks()[0];
+        swap('audio', screen.audio);
+      } catch (_) {}
+    }
+    swap('video', v);
+    v.addEventListener('ended', stopScreen); // ブラウザの「共有を停止」を押された時
+    el.video.srcObject = new MediaStream([v]);
+    el.video.classList.remove('mirror');
+    if (el.scr) el.scr.classList.add('off');
+    if (el.flip) el.flip.disabled = true;
+  }
+
+  function stopScreen() {
+    if (!screen) return;
+    const s = screen; screen = null;
+    if (stream) {
+      const cam = stream.getVideoTracks()[0], mic = stream.getAudioTracks()[0];
+      if (cam) swap('video', cam);
+      if (s.audio && mic) swap('audio', mic);
+      el.video.srcObject = stream; el.video.classList.toggle('mirror', facing === 'user');
+    }
+    s.stream.getTracks().forEach(t => t.stop());
+    if (s.mix) s.mix.close().catch(() => {});
+    if (el.scr) el.scr.classList.remove('off');
+    if (el.flip) el.flip.disabled = false;
   }
 
   function confirmEnd() { if (confirm(T('live_end_q', '配信を終わりますか?'))) stop(); }
@@ -194,6 +264,7 @@
   // ---- 終わる ----
   function stop(silent) {
     if (role) send({ type: role === 'host' ? 'live_end' : 'live_leave', groupId: cfg.groupId });
+    if (screen) stopScreen();
     pcs.forEach(pc => { try { pc.close(); } catch (_) {} });
     pcs.clear();
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
@@ -255,6 +326,8 @@
   function init(c) {
     cfg = c;
     build();
+    // 横長(画面共有など)は切らずに全体を見せる。縦長のカメラは今まで通り画面いっぱい
+    el.video.addEventListener('resize', () => { el.video.classList.toggle('wide', el.video.videoWidth > el.video.videoHeight * 1.1); });
     el.video.addEventListener('click', () => { if (role === 'viewer' && el.video.muted) { el.video.muted = false; el.msg.textContent = ''; } });
     window.addEventListener('pagehide', () => { if (role) stop(true); });
   }

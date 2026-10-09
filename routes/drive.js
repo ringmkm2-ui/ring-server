@@ -24,8 +24,12 @@ async function canUseScope(userId, scope) {
   if (dm) return dm[1].split('_').includes(userId);
   const gr = /^brochat\/groups\/([A-Za-z0-9-]+)$/.exec(scope);
   if (gr) return !!(await db.get('SELECT 1 AS ok FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [gr[1], userId]));
+  // 投稿(タイムライン)の画像・動画。自分の分だけ
+  const po = /^brochat\/posts\/([A-Za-z0-9_-]+)$/.exec(scope);
+  if (po) return po[1] === userId;
   return false;
 }
+const isPostScope = scope => /^brochat\/posts\//.test(scope || '');
 // 読む時は、抜けたメンバーでも当時のメッセージを見られるように left_at は問わない
 async function canReadScope(userId, scope) {
   const dm = /^brochat\/dm\/([A-Za-z0-9_-]+)$/.exec(scope || '');
@@ -98,9 +102,16 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   const size = Number(req.get('content-length'));
   if (!Number.isFinite(size) || size <= 0) return res.status(411).json({ error: 'Content-Lengthが必要です' });
   if (size > MAX_BYTES) return res.status(413).json({ error: 'ファイルが大きすぎます' });
+  // 投稿は暗号化しないので、ブラウザがそのまま再生できるよう本当の種類で置く。トークは暗号文なので中身不明のまま
+  const post = isPostScope(scope);
+  let mime = 'application/octet-stream';
+  if (post) {
+    mime = String(req.get('x-content-type') || '').toLowerCase();
+    if (!/^(image\/(jpeg|png|gif|webp|heic|heif|avif)|video\/(mp4|quicktime|webm|x-matroska|3gpp))$/.test(mime)) return res.status(415).json({ error: 'この種類のファイルは投稿できません' });
+  }
   let out;
   try {
-    out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}.bin`);
+    out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}${post ? '' : '.bin'}`, mime);
   } catch (e) {
     console.error('[drive] upload failed:', e.message);
     return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
@@ -108,7 +119,7 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
   console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
   const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  res.json({ url: `${base}/m/d/${out.id}`, publicId: 'gd_' + out.id });
+  res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
 }));
 
 // GET /m/d/:id (index.js から付ける。/api の回数制限に掛けないため)
@@ -129,6 +140,28 @@ async function serveFile(req, res) {
   try { await pipeline(Readable.fromWeb(r.body), res); } catch (e) { /* 途中で閉じられた */ }
 }
 
+// GET /m/p/:id 投稿の画像・動画。投稿のメディアはCloudinaryでも推測できないURLで誰でも見られる形なので、
+// ここもログイン不要(<video src>はAuthorizationを付けられない)。トーク用のファイルはここからは出さない。
+// Rangeを通すので、動画の途中から再生・シークができる(iPhoneのSafariはこれが無いと動画を再生しない)
+async function servePublic(req, res) {
+  const id = String(req.params.id || '');
+  if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return res.status(404).end();
+  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
+  if (!row || !isPostScope(row.scope)) return res.status(404).end();
+  const range = typeof req.headers.range === 'string' && /^bytes=\d*-\d*$/.test(req.headers.range) ? req.headers.range : null;
+  let r;
+  try { r = await gd.openDownload(id, range); } catch (e) { return res.status(503).end(); }
+  if (r.status === 416) { res.status(416); const cr = r.headers.get('content-range'); if (cr) res.set('Content-Range', cr); return res.end(); }
+  if (!r.ok || !r.body) return res.status(r.status === 404 ? 404 : 502).end();
+  res.status(r.status === 206 ? 206 : 200);
+  for (const h of ['content-type', 'content-length', 'content-range']) { const v = r.headers.get(h); if (v) res.set(h, v); }
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (req.method === 'HEAD') { try { await r.body.cancel(); } catch (_) {} return res.end(); }
+  try { await pipeline(Readable.fromWeb(r.body), res); } catch (e) { /* 途中で閉じられた(シークした等) */ }
+}
+
 // 送信取り消し等で消す(本人が置いたファイルだけ)
 async function removeOwned(userId, publicId) {
   const id = String(publicId || '').replace(/^gd_/, '');
@@ -139,4 +172,4 @@ async function removeOwned(userId, publicId) {
   return true;
 }
 
-module.exports = { router, serveFile, removeOwned };
+module.exports = { router, serveFile, servePublic, removeOwned };

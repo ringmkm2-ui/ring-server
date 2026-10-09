@@ -264,6 +264,7 @@ async function main() {
   const driveRoutes = require('./routes/drive');
   app.use('/api/drive', driveRoutes.router);
   app.get('/m/d/:id', require('./utils/authMiddleware').verifyToken, require('./utils/asyncHandler').asyncHandler(driveRoutes.serveFile));
+  app.get('/m/p/:id', require('./utils/asyncHandler').asyncHandler(driveRoutes.servePublic)); // 投稿の画像・動画(ログイン不要)
 
   // 未定義APIルートへのアクセス(404)。Expressのデフォルト404ページは
   // 環境によってはスタックトレース相当の情報を含むHTMLを返すことがあるため、
