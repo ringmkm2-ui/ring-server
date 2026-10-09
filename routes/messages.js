@@ -54,7 +54,7 @@ function toPreview(content, encrypted) {
   }
   if (encrypted) {
     const out = { kind: 'encrypted', text: '暗号化されたメッセージ' };
-    if (typeof content === 'string' && content.startsWith('e2:') && content.length <= 8000) out.cipher = content;
+    if (typeof content === 'string' && /^e[23]:/.test(content) && content.length <= 8000) out.cipher = content;
     return out;
   }
   return { kind: 'text', text: content };
@@ -75,8 +75,12 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     const {
       recipientId, content, mediaType, mediaData,
       mediaUrl, mediaPublicId, encryptedMetadata, chunkCount,
-      encrypted, repliedToId,
+      encrypted, repliedToId, mediaKeys,
     } = req.body;
+    // 画像・動画の鍵を、相手と自分の全端末に向けて包んだもの(e3)。無ければ従来どおり
+    if (mediaKeys != null && (typeof mediaKeys !== 'string' || !mediaKeys.startsWith('e3:') || mediaKeys.length > 8000 || !/^[A-Za-z0-9+/=:.,]+$/.test(mediaKeys.slice(3)))) {
+      return res.status(400).json({ error: 'mediaKeysの形式が不正です' });
+    }
     if (!recipientId || typeof recipientId !== 'string' || !content) {
       return res.status(400).json({ error: 'recipientId and content required' });
     }
@@ -135,6 +139,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         mediaPublicId: mediaPublicId || null,
         encryptedMetadata: encryptedMetadata || null,
         chunkCount: chunkCount || null,
+        ...(mediaKeys ? { mediaKeys } : {}),
       });
     } else if (mediaData) {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });

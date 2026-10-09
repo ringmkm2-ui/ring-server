@@ -342,6 +342,7 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/e2eMulti.js"></script>
 <script>
 // libsodium(1.8MB)はグループ作成の時しか使わないのに、トーク一覧を開くたびに同期で
 // 読み込み・解析していて、Galaxy A25クラスの端末だと表示が数百ms止まっていた。
@@ -530,7 +531,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.211 beta</div>
+  <div class="version-badge">Bro Chat v1.28.212 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1989,7 +1990,10 @@ function openPreviewCipher(cipher, fromMe) {
   let text = null;
   try {
     const parts = cipher.slice(3).split(':');
-    if (parts.length === 3) {
+    if (window.E2EMulti && E2EMulti.isMulti(cipher)) {
+      const out = E2EMulti.open(cipher, previewKeyring());
+      if (out) text = nacl.util.encodeUTF8(out);
+    } else if (parts.length === 3) {
       const [senderPub, recipientPub, body] = parts;
       const peer = nacl.util.decodeBase64(fromMe ? recipientPub : senderPub);
       const mine = fromMe ? senderPub : recipientPub;

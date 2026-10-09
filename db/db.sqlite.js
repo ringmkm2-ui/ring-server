@@ -95,6 +95,14 @@ async function initDB() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS user_pubkeys (
+      user_id TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, public_key)
+    );
+
     CREATE TABLE IF NOT EXISTS password_resets (
       username TEXT PRIMARY KEY,
       code_hash TEXT NOT NULL,

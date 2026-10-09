@@ -148,6 +148,16 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT now()
       )
     `);
+    // 端末ごとの公開鍵(PCとスマホの両方で読めるように。utils/deviceKeys.js)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_pubkeys (
+        user_id TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        created_at BIGINT NOT NULL,
+        last_seen_at BIGINT NOT NULL,
+        PRIMARY KEY (user_id, public_key)
+      )
+    `);
     // パスワード再設定コード(メール認証コードとは別テーブル。同時に進行しても干渉しない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_resets (
