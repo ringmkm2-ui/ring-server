@@ -6,11 +6,11 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.211';
+const CACHE_VERSION = 'v1.28.212';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
-try { importScripts('/js/nacl.min.js', '/js/nacl-util.min.js'); } catch (e) {}
+try { importScripts('/js/nacl.min.js', '/js/nacl-util.min.js', '/js/e2eMulti.js'); } catch (e) {}
 function idbGetKeyring() {
   return new Promise(resolve => {
     try {
@@ -32,6 +32,12 @@ async function swDecrypt(cipher, senderPubB64) {
     const ring = await idbGetKeyring();
     if (!Array.isArray(ring) || !ring.length) return null;
     let body = cipher, embS = null, embR = null;
+    if (self.E2EMulti && E2EMulti.isMulti(cipher)) {
+      const out = E2EMulti.open(cipher, ring.map(k => { try { return { pk: nacl.util.encodeBase64(new Uint8Array(k.publicKey)), sk: new Uint8Array(k.secretKey) }; } catch (e) { return null; } }).filter(Boolean));
+      if (!out) return null;
+      let t = nacl.util.encodeUTF8(out);
+      return t.length > 200 ? t.slice(0, 200) + '…' : t;
+    }
     if (cipher.startsWith('e2:')) { const p = cipher.slice(3).split(':'); if (p.length !== 3) return null; [embS, embR, body] = p; }
     const full = nacl.util.decodeBase64(body);
     const nonce = full.slice(0, 24), box = full.slice(24);
@@ -66,6 +72,7 @@ const urlsToCache = [
   '/js/i18n.js',
   '/js/nacl.min.js',
   '/js/nacl-util.min.js',
+  '/js/e2eMulti.js',
   '/js/e2eKeys.js',
   '/js/globalBg.js',
   '/js/globalSettings.js',

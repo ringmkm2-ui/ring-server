@@ -13,6 +13,7 @@ const { blockState, bumpBlockVersion } = require('../utils/relations');
 
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
+const deviceKeys = require('../utils/deviceKeys');
 const router = express.Router();
 const picUploads = new Map(); // userId -> [アップロード時刻]
 
@@ -21,7 +22,8 @@ router.get('/me', auth, async (req, res) => {
   try {
     const user = await db.get('SELECT id, user_id, username, display_name, profile_pic, bio, public_key FROM users WHERE id = ?', [req.userId]);
     if (!user) return res.status(404).json({ error: 'user not found' });
-    res.json({ userId: user.id, userIdCode: user.user_id, username: user.username, displayName: user.display_name, profilePic: user.profile_pic, bio: user.bio, publicKey: user.public_key });
+    const publicKeys = await deviceKeys.activeKeys(user.id);
+    res.json({ userId: user.id, userIdCode: user.user_id, username: user.username, displayName: user.display_name, profilePic: user.profile_pic, bio: user.bio, publicKey: user.public_key, publicKeys });
   } catch (e) {
     sendServerError(res, e);
   }
@@ -107,10 +109,11 @@ router.post('/publickey', auth, async (req, res) => {
     if (typeof publicKey !== 'string' || publicKey.length > 200) {
       return res.status(400).json({ error: '公開鍵の形式が不正です' });
     }
-    if (!/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
+    if (!/^[A-Za-z0-9+/=]+$/.test(publicKey) || publicKey.length !== 44) {
       return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
     }
     await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
+    await deviceKeys.touch(req.userId, publicKey);
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);
@@ -154,9 +157,10 @@ router.put('/key-backup', auth, async (req, res) => {
 // 特定ユーザーの公開鍵を取得（メッセージ暗号化のため）
 router.get('/publickey/:userId', auth, async (req, res) => {
   try {
-    const user = await db.get('SELECT public_key FROM users WHERE id = ?', [req.params.userId]);
+    const user = await db.get('SELECT id, public_key FROM users WHERE id = ?', [req.params.userId]);
     if (!user) return res.status(404).json({ error: 'user not found' });
-    res.json({ publicKey: user.public_key });
+    const publicKeys = (await deviceKeys.activeKeysMany([user])).get(user.id) || [];
+    res.json({ publicKey: user.public_key, publicKeys });
   } catch (e) {
     sendServerError(res, e);
   }
@@ -245,7 +249,8 @@ router.get('/list', auth, async (req, res) => {
     const myBlocks = new Set(blockedRows.map(r => r.blocked_id));
     const friends = (await db.all(`SELECT id, user_id, display_name, profile_pic, public_key FROM users WHERE id IN (${placeholders})`, ids))
       .filter(u => !myBlocks.has(u.id));
-    res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, publicKey: u.public_key })));
+    const keys = await deviceKeys.activeKeysMany(friends);
+    res.json(friends.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic, publicKey: u.public_key, publicKeys: keys.get(u.id) || [] })));
   } catch (e) {
     sendServerError(res, e);
   }

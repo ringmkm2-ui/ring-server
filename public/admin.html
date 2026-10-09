@@ -350,6 +350,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/e2eMulti.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
@@ -366,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.211 beta</div>
+  <div class="version-badge">Bro Chat v1.28.212 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -768,14 +769,21 @@ async function _getOrCreateMyKeyPair() {
 
   // サーバー側の公開鍵とローカルの鍵が一致しているか確認し、違えば登録し直す。
   // 履歴の読み込みをこの往復で待たせないよう裏で行う(ローカルの鍵はもう使える)
+  // 端末ごとに鍵が違ってよい(PCとスマホ)。この端末の鍵がサーバーの一覧に無ければ足す。
+  // 以前は「サーバーの1本と違えば上書き」だったので、2台の端末が開くたびに登録を奪い合っていた
   const kp = myKeyPair;
   (async () => {
     try {
-      const myLocalPublicKeyB64 = nacl.util.encodeBase64(kp.publicKey);
+      const mine = nacl.util.encodeBase64(kp.publicKey);
       const me = await api('/api/friends/me');
-      if (!me || me.publicKey !== myLocalPublicKeyB64) {
-        console.warn('サーバー側の公開鍵とローカルの鍵が不一致です。再登録します。');
+      const list = (me && Array.isArray(me.publicKeys)) ? me.publicKeys : (me && me.publicKey ? [me.publicKey] : []);
+      _myKeysCache = { at: Date.now(), list };
+      const stampKey = 'e2e_touch_' + myUserId;
+      const last = Number(localStorage.getItem(stampKey) || 0);
+      if (!list.includes(mine) || Date.now() - last > 24 * 3600 * 1000) {
         await registerMyPublicKey(kp);
+        localStorage.setItem(stampKey, String(Date.now()));
+        _myKeysCache = null;
       }
     } catch (err) {
       console.error('公開鍵の整合性チェックに失敗しました:', err);
@@ -816,12 +824,55 @@ async function getRecipientPublicKey(userId, forceRefresh = false) {
   return null;
 }
 
+// 相手の全端末の公開鍵(Base64)。送る時は毎回サーバーに聞く(相手が端末を増やしていても届くように)
+async function getRecipientKeyList(userId) {
+  try {
+    const data = await api('/api/friends/publickey/' + userId);
+    const list = Array.isArray(data.publicKeys) && data.publicKeys.length ? data.publicKeys : (data.publicKey ? [data.publicKey] : []);
+    if (data.publicKey) { try { publicKeyCache.set(userId, nacl.util.decodeBase64(data.publicKey)); } catch (e) {} }
+    list.slice().reverse().forEach(k => rememberPeerKey(userId, k));
+    return list.filter(k => { try { return nacl.util.decodeBase64(k).length === nacl.box.publicKeyLength; } catch (e) { return false; } });
+  } catch (e) {
+    const c = publicKeyCache.get(userId);
+    return c ? [nacl.util.encodeBase64(c)] : [];
+  }
+}
+// 自分のほかの端末の公開鍵(自分が送ったメッセージを、自分のPCとスマホの両方で読めるように)
+let _myKeysCache = null;
+async function getMyOtherKeys(fresh) {
+  const mine = nacl.util.encodeBase64((await getOrCreateMyKeyPair()).publicKey);
+  if (fresh || !_myKeysCache || Date.now() - _myKeysCache.at > 60000) {
+    try {
+      const me = await api('/api/friends/me');
+      _myKeysCache = { at: Date.now(), list: Array.isArray(me.publicKeys) ? me.publicKeys : (me.publicKey ? [me.publicKey] : []) };
+    } catch (e) { _myKeysCache = { at: Date.now(), list: [] }; }
+  }
+  return _myKeysCache.list.filter(k => k !== mine);
+}
+// 自分の鍵を E2EMulti.open に渡す形にする
+function ringForMulti() {
+  return loadMyKeyring().map(k => ({ pk: nacl.util.encodeBase64(k.publicKey), sk: k.secretKey }));
+}
+// 相手の全端末 + 自分のほかの端末。1本だけなら null(従来の e2 で送る = 古いアプリでも読める)
+async function multiRecipients(recipientId) {
+  // 送るたびに両方とも聞き直す(たった今増えた端末にも届くように)
+  const [peers, mineOthers] = await Promise.all([getRecipientKeyList(recipientId), getMyOtherKeys(true)]);
+  if (!peers.length) return { peers, all: null };
+  if (peers.length === 1 && !mineOthers.length) return { peers, all: null };
+  return { peers, all: [...peers, ...mineOthers] };
+}
+
 // メッセージ内容を暗号化（自分の秘密鍵 + 相手の公開鍵）
 async function encryptMessage(plaintext, recipientId) {
   const myKeys = await getOrCreateMyKeyPair();
   // 送信時は毎回サーバーの最新鍵を取りに行く。古いキャッシュで暗号化すると
   // 相手が鍵を作り直していた場合に相手側で絶対に開けない
-  const recipientPublicKey = (await getRecipientPublicKey(recipientId, true)) || (await getRecipientPublicKey(recipientId));
+  const { peers, all } = await multiRecipients(recipientId);
+  if (all && window.E2EMulti) {
+    const sealed = E2EMulti.seal(nacl.util.decodeUTF8(plaintext), myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
+    if (sealed) return { encrypted: true, content: sealed };
+  }
+  const recipientPublicKey = peers.length ? nacl.util.decodeBase64(peers[0]) : ((await getRecipientPublicKey(recipientId, true)) || (await getRecipientPublicKey(recipientId)));
 
   if (!recipientPublicKey) {
     console.warn('相手の公開鍵が見つかりません。暗号化なしで送信します。');
@@ -862,6 +913,11 @@ function uniqB64(list) {
 // senderId が自分なら「自分が送ったメッセージ」なので、相手の公開鍵で開く
 async function decryptMessage(encryptedString, senderId) {
   await getOrCreateMyKeyPair();
+  if (window.E2EMulti && E2EMulti.isMulti(encryptedString)) {
+    const out = E2EMulti.open(encryptedString, ringForMulti());
+    if (!out) console.warn('復号化に失敗しました(e3: この端末あての分がありません)');
+    return out ? nacl.util.encodeUTF8(out) : null;
+  }
   const iAmSender = String(senderId) === String(myUserId);
   const peerId = iAmSender ? otherId : senderId;
   const parsed = parseCipher(encryptedString);
@@ -1123,13 +1179,20 @@ async function sendMediaViaCloudinary(f, t) {
     // 共有シークレット(nacl.box.before)。これはbox暗号と同じ数学的基盤で、
     // 対称鍵(secretbox)として cloudinaryE2EUpload.js にそのまま渡せる。
     const myKeys = await getOrCreateMyKeyPair();
-    const recipientPublicKey = await getRecipientPublicKey(otherId);
+    // 相手か自分が複数の端末を使っている時は、ファイル用の鍵を新しく作って、その鍵を全端末あてに包む(mediaKeys)
+    const { peers, all } = await multiRecipients(otherId);
+    const recipientPublicKey = peers.length ? nacl.util.decodeBase64(peers[0]) : await getRecipientPublicKey(otherId);
     if (!recipientPublicKey) {
       alert(i18n.t('err_encryption_not_ready'));
       sendBtn.innerHTML = paperPlane;
       return;
     }
-    const sharedKey = nacl.box.before(recipientPublicKey, myKeys.secretKey);
+    let sharedKey, mediaKeys = null;
+    if (all && window.E2EMulti) {
+      sharedKey = nacl.randomBytes(32);
+      mediaKeys = E2EMulti.seal(sharedKey, myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
+    }
+    if (!mediaKeys) sharedKey = nacl.box.before(recipientPublicKey, myKeys.secretKey);
 
     const caption = `[${t === 'image' ? '画像' : t === 'audio' ? '留守番電話' : '動画'}]`;
     const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
@@ -1162,6 +1225,7 @@ async function sendMediaViaCloudinary(f, t) {
         encryptedMetadata: metadata.encryptedMetadata,
         chunkCount: metadata.chunkCount,
         encrypted: true,
+        ...(mediaKeys ? { mediaKeys } : {}),
       }),
     });
 
@@ -1171,7 +1235,7 @@ async function sendMediaViaCloudinary(f, t) {
       const ownContent = JSON.stringify({
         text: '', mediaType: t, mediaUrl: metadata.cloudinaryUrl,
         mediaPublicId: metadata.cloudinaryPublicId, encryptedMetadata: metadata.encryptedMetadata,
-        chunkCount: metadata.chunkCount,
+        chunkCount: metadata.chunkCount, ...(mediaKeys ? { mediaKeys } : {}),
       });
       cacheOwnPlaintext(data.message.id, ownContent);
       const displayMsg = { ...data.message, content: ownContent };
@@ -1282,7 +1346,14 @@ async function loadLazyMedia(placeholder) {
   if (localSrc) mediaSrc = localSrc;
   else if (mediaSrc && mediaSrc.startsWith('cloudinary:') && placeholder._cloudinaryMedia) {
     try {
-      const keys = await candidateSharedKeys();
+      let keys;
+      const mk = placeholder._cloudinaryMedia.mediaKeys;
+      if (mk && window.E2EMulti) {
+        await getOrCreateMyKeyPair();
+        const k = E2EMulti.open(mk, ringForMulti());
+        if (!k) throw new Error('この端末あての鍵がありません');
+        keys = [k];
+      } else keys = await candidateSharedKeys();
       if (!keys.length) throw new Error('相手の公開鍵が見つかりません');
 
       // 鍵の世代が変わっていても開けるよう、候補を順に試す
@@ -1497,6 +1568,7 @@ function parseMsgContent(content, msg) {
         cloudinaryMedia: {
           mediaUrl: parsed.mediaUrl,
           encryptedMetadata: parsed.encryptedMetadata,
+          mediaKeys: parsed.mediaKeys || null,
         },
       };
     } else if (parsed && parsed.media && parsed.mediaType) {

@@ -68,13 +68,15 @@ async function _getOrCreateMyKeyPair() {
       secretKey: new Uint8Array(keyObj.secretKey)
     };
 
-    // サーバー側との鍵一致確認
+    // この端末の鍵がサーバーの一覧に無ければ足す(端末ごとに鍵が違ってよい。上書きし合わない)
     try {
       const myLocalPublicKeyB64 = window.nacl.util.encodeBase64(myKeyPair.publicKey);
       const me = await api('/api/friends/me');
-      if (!me || me.publicKey !== myLocalPublicKeyB64) {
-        console.warn('[e2eKeys] Public key mismatch, re-registering...');
+      const list = (me && Array.isArray(me.publicKeys)) ? me.publicKeys : (me && me.publicKey ? [me.publicKey] : []);
+      const stampKey = 'e2e_touch_' + window.myUserId;
+      if (!list.includes(myLocalPublicKeyB64) || Date.now() - Number(localStorage.getItem(stampKey) || 0) > 24 * 3600 * 1000) {
         await registerMyPublicKey(myKeyPair);
+        localStorage.setItem(stampKey, String(Date.now()));
       }
     } catch (err) {
       console.error('[e2eKeys] Public key verification error:', err);
