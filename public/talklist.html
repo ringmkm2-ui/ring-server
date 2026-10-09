@@ -530,7 +530,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.208 beta</div>
+  <div class="version-badge">Bro Chat v1.28.209 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -694,7 +694,7 @@ window.ensureGroupCrypto = (function () {
 <!-- 2段階認証モーダル -->
 <div class="mov" id="secMov">
   <div class="mc">
-    <h3 class="mtitle" data-i18n="twofa_title">2段階認証</h3>
+    <h3 class="mtitle" id="secTitle" data-i18n="twofa_title">2段階認証</h3>
     <div id="secBody"></div>
   </div>
 </div>
@@ -2210,7 +2210,9 @@ async function appendSessions() {
   };
   render(d.sessions);
 }
-document.getElementById('setSecurity').addEventListener('click', openSec);
+// 同じ箱を「ログイン中の端末」でも使うので、開くたびに見出しを付け直す(前は端末一覧にも「2段階認証」と出ていた)
+function setSecTitle(key, fb) { const h = document.getElementById('secTitle'); if (h) { h.setAttribute('data-i18n', key); h.textContent = t2(key, fb); } }
+document.getElementById('setSecurity').addEventListener('click', () => { setSecTitle('twofa_title', '2段階認証'); openSec(); });
 secMov.onclick = e => { if (e.target === secMov) closeSec(); };
 // 設定はページなので、端末の「戻る」で閉じる
 window.addEventListener('popstate', () => { if (settingsMov.classList.contains('open')) settingsMov.classList.remove('open'); });
@@ -2264,6 +2266,7 @@ for (const [id, key] of Object.entries(SERVER_SWITCHES)) {
 document.getElementById('setSessions')?.addEventListener('click', async () => {
   const token = localStorage.getItem('ring_token');
   if (!token) return;
+  setSecTitle('sessions_title', 'ログイン中の端末');
   secMov.classList.add('open');
   history.pushState({ sec: 1 }, '');
   secBody.textContent = '';
