@@ -2,7 +2,7 @@
 // サーバーのページをそのままウィンドウで開く。中身(画面・機能)はサーバー側にあるので、
 // サーバーを更新すればこのexeを作り直さなくても最新になる。
 // 幅900px以上では、トーク一覧とチャットが左右に並ぶPC用レイアウトになる。
-const { app, BrowserWindow, Menu, Tray, shell, session, nativeTheme, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, session, nativeTheme, nativeImage, desktopCapturer, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -122,11 +122,29 @@ app.on('before-quit', () => { quitting = true; });
 
 app.whenReady().then(() => {
   // カメラ・マイク(通話)、通知、クリップボードは Bro Chat のページにだけ許可する
-  const ALLOW = new Set(['media', 'notifications', 'clipboard-sanitized-write', 'clipboard-read', 'fullscreen', 'mediaKeySystem']);
+  const ALLOW = new Set(['media', 'notifications', 'clipboard-sanitized-write', 'clipboard-read', 'fullscreen', 'mediaKeySystem', 'display-capture']);
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb, details) => {
     cb(ALLOW.has(perm) && sameOrigin(details.requestingUrl || wc.getURL()));
   });
   session.defaultSession.setPermissionCheckHandler((wc, perm, origin) => ALLOW.has(perm) && origin === APP_ORIGIN);
+
+  // ライブ配信の画面共有。Electronはブラウザと違って選ぶ画面を自分で出す必要がある(無いと共有が失敗する)
+  session.defaultSession.setDisplayMediaRequestHandler(async (req, cb) => {
+    try {
+      if (!sameOrigin(req.securityOrigin || (req.frame && req.frame.url) || '')) return cb({});
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+      const list = sources.filter(s => s.name && !/^Bro Chat$/.test(s.name)).slice(0, 10);
+      if (!list.length) return cb({});
+      const labels = list.map((s, i) => (s.id.startsWith('screen:') ? '画面全体' + (list.filter(x => x.id.startsWith('screen:')).length > 1 ? ' ' + (i + 1) : '') : s.name.slice(0, 40)));
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'none', title: '画面共有', message: 'どこを共有しますか?',
+        buttons: [...labels, 'やめる'], cancelId: labels.length, noLink: true,
+      });
+      if (response >= list.length) return cb({});
+      // 画面全体のときはPCの音も一緒に送る(Windowsのみ)
+      cb(list[response].id.startsWith('screen:') && process.platform === 'win32' ? { video: list[response], audio: 'loopback' } : { video: list[response] });
+    } catch (e) { cb({}); }
+  });
 
   // メニューバーは出さないが、再読み込み・拡大縮小・全画面のショートカットは使えるようにする
   Menu.setApplicationMenu(Menu.buildFromTemplate([

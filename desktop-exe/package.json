@@ -1,6 +1,6 @@
 {
   "name": "brochat-desktop",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Bro Chat デスクトップ版",
   "main": "main.js",
   "private": true,

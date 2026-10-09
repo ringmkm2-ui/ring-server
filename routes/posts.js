@@ -24,7 +24,17 @@ function isValidMediaUrl(value) {
   // 投稿メディアはCloudinaryに直接アップロードされたURLだけ。
   // 以前は Base64 の data: URI (最大約40MB)も受け付けていて、数件投稿するだけで
   // タイムラインを開いた人ごとにサーバーのメモリを使い切れた
-  return value.length <= 500 && /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/[A-Za-z0-9_\-./%]+$/.test(value);
+  if (value.length > 500) return false;
+  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/[A-Za-z0-9_\-./%]+$/.test(value)) return true;
+  // 100MBを超える動画はGoogleドライブ(このサーバーの /m/p/<id>)に置く
+  return !!driveIdOf(value);
+}
+const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
+function driveIdOf(url) {
+  const m = /^https?:\/\/([A-Za-z0-9.-]+(?::\d+)?)\/m\/p\/([A-Za-z0-9_-]{10,100})$/.exec(url || '');
+  if (!m) return null;
+  const okHost = SELF_HOSTS.has(m[1]) && url.startsWith('https:') || process.env.NODE_ENV !== 'production' && /^localhost(:\d+)?$/.test(m[1]);
+  return okHost ? m[2] : null;
 }
 
 // 投稿者情報を付与して返すための共通SELECT。JOINで都度取得すると
@@ -141,6 +151,9 @@ router.delete('/:postId', verifyToken, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: '自分の投稿のみ削除できます' });
   }
   await db.run('UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.postId]);
+  // ドライブに置いた動画は、投稿を消したら一緒に消す(容量を空ける)
+  const did = driveIdOf(post.media_url);
+  if (did) require('./drive').removeOwned(req.user.userId, did).catch(e => console.warn('[posts] drive remove failed:', e.message));
   res.json({ ok: true });
 }));
 

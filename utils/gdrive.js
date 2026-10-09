@@ -103,7 +103,7 @@ async function folderId() {
 }
 
 // 受け取ったリクエスト本文(暗号化済みのバイト列)を、そのままドライブへ流し込む(メモリに全部ためない)
-async function uploadStream(stream, size, name) {
+async function uploadStream(stream, size, name, mime = 'application/octet-stream') {
   const tok = await accessToken();
   const parent = await folderId();
   const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,size', {
@@ -111,16 +111,16 @@ async function uploadStream(stream, size, name) {
     headers: {
       Authorization: 'Bearer ' + tok,
       'Content-Type': 'application/json; charset=UTF-8',
-      'X-Upload-Content-Type': 'application/octet-stream',
+      'X-Upload-Content-Type': mime,
       'X-Upload-Content-Length': String(size),
     },
-    body: JSON.stringify({ name, parents: [parent], mimeType: 'application/octet-stream' }),
+    body: JSON.stringify({ name, parents: [parent], mimeType: mime }),
   });
   const loc = init.headers.get('location');
   if (!init.ok || !loc) throw new Error('upload init failed: ' + init.status);
   const put = await fetch(loc, {
     method: 'PUT',
-    headers: { 'Content-Length': String(size), 'Content-Type': 'application/octet-stream' },
+    headers: { 'Content-Length': String(size), 'Content-Type': mime },
     body: stream,
     duplex: 'half',
   });
@@ -129,11 +129,12 @@ async function uploadStream(stream, size, name) {
   return { id: j.id, size: Number(j.size) || size };
 }
 
-async function openDownload(fileId) {
+// range: 動画の途中から再生する時にブラウザが送ってくる "bytes=..." をそのまま渡す
+async function openDownload(fileId, range) {
   const tok = await accessToken();
-  return fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
-    headers: { Authorization: 'Bearer ' + tok },
-  });
+  const headers = { Authorization: 'Bearer ' + tok };
+  if (range) headers.Range = range;
+  return fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers });
 }
 
 async function remove(fileId) {
