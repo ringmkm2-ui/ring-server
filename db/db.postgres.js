@@ -74,6 +74,7 @@ async function initDB() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step BIGINT DEFAULT 0');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS real_name TEXT'); // 本名(本人と運営だけが見る)
     // パスワード総当たり対策(アカウント単位): 連続失敗回数とロック解除時刻(ms)
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count INTEGER DEFAULT 0');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until BIGINT DEFAULT 0');

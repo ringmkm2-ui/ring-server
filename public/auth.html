@@ -343,6 +343,10 @@
           <input type="text" id="signupName" placeholder="表示名" required>
         </div>
         <div class="form-group">
+          <input type="text" id="signupRealName" placeholder="本名(フルネーム)" data-i18n-placeholder="real_name_ph" required maxlength="50" autocomplete="name">
+          <p class="field-note" data-i18n="real_name_note" style="font-size:12px;opacity:.65;margin:6px 4px 0">本名はほかの人には表示されません</p>
+        </div>
+        <div class="form-group">
           <input type="email" id="signupEmail" placeholder="メールアドレス" required>
         </div>
         <div class="form-group">
@@ -676,6 +680,8 @@
     async function emailSignup(e) {
       e.preventDefault();
       const name = document.getElementById('signupName').value;
+      const realName = document.getElementById('signupRealName').value.trim();
+      if (!realName) { showError(window.i18n ? i18n.t('real_name_required', '本名を入力してください') : '本名を入力してください'); return; }
       const email = document.getElementById('signupEmail').value;
       const password = document.getElementById('signupPassword').value;
 
@@ -683,7 +689,7 @@
         const response = await fetch(`${API_BASE}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: email, password, displayName: name })
+          body: JSON.stringify({ username: email, password, displayName: name, realName })
         });
 
         const data = await response.json();

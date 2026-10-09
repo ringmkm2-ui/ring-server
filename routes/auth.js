@@ -190,8 +190,20 @@ async function checkSecondFactor(user, rawCode) {
 
 // --- 新規登録 ---
 // body: { username, password, displayName }
+// 本名のチェック。表示名と違ってほかの人には出さない(本人と運営だけ)
+function cleanRealName(v) {
+  if (typeof v !== 'string') return { error: '本名を入力してください' };
+  const s = v.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  if (!s) return { error: '本名を入力してください' };
+  if (s.length > 50) return { error: '本名が長すぎます' };
+  if (/[<>"'`\u0000-\u001f]/.test(s) || /\d|@|https?:/i.test(s)) return { error: '本名に使えない文字が含まれています' };
+  return { value: s };
+}
+
 router.post('/register', registerLimiter, async (req, res) => {
   const { username, password, displayName } = req.body;
+  const rn = cleanRealName(req.body.realName);
+  if (rn.error) return res.status(400).json({ error: rn.error });
   // 登録前なので停止する相手がいない。名前に禁止語があれば登録自体を断る
   if (require('../utils/moderation').containsBannedWord(typeof displayName === 'string' ? displayName : '')) {
     return res.status(400).json({ error: 'その名前は使えません' });
@@ -237,15 +249,15 @@ router.post('/register', registerLimiter, async (req, res) => {
       return res.status(409).json({ error: 'そのユーザー名は既に使われています' });
     }
     userId = existing.id;
-    await db.run('UPDATE users SET password_hash = ?, display_name = ? WHERE id = ?', [passwordHash, displayName || username, userId]);
+    await db.run('UPDATE users SET password_hash = ?, display_name = ?, real_name = ? WHERE id = ?', [passwordHash, displayName || username, rn.value, userId]);
   } else {
     // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
     // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
     userId = uuidv4();
     userIdCode = await uniqueUserIdCode(); // User ID like U3K7F9
     await db.run(
-      'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verify_required) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, userIdCode, username, passwordHash, displayName || username, mailOn ? 1 : 0]
+      'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verify_required, real_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, userIdCode, username, passwordHash, displayName || username, mailOn ? 1 : 0, rn.value]
     );
     createdNew = true;
   }
@@ -521,6 +533,8 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
     if (payload.email_verified === false) return { status: 401, body: { error: 'メールアドレスが未検証です' } };
 
     const { email, name, picture } = payload;
+    // Googleで初めて来た人は、Googleアカウントの氏名を本名の初期値にする(あとで設定から直せる)
+    const googleReal = cleanRealName([payload.family_name, payload.given_name].filter(Boolean).join(' ') || name || '').value || null;
 
     // GoogleメールアドレスをユーザーIDの代わりに使用
     let user = await db.get('SELECT * FROM users WHERE username = ?', [email]);
@@ -530,8 +544,8 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
       const userId = uuidv4();
       const userIdCode = await uniqueUserIdCode();
       await db.run(
-        'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic, email_verified_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
-        [userId, userIdCode, email, '', name || email, picture || '']
+        'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic, email_verified_at, real_name) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)',
+        [userId, userIdCode, email, '', name || email, picture || '', googleReal]
       );
       user = { id: userId, user_id: userIdCode, username: email, display_name: name || email, profile_pic: picture || '' };
     } else {
@@ -664,6 +678,18 @@ router.get('/google/app-poll', (req, res) => {
 // 認証必須: 以前はbody.userIdをクライアントの自己申告のまま信用しており、
 // 誰でも任意のuserIdを指定して他人のアカウントへ大量の友達申請を
 // 送りつけられる状態だった。JWTから取得した本人のuserIdのみを使う。
+// 本名: 本人だけが見て直せる(ほかの人のプロフィールには出ない)
+router.get('/real-name', verifyToken, async (req, res) => {
+  const r = await db.get('SELECT real_name FROM users WHERE id = ?', [req.userId]);
+  res.json({ realName: (r && r.real_name) || '' });
+});
+router.put('/real-name', verifyToken, async (req, res) => {
+  const rn = cleanRealName(req.body && req.body.realName);
+  if (rn.error) return res.status(400).json({ error: rn.error });
+  await db.run('UPDATE users SET real_name = ? WHERE id = ?', [rn.value, req.userId]);
+  res.json({ ok: true, realName: rn.value });
+});
+
 router.post('/google-contacts/sync', verifyToken, async (req, res) => {
   // 今のアプリはこの機能を使っていない。どのアプリ向けのGoogleトークンでも受け付け、
   // 「そのメールの人がBro Chatにいるか」を調べられ、ブロックも無視して友だち申請を

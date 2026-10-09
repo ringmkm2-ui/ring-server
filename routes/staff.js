@@ -36,11 +36,11 @@ router.get('/online', auth, requireStaff, asyncHandler(async (req, res) => {
   if (!list.length) return res.json({ count: 0, users: [] });
   const ids = list.map(u => u.userId);
   const ph = ids.map(() => '?').join(',');
-  const rows = await db.all(`SELECT id, user_id, display_name, profile_pic FROM users WHERE id IN (${ph})`, ids);
+  const rows = await db.all(`SELECT id, user_id, display_name, profile_pic, real_name FROM users WHERE id IN (${ph})`, ids);
   const byId = new Map(rows.map(r => [r.id, r]));
   const users = list.map(u => {
     const r = byId.get(u.userId) || {};
-    return { userId: u.userId, userIdCode: r.user_id || '', displayName: r.display_name || '(不明)', profilePic: r.profile_pic || '', since: u.since, devices: u.devices };
+    return { userId: u.userId, userIdCode: r.user_id || '', displayName: r.display_name || '(不明)', realName: r.real_name || '', profilePic: r.profile_pic || '', since: u.since, devices: u.devices };
   }).sort((a, b) => (b.since || 0) - (a.since || 0));
   res.json({ count: users.length, users });
 }));
@@ -49,14 +49,14 @@ router.get('/online', auth, requireStaff, asyncHandler(async (req, res) => {
 router.get('/users', auth, requireStaff, asyncHandler(async (req, res) => {
   const { isUserOnline } = require('../ws/wsServer');
   const rows = await db.all(
-    `SELECT u.id, u.user_id, u.display_name, u.profile_pic, u.created_at, u.banned_until,
+    `SELECT u.id, u.user_id, u.display_name, u.real_name, u.profile_pic, u.created_at, u.banned_until,
             (SELECT MAX(s.last_seen_at) FROM user_sessions s WHERE s.user_id = u.id) AS last_seen
        FROM users u
       WHERE u.username NOT LIKE 'deleted%'
       LIMIT 2000`
   );
   const users = rows.map(r => ({
-    userId: r.id, userIdCode: r.user_id, displayName: r.display_name || '(名前なし)', profilePic: r.profile_pic || '',
+    userId: r.id, userIdCode: r.user_id, displayName: r.display_name || '(名前なし)', realName: r.real_name || '', profilePic: r.profile_pic || '',
     createdAt: r.created_at, lastSeen: r.last_seen, online: isUserOnline(r.id),
     banned: Number(r.banned_until) > Date.now(),
   })).sort((a, b) => (b.online - a.online) || (new Date(b.lastSeen || 0) - new Date(a.lastSeen || 0)));
