@@ -14,7 +14,7 @@ const router = express.Router();
 const MAX_BYTES = 210 * 1024 * 1024; // 端末側の上限(200MB)+暗号化の分
 
 async function isStaff(userId) {
-  try { return (await adminUserIds('STAFF_USERS', 'ringmkm2@gmail.com,UMTUK9D')).includes(userId); } catch (e) { return false; }
+  try { return (await adminUserIds('STAFF_USERS', require('../utils/adminNotify').DEFAULT_STAFF)).includes(userId); } catch (e) { return false; }
 }
 
 // 置き場所(端末が付ける folder 名)を、本人が当事者の会話に限る

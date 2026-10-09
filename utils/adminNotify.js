@@ -1,10 +1,13 @@
 // utils/adminNotify.js
 // バグ報告・ユーザー通報が届いた時に、運営(Ring)のスマホ(APK)とブラウザへ通知を飛ばす。
 // 送り先は環境変数 ADMIN_NOTIFY で指定する(カンマ区切りで、Bro Chatのメールアドレス か IDコード U...)。
-// 未設定なら ringmkm2@gmail.com のアカウントへ送る。
+// 未設定なら公式アカウント(UMTUK9D)へ送る。
 const db = require('../db/db');
 
-const DEFAULT_ADMINS = 'ringmkm2@gmail.com,UMTUK9D';
+// 運営は公式アカウント(UMTUK9D)だけ。以前は個人のメールアドレスも入っていて、
+// そのメールでログインした個人アカウントにも運営用の項目が出ていた
+const DEFAULT_ADMINS = 'UMTUK9D';
+const DEFAULT_STAFF = 'UMTUK9D';
 
 // 運営アカウントを探す。
 // - IDコード(U...)は user_id とだけ照らし合わせる(サーバーが振る番号なので、他人が同じ物を名乗れない)
@@ -65,4 +68,4 @@ async function notifyAdminsOfReport(report) {
   }
 }
 
-module.exports = { adminUserIds, notifyAdminsOfReport };
+module.exports = { adminUserIds, notifyAdminsOfReport, DEFAULT_STAFF };
