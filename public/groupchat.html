@@ -180,7 +180,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .mm-ov.show{opacity:1;pointer-events:auto}
 .mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
 .mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
-.mm-cls{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
+/* mm-cls: iPhoneはviewport-fit=coverで画面の一番上まで描くので、top:22pxだけだと
+   ノッチ/ステータスバーの下に潜って押せず、画像・動画から戻れなかった。セーフエリア分下げる */
+.mm-cls{position:absolute;top:calc(22px + env(safe-area-inset-top,0px));right:calc(22px + env(safe-area-inset-right,0px));background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
 /* グループの「入力中」。打っている人のアイコンを1つの丸の中に小さく並べる */
 #gTyping{display:flex;align-items:flex-end;gap:8px;width:100%;margin:2px 0 6px;transform-origin:left bottom;transition:transform .38s cubic-bezier(.34,1.56,.64,1),opacity .25s ease}
 #gTyping.gt-hide{transform:scale(.55);opacity:0}
@@ -240,7 +242,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.214 beta</div>
+  <div class="version-badge">Bro Chat v1.28.215 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1477,7 +1479,7 @@ document.getElementById('gSaveBtn').onclick=async()=>{
 };
 
 // メディアモーダル
-let sc=1,px=0,py=0,dr=false,sx=0,sy=0,tm='',ip=0,is=1;
+let sc=1,px=0,py=0,dr=false,sx=0,sy=0,tm='',ip=0,is=1,mv=false; // mv: ドラッグ/ピンチした直後のclickで閉じないための印
 function openMM(el,type){
   const clone=el.cloneNode(true);if(type==='video'){clone.controls=true;clone.autoplay=true;}
   sc=1;px=0;py=0;clone.style.transformOrigin='center';
@@ -1487,13 +1489,14 @@ function openMM(el,type){
 function updMM(){const e=document.getElementById('mmIn').firstElementChild;if(e)e.style.transform=`translate(${px}px,${py}px) scale(${sc})`;}
 const gd=(a,b)=>Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
 document.getElementById('mmOv').addEventListener('wheel',e=>{e.preventDefault();const o=sc;sc=e.deltaY<0?Math.min(sc+.15,5):Math.max(sc-.15,.7);if(sc!==o){px*=sc/o;py*=sc/o;}updMM();},{passive:false});
-document.getElementById('mmOv').addEventListener('mousedown',e=>{if(e.target.closest('#mmCls')||!document.getElementById('mmIn').firstElementChild)return;dr=true;tm='pan';sx=e.clientX-(px/sc);sy=e.clientY-(py/sc);});
-document.getElementById('mmOv').addEventListener('touchstart',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(t.length===2){tm='zoom';ip=gd(t[0],t[1]);is=sc;}else if(t.length===1){tm='pan';dr=true;sx=t[0].clientX-(px/sc);sy=t[0].clientY-(py/sc);}},{passive:true});
-window.addEventListener('mousemove',e=>{if(!dr||tm!=='pan')return;px=(e.clientX-sx)*sc;py=(e.clientY-sy)*sc;updMM();});
-window.addEventListener('touchmove',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(tm==='zoom'&&t.length===2){e.preventDefault();const o=sc;sc=Math.max(.7,Math.min(is*(gd(t[0],t[1])/ip),5));if(sc!==o){px*=sc/o;py*=sc/o;}updMM();}else if(tm==='pan'&&dr&&t.length===1){e.preventDefault();px=(t[0].clientX-sx)*sc;py=(t[0].clientY-sy)*sc;updMM();}},{passive:false});
+document.getElementById('mmOv').addEventListener('mousedown',e=>{if(e.target.closest('#mmCls')||!document.getElementById('mmIn').firstElementChild)return;mv=false;dr=true;tm='pan';sx=e.clientX-(px/sc);sy=e.clientY-(py/sc);});
+document.getElementById('mmOv').addEventListener('touchstart',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;mv=false;if(t.length===2){tm='zoom';ip=gd(t[0],t[1]);is=sc;}else if(t.length===1){tm='pan';dr=true;sx=t[0].clientX-(px/sc);sy=t[0].clientY-(py/sc);}},{passive:true});
+window.addEventListener('mousemove',e=>{if(!dr||tm!=='pan')return;mv=true;px=(e.clientX-sx)*sc;py=(e.clientY-sy)*sc;updMM();});
+window.addEventListener('touchmove',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(tm==='zoom'&&t.length===2){e.preventDefault();mv=true;const o=sc;sc=Math.max(.7,Math.min(is*(gd(t[0],t[1])/ip),5));if(sc!==o){px*=sc/o;py*=sc/o;}updMM();}else if(tm==='pan'&&dr&&t.length===1){e.preventDefault();mv=true;px=(t[0].clientX-sx)*sc;py=(t[0].clientY-sy)*sc;updMM();}},{passive:false});
 window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener('touchend',()=>{dr=false;tm='';});
 document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
-document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
+// mm-innerが全面を覆っているので、余白タップはmmOvではなくmmInに当たる。両方で閉じる(×が押せない時の逃げ道)
+document.getElementById('mmOv').onclick=e=>{if(mv)return;if(e.target===document.getElementById('mmOv')||e.target===document.getElementById('mmIn')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
 // サーバーのcontentカラムは以下のいずれかの形式:
 // 1. 平文テキスト(暗号化前の古いメッセージ、または鍵未配布時の互換)
