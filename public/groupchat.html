@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.212 beta</div>
+  <div class="version-badge">Bro Chat v1.28.213 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -590,8 +590,8 @@ function refreshHdr(){
   document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
   const av=document.getElementById('gavEl');
   if(gi.avatarImg){
+    av.style.background=''; // 先に消す(後で消すと入れた画像まで消えていた)
     setAvBg(av,gi.avatarImg);
-    av.style.background='';
     av.textContent='';
   }else{
     av.style.backgroundImage='';
@@ -943,9 +943,10 @@ function gtRender(){
     place(more,3);
   }
   const names=ids.map(id=>(gi.members.find(m=>m.id===id)||{}).name||'誰か');
-  el.querySelector('.gt-name').textContent=names.length===1?names[0]+'が入力中'
-    :names.length===2?names[0]+'、'+names[1]+'が入力中'
-    :names[0]+'、'+names[1]+'ほか'+(names.length-2)+'人が入力中';
+  const tt=(k,fb)=>(window.i18n?i18n.t(k,fb):fb);
+  el.querySelector('.gt-name').textContent=(names.length===1?tt('typing_one','{a}が入力中')
+    :names.length===2?tt('typing_two','{a}、{b}が入力中')
+    :tt('typing_many','{a}、{b}ほか{n}人が入力中')).replace('{a}',names[0]).replace('{b}',names[1]||'').replace('{n}',String(names.length-2));
   if(el.style.display==='none'){el.style.display='flex';void el.offsetWidth;}
   el.classList.remove('gt-hide');
   if(nearBottom)cs.scrollTop=cs.scrollHeight;
