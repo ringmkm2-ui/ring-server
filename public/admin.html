@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.212 beta</div>
+  <div class="version-badge">Bro Chat v1.28.213 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3122,7 +3122,7 @@ async function showCallSas(conn, callId) {
     const material = [a, b].sort().join('|') + '|' + (callId || '');
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
     const v = new DataView(buf).getUint16(0) % 10000;
-    el.textContent = '確認コード ' + String(v).padStart(4, '0');
+    el.textContent = (window.i18n ? i18n.t('call_code_label', '確認コード') : '確認コード') + ' ' + String(v).padStart(4, '0');
     el.hidden = false;
   } catch (e) {
     el.hidden = true;
