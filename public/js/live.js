@@ -183,11 +183,22 @@
   async function startScreen() {
     if (!stream || screen) return;
     let ds;
+    const quit = e => !e || e.name === 'NotAllowedError' || e.name === 'AbortError'; // 自分でやめた
     try {
       ds = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
     } catch (e) {
-      if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') alert('画面共有を始められませんでした');
-      return;
+      if (quit(e)) return;
+      // 音付きを断られる環境があるので、映像だけでもう一度
+      try { ds = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: false }); }
+      catch (e2) {
+        if (quit(e2)) return;
+        // デスクトップ版の古いexe(1.0.3より前)は画面共有の仕組みが入っていない
+        const dv = /BroChatDesktop\/(\d+)\.(\d+)\.(\d+)/.exec(navigator.userAgent);
+        const old = dv && (+dv[1] * 1e6 + +dv[2] * 1e3 + +dv[3]) < 1000003;
+        alert(old ? 'このデスクトップ版は古くて画面共有ができません。GitHubのReleasesから最新のBroChatSetup.exeを入れ直してください。'
+          : '画面共有を始められませんでした(' + ((e2 && (e2.name || e2.message)) || '不明') + ')');
+        return;
+      }
     }
     const v = ds.getVideoTracks()[0];
     if (!v) { ds.getTracks().forEach(t => t.stop()); return; }
