@@ -531,7 +531,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.214 beta</div>
+  <div class="version-badge">Bro Chat v1.28.215 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3080,7 +3080,8 @@ function connectTalkWs() {
   talkWs.onmessage = e => {
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (window.bcHandleWsAuth && window.bcHandleWsAuth(d)) return;
-    if (!d || d.type === 'auth_ok' || d.type === 'presence_update' || d.type === 'pong') return;
+    if (d && d.type === 'auth_ok') { if (window.Live && window.Live.onAuthed) window.Live.onAuthed(); if (window.refreshLiveStrip) window.refreshLiveStrip(); return; }
+    if (!d || d.type === 'presence_update' || d.type === 'pong') return;
     if (typeof d.type === 'string' && d.type.startsWith('live_')) {
       if ((d.type === 'live_started' || d.type === 'live_ended') && String(d.groupId || '').startsWith('u:') && window.refreshLiveStrip) window.refreshLiveStrip();
       if (window.Live) window.Live.handle(d);
@@ -4430,6 +4431,8 @@ async function deletePost(postId, card) {
     } catch (_) {}
   };
   window.refreshLiveStrip();
+  // 通知を取りこぼしても出るように、開いている間はときどき見直す
+  setInterval(() => { if (!document.hidden) window.refreshLiveStrip(); }, 30000);
 })();
 </script>
 <script>document.body.setAttribute('data-pick-talk', window.i18n ? i18n.t('pick_talk', 'トークを選んでください') : 'トークを選んでください');</script>

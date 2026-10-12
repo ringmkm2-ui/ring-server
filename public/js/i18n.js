@@ -262,6 +262,7 @@
     typing_two: { ja: "{a}、{b}が入力中", en: "{a} and {b} are typing", "zh-CN": "{a}、{b}正在输入", ko: "{a}, {b} 님이 입력 중" },
     typing_many: { ja: "{a}、{b}ほか{n}人が入力中", en: "{a}, {b} and {n} others are typing", "zh-CN": "{a}、{b}等{n}人正在输入", ko: "{a}, {b} 외 {n}명이 입력 중" },
     pick_talk: { ja: "トークを選んでください", en: "Select a chat", "zh-CN": "请选择聊天", ko: "대화를 선택하세요" },
+    live_waiting_server: { ja: "サーバーにつないでいます...(まだ誰にも見えていません)", en: "Connecting to the server... (no one can see you yet)", "zh-CN": "正在连接服务器…（还没有人能看到）", ko: "서버에 연결 중... (아직 아무도 볼 수 없습니다)" },
     real_name: { ja: "本名", en: "Legal name", "zh-CN": "真实姓名", ko: "실명" },
     real_name_ph: { ja: "本名(フルネーム)", en: "Your full legal name", "zh-CN": "真实姓名（全名）", ko: "실명 (성명)" },
     real_name_note: { ja: "本名はほかの人には表示されません", en: "Your legal name is never shown to other people", "zh-CN": "真实姓名不会显示给其他人", ko: "실명은 다른 사람에게 표시되지 않습니다" },
