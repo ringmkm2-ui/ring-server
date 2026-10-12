@@ -240,7 +240,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.214 beta</div>
+  <div class="version-badge">Bro Chat v1.28.215 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1716,7 +1716,7 @@ function connectGroupWS(){
     try{
       const data=JSON.parse(e.data);
       if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
-      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); window.Live.requestStatus(); if(window.__gEverAuthed)gSyncSoon(); window.__gEverAuthed=true; return; }
+      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); if(window.Live.onAuthed)window.Live.onAuthed(); window.Live.requestStatus(); if(window.__gEverAuthed)gSyncSoon(); window.__gEverAuthed=true; return; }
       if((data.type==='group_typing'||data.type==='group_typing_stop')&&data.groupId===groupId){
         if(data.userId!==myUserId)gtSet(data.userId,data.type==='group_typing');
         return;

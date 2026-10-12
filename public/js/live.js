@@ -19,11 +19,30 @@
   // 画面共有中: 見ている人に送る映像をカメラから画面に差し替える(カメラ映像は手元に残しておき、やめたら戻す)
   let screen = null; // { stream, video, mix: AudioContext|null, audio: MediaStreamTrack|null }
   const canShare = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
-  let hostId = null, hostName = '', startedAt = 0, tick = null;
+  let hostId = null, hostName = '', startedAt = 0, tick = null, hostReady = false;
   const pcs = new Map(); // 配信者: viewerId -> pc / 見る人: 'host' -> pc
   const el = {};
 
-  const send = o => { const ws = cfg.getWs(); if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+  // ログイン済み(auth_ok)のWebSocketにだけ送る。まだなら貯めておき、つながった時に送る。
+  // 以前はつながっていない間の live_start を黙って捨てていて、配信者の画面では配信中なのに
+  // サーバーは知らない = 誰の画面にもLIVEが出ない、ということが起きていた
+  let authedWs = null;
+  const queue = [];
+  const send = o => {
+    const ws = cfg.getWs();
+    if (ws && ws === authedWs && ws.readyState === 1) { ws.send(JSON.stringify(o)); return; }
+    if (queue.length < 50) queue.push(o);
+  };
+  let authedEarly = false;
+  function onAuthed() {
+    if (!cfg) { authedEarly = true; return; } // init より先にログインが済んだ
+    authedWs = cfg.getWs();
+    const q = queue.splice(0);
+    // つなぎ直した時は、配信中/視聴中だったことをサーバーに伝え直す(サーバーは同じ部屋に戻す)
+    if (role === 'host' && !q.some(o => o.type === 'live_start')) q.unshift({ type: 'live_start', groupId: cfg.groupId });
+    if (role === 'viewer' && !q.some(o => o.type === 'live_join')) q.unshift({ type: 'live_join', groupId: cfg.groupId });
+    q.forEach(send);
+  }
   const T = (k, fb) => (window.i18n && i18n.t ? i18n.t(k, fb) : fb);
 
   function css() {
@@ -142,6 +161,8 @@
     showOverlay(T('live_you', 'あなたが配信中'));
     el.cnt.textContent = '0';
     send({ type: 'live_start', groupId: cfg.groupId });
+    hostReady = false;
+    setTimeout(() => { if (role === 'host' && !hostReady) el.msg.textContent = T('live_waiting_server', 'サーバーにつないでいます...(まだ誰にも見えていません)'); }, 5000);
     if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
   }
 
@@ -307,6 +328,10 @@
         hostId = null; setBanner(false);
         if (role === 'viewer') { el.msg.textContent = T('live_over', '配信は終わりました'); setTimeout(() => stop(true), 1500); }
         return;
+      case 'live_ready':
+        hostReady = true;
+        if (role === 'host') el.msg.textContent = '';
+        return;
       case 'live_error':
         alert(d.error || 'ライブ配信でエラーが起きました');
         if (role) stop(true);
@@ -337,6 +362,7 @@
   function init(c) {
     cfg = c;
     build();
+    if (authedEarly) { authedEarly = false; onAuthed(); }
     // 横長(画面共有など)は切らずに全体を見せる。縦長のカメラは今まで通り画面いっぱい
     el.video.addEventListener('resize', () => { el.video.classList.toggle('wide', el.video.videoWidth > el.video.videoHeight * 1.1); });
     el.video.addEventListener('click', () => { if (role === 'viewer' && el.video.muted) { el.video.muted = false; el.msg.textContent = ''; } });
@@ -351,5 +377,5 @@
   }
   const isBusy = () => !!role;
 
-  window.Live = { init, start, watch, watchFeed, stop, handle, requestStatus, isBusy, ICON: I.live };
+  window.Live = { init, start, watch, watchFeed, stop, handle, requestStatus, isBusy, onAuthed, ICON: I.live };
 })();
