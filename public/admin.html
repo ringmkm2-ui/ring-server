@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.218 beta</div>
+  <div class="version-badge">Bro Chat v1.28.219 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1302,13 +1302,14 @@ document.getElementById('chatForm').onsubmit = async e => {
     document.getElementById('sendBtn').innerHTML = paperPlane;
     if (msgId) {
       const { encrypted, content: sendContent } = await encryptMessage(txt, otherId);
+      // サーバーはHTTPの返事より先にWSで「編集された」を送ってくるので、平文の控えは先に書き換えておく
+      // (以前は後で書き換えていて、編集した端末では古い文のまま「(編集済)」と出ていた)
+      cacheOwnPlaintext(msgId, txt);
       api('/api/messages/edit', { method: 'POST', body: JSON.stringify({ messageId: msgId, content: sendContent, encrypted }) })
         .then(data => {
           if (profane) window.BCProfanity.reportAfterSend({ where: 'dm', peerId: otherId });
           if (data.message) {
-            // 自分の平文キャッシュも更新
-            cacheOwnPlaintext(msgId, txt);
-            const displayMsg = { ...data.message, content: txt };
+            const displayMsg = { ...data.message, id: data.message.id || msgId, content: txt };
             addRealMessage(displayMsg);
             renderMessage(displayMsg);
           }
@@ -1463,10 +1464,31 @@ async function sendRealMessage(content) {
       if (window.BroBlock) BroBlock.applyBlocked(true);
     } else {
       console.error('send response missing message:', data);
+      markDmSendFailed(tempId, content, data && data.error);
     }
   } catch (err) {
     console.error('send error:', err);
+    markDmSendFailed(tempId, content, null);
   }
+}
+
+// 送れなかった時: 以前は「送信中」のまま光り続けて、文も消えていた。赤く出して、文は入力欄に戻す
+function markDmSendFailed(tempId, content, err) {
+  const el = msgDOMCache.get(tempId) || document.querySelector(`[data-msg-id="${tempId}"]`);
+  if (el) {
+    el.classList.remove('pending-send');
+    el.classList.add('send-failed');
+    const bub = el.querySelector('.bubble') || el;
+    if (!bub.querySelector('.fail-note')) {
+      const n = document.createElement('div');
+      n.className = 'fail-note';
+      n.style.cssText = 'color:#ef4444;font-size:11px;margin-top:4px';
+      n.textContent = (window.i18n ? i18n.t('send_failed_short', '送信できませんでした') : '送信できませんでした') + (err ? '(' + String(err).slice(0, 40) + ')' : '');
+      bub.appendChild(n);
+    }
+  }
+  const ta = document.getElementById('msgInput');
+  if (ta && !ta.value && content) { ta.value = content; if (window.fitMsgInput) fitMsgInput(); }
 }
 
 // 仮メッセージの要素を、正式なメッセージIDの要素として引き継ぐ(作り直さない)
@@ -1942,7 +1964,8 @@ function renderMessageImpl(msg) {
 // WebSocketが主軸、これは補助的なフォールバック（間隔を長めにして負荷軽減）
 async function syncMessages() {
   try {
-    const data = await api('/api/messages/history/' + otherId);
+    // 裏で同期しているだけ(画面が隠れている)なら既読にしない。以前は再接続のたびに、見ていないのに既読が付いていた
+    const data = await api('/api/messages/history/' + otherId + (document.hidden ? '?markRead=0' : ''));
     if (!Array.isArray(data)) return;
 
     for (const msg of data) {
@@ -1992,10 +2015,15 @@ function scheduleWsReconnect() {
   const delay = RECONNECT_DELAY[Math.min(wsReconnectAttempts, RECONNECT_DELAY.length - 1)];
   wsReconnectAttempts++;
   console.log(`[WS] Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-  setTimeout(connectRealWS, delay);
+  clearTimeout(wsReconnectTimer);
+  wsReconnectTimer = setTimeout(connectRealWS, delay);
 }
 
+// つなぎ直しが二重に走ると、WebSocketが2本開いて全部のイベントを2回処理していた(戻った時のつなぎ直し + タイマー)
+let wsReconnectTimer = null;
 function connectRealWS() {
+  clearTimeout(wsReconnectTimer);
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   ws = new WebSocket(wsUrl);
 
@@ -2100,6 +2128,17 @@ function connectRealWS() {
             if (!document.hidden && ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'read_receipt', recipientId: msg.senderId, msgUuid: msg.id }));
             }
+          } else if (!msgDOMCache.has(msg.id) && !document.querySelector('[data-msg-id^="temp-"]')) {
+            // 自分のほかの端末(スマホ等)から送った分。以前は捨てていて、開き直すまで出なかった
+            let own = msg.content;
+            if (msg.encrypted) {
+              const cached = getOwnPlaintext(msg.id);
+              const dec = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+              own = dec !== null ? dec : '(このデバイスでは表示できません)';
+            }
+            const displayMsg = { ...msg, content: own };
+            addRealMessage(displayMsg);
+            renderMessageImpl(displayMsg);
           }
         }
       } else if (data.type === 'typing' && data.userId === otherId) {
@@ -2873,8 +2912,14 @@ async function loadPinnedMessages() {
     // 以前は txt.replace(/</g,'&lt;') のみで '&' '>' '"' はエスケープされておらず、
     // 不完全なエスケープだった。DOM構築+textContentに切り替えて構造的に解消する。
     list.textContent = '';
-    pinned.forEach(p => {
-      const { displayText } = parseMsgContent(p.content, p);
+    // 暗号文のまま出ていたので、表示用に開いてから並べる(画面に出ている分は、それをそのまま使う)
+    const opened = await Promise.all(pinned.map(async p => {
+      const local = realMessages.find(m => m.id === p.id);
+      if (local) return local.content;
+      try { const d = await toDisplayMsg({ ...p, encrypted: /^e[23]:/.test(p.content || '') }); return d && d.content; } catch (e) { return ''; }
+    }));
+    pinned.forEach((p, i) => {
+      const { displayText } = parseMsgContent(opened[i] || '', null);
       const txt = displayText || 'メディア';
 
       const row = document.createElement('div');
@@ -2926,9 +2971,12 @@ document.getElementById('delBtn').onclick = () => {
     document.getElementById('msgInput').value = '';
     document.getElementById('sendBtn').innerHTML = paperPlane;
   }
+  // 送信中(まだ仮のID)は取り消せない。以前は取り消したように見えて、その後相手に届いていた
+  if (msgId && String(msgId).startsWith('temp-')) { alert(window.i18n ? i18n.t('unsend_wait', '送信が終わってから取り消してください') : '送信が終わってから取り消してください'); return; }
   if (msgId) {
     api('/api/messages/delete', { method: 'POST', body: JSON.stringify({ messageId: msgId }) })
-      .then(() => {
+      .then(r => {
+        if (!r || !r.ok) { alert((r && r.error) || '取り消せませんでした'); return; }
         const local = realMessages.find(m => m.id === msgId);
         if (local) {
           local.deletedAt = new Date().toISOString();
