@@ -241,9 +241,14 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
   if (!isOwner && !isSelfLeaving) {
     return res.status(403).json({ error: 'メンバーを削除する権限がありません' });
   }
-  // オーナー自身の脱退は、グループが空になり誰も管理できなくなるため禁止
+  // オーナーが抜ける時は、いちばん前から入っている人にオーナーを引き継ぐ(LINEと同じく誰でも抜けられる)
+  let newOwnerId = null;
   if (isSelfLeaving && group.owner_id === removeUserId) {
-    return res.status(400).json({ error: 'オーナーはグループから脱退できません。グループを削除するか、オーナー権限を譲渡してください' });
+    const next = await db.get(
+      'SELECT user_id FROM group_members WHERE group_id = ? AND user_id <> ? AND left_at IS NULL ORDER BY joined_at ASC LIMIT 1',
+      [groupId, removeUserId]
+    );
+    newOwnerId = next ? next.user_id : null;
   }
 
   // 先に版を上げる(取れなかったら何も変えずに戻す。外したのに版が上がらない、を防ぐ)
@@ -254,6 +259,25 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
     'UPDATE group_members SET left_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?',
     [groupId, removeUserId]
   );
+  if (newOwnerId) await db.run('UPDATE groups SET owner_id = ? WHERE id = ?', [newOwnerId, groupId]);
+  const remaining = await db.get('SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  if (!remaining || Number(remaining.n) === 0) {
+    // 最後の1人が抜けた。誰も読めない暗号文と鍵を残しておく意味は無いので消す(グループ自体は誰の一覧にも出なくなる)
+    await db.run('DELETE FROM group_messages WHERE group_id = ?', [groupId]);
+    await db.run('DELETE FROM group_key_distributions WHERE group_id = ?', [groupId]);
+  } else {
+    // 「〇〇が退出しました」(外された時は「〇〇を退出させました」)をトークに出す
+    try {
+      const u = await db.get('SELECT display_name FROM users WHERE id = ?', [removeUserId]);
+      const content = JSON.stringify({ __notice__: { kind: isSelfLeaving ? 'left' : 'removed', name: (u && u.display_name) || 'ユーザー' } });
+      const nid = uuidv4();
+      await db.run("INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version) VALUES (?, ?, ?, ?, 'notice', false, ?)", [nid, groupId, removeUserId, content, newVersion]);
+      const m = await db.get('SELECT * FROM group_messages WHERE id = ?', [nid]);
+      const rest = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+      rest.forEach(mm => broadcastToUser(mm.user_id, { type: 'group_message', groupId, message: { id: m.id, groupId, senderId: m.sender_id, content: m.content, msgType: 'notice', encrypted: false, keyVersion: m.key_version, createdAt: m.created_at } }));
+      if (newOwnerId) rest.forEach(mm => broadcastToUser(mm.user_id, { type: 'group_updated', groupId }));
+    } catch (e) { console.error('[groups] leave notice failed:', e.message); }
+  }
 
   // 自分で抜ける人が作った「新しい鍵」は受け取らない。作った本人が中身を知っているので、
   // それを残りのメンバーに配ると、抜けた後のメッセージも読める鍵を握らせることになる。
