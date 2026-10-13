@@ -8,8 +8,10 @@ const ACTIVE_MS = 45 * 24 * 60 * 60 * 1000; // 45日開いていない端末の�
 const MAX_ACTIVE = 6;
 const MAX_ROWS = 12;
 
+// 戻り値: この鍵が初めて登録された(=新しい端末)なら true
 async function touch(userId, publicKey) {
   const now = Date.now();
+  const had = await db.get('SELECT 1 AS ok FROM user_pubkeys WHERE user_id = ? AND public_key = ?', [userId, publicKey]);
   await db.run(
     `INSERT INTO user_pubkeys (user_id, public_key, created_at, last_seen_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, public_key) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
@@ -17,6 +19,13 @@ async function touch(userId, publicKey) {
   );
   const rows = await db.all('SELECT public_key FROM user_pubkeys WHERE user_id = ? ORDER BY last_seen_at DESC', [userId]);
   for (const r of rows.slice(MAX_ROWS)) await db.run('DELETE FROM user_pubkeys WHERE user_id = ? AND public_key = ?', [userId, r.public_key]);
+  return !had;
+}
+
+// 一番新しく増えた端末の鍵の時刻(ms)。無ければ 0
+async function newestKeyAt(userId) {
+  const r = await db.get('SELECT MAX(created_at) AS t FROM user_pubkeys WHERE user_id = ? AND last_seen_at > ?', [userId, Date.now() - ACTIVE_MS]);
+  return Number(r && r.t) || 0;
 }
 
 // userIds -> Map(userId -> [公開鍵...]) 新しく使われた順。latest(users.public_key)は必ず含める
@@ -47,4 +56,4 @@ async function clearAll(userId) {
   await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]);
 }
 
-module.exports = { touch, activeKeys, activeKeysMany, clearAll };
+module.exports = { touch, activeKeys, activeKeysMany, clearAll, newestKeyAt };

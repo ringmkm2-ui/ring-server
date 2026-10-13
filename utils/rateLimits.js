@@ -17,6 +17,19 @@ function userOrIpKey(req) {
   return 'ip:' + req.ip;
 }
 const perUser = { keyGenerator: userOrIpKey, validate: { keyGeneratorIpFallback: false } };
+// API全体の回数は「端末(ログイン)ごと」に数える。人ごとだと、PC・スマホ・デスクトップ版を同時に開いた人が
+// 合わせて1分120回を超え、グループ鍵の取得などが「多すぎます」で失敗していた
+function deviceOrIpKey(req) {
+  const h = req.headers.authorization || '';
+  if (h.startsWith('Bearer ')) {
+    try {
+      const { JWT_SECRET } = require('./jwtSecret');
+      const p = jwt.verify(h.slice(7), JWT_SECRET, { algorithms: ['HS256'] });
+      if (p && p.userId) return 'u:' + p.userId + ':' + (p.sid || '');
+    } catch (_) {}
+  }
+  return 'ip:' + req.ip;
+}
 
 // ログイン・Google認証・認証コード系: IP単位のブルートフォース/クレデンシャルスタッフィング対策。15分に30回まで。
 // 特定アカウントへの総当たりは、アカウント単位のロック(連続8回失敗で15分)が別に止める。
@@ -42,7 +55,7 @@ const registerLimiter = rateLimit({
 
 // API全体: 1分120req（通常利用では引っかからない値、スクリプト連打防止）
 const apiLimiter = rateLimit({
-  ...perUser,
+  keyGenerator: deviceOrIpKey, validate: { keyGeneratorIpFallback: false },
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,

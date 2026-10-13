@@ -113,7 +113,20 @@ router.post('/publickey', auth, async (req, res) => {
       return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
     }
     await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
-    await deviceKeys.touch(req.userId, publicKey);
+    const isNew = await deviceKeys.touch(req.userId, publicKey);
+    if (isNew) {
+      // 新しい端末が増えた。同じグループの人(と自分のほかの端末)に、その端末あてにグループ鍵を配り直してもらう
+      try {
+        const { broadcastToUser } = require('../ws/wsServer');
+        const peers = await db.all(
+          `SELECT DISTINCT gm2.user_id FROM group_members gm1
+           JOIN group_members gm2 ON gm2.group_id = gm1.group_id AND gm2.left_at IS NULL
+           WHERE gm1.user_id = ? AND gm1.left_at IS NULL`,
+          [req.userId]
+        );
+        for (const p of peers) broadcastToUser(p.user_id, { type: 'member_keys_ready', userId: req.userId });
+      } catch (e) { console.error('[friends] member_keys_ready broadcast failed:', e.message); }
+    }
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);

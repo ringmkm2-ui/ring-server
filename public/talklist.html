@@ -531,7 +531,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.215 beta</div>
+  <div class="version-badge">Bro Chat v1.28.216 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -4390,6 +4390,8 @@ async function deletePost(postId, card) {
     }
   }
   window.__e2eBackgroundWork = work;
+  // 個人チャットの鍵(端末ごと)をこの端末でも用意しておく。グループ鍵もこの鍵あてに届く(PCとスマホの両方で読めるように)
+  setTimeout(() => { if (typeof window.getOrCreateMyKeyPair === 'function') window.getOrCreateMyKeyPair().catch(() => {}); }, 2000);
   const start = () => setTimeout(work, 3000);
   if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 10000 });
   else setTimeout(work, 5000);

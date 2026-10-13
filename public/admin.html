@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.215 beta</div>
+  <div class="version-badge">Bro Chat v1.28.216 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1337,7 +1337,11 @@ const lazyLoadObserver = new IntersectionObserver((entries) => {
   });
 }, { rootMargin: '50px' });
 
+// 画像・動画の復号に使う cloudinaryE2EUpload.js は defer で読むので、開いた直後はまだ無いことがある。
+// 以前はそのまま使って「(メディアの復号に失敗しました)」になり、タップし直すまで出なかった
+async function waitUploader(){ for(let i=0;i<100&&!window.cloudinaryE2EUploader;i++) await new Promise(r=>setTimeout(r,100)); }
 async function loadLazyMedia(placeholder) {
+  await waitUploader();
   const mediaType = placeholder.dataset.mediaType;
   let mediaSrc = placeholder.dataset.mediaSrc;
 

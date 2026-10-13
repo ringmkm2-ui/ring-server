@@ -208,6 +208,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
+<script src="/js/e2eMulti.js"></script>
 <script src="/js/libsodium-wrappers.min.js"></script>
 <script src="/js/signalkeymanager.js"></script>
 <script src="/js/groupE2E.js"></script>
@@ -240,7 +241,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.215 beta</div>
+  <div class="version-badge">Bro Chat v1.28.216 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -493,6 +494,8 @@ async function checkGroupKeyHealth(){
     // それまでのメッセージはこの端末では読めないままだが、ここから先は普通に送受信できる
     if(!hasBk&&!window.__gkAutoRekeyTried){
       window.__gkAutoRekeyTried=true;
+      // 新しい端末なら、ほかのメンバーや自分のほかの端末がすぐ鍵を届けてくれることが多い。少し待ってから見直す
+      try{ await new Promise(r=>setTimeout(r,4000)); invalidateGroupKey(); await ensureGroupKey(); box.style.display='none'; return true; }catch(_){}
       try{
         const st=await api('/api/groups/'+groupId+'/key-status');
         await loadGroupInfo();
@@ -1515,6 +1518,9 @@ function fillDeferredMedia(div, media){
       el.replaceWith(p);
     });
 }
+// 画像・動画の復号に使う cloudinaryE2EUpload.js は defer で読むので、開いた直後はまだ無いことがある。
+// 以前はそのまま使って「(メディアの復号に失敗しました)」になり、タップし直すまで出なかった
+async function waitUploader(){ for(let i=0;i<100&&!window.cloudinaryE2EUploader;i++) await new Promise(r=>setTimeout(r,100)); }
 async function parseMsgContent(rawContent, isEncrypted, keyVersion){
   if(typeof rawContent!=='string')return{text:'',media:null};
 
@@ -1527,6 +1533,7 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
       // ダウンロード・復号は後回しにして、吹き出しはすぐ出す。
       // 以前は画像1枚ずつ全部読み終わるまで次のメッセージが出ず、画像の多いグループを開くと固まって見えた
       const deferred=(async()=>{
+        await waitUploader();
         const groupKey = await ensureGroupKey(keyVersion);
         const blob = await Promise.race([
           cloudinaryE2EUploader.downloadAndDecryptMedia(parsed.mediaUrl, parsed.encryptedMetadata, groupKey),
