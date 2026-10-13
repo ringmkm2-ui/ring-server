@@ -460,7 +460,9 @@ async function initDB() {
 // PostgreSQL版と同じく Promise を返す(以前は同期関数で、db.run(...).catch(...) と書いた所で落ちていた)
 async function run(sql, params = []) {
   db.run(sql, params);
+  const changes = db.getRowsModified();
   persist();
+  return { changes };
 }
 
 async function get(sql, params = []) {
