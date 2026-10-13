@@ -245,13 +245,20 @@ router.get('/history/:userId', auth, async (req, res) => {
     const rows = await db.all(sql, params);
 
     const now = new Date().toISOString();
+    const { getSettings } = require('../utils/userSettings');
+    const { isBlockedEither } = require('../utils/relations');
+    // 裏で開いているだけ(タブが隠れている時の同期)なら既読にしない
+    const markRead = req.query.markRead !== '0';
+    // 既読を知らせない設定の人には、既読を送らない/見せない
+    const iShowRead = (await getSettings(req.userId)).sendReadReceipts !== false && !(await isBlockedEither(req.userId, otherId));
+    const peerShowsRead = (await getSettings(otherId)).sendReadReceipts !== false;
     // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
     // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
-    const newlyRead = await db.all(
+    const newlyRead = !markRead ? [] : await db.all(
       "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
       [otherId, req.userId]
     );
-    await db.run(
+    if (markRead) await db.run(
       "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
       [now, otherId, req.userId]
     );
@@ -260,7 +267,7 @@ router.get('/history/:userId', auth, async (req, res) => {
     // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
     // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
     //  既読マークが付かないバグがあった)
-    if (newlyRead.length > 0) {
+    if (newlyRead.length > 0 && iShowRead) {
       const { broadcastToUser } = require('../ws/wsServer');
       broadcastToUser(otherId, {
         type: 'read_receipt_bulk',
@@ -285,7 +292,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         encrypted: !!m.encrypted,
         repliedToId: m.replied_to_id || null,
         createdAt: m.created_at,
-        readAt: m.read_at,
+        readAt: (m.sender_id === req.userId && !peerShowsRead) ? null : m.read_at,
         editedAt: m.edited_at,
         deletedAt: m.deleted_at,
         pinnedAt: m.pinned_at,
@@ -396,7 +403,7 @@ router.get('/talks', auth, async (req, res) => {
         displayName: user.display_name,
         profilePic: user.profile_pic,
         lastMessage: '',
-        lastTime: new Date().toISOString(),
+        lastTime: null, // 以前は「今」を入れていて、話していない友だちが一番上に来て毎回点滅していた
         unreadCount: 0,
       });
     }
@@ -609,7 +616,7 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     const rows = await db.all(`
       SELECT * FROM messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
-      AND pinned_at IS NOT NULL
+      AND pinned_at IS NOT NULL AND deleted_at IS NULL
       ORDER BY pinned_at DESC
     `, [req.userId, otherId, otherId, req.userId]);
 

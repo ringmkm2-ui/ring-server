@@ -185,7 +185,7 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
   // 前に抜けた(外された)人を招待し直す時は、行が残っているので INSERT すると主キーが重複して失敗していた
   const formerRow = await db.get('SELECT 1 AS ok FROM group_members WHERE group_id=? AND user_id=?', [groupId, targetUser.id]);
   if (formerRow) {
-    await db.run('UPDATE group_members SET left_at = NULL, joined_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?', [groupId, targetUser.id]);
+    await db.run('UPDATE group_members SET left_at = NULL, joined_at = CURRENT_TIMESTAMP, last_read_at = NULL WHERE group_id = ? AND user_id = ?', [groupId, targetUser.id]); // 前の既読位置が残ると、抜けていた間の分まで未読に数えていた
   } else {
     await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, targetUser.id]);
   }
@@ -301,6 +301,20 @@ router.post('/:groupId/icon', verifyToken, asyncHandler(async (req, res) => {
     if (m.user_id !== req.user.userId) broadcastToUser(m.user_id, { type: 'group_updated', groupId });
   }
   res.json({ ok: true, avatarUrl: url || null });
+}));
+
+// --- グループ名の変更(メンバーなら誰でも。LINEと同じ) ---
+router.post('/:groupId/name', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  if (!(await isGroupMember(groupId, req.user.userId))) return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  const name = typeof req.body?.name === 'string' ? req.body.name.replace(/\s+/g, ' ').trim() : '';
+  if (!name || name.length > 50) return res.status(400).json({ error: 'グループ名は1〜50文字にしてください' });
+  if (/[<>]/.test(name)) return res.status(400).json({ error: '使えない文字が含まれています' });
+  if (await rejectIfProfane(req, res, name)) return;
+  await db.run('UPDATE groups SET name = ? WHERE id = ?', [name, groupId]);
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  for (const m of members) if (m.user_id !== req.user.userId) broadcastToUser(m.user_id, { type: 'group_updated', groupId });
+  res.json({ ok: true, name });
 }));
 
 // --- 現行バージョンの鍵をまだ受け取っていないメンバーがいるグループ一覧 ---
@@ -504,6 +518,10 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
     finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
   }
 
+  // 古い版の鍵で暗号化した文字は、後から入った人が読めない。送り直してもらう(画像・動画は長いアップロード中に版が進むことがあるので受け付ける)
+  if (encrypted && !mediaUrl && Number.isInteger(keyVersion) && keyVersion < group.key_version) {
+    return res.status(409).json({ error: 'グループの鍵が新しくなりました', staleKey: true, keyVersion: group.key_version });
+  }
   const msgId = uuidv4();
   await db.run(
     'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -672,6 +690,8 @@ router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }
+  // 既読を知らせない設定の人は、グループでも既読にしない(個人チャットと同じ)
+  if ((await require('../utils/userSettings').getSettings(req.user.userId)).sendReadReceipts === false) return res.json({ ok: true });
 
   const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
 

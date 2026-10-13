@@ -241,7 +241,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.218 beta</div>
+  <div class="version-badge">Bro Chat v1.28.219 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -570,6 +570,11 @@ async function loadGroupInfo(){
           };
         });
         refreshHdr();
+      } else if (Array.isArray(data.groups) && !window.__gNotMemberShown) {
+        // もうメンバーではない(外された・古い通知から開いた)。以前は「読み込み中...」のまま止まっていた
+        window.__gNotMemberShown = true;
+        alert(window.i18n ? i18n.t('not_group_member', 'このグループのメンバーではありません') : 'このグループのメンバーではありません');
+        try { (window.top !== window ? window.top : window).location.href = '/talklist.html'; } catch (e) { location.href = '/talklist.html'; }
       }
     }
   } catch (err) {
@@ -712,9 +717,10 @@ async function handleMediaGroup(f,t){
 
   // グループ共有鍵を取得(全メンバーが復号できるようにするため、個人の秘密鍵ではなく
   // groupE2Eのグループ鍵を使う)
-  let groupKey;
+  let groupKey, groupKeyVersion;
   try {
     groupKey = await ensureGroupKey();
+    groupKeyVersion = cachedGroupKeyVersion; // アップロード中に版が変わっても、暗号化に使った版を送る
   } catch (e) {
     console.error('グループ鍵の取得に失敗:', e);
     alert(i18n.t('err_encryption_not_ready'));
@@ -770,7 +776,7 @@ async function handleMediaGroup(f,t){
         encryptedMetadata: metadata.encryptedMetadata,
         chunkCount: metadata.chunkCount,
         encrypted: true,
-        keyVersion: cachedGroupKeyVersion
+        keyVersion: groupKeyVersion
       })
     });
 
@@ -862,21 +868,45 @@ document.getElementById('tform').onsubmit=async e=>{
       return;
     }
 
-    const data=await api('/api/groups/'+groupId+'/messages/send',{
+    let data=await api('/api/groups/'+groupId+'/messages/send',{
       method:'POST',
       body:JSON.stringify(sendBody)
     });
+    // 自分が持っている鍵が古かった(裏にいる間にメンバーが増えた等)。新しい鍵で暗号化し直して1回だけ送り直す
+    if(data&&data.staleKey){
+      invalidateGroupKey();
+      const k2=await ensureGroupKey();
+      data=await api('/api/groups/'+groupId+'/messages/send',{method:'POST',body:JSON.stringify({ content: await groupE2E.encryptGroupText(txt,k2), encrypted:true, keyVersion: cachedGroupKeyVersion })});
+    }
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
       const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit'); // サーバーに届いたので緑
     }else{
       console.error('送信に失敗しました:',data);
+      markSendFailed(msgDiv,txt,data&&data.error);
     }
   }catch(err){
     console.error('送信エラー:',err);
+    markSendFailed(msgDiv,txt,null);
   }
   if(profane)window.BCProfanity.reportAfterSend({where:'group',groupId});
 };
+
+// 送れなかった時: 以前は送れたように見えたまま消えていた。吹き出しに赤く出して、文は入力欄に戻す
+function markSendFailed(msgDiv,txt,err){
+  if(!msgDiv)return;
+  msgDiv.classList.add('send-failed');
+  const bub=msgDiv.querySelector('.bub')||msgDiv;
+  if(!bub.querySelector('.fail-note')){
+    const n=document.createElement('div');
+    n.className='fail-note';
+    n.style.cssText='color:#ef4444;font-size:11px;margin-top:4px';
+    n.textContent=(window.i18n?i18n.t('send_failed_short','送信できませんでした'):'送信できませんでした')+(err?'('+String(err).slice(0,40)+')':'');
+    bub.appendChild(n);
+  }
+  const mi=document.getElementById('mi');
+  if(mi&&!mi.value&&txt){mi.value=txt;}
+}
 
 // text: 表示テキスト(メディアメッセージの場合はキャプション)
 // media: {mediaType, mediaData} 形式のオブジェクト、または null(テキストのみ)
@@ -978,6 +1008,7 @@ let gSyncT=0;
 function gSyncSoon(){clearTimeout(gSyncT);gSyncT=setTimeout(()=>loadGroupMessages(),300);}
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible')return;
+  invalidateGroupKey(); // 裏にいる間に鍵が新しくなっていることがある
   gSyncSoon();
 });
 
@@ -1203,12 +1234,13 @@ document.getElementById('delBtn').onclick=()=>{
   if(!activeMsg)return;const target=activeMsg;const sname=myName;
   const targetMsgId=target.dataset.msgId;
   hideMenu();
+  // 送信中(まだサーバーのIDが無い)は取り消せない。以前は取り消したように見えて、その後みんなに届いていた
+  if(!targetMsgId||String(targetMsgId).startsWith('temp-')){ alert(window.i18n?i18n.t('unsend_wait','送信が終わってから取り消してください'):'送信が終わってから取り消してください'); return; }
   showConf('送信取り消し',`このメッセージを取り消しますか？`,'取り消す',async ()=>{
-    if(targetMsgId){
-      try{
-        await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/delete',{method:'POST'});
-      }catch(err){console.error('削除エラー:',err);}
-    }
+    try{
+      const r=await api('/api/groups/'+groupId+'/messages/'+targetMsgId+'/delete',{method:'POST'});
+      if(!r||!r.ok){ alert((r&&r.error)||'取り消せませんでした'); return; }
+    }catch(err){ console.error('削除エラー:',err); alert('取り消せませんでした'); return; }
     const notice=document.createElement('div');
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
@@ -1450,7 +1482,14 @@ document.getElementById('gCropResetBtn').onclick=()=>{
 };
 
 document.getElementById('gSaveBtn').onclick=async()=>{
-  const name=document.getElementById('gNameIn').value.trim();if(name)gi.name=name;
+  const name=document.getElementById('gNameIn').value.trim();
+  // グループ名はサーバーに保存する(以前はこの端末の表示だけ変わって、開き直すと戻っていた)
+  if(name&&name!==gi.name){
+    try{
+      const r=await api('/api/groups/'+groupId+'/name',{method:'POST',body:JSON.stringify({name})});
+      if(r&&r.ok)gi.name=r.name||name; else alert((r&&r.error)||'グループ名を保存できませんでした');
+    }catch(e){ alert('グループ名を保存できませんでした'); }
+  }
   if(gImgSrc&&document.getElementById('gCropBox').style.display!=='none'){
     // キャンバスでクロップ
     const box=document.getElementById('gCropBox');
@@ -1723,7 +1762,7 @@ function connectGroupWS(){
     try{
       const data=JSON.parse(e.data);
       if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
-      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); if(window.Live.onAuthed)window.Live.onAuthed(); window.Live.requestStatus(); if(window.__gEverAuthed)gSyncSoon(); window.__gEverAuthed=true; return; }
+      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); if(window.Live.onAuthed)window.Live.onAuthed(); window.Live.requestStatus(); if(window.__gEverAuthed){ invalidateGroupKey(); gSyncSoon(); } window.__gEverAuthed=true; return; }
       if((data.type==='group_typing'||data.type==='group_typing_stop')&&data.groupId===groupId){
         if(data.userId!==myUserId)gtSet(data.userId,data.type==='group_typing');
         return;
@@ -1734,7 +1773,14 @@ function connectGroupWS(){
         markSeenSoon();
         const msg=data.message;
         if(msg.msgType==='notice'){createNotice(msg.id,msg.content);return;}
-        if(msg.senderId===myUserId)return; // 自分の送信は楽観的更新済みなので二重表示しない
+        if(msg.senderId===myUserId){
+          // この端末から送った分は表示済み。自分のほかの端末(スマホ等)から送った分だけ出す
+          const cs=document.getElementById('cs');
+          if(cs.querySelector(`[data-msg-id="${msg.id}"]`)||cs.querySelector('[data-msg-id^="temp-"]'))return;
+          const own=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
+          fillDeferredMedia(createMsg(own.text,own.media,false,null,msg.id,msg.createdAt,true),own.media);
+          return;
+        }
         if(groupTypers.has(msg.senderId))gtSet(msg.senderId,false);
         const member=gi.members.find(m=>m.id===msg.senderId);
         const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
@@ -1810,6 +1856,7 @@ function connectGroupWS(){
         // 鍵ローテーション通知 → メモリキャッシュとlocalStorageの古いバージョンを破棄して次回取得時に再取得させる
         invalidateGroupKey();
         checkGroupKeyHealth();
+        loadGroupInfo(); // 招待された人の名前・アイコンを出すため(版が上がるのは主に招待・退出の時)
       }
     }catch(err){console.error('WebSocketメッセージ処理エラー:',err);}
   };
