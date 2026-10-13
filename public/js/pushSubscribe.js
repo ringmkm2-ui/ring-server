@@ -110,13 +110,14 @@
   // iPhoneのSafariで開いている時は「ホーム画面に追加」を案内(追加しないと通知が届かない)
   function showIosInstallGuide() {
     if (!isIOS || isStandalone || !localStorage.getItem('ring_token')) return;
-    if (localStorage.getItem('iosInstallDismissed')) return;
+    // ×で閉じても3日たったらまた出す(追加しないと通知が一切届かないので、一度きりで諦めない)
+    if (Date.now() - Number(localStorage.getItem('iosInstallDismissed') || 0) < 3 * 86400000) return;
     const bar = document.createElement('div');
     bar.className = 'ios-pwa-banner ios-install';
     bar.innerHTML = '<div class="ipb-text"><b>ホーム画面に追加してね</b><span>下の <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> 共有 →「ホーム画面に追加」。アプリとして開くと通知と着信が届きます</span></div>'
       + '<button type="button" class="ipb-x" aria-label="閉じる"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
     document.body.appendChild(bar);
-    bar.querySelector('.ipb-x').onclick = () => { bar.remove(); localStorage.setItem('iosInstallDismissed', '1'); };
+    bar.querySelector('.ipb-x').onclick = () => { bar.remove(); localStorage.setItem('iosInstallDismissed', String(Date.now())); };
   }
   if (location.pathname.endsWith('/talklist.html')) setTimeout(showIosInstallGuide, 1200);
 

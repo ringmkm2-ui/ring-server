@@ -73,6 +73,7 @@ body.has-custom-bg .pc{background:transparent}
   box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95),inset 0 -8px 16px rgba(255,255,255,.3),0 12px 30px rgba(15,23,42,.22)}
 .tb26.active-touch .tb26-lens::after{transform:scale(1.5);opacity:1}
 .tb26.active-touch .tb26-lens{background:rgba(255,255,255,.16)}
+.tb-badge{position:absolute;top:2px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-sizing:border-box;pointer-events:none}
 .tb26-item{position:relative;z-index:1;height:44px;border:none;background:transparent;border-radius:999px;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;color:var(--muted,#3d434e);font-weight:600;font-size:14px;letter-spacing:.01em;
   padding:0;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
@@ -407,7 +408,7 @@ window.ensureGroupCrypto = (function () {
     <header class="ahdr">
       <nav class="tb26" id="tabSegment" aria-label="タブ">
         <div class="tb26-lens" id="slider"></div>
-        <button class="tb26-item active" id="btnTalk" type="button"><span data-i18n="talk">トーク</span></button>
+        <button class="tb26-item active" id="btnTalk" type="button"><span data-i18n="talk">トーク</span><span class="tb-badge" id="talkTabBadge" hidden></span></button>
         <button class="tb26-item" id="btnHome" type="button"><span data-i18n="home">ホーム</span></button>
         <button class="tb26-item" id="btnPosts" type="button"><span data-i18n="post">投稿</span></button>
       </nav>
@@ -531,7 +532,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.216 beta</div>
+  <div class="version-badge">Bro Chat v1.28.217 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1486,7 +1487,17 @@ async function loadTalks(animate = false) {
   }
 }
 
+// 下のタブ「トーク」に、個人+グループの未読の合計を出す(アイコンのバッジにも)
+const _unread = { dm: 0, group: 0 };
+function updateTalkBadge() {
+  const n = _unread.dm + _unread.group;
+  const b = document.getElementById('talkTabBadge');
+  if (b) { b.hidden = n <= 0; b.textContent = n > 99 ? '99+' : String(n); }
+  try { if (navigator.setAppBadge) (n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch (e) {}
+}
 function renderTalkList(merged, animate) {
+  _unread.dm = (merged || []).reduce((s, t) => s + (t.kind !== 'group' && t.unreadCount > 0 ? t.unreadCount : 0), 0);
+  updateTalkBadge();
   const list = document.getElementById('talkList');
   {
     // 4秒ごとの自動更新は「変化があった時だけ」DOMを再構築する。
@@ -1642,6 +1653,8 @@ function openGroupChat(groupId, name) {
 }
 
 function renderGroups(groups) {
+  _unread.group = (groups || []).reduce((s, g) => s + (g.unreadCount > 0 ? g.unreadCount : 0), 0);
+  updateTalkBadge();
   const list = document.getElementById('groupList');
   // 4秒ごとの自動更新で毎回作り直していて、裏で読み込むたびにグループ欄がチラついていた
   const fp = JSON.stringify(groups || []);
@@ -1751,13 +1764,19 @@ function showFriendsTab() {
   // 不要になった
 }
 
+// LINEと同じ: 今日は時刻、昨日は「昨日」、1週間以内は曜日、今年はM/D、それより前は年も
 function formatTime(ts) {
   const d = new Date(ts);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) {
-    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-  }
-  return (d.getMonth()+1) + '/' + d.getDate();
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const day0 = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day0(now) - day0(d)) / 86400000);
+  if (diff <= 0) return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  if (diff === 1) return t2('yesterday', '昨日');
+  const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
+  if (diff < 7) { try { return d.toLocaleDateString(lang, { weekday: 'short' }) + (lang === 'ja' ? '曜日' : ''); } catch (e) {} }
+  if (d.getFullYear() === now.getFullYear()) return (d.getMonth()+1) + '/' + d.getDate();
+  return d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate();
 }
 
 // 現在このファイル内では直接は使われていない(全てDOM構築+textContentへ置き換え済み)が、
@@ -2016,13 +2035,24 @@ function openPreviewCipher(cipher, fromMe) {
   }
   return text;
 }
+// LINEと同じく「通話時間 3:21」「不在着信」「キャンセル」を出す
+function callPreview(c, fromMe) {
+  if (!c) return t2('preview_call', '通話');
+  const mmss = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+  if (c.status === 'completed') return t2(c.video ? 'preview_video_call_time' : 'preview_call_time', c.video ? 'ビデオ通話 {t}' : '通話時間 {t}').replace('{t}', mmss(c.duration));
+  if (c.status === 'cancelled' || c.status === 'no_answer' || c.status === 'busy') {
+    if (!fromMe) return t2('preview_missed_call', '不在着信');
+    return c.status === 'cancelled' ? t2('preview_call_cancelled', '通話をキャンセルしました') : t2('preview_no_answer', '応答がありませんでした');
+  }
+  return t2('preview_call', '通話');
+}
 function dmPreview(t) {
   switch (t.lastKind) {
     case 'unsent': return t2('unsent_preview', '（送信取り消し済み）');
     case 'image': return t2('preview_image', '画像が送信されました');
     case 'video': return t2('preview_video', '動画が送信されました');
     case 'audio': return t2('preview_voicemail', '留守番電話が届きました');
-    case 'call': return t2('preview_call', '通話');
+    case 'call': return callPreview(t.lastCall, !!t.lastFromMe);
     case 'encrypted': {
       const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe);
       return txt !== null && txt !== '' ? txt : t2('message_generic', 'メッセージ');
