@@ -127,9 +127,39 @@
     return sodium.crypto_sign_verify_detached(signature, signedPrekeyPub, signingPubkey);
   }
 
+  // --- 端末ごとの鍵(個人チャットと同じ e3)でグループ鍵を包む ---
+  // 1人がPCとスマホを使っていても、全部の端末で同じグループ鍵が開ける。
+  // 以前の X3DH は「その人の鍵1本」あてだったので、2台目の端末が鍵を作り直すたびに
+  // もう片方の端末で読めなくなり、端末同士でグループ鍵の作り直しを繰り返していた
+  async function sealForDevices(groupKeyBytes, targetUserId) {
+    if (!window.E2EMulti || typeof window.getOrCreateMyKeyPair !== 'function' || !window.nacl) return null;
+    try {
+      const kp = await window.getOrCreateMyKeyPair();
+      const data = targetUserId === window.myUserId
+        ? await api('/api/friends/me')
+        : await api('/api/friends/publickey/' + encodeURIComponent(targetUserId));
+      const keys = (data && Array.isArray(data.publicKeys) && data.publicKeys.length) ? data.publicKeys : (data && data.publicKey ? [data.publicKey] : []);
+      if (!keys.length) return null;
+      const sealed = E2EMulti.seal(new Uint8Array(groupKeyBytes), kp.secretKey, nacl.util.encodeBase64(kp.publicKey), keys);
+      return sealed ? JSON.stringify({ e3: sealed, fromUserId: window.myUserId }) : null;
+    } catch (e) {
+      console.warn('[groupE2E] device seal failed, fallback to X3DH:', e && e.message);
+      return null;
+    }
+  }
+  function myDeviceRing() {
+    const out = [];
+    const push = k => { try { out.push({ pk: nacl.util.encodeBase64(new Uint8Array(k.publicKey)), sk: new Uint8Array(k.secretKey) }); } catch (e) {} };
+    try { const kp = JSON.parse(localStorage.getItem('e2e_keypair_' + window.myUserId) || 'null'); if (kp) push(kp); } catch (e) {}
+    try { JSON.parse(localStorage.getItem('e2e_keyring_' + window.myUserId) || '[]').forEach(push); } catch (e) {}
+    return out;
+  }
+
   // --- グループ鍵を、指定した1人のメンバー宛にX3DHで暗号化する ---
   // 戻り値をそのまま group_key_distributions.encrypted_group_key (JSON文字列) に保存する
   async function encryptGroupKeyForMember(groupKeyBytes, targetUserId) {
+    const sealed = await sealForDevices(groupKeyBytes, targetUserId);
+    if (sealed) return sealed;
     const sodium = await (async () => { await window.sodium.ready; return window.sodium; })();
     await ensureMyIdentity();
 
@@ -185,10 +215,16 @@
 
   // --- 自分宛に配布されたグループ鍵を復号する ---
   async function decryptGroupKey(encryptedGroupKeyJson) {
+    const payload = JSON.parse(encryptedGroupKeyJson);
+    // 端末ごとの形は個人チャットの鍵で開く(X3DHの身元鍵は要らない。ここで作ると登録を上書きしてしまう)
+    if (payload.e3) {
+      if (typeof window.getOrCreateMyKeyPair === 'function') await window.getOrCreateMyKeyPair();
+      const k = window.E2EMulti ? E2EMulti.open(payload.e3, myDeviceRing()) : null;
+      if (!k || k.length !== 32) throw new Error('グループ鍵の復号に失敗しました(この端末あての分がありません)');
+      return k;
+    }
     const sodium = await (async () => { await window.sodium.ready; return window.sodium; })();
     await ensureMyIdentity();
-
-    const payload = JSON.parse(encryptedGroupKeyJson);
 
     if (payload.selfEncrypted) {
       const myIdPriv = sodium.from_base64(myFullBundle.identity.privateKey);

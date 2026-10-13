@@ -826,16 +826,18 @@
           callback: handleGoogleSignIn
         });
         
+        // GoogleのボタンはpxでしかWidthを受け付けない('100%'だとGoogle側が400を返していた)。枠の幅に合わせて最大400px
+        const gsiWidth = id => { const el = document.getElementById(id); const w = el && (el.clientWidth || (el.parentElement && el.parentElement.clientWidth)); return Math.max(200, Math.min(400, Math.round(w || 320))); };
         // ログイン用ボタン
         google.accounts.id.renderButton(
           document.getElementById('googleLoginButton'),
-          { theme: 'outline', size: 'large', width: '100%' }
+          { theme: 'outline', size: 'large', width: gsiWidth('googleLoginButton') }
         );
         
         // 登録用ボタン
         google.accounts.id.renderButton(
           document.getElementById('googleSignupButton'),
-          { theme: 'outline', size: 'large', width: '100%' }
+          { theme: 'outline', size: 'large', width: gsiWidth('googleSignupButton') }
         );
       }
     });

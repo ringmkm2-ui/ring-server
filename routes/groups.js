@@ -19,6 +19,18 @@ const isEncKeyEntry = (e) => !!e && typeof e.userId === 'string' && typeof e.enc
 
 
 const router = express.Router();
+const deviceKeys = require('../utils/deviceKeys');
+
+// 配った鍵が、その人の今の端末全部に届く形になっているか。
+// 端末ごとの鍵(e3)で包んでいない古い形、または配った後に端末が増えた場合は「配り直しが要る」
+// 判定は「今その人が使っている端末の鍵が、全部あて先に入っているか」(時刻の比較はしない。時計のずれで配り直しが止まらなくなるため)
+async function distributionStale(row) {
+  const keys = await deviceKeys.activeKeys(row.user_id);
+  if (!keys.length) return false; // 端末の鍵がまだ無い人には、今まで通りの形でしか配れない
+  const payload = String(row.encrypted_group_key || '');
+  if (!payload.includes('"e3"')) return true;
+  return keys.some(k => !payload.includes(k + '.'));
+}
 
 // 指定ユーザーがそのグループの現メンバーかどうかを確認する共通ヘルパー。
 // これが無いと、groupIdとmsgIdさえ知っていれば部外者でも
@@ -314,7 +326,16 @@ router.get('/pending-keys', verifyToken, asyncHandler(async (req, res) => {
          )`,
       [g.id, g.key_version]
     );
-    if (rows.length) groups.push({ groupId: g.id, keyVersion: g.key_version, userIds: rows.map(r => r.user_id) });
+    const ids = rows.map(r => r.user_id);
+    // 届いてはいるが、新しい端末に届かない形のもの(PCとスマホの両方で読めるように配り直す)
+    const have = await db.all(
+      `SELECT d.user_id, d.encrypted_group_key, d.created_at FROM group_key_distributions d
+         JOIN group_members gm ON gm.group_id = d.group_id AND gm.user_id = d.user_id AND gm.left_at IS NULL
+        WHERE d.group_id = ? AND d.key_version = ?`,
+      [g.id, g.key_version]
+    );
+    for (const r of have) if (!ids.includes(r.user_id) && await distributionStale(r)) ids.push(r.user_id);
+    if (ids.length) groups.push({ groupId: g.id, keyVersion: g.key_version, userIds: ids });
   }
   res.json({ groups });
 }));
@@ -391,10 +412,17 @@ router.post('/:groupId/distribute-keys', verifyToken, asyncHandler(async (req, r
     if (!isEncKeyEntry(entry)) continue;
     if (!(await isGroupMember(groupId, entry.userId))) continue;
     const exists = await db.get(
-      'SELECT 1 FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=?',
+      'SELECT id, user_id, encrypted_group_key, created_at FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=?',
       [groupId, entry.userId, group.key_version]
     );
-    if (exists) continue;
+    if (exists) {
+      // 新しい端末に届かない古い形のときだけ、端末ごとの形(e3)で置き換える
+      if (!entry.encryptedGroupKey.includes('"e3"') || !(await distributionStale(exists))) continue;
+      await db.run('UPDATE group_key_distributions SET encrypted_group_key = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?', [entry.encryptedGroupKey, exists.id]);
+      delivered++;
+      broadcastToUser(entry.userId, { type: 'group_key_rotated', groupId, keyVersion: group.key_version, reason: 'key_delivered' });
+      continue;
+    }
     await db.run(
       'INSERT INTO group_key_distributions (id, group_id, user_id, key_version, encrypted_group_key) VALUES (?, ?, ?, ?, ?)',
       [uuidv4(), groupId, entry.userId, group.key_version, entry.encryptedGroupKey]
