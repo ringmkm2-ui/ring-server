@@ -46,7 +46,12 @@ function toPreview(content, encrypted) {
       const k = parsed.mediaType === 'image' ? 'image' : parsed.mediaType === 'audio' ? 'audio' : 'video';
       return { kind: k, text: k === 'image' ? '画像が送信されました' : k === 'audio' ? '留守番電話が届きました' : '動画が送信されました' };
     }
-    if (parsed.__call__) return { kind: 'call', text: '通話' };
+    if (parsed.__call__) {
+      // 一覧で「通話時間 3:21」「不在着信」と出せるように、状態と長さだけ渡す
+      const c = parsed.__call__ || {};
+      const call = { status: String(c.status || '').slice(0, 20), video: !!c.video, duration: Math.max(0, Math.min(86400, Number(c.duration) || 0)) };
+      return { kind: 'call', text: '通話', call };
+    }
     if (parsed.__notice__ && parsed.__notice__.kind === 'ban') {
       const name = String(parsed.__notice__.name || 'ユーザー').slice(0, 40);
       return { kind: 'ban', name, text: `${name}がFワードを言ったためBanしました。` };
@@ -370,6 +375,7 @@ router.get('/talks', auth, async (req, res) => {
           const pv = toPreview(row.content, row.encrypted);
           const o = { lastMessage: pv.text, lastKind: pv.kind };
           if (pv.cipher) o.lastCipher = pv.cipher;
+          if (pv.call) o.lastCall = pv.call;
           if (pv.name) o.lastName = pv.name;
           return o;
         })(),
