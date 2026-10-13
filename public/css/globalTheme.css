@@ -30,6 +30,26 @@ html.dark-mode .tmsg,
 html.dark-mode .ttime,
 html.dark-mode .lrole{color:#94a3b8 !important}
 
+/* トーク一覧のカード(グループ・コミュニティ)。以前は白っぽいまま浮いて、文字も黒のままだった */
+html.dark-mode .card{
+  background:rgba(30,33,42,.72) !important;
+  border-color:rgba(255,255,255,.08) !important;
+  box-shadow:0 10px 30px rgba(0,0,0,.25) !important;
+}
+html.dark-mode .nglabel{color:#e5e7eb !important}
+html.dark-mode .slabel{color:#94a3b8 !important}
+
+/* 個人チャットの吹き出し(admin.html は .bubble) */
+html.dark-mode .bubble{
+  background:rgba(45,49,61,.88) !important;
+  color:#e5e7eb !important;
+  border-color:rgba(255,255,255,.08) !important;
+}
+html.dark-mode .outgoing .bubble{background:rgba(59,130,246,.38) !important}
+html.dark-mode .bubble .msg-meta,
+html.dark-mode .bubble .time{color:#9aa6b8 !important}
+html.dark-mode .tb26-item:not(.active):not(.under-lens){color:#cbd5e1 !important}
+
 /* メッセージ吹き出し */
 html.dark-mode .bub{
   background:rgba(45,49,61,.85) !important;
@@ -47,7 +67,8 @@ html.dark-mode #mi{
   color:#e5e7eb !important;
   border-color:rgba(255,255,255,.15) !important;
 }
-html.dark-mode input::placeholder{color:#64748b !important}
+html.dark-mode input::placeholder,
+html.dark-mode textarea::placeholder{color:#8b97a8 !important}
 
 /* backdrop-filter系のガラス風ボタンは元々半透明なため、
    ダークモードでも境界線の色味だけ調整する */
