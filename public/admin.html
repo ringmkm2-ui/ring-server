@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.217 beta</div>
+  <div class="version-badge">Bro Chat v1.28.218 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1664,7 +1664,7 @@ function parseCallLog(content) {
 }
 
 function callIconSvg(info, missed) {
-  const col = missed ? '#ef4444' : '#1e293b';
+  const col = missed ? '#ef4444' : 'currentColor'; // ダークモードでも見えるように文字色に合わせる
   if (info.video) {
     return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
   }
