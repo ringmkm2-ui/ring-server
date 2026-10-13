@@ -532,7 +532,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.219 beta</div>
+  <div class="version-badge">Bro Chat v1.28.220 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3433,13 +3433,18 @@ document.getElementById('postSubmitBtn').onclick = async () => {
   }
 };
 
+let postsReloadPending = false, postsHasMore = true, postsLoadingOld = false;
+const POSTS_PAGE = 20;
 async function loadPosts() {
   if (window.refreshLiveStrip) window.refreshLiveStrip();
-  if (postsLoading) return;
+  // 読み込み中に呼ばれた(投稿した直後など)ら、終わってからもう一度読む。以前は黙って捨てて、出した投稿が出ないことがあった
+  if (postsLoading) { postsReloadPending = true; return; }
   postsLoading = true;
+  postsHasMore = true;
   const list = document.getElementById('postsList');
   try {
     const posts = await api('/api/posts');
+    if (Array.isArray(posts) && posts.length < POSTS_PAGE) postsHasMore = false;
     list.textContent = '';
     if (!Array.isArray(posts) || posts.length === 0) {
       const empty = document.createElement('div');
@@ -3464,6 +3469,40 @@ async function loadPosts() {
     list.appendChild(err);
   } finally {
     postsLoading = false;
+    if (postsReloadPending) { postsReloadPending = false; loadPosts(); }
+    else ensurePostsSentinel();
+  }
+}
+
+// 下まで見たら、もっと前の投稿を読む(以前は最新20件より前は見られなかった)
+async function loadOlderPosts() {
+  if (!postsHasMore || postsLoadingOld || postsLoading || !postsOldestTimestamp) return;
+  postsLoadingOld = true;
+  try {
+    const posts = await api('/api/posts?before=' + encodeURIComponent(postsOldestTimestamp));
+    if (!Array.isArray(posts) || posts.length === 0) { postsHasMore = false; return; }
+    if (posts.length < POSTS_PAGE) postsHasMore = false;
+    const list = document.getElementById('postsList');
+    posts.forEach(p => { if (!list.querySelector(`[data-post-id="${CSS.escape(String(p.id))}"]`)) list.appendChild(renderPostCard(p)); });
+    postsOldestTimestamp = posts[posts.length - 1].createdAt;
+  } catch (e) {
+    console.error('loadOlderPosts error:', e);
+  } finally {
+    postsLoadingOld = false;
+  }
+}
+let _postsObserver = null;
+function ensurePostsSentinel() {
+  const list = document.getElementById('postsList');
+  if (!list || !('IntersectionObserver' in window)) return;
+  let s = document.getElementById('postsSentinel');
+  if (!s) {
+    s = document.createElement('div');
+    s.id = 'postsSentinel';
+    s.style.cssText = 'height:1px';
+    list.parentNode.insertBefore(s, list.nextSibling);
+    _postsObserver = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadOlderPosts(); }, { rootMargin: '400px 0px' });
+    _postsObserver.observe(s);
   }
 }
 

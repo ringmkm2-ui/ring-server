@@ -241,7 +241,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.219 beta</div>
+  <div class="version-badge">Bro Chat v1.28.220 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1607,8 +1607,15 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
 
 // グループメッセージ履歴をサーバーから読み込み
 // 履歴の1件を描く(新しい順に並べる時も、上に足す時も同じ見た目にする)。描いた要素を返す
+// 読み込みが2本同時に走ると、復号を待つ間に同じメッセージを2回描いていた。描いている最中のIDを覚えておく
+const gRendering=new Set();
+const gHasMsg=id=>!!(id&&document.querySelector('[data-msg-id="'+CSS.escape(String(id))+'"]'));
 async function renderHistoryMsg(msg){
-  if(msg.id&&document.querySelector('[data-msg-id="'+CSS.escape(String(msg.id))+'"]'))return null;
+  if(msg.id&&(gRendering.has(msg.id)||gHasMsg(msg.id)))return null;
+  if(msg.id)gRendering.add(msg.id);
+  try{ return await renderHistoryMsgInner(msg); }finally{ if(msg.id)gRendering.delete(msg.id); }
+}
+async function renderHistoryMsgInner(msg){
   if(msg.msg_type==='notice')return createNotice(msg.id,msg.content)||null;
   // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
   let member=gi.members.find(m=>m.id===msg.sender_id);
@@ -1617,6 +1624,7 @@ async function renderHistoryMsg(msg){
     member={id:msg.sender_id,name:nm,color:nameColor(nm),initials:nm.charAt(0),avatarImg:'',isOwner:false};
   }
   const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.key_version);
+  if(gHasMsg(msg.id))return null; // 復号を待つ間にほかの経路(WS)で描かれていた
   const incoming=msg.sender_id!==myUserId;
   const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
   fillDeferredMedia(msgDiv,media);
@@ -1783,7 +1791,11 @@ function connectGroupWS(){
         }
         if(groupTypers.has(msg.senderId))gtSet(msg.senderId,false);
         const member=gi.members.find(m=>m.id===msg.senderId);
-        const{text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
+        if(gHasMsg(msg.id)||gRendering.has(msg.id))return;
+        gRendering.add(msg.id);
+        let text,media;
+        try{ ({text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion)); }finally{ gRendering.delete(msg.id); }
+        if(gHasMsg(msg.id))return;
         fillDeferredMedia(createMsg(text,media,true,member,msg.id,msg.createdAt,true),media);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)

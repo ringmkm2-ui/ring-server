@@ -181,7 +181,8 @@ router.post('/invite', verifyToken, asyncHandler(async (req, res) => {
 
   // 鍵ラチェット: バージョンを上げる (前方秘匿性 - 新メンバーは過去メッセージを読めない)
   const newVersion = group.key_version + 1;
-  await db.run('UPDATE groups SET key_version = ? WHERE id = ?', [newVersion, groupId]);
+  const bump = await db.run('UPDATE groups SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, groupId, group.key_version]);
+  if (!bump || !bump.changes) return res.status(409).json({ error: '同時にほかの変更がありました。もう一度試してください', keyVersion: group.key_version });
   // 前に抜けた(外された)人を招待し直す時は、行が残っているので INSERT すると主キーが重複して失敗していた
   const formerRow = await db.get('SELECT 1 AS ok FROM group_members WHERE group_id=? AND user_id=?', [groupId, targetUser.id]);
   if (formerRow) {
@@ -245,13 +246,14 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'オーナーはグループから脱退できません。グループを削除するか、オーナー権限を譲渡してください' });
   }
 
+  // 先に版を上げる(取れなかったら何も変えずに戻す。外したのに版が上がらない、を防ぐ)
+  const newVersion = group.key_version + 1;
+  const bump = await db.run('UPDATE groups SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, groupId, group.key_version]);
+  if (!bump || !bump.changes) return res.status(409).json({ error: '同時にほかの変更がありました。もう一度試してください', keyVersion: group.key_version });
   await db.run(
     'UPDATE group_members SET left_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?',
     [groupId, removeUserId]
   );
-
-  const newVersion = group.key_version + 1;
-  await db.run('UPDATE groups SET key_version = ? WHERE id = ?', [newVersion, groupId]);
 
   // 自分で抜ける人が作った「新しい鍵」は受け取らない。作った本人が中身を知っているので、
   // それを残りのメンバーに配ると、抜けた後のメッセージも読める鍵を握らせることになる。
@@ -380,8 +382,8 @@ router.post('/:groupId/rotate-key', verifyToken, asyncHandler(async (req, res) =
   const newVersion = group.key_version + 1;
   // 版の更新は「期待した版のときだけ」。先に取った人が勝つ
   const upd = await db.run('UPDATE groups SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, groupId, group.key_version]);
-  const again = await db.get('SELECT key_version FROM groups WHERE id = ?', [groupId]);
-  if (!again || again.key_version !== newVersion) {
+  // 同時に2台が作り直すと、後で読み直した版はどちらから見ても newVersion になる。実際に自分の更新が効いたかで判定する
+  if (!upd || !upd.changes) {
     return res.status(409).json({ error: '鍵のバージョンが変わっています。開き直してください' });
   }
   let delivered = 0;

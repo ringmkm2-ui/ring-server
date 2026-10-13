@@ -379,8 +379,10 @@ async function initDB() {
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 
+// 戻り値: 変わった行の数(楽観ロックの「本当に自分が更新できたか」の判定に使う)
 async function run(sql, params = []) {
-  await pool.query(toPgQuery(sql), params);
+  const r = await pool.query(toPgQuery(sql), params);
+  return { changes: r.rowCount || 0 };
 }
 
 async function get(sql, params = []) {
