@@ -241,7 +241,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.220 beta</div>
+  <div class="version-badge">Bro Chat v1.28.221 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -382,6 +382,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       </div>
       <button class="sh-save glass-interactive" id="gSaveBtn" data-i18n="save">保存する</button>
       <button class="sh-close glass-interactive" data-close="gsOv" data-i18n="cancel">キャンセル</button>
+      <button type="button" id="gLeaveBtn" class="glass-interactive" style="width:100%;margin-top:10px;padding:13px;border-radius:16px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.1);color:#ef4444;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit" data-i18n="leave_group">グループを退出</button>
     </div>
   </div>
 
@@ -1017,7 +1018,12 @@ function createNotice(msgId,content){
   const cs=document.getElementById('cs');
   if(msgId&&cs.querySelector(`[data-msg-id="${msgId}"]`))return;
   let n=null;try{n=JSON.parse(content).__notice__;}catch(e){}
-  const label=(n&&n.kind==='ban')?`${String(n.name||'ユーザー').slice(0,40)}がFワードを言ったためBanしました。`:'お知らせ';
+  const nm=String((n&&n.name)||'ユーザー').slice(0,40);
+  const T=(k,f)=>(window.i18n?i18n.t(k,f):f);
+  const label=(n&&n.kind==='ban')?`${nm}がFワードを言ったためBanしました。`
+    :(n&&n.kind==='left')?T('notice_left','{name}が退出しました').replace('{name}',nm)
+    :(n&&n.kind==='removed')?T('notice_removed','{name}がグループから外されました').replace('{name}',nm)
+    :'お知らせ';
   const div=document.createElement('div');
   if(msgId)div.dataset.msgId=msgId;
   div.className='bc-notice';
@@ -1328,6 +1334,20 @@ function openMemModal(){
   document.getElementById('memOv').classList.add('show');
 }
 document.getElementById('hinfoEl').onclick=openMemModal;
+
+// グループから自分で抜ける(オーナーなら、いちばん前からいる人にオーナーが移る。最後の1人ならグループは消える)
+document.getElementById('gLeaveBtn').onclick=()=>{
+  document.getElementById('gsOv').classList.remove('show');
+  const T=(k,f)=>(window.i18n?i18n.t(k,f):f);
+  showConf(T('leave_group','グループを退出'),T('leave_group_q','「{name}」から退出しますか？退出すると、このグループのメッセージは見られなくなります。').replace('{name}',gi.name||''),T('leave','退出'),async ()=>{
+    try{
+      const r=await api('/api/groups/remove-member',{method:'POST',body:JSON.stringify({groupId,removeUserId:myUserId})});
+      if(!r||!r.ok){ alert((r&&r.error)||T('leave_failed','退出できませんでした')); return; }
+      window.__gNotMemberShown=true; // 退出後の「メンバーではありません」は出さない
+      try{ (window.top!==window?window.top:window).location.href='/talklist.html'; }catch(e){ location.href='/talklist.html'; }
+    }catch(e){ alert(T('leave_failed','退出できませんでした')); }
+  });
+};
 document.getElementById('memOv').onclick=e=>{if(e.target===document.getElementById('memOv'))document.getElementById('memOv').classList.remove('show');};
 
 // 招待

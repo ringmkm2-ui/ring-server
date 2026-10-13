@@ -532,7 +532,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.220 beta</div>
+  <div class="version-badge">Bro Chat v1.28.221 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1730,6 +1730,8 @@ function previewFromGroupContent(raw) {
       return o.text ? label + ' ' + o.text : label;
     }
     if (o && o.__notice__ && o.__notice__.kind === 'ban') return String(o.__notice__.name || 'ユーザー').slice(0, 40) + 'がFワードを言ったためBanしました。';
+    if (o && o.__notice__ && o.__notice__.kind === 'left') return t2('notice_left', '{name}が退出しました').replace('{name}', String(o.__notice__.name || '').slice(0, 40));
+    if (o && o.__notice__ && o.__notice__.kind === 'removed') return t2('notice_removed', '{name}がグループから外されました').replace('{name}', String(o.__notice__.name || '').slice(0, 40));
   } catch (e) {}
   return raw;
 }
