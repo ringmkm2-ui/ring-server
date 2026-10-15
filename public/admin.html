@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.223 beta</div>
+  <div class="version-badge">Bro Chat v1.28.224 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -875,8 +875,10 @@ async function encryptMessage(plaintext, recipientId) {
   const recipientPublicKey = peers.length ? nacl.util.decodeBase64(peers[0]) : ((await getRecipientPublicKey(recipientId, true)) || (await getRecipientPublicKey(recipientId)));
 
   if (!recipientPublicKey) {
-    console.warn('相手の公開鍵が見つかりません。暗号化なしで送信します。');
-    return { encrypted: false, content: plaintext };
+    // 以前はここで暗号化せずに送っていた。鍵の取得を邪魔されるだけで平文がサーバーに残るので、送らずに止める
+    const e = new Error(window.i18n ? i18n.t('err_no_peer_key', '相手の暗号鍵が見つからないため送れませんでした') : '相手の暗号鍵が見つからないため送れませんでした');
+    e.code = 'NO_KEY';
+    throw e;
   }
 
   const nonce = nacl.randomBytes(nacl.box.nonceLength);
@@ -1301,7 +1303,9 @@ document.getElementById('chatForm').onsubmit = async e => {
     isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('sendBtn').innerHTML = paperPlane;
     if (msgId) {
-      const { encrypted, content: sendContent } = await encryptMessage(txt, otherId);
+      let enc;
+      try { enc = await encryptMessage(txt, otherId); } catch (e) { alert(e.message); return; }
+      const { encrypted, content: sendContent } = enc;
       // サーバーはHTTPの返事より先にWSで「編集された」を送ってくるので、平文の控えは先に書き換えておく
       // (以前は後で書き換えていて、編集した端末では古い文のまま「(編集済)」と出ていた)
       cacheOwnPlaintext(msgId, txt);
@@ -1468,7 +1472,7 @@ async function sendRealMessage(content) {
     }
   } catch (err) {
     console.error('send error:', err);
-    markDmSendFailed(tempId, content, null);
+    markDmSendFailed(tempId, content, err && err.code === 'NO_KEY' ? err.message : null);
   }
 }
 

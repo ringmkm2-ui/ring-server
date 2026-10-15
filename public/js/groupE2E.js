@@ -115,11 +115,11 @@
   //  signedPrekeyは確かにidentityPubkeyの持ち主が発行したものだと保証できる)。
   async function verifySignedPrekey(bundle) {
     const sodium = await (async () => { await window.sodium.ready; return window.sodium; })();
-    if (!bundle.signingPubkey) {
-      // 過去に登録された鍵にはsigningPubkeyが無い(移行期間中の後方互換)。
-      // 検証できない場合は安全側に倒し、警告を出しつつ許容する。
-      console.warn('[groupE2E] signingPubkey missing for bundle - signature cannot be verified (legacy key?)');
-      return true;
+    if (!bundle.signingPubkey || !bundle.signedPrekeySig) {
+      // 署名鍵が無いバンドルは検証できないので使わない(以前は通していたので、悪意あるサーバーが署名鍵を
+      // 外して返すだけで検証をすり抜けられた)。今のグループ鍵は端末ごとの鍵(e3)で配るので、ここは古い経路だけ
+      console.warn('[groupE2E] bundle without signing key rejected');
+      return false;
     }
     const signingPubkey = sodium.from_base64(bundle.signingPubkey);
     const signedPrekeyPub = sodium.from_base64(bundle.signedPrekeyPub);

@@ -385,7 +385,14 @@ router.get('/pending-keys', verifyToken, asyncHandler(async (req, res) => {
 // 現メンバーなら誰でも、新しい鍵を作って全メンバー宛に配れる。これ以降のメッセージは全員読める。
 // 以前のメッセージは、元の鍵を持っている端末でだけ読める(鍵が無ければ復元できない)。
 // body: { expectedVersion, encryptedKeysForMembers: [{userId, encryptedGroupKey}] }
-router.post('/:groupId/rotate-key', verifyToken, asyncHandler(async (req, res) => {
+// 鍵の作り直しは、普通は新しい端末の時くらいしか起きない。悪意あるメンバーが何度も作り直して、
+// ほかの人あてに壊れた鍵を配り続ける嫌がらせを抑える(1人1時間に5回まで)
+const rotateLimiter = require('express-rate-limit')({
+  windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: '鍵の作り直しが多すぎます。しばらくしてから試してください' },
+});
+router.post('/:groupId/rotate-key', rotateLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { expectedVersion, encryptedKeysForMembers } = req.body || {};
   const group = await db.get('SELECT * FROM groups WHERE id = ?', [groupId]);
@@ -493,6 +500,8 @@ router.get('/:groupId/key-status', verifyToken, asyncHandler(async (req, res) =>
 }));
 
 router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
+  // 今のメンバーだけ(抜けた人に、在籍中に受け取った分も含めて鍵を渡し続けない)
+  if (!(await isGroupMember(req.params.groupId, req.user.userId))) return res.status(403).json({ error: 'このグループのメンバーではありません' });
   const wantVer = parseInt(req.query.version, 10);
   const row = Number.isInteger(wantVer)
     ? await db.get(
