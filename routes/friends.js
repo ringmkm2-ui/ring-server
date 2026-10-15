@@ -138,10 +138,11 @@ router.post('/publickey', auth, async (req, res) => {
 // GET: 有無だけ返す(?full=1 で本体も返す)。PUT: 保存。
 router.get('/key-backup', auth, async (req, res) => {
   try {
-    const row = await db.get('SELECT blob, updated_at FROM key_backups WHERE user_id = ?', [req.userId]);
+    const row = await db.get('SELECT blob, updated_at, strong FROM key_backups WHERE user_id = ?', [req.userId]);
     if (!row) return res.json({ exists: false });
-    if (req.query.full === '1') return res.json({ exists: true, blob: row.blob, updatedAt: row.updated_at });
-    res.json({ exists: true, updatedAt: row.updated_at });
+    const strong = !!(row.strong === true || Number(row.strong) === 1);
+    if (req.query.full === '1') return res.json({ exists: true, blob: row.blob, updatedAt: row.updated_at, strong });
+    res.json({ exists: true, updatedAt: row.updated_at, strong });
   } catch (e) {
     sendServerError(res, e);
   }
@@ -161,6 +162,10 @@ router.put('/key-backup', auth, async (req, res) => {
        ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = CURRENT_TIMESTAMP`,
       [req.userId, blob]
     );
+    // 新しいパスフレーズで預け直した時だけ、強さの印を付け直す(鍵が増えた時の自動の更新では変えない)
+    if (typeof req.body.strong === 'boolean') {
+      await db.run('UPDATE key_backups SET strong = ? WHERE user_id = ?', [req.body.strong, req.userId]);
+    }
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);
