@@ -99,8 +99,13 @@ function verifyToken(req, res, next) {
     req.userId = payload.userId;
     next();
   }).catch(err => {
+    // ここに来るのはDBの一時的な不調(接続待ちのタイムアウトなど)であって、トークンが悪いわけではない。
+    // 401で「トークンが無効です」を返すと、アプリが「ログアウトされた」と判断して
+    // 端末のデータを消してログイン画面へ飛ばす(トーク画面を高速に切り替えるとDBの接続が詰まって起きた)。
+    // なので503を返して、アプリには「あとでもう一度」とだけ伝える。
     console.error('[auth] verifyToken error:', err.message);
-    res.status(401).json({ error: 'トークンが無効です' });
+    res.set('Retry-After', '2');
+    res.status(503).json({ error: 'サーバーが混み合っています。少し待ってからもう一度お試しください' });
   });
 }
 
