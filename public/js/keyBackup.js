@@ -274,13 +274,18 @@
 
       var inCss = 'width:100%;box-sizing:border-box;border:0;outline:0;border-radius:12px;background:' + inputBg + ';color:' + fg + ';font-size:16px;padding:12px 14px;margin-bottom:8px';
       var p1 = el('input', inCss); p1.type = 'password'; p1.autocomplete = isSetup ? 'new-password' : 'current-password';
-      p1.placeholder = T('kb_pass', 'パスフレーズ(8文字以上)');
+      p1.placeholder = isSetup ? T('kb_pass_strong', 'パスフレーズ(12文字以上)') : T('kb_pass', 'パスフレーズ');
       box.appendChild(p1);
       var p2 = null;
       if (isSetup) {
         p2 = el('input', inCss); p2.type = 'password'; p2.autocomplete = 'new-password';
         p2.placeholder = T('kb_pass2', 'もう一度入力');
         box.appendChild(p2);
+        // 自分で考えると弱くなりがちなので、強いものを作るボタン(約93ビット)。作ったら見えるようにして控えてもらう
+        var gen = el('button', 'border:0;background:none;color:#10b981;font-size:13px;font-weight:700;padding:2px 2px 8px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
+        gen.type = 'button';
+        gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; p1.type = 'text'; p2.type = 'text'; msg.style.color = sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません'); };
+        box.appendChild(gen);
       }
       var msg = el('div', 'min-height:18px;font-size:12.5px;color:#ef4444;margin:2px 2px 8px');
       box.appendChild(msg);
@@ -305,7 +310,9 @@
         if (busy) return;
         var pass = p1.value;
         msg.textContent = '';
-        if (pass.length < MIN_PASS) { msg.textContent = T('kb_err_short', 'パスフレーズは8文字以上にしてください'); return; }
+        msg.style.color = '#ef4444';
+        if (isSetup) { var weak = weakReason(pass); if (weak) { msg.textContent = weak; return; } }
+        else if (pass.length < MIN_PASS) { msg.textContent = T('kb_err_short', 'パスフレーズは8文字以上にしてください'); return; }
         if (isSetup && pass !== p2.value) { msg.textContent = T('kb_err_match', '2つのパスフレーズが一致しません'); return; }
         busy = true; btn.disabled = true; btn.style.opacity = '.6';
         btn.textContent = T('kb_working', '処理中…');
@@ -325,6 +332,32 @@
         } else close('later');
       };
     });
+  }
+
+  // ---------- パスフレーズの強さ ----------
+  // サーバーのデータが漏れた時、弱いパスフレーズは総当たりで破られて過去のメッセージが全部読まれる。
+  // 以前は8文字以上なら何でも通していた。新しく預ける時は、12文字以上で推測されにくいものだけにする
+  var COMMON = ['password', 'passw0rd', 'qwerty', 'qwertyuiop', 'asdfghjkl', 'iloveyou', 'abcdefg', 'abc123', 'letmein', 'welcome', 'monkey', 'dragon', 'brochat', 'bro chat', 'admin', 'sakura', 'tokyo', 'japan'];
+  function weakReason(p) {
+    var s = String(p || '');
+    if (s.length < 12) return T('kb_err_short12', 'パスフレーズは12文字以上にしてください');
+    var low = s.toLowerCase();
+    if (/^(.)\1+$/.test(s) || new Set(s).size < 5) return T('kb_err_simple', '同じ文字の繰り返しが多すぎます');
+    var seq = '0123456789abcdefghijklmnopqrstuvwxyz';
+    for (var i = 0; i + 6 <= low.length; i++) { var c = low.slice(i, i + 6); if (seq.indexOf(c) >= 0 || '9876543210'.indexOf(c) >= 0) return T('kb_err_seq', '並んだ文字や数字(123456、abcdef など)は使えません'); }
+    for (var j = 0; j < COMMON.length; j++) if (low.indexOf(COMMON[j]) >= 0) return T('kb_err_common', 'よく使われる言葉が入っています。ほかのものにしてください');
+    var me = [String(localStorage.getItem('ring_username') || '').split('@')[0], String(localStorage.getItem('ring_display_name') || ''), String(localStorage.getItem('ring_userIdCode') || '')];
+    for (var k = 0; k < me.length; k++) if (me[k] && me[k].length >= 4 && low.indexOf(me[k].toLowerCase()) >= 0) return T('kb_err_me', '自分の名前・ID・メールアドレスは入れないでください');
+    var classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(function (r) { return r.test(s); }).length;
+    if (s.length < 16 && classes < 2) return T('kb_err_classes', '16文字未満なら、英字・数字・記号を混ぜてください');
+    return null;
+  }
+  function genPass() {
+    var A = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 見間違えやすい l,o,I,O,0,1 は除く
+    var b = new Uint8Array(16); crypto.getRandomValues(b);
+    var out = '';
+    for (var i = 0; i < 16; i++) { out += A[b[i] % A.length]; if (i % 4 === 3 && i < 15) out += '-'; }
+    return out;
   }
 
   // ---------- 入口 ----------

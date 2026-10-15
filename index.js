@@ -99,7 +99,7 @@ async function main() {
           // nonceに対応したブラウザでは 'unsafe-inline' は無視される(nonce非対応の古いブラウザ向けの互換)
           "'unsafe-inline'",
           "https://accounts.google.com",
-          "https://cdnjs.cloudflare.com",
+          // cdnjs は使っていない(ライブラリは全部 /js に置いている)。許していると、そこが改ざんされた時に読み込める穴になる
         ],
         // helmetはデフォルトで script-src-attr 'none' を足してくる。これが有効だと
         // onclick="..." 等のインラインイベントハンドラが全ページで一切動かなくなる
@@ -124,8 +124,8 @@ async function main() {
         mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
         connectSrc: [
           "'self'",
-          "wss:",                      // WebSocket
-          "https://api.anthropic.com",
+          // WebSocketは自分のサーバーにだけ。以前は wss: (どこでも)で、悪いスクリプトが入ると鍵を外へ送れた
+          (req) => `${req.secure ? 'wss' : 'ws'}://${req.get('host')}`,
           "https://accounts.google.com",
           "https://people.googleapis.com",
           "https://res.cloudinary.com",
