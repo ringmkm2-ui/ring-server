@@ -532,7 +532,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.228 beta</div>
+  <div class="version-badge">Bro Chat v1.28.231 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1668,6 +1668,7 @@ function renderGroups(groups) {
   groups.forEach(g => {
     const item = document.createElement('div');
     item.className = 'ti';
+    item.dataset.groupId = g.groupId || g.id;
 
     const av = document.createElement('div');
     av.className = 'tav group-default-av';
@@ -3132,6 +3133,19 @@ function connectTalkWs() {
     // 入力中の合図・既読の知らせは一覧に関係ない(以前は誰かが文字を打つたびに一覧をAPI3本で取り直していた)
     if (/typing|_read$|^gcall_|reaction$/.test(d.type)) return;
     if (d.type === 'member_keys_ready' && window.__e2eBackgroundWork) { window.__e2eBackgroundWork(); return; }
+    // グループ名・アバター変更を即座に画面に反映する(APIを叩かなくても名前だけ先に差し替える)
+    if (d.type === 'group_updated' && d.groupId && d.name) {
+      const nameEls = document.querySelectorAll(`[data-group-id="${d.groupId}"] .tname`);
+      nameEls.forEach(el => { el.textContent = d.name; });
+      // localStorageのキャッシュも更新(次回ページ表示で古い名前が一瞬出るのを防ぐ)
+      try {
+        const c = JSON.parse(localStorage.getItem(TALK_CACHE_KEY) || 'null');
+        if (c && Array.isArray(c.groups)) {
+          const g = c.groups.find(g => (g.groupId || g.id) === d.groupId);
+          if (g) { g.name = d.name; localStorage.setItem(TALK_CACHE_KEY, JSON.stringify(c)); }
+        }
+      } catch (_) {}
+    }
     scheduleTalkRefresh();
   };
   talkWs.onclose = () => {
