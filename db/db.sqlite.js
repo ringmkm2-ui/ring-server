@@ -442,6 +442,7 @@ async function initDB() {
     users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT']],
     groups: [['avatar_url', 'TEXT']],
+    key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
     community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],

@@ -136,13 +136,13 @@
     } catch (e) { return { exists: null }; } // 取得失敗(オフライン等)は「不明」
   }
 
-  async function upload(pass, saltOverride) {
+  async function upload(pass, saltOverride, strong) {
     var salt = saltOverride || nacl().randomBytes(16);
     var key = await deriveKey(pass, salt);
     var payload = payloadFromLocal();
     if (!payload.keypair && !payload.identity) throw new Error('no local key');
     var blob = pack(payload.keypair ? pubOf(payload.keypair) : null, salt, seal(payload, key), identityPub(payload.identity));
-    var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
+    var r = await http('PUT', '/api/friends/key-backup', { blob: blob, strong: !!strong });
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
     // この端末を「信頼済み」にして、以後は鍵が増えたら黙って更新できるようにする
     localStorage.setItem(trustName(), JSON.stringify({ salt: b64e(salt), key: b64e(key) }));
@@ -262,9 +262,12 @@
       var box = el('div', 'width:100%;max-width:360px;background:' + card + ';color:' + fg + ';border-radius:22px;padding:22px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif');
       var ic = el('div', 'color:#10b981;margin-bottom:8px'); ic.innerHTML = LOCK_SVG; box.appendChild(ic);
 
-      var isSetup = mode === 'setup';
+      var isSetup = mode === 'setup' || mode === 'upgrade';
       var title = isSetup ? T('kb_setup_title', '暗号鍵をバックアップ') : T('kb_restore_title', '暗号鍵を復元');
-      var body = isSetup
+      if (mode === 'upgrade') title = T('kb_upgrade_title', 'パスフレーズを強くしてください');
+      var body = mode === 'upgrade'
+        ? T('kb_upgrade_body', '今のバックアップは、前の基準(8文字以上)のパスフレーズで預けられています。短いと、万一サーバーのデータが漏れた時に総当たりで破られるおそれがあります。新しいパスフレーズで預け直すと、古いバックアップは置き換わります。')
+        : isSetup
         ? T('kb_setup_body', '別の端末でも過去のメッセージを読めるように、鍵をパスフレーズで暗号化して預けます。パスフレーズはサーバーにも分かりません。忘れると復元できないので、控えておいてください。')
         : (mode === 'restore-mismatch'
           ? T('kb_mismatch_body', 'この端末の鍵が、バックアップの鍵と違っています。このままだと一部のメッセージが読めません。バックアップのパスフレーズを入力すると、鍵が揃います。')
@@ -317,7 +320,7 @@
         busy = true; btn.disabled = true; btn.style.opacity = '.6';
         btn.textContent = T('kb_working', '処理中…');
         try {
-          if (isSetup) await upload(pass); else await restore(pass);
+          if (isSetup) await upload(pass, null, !weakReason(pass)); else await restore(pass);
           close(isSetup ? 'saved' : 'restored');
         } catch (e) {
           msg.textContent = e && e.code === 'WRONG' ? T('kb_err_wrong', 'パスフレーズが違います') : T('kb_err_fail', '失敗しました。通信を確認してもう一度試してください');
@@ -354,9 +357,16 @@
   }
   function genPass() {
     var A = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 見間違えやすい l,o,I,O,0,1 は除く
-    var b = new Uint8Array(16); crypto.getRandomValues(b);
-    var out = '';
-    for (var i = 0; i < 16; i++) { out += A[b[i] % A.length]; if (i % 4 === 3 && i < 15) out += '-'; }
+    // 56文字から偏りなく選ぶ(256は56で割り切れないので、224以上の値は捨てて引き直す)。16文字で約93ビット
+    var out = '', n = 0, b = new Uint8Array(32);
+    while (n < 16) {
+      crypto.getRandomValues(b);
+      for (var i = 0; i < b.length && n < 16; i++) {
+        if (b[i] >= 224) continue;
+        out += A[b[i] % A.length]; n++;
+        if (n % 4 === 0 && n < 16) out += '-';
+      }
+    }
     return out;
   }
 
@@ -394,7 +404,16 @@
       var trusted = !!readJson(trustName(), null);
       if (info.exists) {
         if (!hasLocalKey()) { await guardCreate(); return; } // 鍵が無い端末: 復元を促す
-        if (trusted) { syncIfNeeded().catch(function () {}); return; }
+        if (trusted) {
+          syncIfNeeded().catch(function () {});
+          // 前の基準(8文字以上)で預けたバックアップは、強いパスフレーズで預け直してもらう(断られたら7日あける)
+          var usn = Number(localStorage.getItem('e2e_bk_upgrade_snooze_' + uid()) || 0);
+          if (info.strong === false && Date.now() > usn) {
+            var ur = await showModal('upgrade');
+            if (ur !== 'saved') localStorage.setItem('e2e_bk_upgrade_snooze_' + uid(), String(Date.now() + 7 * 24 * 3600 * 1000));
+          }
+          return;
+        }
         // 鍵はあるが、バックアップの鍵と違う端末(別端末で作った鍵)
         var full = await serverInfo(true);
         var u = full.exists ? unpack(full.blob) : null;
