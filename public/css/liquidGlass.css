@@ -742,8 +742,12 @@ body.chat-bg-dark .reply-preview{background:rgba(30,30,34,.7)} body.chat-bg-dark
 .cbg-paused .cbg-l{animation-play-state:paused!important}
 
 /* ===== iPhone(ホーム画面アプリ) ===== */
-html.ios-standalone .phone-container, html.ios-standalone .pc { padding-top: env(safe-area-inset-top, 0px); box-sizing: border-box; }
-html.ios-standalone .input-bar-container { padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* iPhoneのホーム画面アプリ: 上の余白はヘッダー側(env(safe-area-inset-top))で取っているので、ここでは足さない。
+   以前は両方で足していて、ヘッダーの上に余計な空白ができていた */
+html.ios-standalone .phone-container, html.ios-standalone .pc { box-sizing: border-box; }
+/* 下はホームバーの分だけ。安全域いっぱい(34px)+元の余白だと入力欄の下が空きすぎていた */
+html.ios-standalone .input-bar-container, html.ios-standalone .ibc { padding-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 10px)); }
+html.ios-standalone .version-badge { display: none; }
 .ios-pwa-banner{position:fixed;left:12px;right:12px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:10050;display:flex;align-items:center;gap:10px;
   padding:12px 12px 12px 16px;border-radius:22px;background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   box-shadow:0 12px 36px rgba(15,23,42,.2);font-size:13px;color:#111;animation:bcRise .5s var(--spring-smooth,ease-out) both}
