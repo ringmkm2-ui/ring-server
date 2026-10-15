@@ -242,7 +242,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.228 beta</div>
+  <div class="version-badge">Bro Chat v1.28.231 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1013,6 +1013,15 @@ document.addEventListener('visibilitychange',()=>{
   invalidateGroupKey(); // 裏にいる間に鍵が新しくなっていることがある
   gSyncSoon();
 });
+// 通知タップでフォーカスされた時、300ms待たずに即座にメッセージを取りに行く
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message',ev=>{
+    if(ev.data&&ev.data.type==='NOTIF_TAP_SYNC'){
+      invalidateGroupKey();
+      loadGroupMessages();
+    }
+  });
+}
 
 // サーバーが出すお知らせ(禁止語によるBan等)。未読の区切り線と同じ見た目で真ん中に出す
 function createNotice(msgId,content){
@@ -1890,6 +1899,8 @@ function connectGroupWS(){
         invalidateGroupKey();
         loadGroupInfo();
       }else if(data.type==='group_updated'&&data.groupId===groupId){
+        // 名前がWSに含まれていたら即座にヘッダーを差し替え(APIの往復を待たない)
+        if(data.name){gi.name=data.name;refreshHdr();}
         loadGroupInfo();
       }else if(data.type==='member_keys_ready'){
         // 鍵をまだ持っていなかったメンバーが鍵を作った → 持っているグループ鍵を配る

@@ -339,7 +339,7 @@ router.post('/:groupId/name', verifyToken, asyncHandler(async (req, res) => {
   if (await rejectIfProfane(req, res, name)) return;
   await db.run('UPDATE groups SET name = ? WHERE id = ?', [name, groupId]);
   const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
-  for (const m of members) if (m.user_id !== req.user.userId) broadcastToUser(m.user_id, { type: 'group_updated', groupId });
+  for (const m of members) if (m.user_id !== req.user.userId) broadcastToUser(m.user_id, { type: 'group_updated', groupId, name });
   res.json({ ok: true, name });
 }));
 

@@ -378,7 +378,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.228 beta</div>
+  <div class="version-badge">Bro Chat v1.28.231 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2669,11 +2669,21 @@ function sendNotification(title, options = {}) {
   }
 }
 
-// Service Workerからのメッセージ受信：バックグラウンド着信の復帰
+// Service Workerからのメッセージ受信：バックグラウンド着信の復帰 & 通知タップ時の即時sync
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
     const { type, callId, callerId, isVideo, action } = event.data;
-    
+
+    // 通知をタップしてこの画面に戻った → 300msのdelayを待たずに即座にメッセージを取りに行く
+    if (type === 'NOTIF_TAP_SYNC') {
+      syncMessages();
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (ws) { ws.onclose = null; try { ws.close(); } catch (_) {} }
+        connectRealWS();
+      }
+      return;
+    }
+
     if (type === 'INCOMING_CALL_RESUMED' || type === 'INCOMING_CALL_DIRECT') {
       console.log(`[BG CALL] Resuming from background: callId=${callId}, callerId=${callerId}, isVideo=${isVideo}, action=${action}`);
       
@@ -3133,18 +3143,53 @@ document.getElementById('mmDownload').onclick = async () => {
   const el = document.getElementById('mmInner').firstElementChild;
   if (!el || !el.src) return;
   try {
-    const res = await fetch(el.src);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     const isVideo = el.tagName.toLowerCase() === 'video';
-    a.download = `brochat_${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+    const fname = `brochat_${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`;
+
+    // Capacitor/Android WebViewでは<a download>.click()が動かない。
+    // Capacitor Filesystem APIがあればそっちを使う。なければwindow.openでブラウザに委ねる。
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+      // blob URLからArrayBufferを取ってBase64に変換 → Filesystemで保存
+      const res = await fetch(el.src);
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const b64 = btoa(bin);
+      const { Filesystem } = window.Capacitor.Plugins;
+      const dir = (window.Capacitor.Plugins.Directory || {}).Documents || 'DOCUMENTS';
+      await Filesystem.writeFile({ path: fname, data: b64, directory: dir, recursive: true });
+      if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+    } else {
+      // 通常ブラウザ: blob URLかhttpsかで分岐
+      const src = el.src;
+      if (src.startsWith('blob:')) {
+        // blob URLは既にメモリにあるのでそのまま使う(re-fetchしない)
+        const a = document.createElement('a');
+        a.href = src;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // <a download>が効かないWebView用フォールバック(300ms後にまだ同じページにいたら)
+        const t = setTimeout(() => { window.open(src, '_blank'); }, 300);
+        window.addEventListener('blur', () => clearTimeout(t), { once: true });
+      } else {
+        // https URL(Cloudinary等): fetchしてblobにする
+        const res = await fetch(src);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        const t = setTimeout(() => { window.open(url, '_blank'); }, 300);
+        window.addEventListener('blur', () => clearTimeout(t), { once: true });
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+      if (window.LiquidGlass) window.LiquidGlass.haptic('success');
+    }
   } catch (e) {
     console.error('download error:', e);
   }

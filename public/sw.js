@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.228';
+const CACHE_VERSION = 'v1.28.231';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -255,10 +255,11 @@ self.addEventListener('notificationclick', event => {
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
           for (let client of clientList) {
-            // 既に同じトークを開いていればフォーカスするだけ
+            // 既に同じトークを開いていればフォーカスして即座にsync通知を送る
             if (client.url.includes(targetUrl.split('?')[0]) && client.url.includes(
               notifData.type === 'dm' ? notifData.senderId : notifData.groupId
             )) {
+              client.postMessage({ type: 'NOTIF_TAP_SYNC' });
               return client.focus();
             }
           }
