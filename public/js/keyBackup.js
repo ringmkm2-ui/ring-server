@@ -141,6 +141,19 @@
     var key = await deriveKey(pass, salt);
     var payload = payloadFromLocal();
     if (!payload.keypair && !payload.identity) throw new Error('no local key');
+    // パスフレーズを変える時、ほかの端末だけが持っていた鍵がバックアップから消えないよう、今のバックアップと混ぜてから預け直す
+    // (この端末が今のバックアップを開ける時だけ。開けなければこの端末の分だけになる)
+    try {
+      var trust = readJson(trustName(), null);
+      var cur = trust ? await serverInfo(true) : null;
+      var cu = cur && cur.exists ? unpack(cur.blob) : null;
+      var old = cu && cu.saltB64 === trust.salt ? open(cu.sealed, b64d(trust.key)) : null;
+      if (old) {
+        if (payload.keypair) payload.keyring = mergeRing(payload.keypair, [payload.keyring, old.keyring || []]);
+        payload.groupKeys = Object.assign({}, old.groupKeys || {}, payload.groupKeys || {});
+        if (!payload.identity && old.identity) payload.identity = old.identity;
+      }
+    } catch (e) {}
     var blob = pack(payload.keypair ? pubOf(payload.keypair) : null, salt, seal(payload, key), identityPub(payload.identity));
     var r = await http('PUT', '/api/friends/key-backup', { blob: blob, strong: !!strong });
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');

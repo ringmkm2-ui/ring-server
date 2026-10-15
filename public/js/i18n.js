@@ -278,6 +278,7 @@
     leave_failed: { ja: "退出できませんでした", en: "Couldn't leave the group", "zh-CN": "无法退出群组", ko: "나가지 못했습니다" },
     notice_left: { ja: "{name}が退出しました", en: "{name} left the group", "zh-CN": "{name}退出了群组", ko: "{name} 님이 나갔습니다" },
     notice_removed: { ja: "{name}がグループから外されました", en: "{name} was removed from the group", "zh-CN": "{name}已被移出群组", ko: "{name} 님이 그룹에서 제외되었습니다" },
+    err_no_peer_key: { ja: "相手の暗号鍵が見つからないため送れませんでした", en: "Couldn't send: the other person's encryption key wasn't found", "zh-CN": "未找到对方的加密密钥，无法发送", ko: "상대의 암호 키를 찾을 수 없어 보내지 못했습니다" },
     real_name: { ja: "本名", en: "Legal name", "zh-CN": "真实姓名", ko: "실명" },
     real_name_ph: { ja: "本名(フルネーム)", en: "Your full legal name", "zh-CN": "真实姓名（全名）", ko: "실명 (성명)" },
     real_name_note: { ja: "本名はほかの人には表示されません", en: "Your legal name is never shown to other people", "zh-CN": "真实姓名不会显示给其他人", ko: "실명은 다른 사람에게 표시되지 않습니다" },

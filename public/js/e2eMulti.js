@@ -11,14 +11,16 @@
 // window(ページ)と self(Service Worker)の両方で使う。nacl / nacl.util が先に必要。
 (function (g) {
   const PREFIX = 'e3:';
-  const MAX_RECIPIENTS = 16;
+  // 1人の端末は最大6台(サーバー側)なので、相手6+自分5で11台。余裕を見て32。超えたら黙って切らずにエラーにする
+  const MAX_RECIPIENTS = 32;
 
   function seal(bytes, senderSecretKey, senderPubB64, recipientPubB64List) {
     const nacl = g.nacl;
     const seen = new Set();
     const entries = [];
     for (const pb of recipientPubB64List) {
-      if (!pb || seen.has(pb) || entries.length >= MAX_RECIPIENTS) continue;
+      if (!pb || seen.has(pb)) continue;
+      if (entries.length >= MAX_RECIPIENTS) throw new Error('送り先の端末が多すぎます');
       seen.add(pb);
       let pk;
       try { pk = nacl.util.decodeBase64(pb); } catch (e) { continue; }
