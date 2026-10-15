@@ -426,7 +426,16 @@ function initWebSocketServer(server) {
         // 認証は接続ごとに1回だけ。認証済みの接続で再度authを送られても無視する
         // (別ユーザーのトークンで userId を差し替えて、前のユーザーの接続集合に居座られるのを防ぐ)
         if (userId) return;
-        const payload = await verifyTokenRaw(data.token);
+        let payload;
+        try {
+          payload = await verifyTokenRaw(data.token);
+        } catch (e) {
+          // DBの一時的な不調。auth_errorを送るとアプリがログアウトしてしまうので、
+          // 黙って切って(1013 = あとでもう一度)、アプリ側の自動再接続に任せる
+          console.error('[ws] auth verify error:', e && e.message);
+          try { ws.close(1013, 'try again later'); } catch (_) {}
+          return;
+        }
         if (!payload) {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'トークンが無効です' }));
           ws.close();
