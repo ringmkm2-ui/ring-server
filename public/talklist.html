@@ -304,6 +304,20 @@ html.dark-mode #settingsMov .sg{background:#1c1c1e}
 @keyframes talkSpin{to{transform:rotate(360deg)}}.talk-spin{animation:talkSpin .8s linear infinite}
 .version-badge{position:fixed;left:8px;bottom:6px;font-size:10px;color:rgba(100,116,139,.6);z-index:10000;pointer-events:none;user-select:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
 html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
+/* PWA install banner */
+.pwa-banner{display:flex;align-items:center;gap:12px;padding:12px 16px;margin:0 16px 12px;background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.03);cursor:pointer;position:relative}
+.pwa-banner-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0;background:#1e293b;display:flex;align-items:center;justify-content:center}
+.pwa-banner-icon img{width:28px;height:28px;border-radius:6px}
+.pwa-banner-body{flex:1;min-width:0}
+.pwa-banner-title{font-size:13px;font-weight:700;color:#0f172a;line-height:1.3}
+.pwa-banner-desc{font-size:11px;color:#64748b;line-height:1.3;margin-top:2px}
+.pwa-banner-btn{padding:6px 14px;border-radius:999px;border:none;background:#3b82f6;color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
+.pwa-banner-close{position:absolute;top:6px;right:8px;width:20px;height:20px;border:none;background:none;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center}
+.pwa-banner-close svg{width:14px;height:14px}
+html.dark-mode .pwa-banner{background:rgba(30,30,35,.7);border-color:rgba(255,255,255,.08)}
+html.dark-mode .pwa-banner-title{color:#e2e8f0}
+html.dark-mode .pwa-banner-desc{color:#94a3b8}
+html.dark-mode .pwa-banner-close svg{stroke:#94a3b8}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
 .sg input[type=text]{width:100%;padding:12px 16px;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:15px;font-weight:600}
 .fiw{position:relative;margin-bottom:10px}
@@ -413,6 +427,15 @@ window.ensureGroupCrypto = (function () {
         <button class="tb26-item" id="btnPosts" type="button"><span data-i18n="post">投稿</span></button>
       </nav>
     </header>
+    <div id="pwaBanner" class="pwa-banner" style="display:none">
+      <div class="pwa-banner-icon"><img src="/images/icons/icon-192.png" alt=""></div>
+      <div class="pwa-banner-body">
+        <div class="pwa-banner-title">Bro Chatをインストール</div>
+        <div class="pwa-banner-desc">ホーム画面に追加してアプリとして使えます</div>
+      </div>
+      <button class="pwa-banner-btn" id="pwaInstallBtn">インストール</button>
+      <button class="pwa-banner-close" id="pwaDismissBtn" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    </div>
     <main class="tc">
       <section id="pageTalk">
         <div class="card">
@@ -532,7 +555,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.231 beta</div>
+  <div class="version-badge">Bro Chat v1.28.232 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -4523,5 +4546,68 @@ async function deletePost(postId, card) {
 })();
 </script>
 <script>document.body.setAttribute('data-pick-talk', window.i18n ? i18n.t('pick_talk', 'トークを選んでください') : 'トークを選んでください');</script>
+<script>
+// ========== PWA Install Banner ==========
+(function(){
+  // standalone(既にインストール済み)またはCapacitorなら不要
+  if(window.matchMedia('(display-mode:standalone)').matches)return;
+  if(window.navigator.standalone)return;
+  if(window.Capacitor)return;
+
+  var banner=document.getElementById('pwaBanner');
+  var installBtn=document.getElementById('pwaInstallBtn');
+  var dismissBtn=document.getElementById('pwaDismissBtn');
+  if(!banner)return;
+
+  // 24h dismiss
+  try{
+    var dismissed=localStorage.getItem('pwa_banner_dismissed');
+    if(dismissed&&Date.now()-parseInt(dismissed,10)<86400000)return;
+  }catch(_){}
+
+  var deferredPrompt=null;
+
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault();
+    deferredPrompt=e;
+    banner.style.display='flex';
+  });
+
+  installBtn.addEventListener('click',function(e){
+    e.stopPropagation();
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function(r){
+        if(r.outcome==='accepted')banner.style.display='none';
+        deferredPrompt=null;
+      });
+    }
+  });
+
+  dismissBtn.addEventListener('click',function(e){
+    e.stopPropagation();
+    banner.style.display='none';
+    try{localStorage.setItem('pwa_banner_dismissed',String(Date.now()));}catch(_){}
+  });
+
+  // iOS Safari: beforeinstallpromptが発火しないのでマニュアル案内
+  var ua=navigator.userAgent||'';
+  if(/iP(hone|ad|od)/.test(ua)&&/Safari/.test(ua)&&!/CriOS|FxiOS|OPiOS/.test(ua)){
+    banner.style.display='flex';
+    installBtn.textContent='追加方法';
+    installBtn.addEventListener('click',function(){
+      // 既にbeforeinstallpromptハンドラが付いてるが、iOS Safariでは発火しないので上書き的に使う
+      if(!deferredPrompt){
+        alert('共有ボタン → 「ホーム画面に追加」をタップしてください');
+      }
+    });
+  }
+
+  window.addEventListener('appinstalled',function(){
+    banner.style.display='none';
+    deferredPrompt=null;
+  });
+})();
+</script>
 </body>
 </html>
