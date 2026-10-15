@@ -140,6 +140,9 @@
         : await api('/api/friends/publickey/' + encodeURIComponent(targetUserId));
       const keys = (data && Array.isArray(data.publicKeys) && data.publicKeys.length) ? data.publicKeys : (data && data.publicKey ? [data.publicKey] : []);
       if (!keys.length) return null;
+      // 安全番号の記録だけ更新する(個人トークを開いた時に「鍵が変わりました」が出る)。
+      // グループは配るのを止めると全員が読めなくなるので、ここでは止めない
+      if (window.SafetyNumber && targetUserId !== window.myUserId) { try { SafetyNumber.observe(window.myUserId, targetUserId, keys); } catch (e) {} }
       const sealed = E2EMulti.seal(new Uint8Array(groupKeyBytes), kp.secretKey, nacl.util.encodeBase64(kp.publicKey), keys);
       return sealed ? JSON.stringify({ e3: sealed, fromUserId: window.myUserId }) : null;
     } catch (e) {
