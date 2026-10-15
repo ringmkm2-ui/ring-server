@@ -367,7 +367,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.224 beta</div>
+  <div class="version-badge">Bro Chat v1.28.225 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1344,6 +1344,15 @@ const lazyLoadObserver = new IntersectionObserver((entries) => {
 
 // 画像・動画の復号に使う cloudinaryE2EUpload.js は defer で読むので、開いた直後はまだ無いことがある。
 // 以前はそのまま使って「(メディアの復号に失敗しました)」になり、タップし直すまで出なかった
+// iPhoneのSafariは、動画を再生するまで最初のコマを描かないので、吹き出しが透明な空白になって
+// 「メッセージの間が空いている」ように見えていた。黒い枠と再生マークを先に出し、最初のコマも読ませる
+window.prepVideoEl = window.prepVideoEl || function (v, src) {
+  v.setAttribute('playsinline', ''); v.playsInline = true; v.preload = 'metadata'; v.controls = true;
+  v.style.background = '#000'; v.style.minHeight = '120px'; v.style.minWidth = '160px'; v.style.display = 'block';
+  if (src) v.src = /^blob:/.test(src) && src.indexOf('#') < 0 ? src + '#t=0.001' : src;
+  v.addEventListener('loadedmetadata', () => { v.style.minHeight = ''; }, { once: true });
+  return v;
+};
 async function waitUploader(){ for(let i=0;i<100&&!window.cloudinaryE2EUploader;i++) await new Promise(r=>setTimeout(r,100)); }
 async function loadLazyMedia(placeholder) {
   await waitUploader();
@@ -1398,10 +1407,8 @@ async function loadLazyMedia(placeholder) {
     mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
   } else if (mediaType === 'video') {
     mediaEl = document.createElement('video');
-    mediaEl.src = mediaSrc;
-    mediaEl.controls = true;
-    mediaEl.preload = 'metadata';
     mediaEl.style.cssText = 'width:100%;max-width:100%;border-radius:8px;';
+    prepVideoEl(mediaEl, mediaSrc);
   } else if (mediaType === 'audio') {
     mediaEl = document.createElement('audio');
     mediaEl.src = mediaSrc;
