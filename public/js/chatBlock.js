@@ -31,6 +31,7 @@
   const ICON_BLOCK = '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>';
   const ICON_UNBLOCK = '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/>';
   const ICON_FLAG = '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>';
+  const ICON_SHIELD = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>';
   const ICON_BG = '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>';
 
   function applyBlocked(v) {
@@ -75,6 +76,7 @@
 
   function openMenu() {
     frame(card => {
+      if (window.openSafetyNumber) row(card, ICON_SHIELD, T('sn_title', '暗号化の確認'), '', () => { close(); setTimeout(() => window.openSafetyNumber(), 180); });
       if (window.ChatBackground) row(card, ICON_BG, T('chat_background', 'トーク背景を変更'), '', () => { close(); setTimeout(() => window.ChatBackground.open(), 180); });
       if (blocked) {
         row(card, ICON_UNBLOCK, T('unblock', 'ブロックを解除'), '', () => doUnblock().then(close));
