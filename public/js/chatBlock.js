@@ -90,7 +90,7 @@
   function openBlockConfirm() {
     frame(card => {
       const p = document.createElement('div'); p.className = 'peer-sub'; p.style.paddingTop = '12px';
-      p.textContent = T('block_desc', 'ブロックすると、この人からのメッセージ・通話が届かなくなります。相手には知らされません。あとから解除できます。');
+      p.textContent = T('block_desc', 'ブロックすると、この人からのメッセージ・通話が届かなくなります。相手には知らされません。トーク一覧からは消えますが、設定の「ブロックしたユーザー」からいつでも解除できます。');
       card.appendChild(p);
       row(card, ICON_BLOCK, T('block_confirm', 'ブロックする'), 'danger', async () => {
         try { await call('/api/friends/block', { userId: otherId }); applyBlocked(true); close(); }

@@ -42,10 +42,12 @@
 
   function render(cfg) {
     const el = ensureLayer();
+    anim = null; moving = false; if (raf) { cancelAnimationFrame(raf); raf = 0; }
     el.className = 'cbg';
     el.innerHTML = '';
     el.style.background = '';
-    document.body.classList.remove('chat-bg-on', 'chat-bg-dark');
+    document.body.classList.remove('chat-bg-on', 'chat-bg-dark', 'cbg-moving');
+    clearTimeout(pauseTimer);
     if (!cfg || cfg.type === 'none') return;
     document.body.classList.add('chat-bg-on');
     const preset = PRESETS.find(p => p.id === cfg.type);
@@ -66,33 +68,112 @@
       return;
     }
     el.classList.add('cbg-' + cfg.type);
-    // 動く層(それぞれ transform のループだけ)
-    const n = cfg.type === 'bubbles' ? 9 : cfg.type === 'cosmos' ? 3 : 3;
-    for (let i = 0; i < n; i++) {
-      const d = document.createElement('i');
-      d.className = 'cbg-l cbg-l' + i;
-      if (cfg.type === 'bubbles') {
-        const size = 40 + Math.round(Math.random() * 140);
-        d.style.cssText = `width:${size}px;height:${size}px;left:${Math.round(Math.random() * 90)}%;animation-duration:${14 + Math.random() * 16}s;animation-delay:-${Math.random() * 20}s`;
-      }
-      el.appendChild(d);
-    }
+    // 動く部分は小さいキャンバス1枚に描いて引き伸ばす(ぼやけた光なので低い解像度でも見た目は同じ)。
+    // 以前は画面の何倍もあるCSSの層を3〜9枚重ねて動かしていて、上のすりガラスと合わせて
+    // 背景を選ぶとカクカクになった
+    if (cfg.type === 'cosmos') { const st = document.createElement('i'); st.className = 'cbg-stars'; el.appendChild(st); }
+    const cv = document.createElement('canvas');
+    cv.className = 'cbg-cv';
+    el.appendChild(cv);
+    anim = { type: cfg.type, cv, ctx: cv.getContext('2d'), t0: performance.now(), seeds: Array.from({ length: 9 }, () => [Math.random(), Math.random(), Math.random()]) };
+    sizeCanvas();
+    drawFrame(performance.now());
     runForAWhile();
+  }
+
+  // ---------- 動く背景(キャンバス) ----------
+  const SCALE = 0.25;      // 画面の1/4の解像度で描く
+  const FPS = 30;
+  let anim = null, raf = 0, lastDraw = 0;
+  function sizeCanvas() {
+    if (!anim || !layer) return;
+    const w = Math.max(1, Math.round((layer.clientWidth || innerWidth) * SCALE));
+    const h = Math.max(1, Math.round((layer.clientHeight || innerHeight) * SCALE));
+    if (anim.cv.width !== w || anim.cv.height !== h) { anim.cv.width = w; anim.cv.height = h; }
+  }
+  addEventListener('resize', () => { if (anim) { sizeCanvas(); drawFrame(performance.now()); } });
+  const osc = (t, period, phase) => Math.sin((t / period + (phase || 0)) * Math.PI * 2);
+  function blob(c, x, y, rx, ry, color, rot) {
+    c.save();
+    c.translate(x, y); if (rot) c.rotate(rot); c.scale(1, ry / rx);
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, rx);
+    g.addColorStop(0, color); g.addColorStop(1, color.replace(/[\d.]+\)$/, '0)'));
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, rx, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+  function drawFrame(now) {
+    if (!anim) return;
+    const c = anim.ctx, W = anim.cv.width, H = anim.cv.height, t = (now - anim.t0) / 1000;
+    c.clearRect(0, 0, W, H);
+    const m = Math.max(W, H);
+    switch (anim.type) {
+      case 'aurora':
+        blob(c, W * (.5 + .08 * osc(t, 22)), H * .35, W * .9, H * .25, 'rgba(63,240,200,.6)', .1 * osc(t, 22));
+        blob(c, W * (.45 - .08 * osc(t, 30, .3)), H * .55, W * .9, H * .22, 'rgba(56,189,248,.5)', -.1 * osc(t, 30, .3));
+        blob(c, W * (.55 + .08 * osc(t, 38, .6)), H * .72, W * .85, H * .2, 'rgba(168,85,247,.35)', .1 * osc(t, 38, .6));
+        break;
+      case 'cosmos': {
+        const a1 = t / 60 * Math.PI * 2, a2 = -t / 90 * Math.PI * 2;
+        blob(c, W / 2 + Math.cos(a1) * m * .25, H / 2 + Math.sin(a1) * m * .25, m * .45, m * .45, 'rgba(139,92,246,.5)');
+        blob(c, W / 2 + Math.cos(a2 + 2) * m * .22, H / 2 + Math.sin(a2 + 2) * m * .22, m * .4, m * .4, 'rgba(236,72,153,.35)');
+        break;
+      }
+      case 'bubbles':
+        anim.seeds.forEach(([a, b, d]) => {
+          const r = (10 + 35 * a) * (W / 100);
+          const dur = 14 + 16 * b, p = ((t / dur) + d) % 1;
+          const x = W * (.05 + .9 * d) + Math.sin(p * Math.PI * 2) * W * .04;
+          const y = H + r - p * (H + r * 2);
+          const g = c.createRadialGradient(x - r * .35, y - r * .4, 0, x, y, r);
+          g.addColorStop(0, 'rgba(255,255,255,.5)'); g.addColorStop(.45, 'rgba(125,211,252,.18)'); g.addColorStop(1, 'rgba(125,211,252,.06)');
+          c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+          c.strokeStyle = 'rgba(255,255,255,.25)'; c.lineWidth = Math.max(.5, W / 300); c.stroke();
+        });
+        break;
+      case 'water':
+        [[.30, 9, 'rgba(255,255,255,.18)'], [.48, 13, 'rgba(255,255,255,.12)'], [.66, 17, 'rgba(2,132,199,.25)']].forEach(([y0, per, col], i) => {
+          c.save();
+          c.translate(W / 2 + W * .06 * osc(t, per * 2, i * .3), H * (y0 + .2) - H * .02 * osc(t, per * 2, i * .3));
+          c.rotate(.05 * osc(t, per * 2, i * .3));
+          c.fillStyle = col; c.beginPath(); c.ellipse(0, 0, W, H * .2, 0, 0, Math.PI * 2); c.fill();
+          c.restore();
+        });
+        break;
+      case 'sunset':
+        blob(c, W * (.5 + .08 * osc(t, 32)), H * .1, W * .7, H * .3, 'rgba(255,255,255,.45)');
+        blob(c, W * (.5 - .08 * osc(t, 42, .3)), H * .75, W * .7, H * .3, 'rgba(236,72,153,.35)');
+        break;
+    }
+  }
+  function loop(now) {
+    raf = 0;
+    if (!anim || !moving) return;
+    if (now - lastDraw >= 1000 / FPS - 2) { lastDraw = now; drawFrame(now); }
+    raf = requestAnimationFrame(loop);
   }
 
   // 動く背景はずっと動かすとGPUが休めず電池と発熱に響く。開いてから12秒だけ動かして止める。
   // 画面が裏に回ったら即停止。バッテリーセーバー設定がオンなら最初から止める。
-  let pauseTimer = null;
+  let pauseTimer = null, moving = false;
+  function pause() {
+    clearTimeout(pauseTimer);
+    moving = false;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    document.body.classList.remove('cbg-moving');
+  }
   function runForAWhile() {
     if (!layer) return;
-    layer.classList.remove('cbg-paused');
     clearTimeout(pauseTimer);
-    if (localStorage.getItem('batterySaverAnimations') === '1') { layer.classList.add('cbg-paused'); return; }
-    pauseTimer = setTimeout(() => layer && layer.classList.add('cbg-paused'), 12000);
+    if (!anim || localStorage.getItem('batterySaverAnimations') === '1' ||
+        (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) { pause(); return; }
+    moving = true;
+    document.body.classList.add('cbg-moving');
+    if (!raf) raf = requestAnimationFrame(loop);
+    pauseTimer = setTimeout(pause, 12000);
   }
   document.addEventListener('visibilitychange', () => {
     if (!layer) return;
-    if (document.hidden) layer.classList.add('cbg-paused'); else runForAWhile();
+    if (document.hidden) pause(); else runForAWhile();
   });
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
@@ -189,7 +270,12 @@
         render(current); select('photo');
       } catch (e) { alert('画像を読み込めませんでした'); }
     };
-    color.oninput = () => { current = { type: 'color', color: color.value }; render(current); };
+    // 色を選んでいる間は1コマに1回だけ描き直す(ドラッグ中に毎イベント全画面を描き直してカクついていた)
+    let colorRaf = 0;
+    color.oninput = () => {
+      if (colorRaf) return;
+      colorRaf = requestAnimationFrame(() => { colorRaf = 0; current = { type: 'color', color: color.value }; render(current); });
+    };
     function select(id) {
       sheet.querySelectorAll('.cbs-item').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
       sheet.querySelector('.cbs-photo-opts').style.display = id === 'photo' ? 'flex' : 'none';

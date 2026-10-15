@@ -150,7 +150,7 @@
     unblock: { ja: "ブロックを解除", en: "Unblock", "zh-CN": "解除屏蔽", ko: "차단 해제" },
     unblock_short: { ja: "解除", en: "Unblock", "zh-CN": "解除", ko: "해제" },
     blocked_label: { ja: "{name}をブロック中", en: "You blocked {name}", "zh-CN": "已屏蔽 {name}", ko: "{name}님을 차단 중" },
-    block_desc: { ja: "ブロックすると、この人からのメッセージ・通話が届かなくなります。相手には知らされません。あとから解除できます。", en: "Messages and calls from this person will stop reaching you. They won't be notified. You can unblock anytime.", "zh-CN": "屏蔽后将不再收到此人的消息和通话。对方不会收到通知,可随时解除。", ko: "차단하면 이 사람의 메시지와 통화를 받지 않습니다. 상대에게 알리지 않으며 언제든 해제할 수 있습니다." },
+    block_desc: { ja: "ブロックすると、この人からのメッセージ・通話が届かなくなります。相手には知らされません。トーク一覧からは消えますが、設定の「ブロックしたユーザー」からいつでも解除できます。", en: "Messages and calls from this person will stop reaching you. They won't be notified. They disappear from your chats, and you can unblock anytime in Settings > Blocked users.", "zh-CN": "屏蔽后将不再收到此人的消息和通话。对方不会收到通知。对方会从聊天列表中消失,可随时在设置的「已屏蔽的用户」中解除。", ko: "차단하면 이 사람의 메시지와 통화를 받지 않습니다. 상대에게 알리지 않습니다. 대화 목록에서 사라지며, 설정의 '차단한 사용자'에서 언제든 해제할 수 있습니다." },
     blocked_users: { ja: "ブロックしたユーザー", en: "Blocked users", "zh-CN": "已屏蔽的用户", ko: "차단한 사용자" },
     no_blocked_users: { ja: "ブロックしている人はいません", en: "You haven't blocked anyone", "zh-CN": "没有屏蔽任何人", ko: "차단한 사람이 없습니다" },
     report_user_short: { ja: "通報する", en: "Report", "zh-CN": "举报", ko: "신고" },
