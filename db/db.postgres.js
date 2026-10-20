@@ -15,6 +15,12 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   max: 20,
   statement_timeout: 30000,
+  keepAlive: true, // アイドル中の接続がDB側/中継で静かに切られるのを防ぐ
+});
+// 待機中の接続がDBの再起動やネットワーク断で壊れた時に 'error' が出る。受け皿が無いとプロセスごと落ちる。
+// 壊れた接続はpgが捨てて次から作り直すので、ログだけ残す
+pool.on('error', (err) => {
+  console.error('[db] idle client error:', err && err.message);
 });
 
 // `?` を `$1, $2, ...` に変換 (SQLite版と同じクエリ文字列を使い回すため)
@@ -65,10 +71,6 @@ async function initDB() {
     // 禁止語による利用停止: 解除時刻(ms)と理由
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until BIGINT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT');
-    // 自動Banの動作テストで止まったアカウント(2026-10-07 0:00 JST までに受けた停止)を一度だけ解除する。
-    // 停止は受けた時刻+3日なので、解除時刻がこれ以前 = その時刻までに受けた停止。
-    // それ以降に受けた停止には影響しない(この行は 2026-10-09 を過ぎたら消してよい)
-    await pool.query('UPDATE users SET banned_until = NULL, ban_reason = NULL WHERE banned_until IS NOT NULL AND banned_until <= $1', [Date.parse('2026-10-09T15:00:00Z')]);
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_required BOOLEAN DEFAULT false');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false');

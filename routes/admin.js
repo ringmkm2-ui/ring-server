@@ -69,7 +69,7 @@ router.get('/users', asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at, banned_until, ban_reason
        FROM users
-      WHERE username NOT LIKE 'deleted%' AND (? = '' OR username LIKE ? OR display_name LIKE ? OR user_id LIKE ?)
+      WHERE username NOT LIKE 'deleted%' AND (? = '' OR username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR user_id LIKE ? ESCAPE '\\')
       ORDER BY created_at DESC LIMIT 200`,
     [q, like, like, like]
   );
