@@ -12,6 +12,11 @@
   <meta name="apple-mobile-web-app-title" content="Bro Chat">
   <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    // 最初の描画より前に、保存してあるダーク設定(または端末の設定)をhtmlに付ける(白く光ってから暗くなるのを防ぐ)
+    (function(){try{var d=document.documentElement,m=localStorage.getItem('darkMode'),mm=window.matchMedia;
+    if(m==='1'||(m!=='0'&&mm&&mm('(prefers-color-scheme: dark)').matches))d.classList.add('dark-mode');}catch(e){}})();
+  </script>
   <script src="/js/i18n.js"></script>
   <style>
     * {
@@ -280,6 +285,30 @@
     .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
     .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
     .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
+
+    /* ダークモード(他の画面と同じ色。夜に開いて真っ白にならないように) */
+    html.dark-mode { color-scheme: dark; background: #0e1014; }
+    html.dark-mode body { background: #0e1014; }
+    html.dark-mode .container { background: #161a22; box-shadow: 0 8px 28px rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.06); }
+    html.dark-mode h1, html.dark-mode .sec-title { color: #e8ecf3; }
+    html.dark-mode .subtitle, html.dark-mode .toggle-form, html.dark-mode .mode-btn { color: #9aa4b5; }
+    html.dark-mode .sec-desc { color: #9aa4b5; }
+    html.dark-mode .divider span { background: rgba(255,255,255,.1); }
+    html.dark-mode .divider p { color: #6b7586; }
+    html.dark-mode input[type="email"],
+    html.dark-mode input[type="text"],
+    html.dark-mode input[type="password"] { background: #1a1f29; color: #e8ecf3; border-color: rgba(255,255,255,.1); }
+    html.dark-mode input::placeholder { color: #6b7586; }
+    html.dark-mode input:focus { border-color: #7c8cf0; }
+    html.dark-mode .btn-google { background: #1c212b; border-color: rgba(255,255,255,.1); color: #e8ecf3; }
+    html.dark-mode .btn-google:hover { background: #232937; border-color: rgba(255,255,255,.16); }
+    html.dark-mode .btn-signup { background: #1c212b; color: #9fb0ff; }
+    html.dark-mode .btn-signup:hover { background: #232937; }
+    html.dark-mode .toggle-form a, html.dark-mode .link-btn { color: #9fb0ff; }
+    html.dark-mode .mode-btn { background: #1a1f29; border-color: rgba(255,255,255,.1); }
+    html.dark-mode .mode-btn.active { border-color: #7c8cf0; color: #9fb0ff; background: rgba(124,140,240,.12); }
+    html.dark-mode .error-message { background: rgba(239,68,68,.14); color: #fca5a5; }
+    html.dark-mode .success-message { background: rgba(34,197,94,.14); color: #86efac; }
   </style>
   <script>
     // 言語設定を反映

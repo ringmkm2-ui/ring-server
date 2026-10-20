@@ -3,24 +3,37 @@
    ダークモード時に反転させる。個別画面が持つ細かい色指定を
    全て網羅するのは現実的ではないため、最も影響が大きい
    背景色・カード背景・テキスト色・吹き出し色を中心に上書きする。 */
-html.dark-mode{color-scheme:dark}
-html.dark-mode body,
-html.dark-mode html{background:#15181f !important}
+/* ダークの色は4段階で揃える(背景 < カード < 浮いた面 < 入力欄)。
+   有機ELで電池を食わないよう、背景はほぼ黒(青みを少しだけ)。
+     背景 #0e1014 / カード #161a22 / 浮いた面 #1c212b / 文字 #e8ecf3・#9aa4b5・#6b7586 / 線 白6% */
+html.dark-mode{color-scheme:dark;background:#0e1014 !important}
+html.dark-mode body{background:#0e1014 !important}
 html.dark-mode body.has-custom-bg{background:transparent !important}
 
 html.dark-mode .phone-container,
-html.dark-mode .pc{background:#15181f !important}
+html.dark-mode .pc{background:#0e1014 !important}
 html.dark-mode body.has-custom-bg .phone-container,
 html.dark-mode body.has-custom-bg .pc{background:transparent !important}
 
-/* トーク一覧・設定画面などのカード類 */
+/* 画面全体にかかる「白15%」のもや。ライトでは良いが、ダークだと背景が灰色に浮いてカードが沈んで見える */
+html.dark-mode:not(.has-bg) .bgo{background:transparent !important}
+
+/* 設定画面などのカード類 */
 html.dark-mode .sc,
-html.dark-mode .mc,
+html.dark-mode .mc{
+  background:#1c212b !important;
+  color:#e8ecf3 !important;
+}
+/* トーク一覧の行は、カードの上にもう1枚箱を重ねず、細い線で区切る(重ねると右端が角ばってはみ出していた) */
 html.dark-mode .ti,
 html.dark-mode .litem{
-  background:rgba(30,33,42,.7) !important;
-  color:#e5e7eb !important;
+  background:transparent !important;
+  color:#e8ecf3 !important;
 }
+html.dark-mode .ti + .ti,
+html.dark-mode .litem + .litem{box-shadow:inset 0 1px 0 rgba(255,255,255,.055)}
+html.dark-mode .ti:active,
+html.dark-mode .litem:active{background:rgba(255,255,255,.06) !important}
 html.dark-mode .tname,
 html.dark-mode .gnameEl,
 html.dark-mode #gnameEl,
@@ -32,43 +45,85 @@ html.dark-mode .lrole{color:#94a3b8 !important}
 
 /* トーク一覧のカード(グループ・コミュニティ)。以前は白っぽいまま浮いて、文字も黒のままだった */
 html.dark-mode .card{
-  background:rgba(30,33,42,.72) !important;
-  border-color:rgba(255,255,255,.08) !important;
-  box-shadow:0 10px 30px rgba(0,0,0,.25) !important;
+  background:#161a22 !important;
+  border-color:rgba(255,255,255,.06) !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.4) !important;
+}
+/* 背景画像を設定している時だけ、すりガラス風に透かす */
+html.dark-mode.has-bg .card{background:rgba(22,26,34,.72) !important}
+/* 写真が無い時のアバター。白55%だと暗い画面で明るい灰色の丸が浮く。写真(background-image)はそのまま出す */
+html.dark-mode .tav{
+  background-color:#26324a !important;
+  color:#cdd8f0 !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
 }
 html.dark-mode .nglabel{color:#e5e7eb !important}
 html.dark-mode .slabel{color:#94a3b8 !important}
 
 /* 個人チャットの吹き出し(admin.html は .bubble) */
 html.dark-mode .bubble{
-  background:rgba(45,49,61,.88) !important;
-  color:#e5e7eb !important;
-  border-color:rgba(255,255,255,.08) !important;
+  background:#1e232d !important;
+  color:#e8ecf3 !important;
+  border-color:rgba(255,255,255,.05) !important;
 }
-html.dark-mode .outgoing .bubble{background:rgba(59,130,246,.38) !important}
+/* 自分の吹き出し: 半透明の青だと暗い背景に沈んで濁るので、はっきりした青にして文字は白 */
+html.dark-mode .outgoing .bubble{
+  background:linear-gradient(180deg,#3b82f6,#2f6fe4) !important;
+  color:#fff !important;
+  border-color:transparent !important;
+}
 html.dark-mode .bubble .msg-meta,
-html.dark-mode .bubble .time{color:#9aa6b8 !important}
+html.dark-mode .bubble .time{color:#8f9aad !important}
+html.dark-mode .outgoing .bubble .msg-meta,
+html.dark-mode .outgoing .bubble .time{color:rgba(255,255,255,.72) !important}
 html.dark-mode .tb26-item:not(.active):not(.under-lens){color:#cbd5e1 !important}
 
-/* メッセージ吹き出し */
+/* メッセージ吹き出し(グループ) */
 html.dark-mode .bub{
-  background:rgba(45,49,61,.85) !important;
-  color:#e5e7eb !important;
+  background:#1e232d !important;
+  color:#e8ecf3 !important;
 }
 html.dark-mode .msg.out .bub{
-  background:rgba(59,130,246,.35) !important;
+  background:linear-gradient(180deg,#3b82f6,#2f6fe4) !important;
+  color:#fff !important;
 }
+
+/* 背景のぼかし玉。ライトは桃・ミント・ピンクだが、暗い背景に載せると茶色と緑の染みになる。
+   ダークは藍・青・紫に替えて、明るさも落とす */
+html.dark-mode .bg-orb{opacity:.3}
+html.dark-mode .orb-1,html.dark-mode .o1{background:radial-gradient(circle,#2b4fa3 0%,rgba(43,79,163,0) 70%)}
+html.dark-mode .orb-2,html.dark-mode .o2{background:radial-gradient(circle,#1f5a86 0%,rgba(31,90,134,0) 70%)}
+html.dark-mode .orb-3,html.dark-mode .o3{background:radial-gradient(circle,#4b3499 0%,rgba(75,52,153,0) 70%)}
 
 /* 入力欄 */
 html.dark-mode input[type="text"],
 html.dark-mode textarea,
 html.dark-mode #mi{
-  background:rgba(30,33,42,.8) !important;
-  color:#e5e7eb !important;
-  border-color:rgba(255,255,255,.15) !important;
+  background:#1a1f29 !important;
+  color:#e8ecf3 !important;
+  border-color:rgba(255,255,255,.09) !important;
+}
+/* 送信バー(ガラスの丸い枠)の中の入力欄は、枠の中に角ばった四角を作らず枠の色に溶かす */
+html.dark-mode #msgInput,
+html.dark-mode #mi{
+  background:transparent !important;
+  border-color:transparent !important;
 }
 html.dark-mode input::placeholder,
 html.dark-mode textarea::placeholder{color:#8b97a8 !important}
+
+/* 画面右寄りの大きな薄い光。ライトは水色だが、ダークだと灰色の染みになる */
+html.dark-mode .phone-container::before,
+html.dark-mode .pc::before{
+  background:radial-gradient(circle,#24407a 0%,rgba(36,64,122,0) 70%) !important;
+  opacity:.22 !important;
+}
+
+/* 自分の青い吹き出しの上の既読チェック。未読は半透明の白、既読は明るいミント */
+html.dark-mode .outgoing .check-1,
+html.dark-mode .outgoing .check-2{stroke:rgba(255,255,255,.5)}
+html.dark-mode .outgoing .check-1.lit,
+html.dark-mode .outgoing .check-2.lit{stroke:#b9f6d8}
 
 /* backdrop-filter系のガラス風ボタンは元々半透明なため、
    ダークモードでも境界線の色味だけ調整する */
