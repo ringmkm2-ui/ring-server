@@ -41,8 +41,23 @@
     catch (e) { return file; }
   }
 
+  // AndroidアプリのGboard(GIF・ステッカー・クリップボード画像)は、ネイティブ側が
+  // window.bcNativeMedia(mime, base64) で渡してくる。いま開いている画面の送信処理に回す
+  var lastHandler = null;
+  window.bcNativeMedia = function (mime, b64) {
+    if (!lastHandler || !b64) return;
+    try {
+      var bin = atob(b64), n = bin.length, u8 = new Uint8Array(n);
+      for (var i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+      var ext = ((mime || 'image/png').split('/')[1] || 'png').split('+')[0].replace('jpeg', 'jpg');
+      var f = new File([u8], 'kbd_' + Date.now() + '.' + ext, { type: mime || 'image/png', lastModified: Date.now() });
+      lastHandler(f, kindOf(f) || 'image');
+    } catch (e) { console.error('bcNativeMedia', e); }
+  };
+
   window.bcAttachPasteMedia = function (el, onFile) {
     if (!el || typeof onFile !== 'function') return;
+    lastHandler = onFile;
     function take(e, dt) {
       var f = pickFile(dt);
       if (!f) return false; // 文字だけの貼り付けは、いつも通り入力欄に入れる
