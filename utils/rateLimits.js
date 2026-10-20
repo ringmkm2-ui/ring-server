@@ -53,11 +53,12 @@ const registerLimiter = rateLimit({
   message: { error: '登録試行が多すぎます。しばらくしてから再度お試しください。' },
 });
 
-// API全体: 1分120req（通常利用では引っかからない値、スクリプト連打防止）
+// API全体: 1分240req（端末ごと）。トークを開くたびに履歴・鍵・状態などで8〜10回呼ぶので、
+// 以前の120回だとトークを次々に切り替えただけで「多すぎます」になりえた。スクリプトの連打は今でも止まる
 const apiLimiter = rateLimit({
   keyGenerator: deviceOrIpKey, validate: { keyGeneratorIpFallback: false },
   windowMs: 60 * 1000,
-  max: 120,
+  max: 240,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'リクエストが多すぎます。しばらくしてから再度お試しください。' },

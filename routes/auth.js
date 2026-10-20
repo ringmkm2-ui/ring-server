@@ -983,6 +983,11 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
     try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
     try { await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] user_pubkeys cleanup:', e.message); }
+    // 投稿とコメントも消す(以前は退会後も「退会済みユーザー」の名前で公開のまま残っていた)
+    try {
+      await db.run('UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE author_id = ? AND deleted_at IS NULL', [userId]);
+      await db.run('UPDATE post_comments SET deleted_at = CURRENT_TIMESTAMP WHERE author_id = ? AND deleted_at IS NULL', [userId]);
+    } catch (e) { console.error('[auth] posts cleanup:', e.message); }
     // 入っていたグループから抜ける(以前は退会後もメンバーのまま残り、オーナーだった場合は誰も管理できないグループになった)
     try {
       const mine = await db.all(

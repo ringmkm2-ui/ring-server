@@ -94,16 +94,18 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
   const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
 
+  // ブロックしている/されている相手の投稿は出さない(以前はタイムラインにそのまま出ていた)
+  const me = req.user.userId;
   let rows;
   if (before) {
     rows = await db.all(
-      'SELECT * FROM posts WHERE deleted_at IS NULL AND created_at < ? ORDER BY created_at DESC LIMIT ?',
-      [before, limit]
+      'SELECT * FROM posts WHERE deleted_at IS NULL AND created_at < ? AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) ORDER BY created_at DESC LIMIT ?',
+      [before, me, me, limit]
     );
   } else {
     rows = await db.all(
-      'SELECT * FROM posts WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?',
-      [limit]
+      'SELECT * FROM posts WHERE deleted_at IS NULL AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) ORDER BY created_at DESC LIMIT ?',
+      [me, me, limit]
     );
   }
 
@@ -178,9 +180,13 @@ router.post('/:postId/like', verifyToken, asyncHandler(async (req, res) => {
 
 // --- コメント一覧取得 ---
 router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
+  // 消された投稿のコメントは見せない。ブロック関係の人のコメントも出さない
   const rows = await db.all(
-    'SELECT * FROM post_comments WHERE post_id = ? AND deleted_at IS NULL ORDER BY created_at ASC',
-    [req.params.postId]
+    `SELECT * FROM post_comments WHERE post_id = ? AND deleted_at IS NULL
+       AND EXISTS (SELECT 1 FROM posts p WHERE p.id = post_comments.post_id AND p.deleted_at IS NULL)
+       AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
+     ORDER BY created_at ASC`,
+    [req.params.postId, req.user.userId, req.user.userId]
   );
   if (rows.length === 0) return res.json([]);
 

@@ -182,7 +182,7 @@ router.get('/:id', verifyToken, asyncHandler(async (req, res) => {
      FROM community_members cm
      JOIN users u ON u.id = cm.user_id
      WHERE cm.community_id = ?
-     ORDER BY cm.role DESC, cm.joined_at`,
+     ORDER BY CASE WHEN cm.role = 'admin' THEN 0 ELSE 1 END, cm.joined_at`,
     [req.params.id]
   );
 
@@ -290,7 +290,7 @@ router.post('/:id/channels', verifyToken, asyncHandler(async (req, res) => {
 
   const { name } = req.body;
   if (await rejectIfProfane(req, res, name)) return;
-  if (!name || name.length > 30) return res.status(400).json({ error: 'チャンネル名は1-30文字で入力してください' });
+  if (typeof name !== 'string' || !name.trim() || name.length > 30) return res.status(400).json({ error: 'チャンネル名は1-30文字で入力してください' });
 
   const maxSort = await db.get(
     'SELECT MAX(sort_order) as mx FROM community_channels WHERE community_id = ?',
@@ -321,6 +321,21 @@ router.post('/:id/leave', verifyToken, asyncHandler(async (req, res) => {
   // (グループの「member_left」と同じ考え方)
   try { await db.run('UPDATE communities SET rekey_needed = ? WHERE id = ?', [true, req.params.id]); } catch (e) {}
   res.json({ ok: true, rekeyNeeded: true });
+}));
+
+// --- コミュニティの削除(オーナーのみ) ---
+// 「オーナーは退出できません。コミュニティを削除してください」と案内しているのに、削除する手段が無かった
+router.post('/:id/delete', verifyToken, asyncHandler(async (req, res) => {
+  const community = await db.get('SELECT owner_id FROM communities WHERE id = ?', [req.params.id]);
+  if (!community) return res.status(404).json({ error: 'コミュニティが見つかりません' });
+  if (community.owner_id !== req.user.userId) return res.status(403).json({ error: 'オーナーだけが削除できます' });
+  const id = req.params.id;
+  await db.run('DELETE FROM community_messages WHERE channel_id IN (SELECT id FROM community_channels WHERE community_id = ?)', [id]);
+  await db.run('DELETE FROM community_key_distributions WHERE community_id = ?', [id]);
+  await db.run('DELETE FROM community_channels WHERE community_id = ?', [id]);
+  await db.run('DELETE FROM community_members WHERE community_id = ?', [id]);
+  await db.run('DELETE FROM communities WHERE id = ?', [id]);
+  res.json({ ok: true });
 }));
 
 // =====================================================================
@@ -429,9 +444,9 @@ router.post('/:id/rotate-key', verifyToken, asyncHandler(async (req, res) => {
   }
 
   const newVersion = ver + 1;
-  await db.run('UPDATE communities SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, req.params.id, ver]);
-  const again = await db.get('SELECT key_version FROM communities WHERE id = ?', [req.params.id]);
-  if (!again || again.key_version !== newVersion) {
+  // 実際に自分の更新が効いたかで判定する(読み直した版で比べると、同時に2台が作り直した時に両方が成功扱いになっていた)
+  const upd = await db.run('UPDATE communities SET key_version = ? WHERE id = ? AND key_version = ?', [newVersion, req.params.id, ver]);
+  if (!upd || !upd.changes) {
     return res.status(409).json({ error: '鍵のバージョンが変わっています。開き直してください' });
   }
 

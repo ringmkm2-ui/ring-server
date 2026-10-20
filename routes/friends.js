@@ -82,9 +82,14 @@ router.post('/me', auth, async (req, res) => {
         if (picUploads.size > 5000) picUploads.clear();
         picToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
       }
-      await db.run('UPDATE users SET display_name = ?, bio = ?, profile_pic = ? WHERE id = ?', [displayName || '', bio || '', picToSave, req.userId]);
-    } else {
-      await db.run('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', [displayName || '', bio || '', req.userId]);
+      await db.run('UPDATE users SET profile_pic = ? WHERE id = ?', [picToSave, req.userId]);
+    }
+    // 送られてきた項目だけ更新する。以前は名前だけ・画像だけを送っても、送っていない自己紹介が空に上書きされていた
+    if (typeof displayName === 'string' && displayName.trim()) {
+      await db.run('UPDATE users SET display_name = ? WHERE id = ?', [displayName, req.userId]);
+    }
+    if (typeof bio === 'string') {
+      await db.run('UPDATE users SET bio = ? WHERE id = ?', [bio, req.userId]);
     }
     // publicKey が含まれていた場合もここで処理する（/api/friends/publickey と同等）
     if (publicKey) {
@@ -190,9 +195,11 @@ router.get('/search', searchLimiter, auth, async (req, res) => {
     const { q } = req.query;
     if (typeof q !== 'string' || q.length < 2) return res.json([]);
     if (q.length > 100) return res.status(400).json({ error: '検索クエリが長すぎます' });
+    // % や _ をそのまま入れると「全員に一致」になり、検索で知らない人を片っ端から見られた。文字として扱う
+    const esc = q.replace(/[\\%_]/g, c => '\\' + c);
     const results = await db.all(
-      'SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? OR display_name LIKE ?) AND id != ? AND id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) LIMIT 10',
-      [q + '%', '%' + q + '%', req.userId, req.userId]
+      "SELECT id, user_id, display_name, profile_pic FROM users WHERE (user_id LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND id != ? AND substr(username, 1, 8) != 'deleted_' AND id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) LIMIT 10",
+      [esc + '%', '%' + esc + '%', req.userId, req.userId]
     );
     res.json(results.map(u => ({ userId: u.id, userIdCode: u.user_id, displayName: u.display_name, profilePic: u.profile_pic })));
   } catch (e) {
@@ -206,7 +213,8 @@ router.post('/request', auth, async (req, res) => {
     const { targetUserIdCode } = req.body;
     if (!targetUserIdCode) return res.status(400).json({ error: 'targetUserIdCode required' });
 
-    const targetUser = await db.get('SELECT id FROM users WHERE user_id = ?', [targetUserIdCode]);
+    if (typeof targetUserIdCode !== 'string') return res.status(400).json({ error: 'targetUserIdCode required' });
+    const targetUser = await db.get("SELECT id FROM users WHERE user_id = ? AND substr(username, 1, 8) != 'deleted_'", [targetUserIdCode.trim()]);
     if (!targetUser) return res.status(404).json({ error: 'user not found' });
     if (targetUser.id === req.userId) return res.status(400).json({ error: 'cannot add yourself' });
     {
@@ -218,7 +226,17 @@ router.post('/request', auth, async (req, res) => {
 
     const [userA, userB] = [req.userId, targetUser.id].sort();
     const existing = await db.get('SELECT id, status FROM friendships WHERE user_a_id = ? AND user_b_id = ?', [userA, userB]);
-    if (existing) return res.status(400).json({ error: existing.status === 'accepted' ? 'already friends' : 'request already sent' });
+    if (existing) {
+      // 相手からすでに申請が来ている時は、そのまま友だちになる(お互いにIDを入れ合った時に「送信済み」で止まっていた)
+      if (existing.status === 'pending') {
+        const full = await db.get('SELECT requested_by FROM friendships WHERE id = ?', [existing.id]);
+        if (full && full.requested_by !== req.userId) {
+          await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [new Date().toISOString(), existing.id]);
+          return res.json({ ok: true, friendshipId: existing.id, accepted: true });
+        }
+      }
+      return res.status(400).json({ error: existing.status === 'accepted' ? 'already friends' : 'request already sent' });
+    }
 
     const friendshipId = uuidv4();
     await db.run('INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by) VALUES (?, ?, ?, ?, ?)', [friendshipId, userA, userB, 'pending', req.userId]);
