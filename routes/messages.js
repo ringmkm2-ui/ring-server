@@ -278,12 +278,21 @@ router.get('/history/:userId', auth, async (req, res) => {
       });
     }
 
+    // リアクションはまとめて1回で取る(以前は1通ごとに問い合わせていて、100通開くと100回DBを叩いていた)
+    const reactBy = new Map();
+    if (rows.length) {
+      const rr = await db.all(
+        `SELECT message_id, emoji, COUNT(*) AS cnt FROM message_reactions WHERE message_id IN (${rows.map(() => '?').join(',')}) GROUP BY message_id, emoji`,
+        rows.map(m => m.id)
+      );
+      for (const r of rr) {
+        if (!reactBy.has(r.message_id)) reactBy.set(r.message_id, []);
+        reactBy.get(r.message_id).push(r);
+      }
+    }
     const result = [];
     for (const m of rows.reverse()) {
-      const reactions = await db.all(
-        'SELECT emoji, COUNT(*) as cnt FROM message_reactions WHERE message_id = ? GROUP BY emoji',
-        [m.id]
-      );
+      const reactions = reactBy.get(m.id) || [];
       result.push({
         id: m.id,
         senderId: m.sender_id,

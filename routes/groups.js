@@ -53,37 +53,61 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
      ORDER BY g.created_at DESC`,
     [req.user.userId]
   );
+  // グループが増えても問い合わせの数が増えすぎないよう、メンバー・最新メッセージ・未読数はまとめて取る
+  // (以前はグループごとに3回ずつ引いていて、トーク一覧の読み込みが遅くなる原因の一つだった)
+  const me = req.user.userId;
+  const ids = rows.map(g => g.id);
+  const membersBy = new Map();
+  const lastBy = new Map();
+  const unreadBy = new Map();
+  if (ids.length) {
+    const ph = ids.map(() => '?').join(',');
+    const mrows = await db.all(
+      `SELECT gm.group_id, u.id as user_id, u.display_name, u.profile_pic
+       FROM group_members gm JOIN users u ON u.id = gm.user_id
+       WHERE gm.group_id IN (${ph}) AND gm.left_at IS NULL`,
+      ids
+    );
+    for (const m of mrows) {
+      if (!membersBy.has(m.group_id)) membersBy.set(m.group_id, []);
+      membersBy.get(m.group_id).push(m);
+    }
+    // 参加前のメッセージは一覧にも出さない(履歴と同じ)
+    const lrows = await db.all(
+      `SELECT x.group_id, x.content, x.created_at, x.encrypted, x.key_version
+         FROM group_messages x
+         JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ? AND gm.left_at IS NULL
+        WHERE x.group_id IN (${ph}) AND x.deleted_at IS NULL AND (gm.joined_at IS NULL OR x.created_at >= gm.joined_at)
+          AND x.id = (
+            SELECT y.id FROM group_messages y
+             WHERE y.group_id = x.group_id AND y.deleted_at IS NULL AND (gm.joined_at IS NULL OR y.created_at >= gm.joined_at)
+             ORDER BY y.created_at DESC, y.id DESC LIMIT 1)`,
+      [me, ...ids]
+    );
+    for (const l of lrows) lastBy.set(l.group_id, l);
+    // 未読数: 最後に開いた時(まだ開いていなければ参加した時)より後に、他の人が送った分
+    const urows = await db.all(
+      `SELECT x.group_id, COUNT(*) AS c
+         FROM group_messages x
+         JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ? AND gm.left_at IS NULL
+        WHERE x.group_id IN (${ph}) AND x.sender_id != ? AND x.deleted_at IS NULL
+          AND COALESCE(gm.last_read_at, gm.joined_at) IS NOT NULL
+          AND x.created_at > COALESCE(gm.last_read_at, gm.joined_at)
+        GROUP BY x.group_id`,
+      [me, ...ids, me]
+    );
+    for (const u of urows) unreadBy.set(u.group_id, Number(u.c) || 0);
+  }
   const groups = [];
   for (const g of rows) {
-    const members = await db.all(
-      `SELECT u.id as user_id, u.display_name, u.profile_pic
-       FROM group_members gm JOIN users u ON u.id = gm.user_id
-       WHERE gm.group_id = ? AND gm.left_at IS NULL`,
-      [g.id]
-    );
-    // 参加前のメッセージは一覧にも出さない(履歴と同じ)
-    const since = g.joined_at || null;
-    const lastMsg = await db.get(
-      `SELECT content, created_at, encrypted, key_version FROM group_messages
-       WHERE group_id = ? AND deleted_at IS NULL${since ? ' AND created_at >= ?' : ''}
-       ORDER BY created_at DESC LIMIT 1`,
-      since ? [g.id, since] : [g.id]
-    );
-    // 未読数: 最後に開いた時(まだ開いていなければ参加した時)より後に、他の人が送った分
-    const from = g.last_read_at || g.joined_at || null;
-    let unreadCount = 0;
-    if (from) {
-      const u = await db.get(
-        'SELECT COUNT(*) AS c FROM group_messages WHERE group_id = ? AND sender_id != ? AND deleted_at IS NULL AND created_at > ?',
-        [g.id, req.user.userId, from]
-      );
-      unreadCount = Number(u && u.c) || 0;
-    }
+    const members = membersBy.get(g.id) || [];
+    const lastMsg = lastBy.get(g.id) || null;
+    const unreadCount = unreadBy.get(g.id) || 0;
     groups.push({
       groupId: g.id,
       name: g.name,
       ownerId: g.owner_id,
-      isOwner: g.owner_id === req.user.userId,
+      isOwner: g.owner_id === me,
       keyVersion: g.key_version,
       avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
@@ -102,7 +126,8 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
 router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   const { name, memberIds, encryptedKeysForMembers } = req.body;
   if (await rejectIfProfane(req, res, name)) return;
-  if (!name || typeof name !== 'string') return res.status(400).json({ error: 'グループ名が必要です' });
+  if (!name || typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'グループ名が必要です' });
+  if (/[<>]/.test(name)) return res.status(400).json({ error: '使えない文字が含まれています' });
   if (memberIds != null && (!Array.isArray(memberIds) || memberIds.length > 200)) {
     return res.status(400).json({ error: 'メンバーの指定が正しくありません' });
   }
@@ -110,7 +135,7 @@ router.post('/create', verifyToken, asyncHandler(async (req, res) => {
   if (name.length > 50) return res.status(400).json({ error: 'グループ名は50文字以内にしてください' });
 
   const groupId = uuidv4();
-  await db.run('INSERT INTO groups (id, name, owner_id, key_version) VALUES (?, ?, ?, 1)', [groupId, name, req.user.userId]);
+  await db.run('INSERT INTO groups (id, name, owner_id, key_version) VALUES (?, ?, ?, 1)', [groupId, name.replace(/\s+/g, ' ').trim(), req.user.userId]);
   await db.run('INSERT INTO group_members (group_id, user_id) VALUES (?, ?)', [groupId, req.user.userId]);
 
   const addedMembers = [req.user.userId];
@@ -721,7 +746,7 @@ router.post('/:groupId/messages/:msgId/react', verifyToken, asyncHandler(async (
 router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { messageIds } = req.body;
-  if (!Array.isArray(messageIds) || messageIds.length === 0) {
+  if (!Array.isArray(messageIds) || messageIds.length === 0 || messageIds.length > 200) {
     return res.status(400).json({ error: 'messageIds required' });
   }
   if (!(await isGroupMember(groupId, req.user.userId))) {
@@ -733,6 +758,7 @@ router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res
   const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
 
   for (const msgId of messageIds) {
+    if (typeof msgId !== 'string') continue;
     const msg = await db.get('SELECT sender_id FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
     if (!msg) continue;
     if (msg.sender_id === req.user.userId) continue; // 自分の送信メッセージは既読対象外
@@ -765,8 +791,9 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
   const reads = await db.all(
     `SELECT gmr.user_id, gmr.read_at, u.display_name FROM group_message_reads gmr
      JOIN users u ON u.id = gmr.user_id
+     JOIN group_messages gmm ON gmm.id = gmr.message_id AND gmm.group_id = ?
      WHERE gmr.message_id = ?`,
-    [req.params.msgId]
+    [req.params.groupId, req.params.msgId]
   );
   res.json({ reads: reads.map(r => ({ userId: r.user_id, displayName: r.display_name, readAt: r.read_at })) });
 }));
