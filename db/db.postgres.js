@@ -40,6 +40,10 @@ async function initDB() {
     'CREATE INDEX IF NOT EXISTS idx_gkd_group_user ON group_key_distributions(group_id, user_id, key_version)',
     'CREATE INDEX IF NOT EXISTS idx_otk_user ON one_time_prekeys(user_id)',
     'CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id)',
+    // 履歴・未読・グループ一覧の主経路
+    'CREATE INDEX IF NOT EXISTS idx_messages_pair_time ON messages(sender_id, recipient_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_messages_recipient_time ON messages(recipient_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_group_messages_group_time ON group_messages(group_id, created_at DESC)',
   ]) {
     try { await pool.query(sql); } catch (e) { console.log('[db] index skip:', e.message); }
   }

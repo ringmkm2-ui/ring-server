@@ -97,7 +97,7 @@ async function safeOtherId(me, otherId) {
 // body: { callId, otherId, content }
 router.post('/notes', verifyToken, asyncHandler(async (req, res) => {
   const { callId, otherId, content } = req.body;
-  if (!callId || typeof content !== 'string') {
+  if (typeof callId !== 'string' || !callId || callId.length > 100 || typeof content !== 'string') {
     return res.status(400).json({ error: 'callIdとcontentが必要です' });
   }
   if (content.length > MAX_TEXT_LENGTH) {
@@ -150,7 +150,7 @@ router.get('/notes', verifyToken, asyncHandler(async (req, res) => {
 // body: { callId, otherId, transcriptLog }  transcriptLog: 字幕ログの配列 [{speaker, text}]
 router.post('/summarize', verifyToken, summarizeLimiter, asyncHandler(async (req, res) => {
   const { callId, otherId, transcriptLog } = req.body;
-  if (!callId || !Array.isArray(transcriptLog) || transcriptLog.length === 0) {
+  if (typeof callId !== 'string' || !callId || callId.length > 100 || !Array.isArray(transcriptLog) || transcriptLog.length === 0) {
     return res.status(400).json({ error: 'callIdとtranscriptLogが必要です' });
   }
 
@@ -158,7 +158,7 @@ router.post('/summarize', verifyToken, summarizeLimiter, asyncHandler(async (req
     return res.status(413).json({ error: '字幕ログが長すぎます' });
   }
   const logText = transcriptLog
-    .map((entry) => `${entry.speaker || '不明'}: ${entry.text || ''}`)
+    .map((entry) => `${String((entry && entry.speaker) || '不明').slice(0, 40)}: ${String((entry && entry.text) || '').slice(0, 2000)}`)
     .join('\n')
     .slice(0, MAX_TEXT_LENGTH);
 
