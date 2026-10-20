@@ -363,6 +363,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 <script src="/js/qrcode.min.js"></script>
 <script src="/js/safetyNumber.js"></script>
 <script src="/js/session.js"></script>
+<script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
@@ -378,7 +379,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.233 beta</div>
+  <div class="version-badge">Bro Chat v1.28.234 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1192,6 +1193,8 @@ document.getElementById('plusBtn').onclick = () => document.getElementById('inpu
 document.getElementById('imgInput').onchange = e => { handleMedia(e.target.files[0], 'image'); };
 document.getElementById('vidInput').onchange = e => { handleMedia(e.target.files[0], 'video'); };
 document.getElementById('fileInput').onchange = e => { handleMedia(e.target.files[0], 'file'); };
+// キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
+if (window.bcAttachPasteMedia) bcAttachPasteMedia(document.getElementById('msgInput'), (f, t) => handleMedia(f, t));
 
 // 位置情報送信
 document.getElementById('locationBtn').onclick = async () => {
@@ -2488,6 +2491,7 @@ function insertUnreadDivider(beforeId, count) {
 // 画像等の巨大なBase64は入れない。
 const CHAT_CACHE_KEY = `chat_cache_${myUserId}_${otherId}`;
 let chatRenderedFromCache = false;
+const cachedMsgIds = new Set(); // 端末のキャッシュから出したメッセージのID(履歴で入れ替える対象)
 
 function saveChatCache() {
   try {
@@ -2503,7 +2507,7 @@ function renderChatFromCache() {
     const list = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || '[]');
     if (!Array.isArray(list) || list.length === 0) return;
     isBulkHistoryLoad = true;
-    list.forEach(m => { addRealMessage(m); renderMessageImpl(m); });
+    list.forEach(m => { cachedMsgIds.add(m.id); addRealMessage(m); renderMessageImpl(m); });
     scrollChatToBottom(document.getElementById('chatScreen'), true);
     chatRenderedFromCache = true;
   } catch (e) {
@@ -2591,8 +2595,18 @@ async function initialLoadHistory() {
     dmHasMore = data.length >= DM_PAGE;
 
     // キャッシュで仮表示していたものは同じ処理内で入れ替える(描画は処理の後なのでチラつかない)
-    if (chatRenderedFromCache) { clearRenderedMessages(); chatRenderedFromCache = false; }
+    // 開いてすぐ送った/届いたメッセージは、履歴(開いた直後に取った古い内容)にまだ入っていない。
+    // 全部消して入れ替えるとそれも一緒に消えて「ゴースト」になっていたので、
+    // キャッシュ由来でも履歴由来でもないもの(=開いてから増えたもの)は残して、後ろに描き直す。
+    let keepExtras = [];
+    if (chatRenderedFromCache) {
+      const serverIds = new Set(displayList.map(m => m.id));
+      keepExtras = realMessages.filter(m => m && m.id && !cachedMsgIds.has(m.id) && !serverIds.has(m.id));
+      clearRenderedMessages();
+      chatRenderedFromCache = false;
+    }
     displayList.forEach(m => { addRealMessage(m); renderMessageImpl(m); });
+    keepExtras.forEach(m => { addRealMessage(m); renderMessageImpl(m); });
     if (firstUnreadId) insertUnreadDivider(firstUnreadId, unreadDividerCount);
     scrollChatToBottom(document.getElementById('chatScreen'), true);
     saveChatCache();

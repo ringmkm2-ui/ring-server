@@ -216,6 +216,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script src="/js/groupCall.js"></script>
 <script src="/js/live.js"></script>
 <script src="/js/session.js"></script>
+<script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
@@ -242,7 +243,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.233 beta</div>
+  <div class="version-badge">Bro Chat v1.28.234 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -679,6 +680,8 @@ document.getElementById('pbtn').onclick=()=>document.getElementById('ibar').clas
 document.getElementById('imgI').onchange=e=>{handleMediaGroup(e.target.files[0],'image');};
 document.getElementById('vidI').onchange=e=>{handleMediaGroup(e.target.files[0],'video');};
 document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0],'file');};
+// キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
+if(window.bcAttachPasteMedia)bcAttachPasteMedia(document.getElementById('mi'),(f,t)=>handleMediaGroup(f,t));
 
 // 位置情報送信（グループ）
 document.getElementById('locationBtn').onclick = async () => {
