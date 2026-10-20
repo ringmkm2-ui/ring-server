@@ -183,18 +183,18 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // APK(FCM)には常に送る。アプリが裏にいてもWebSocketが一時的に生きていることがあり、
     // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
     if (!req.body.noPush) {
-      db.get('SELECT display_name, public_key FROM users WHERE id = ?', [req.userId]).then(sender => {
+      db.get('SELECT display_name, public_key, profile_pic FROM users WHERE id = ?', [req.userId]).then(sender => {
         const preview = mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ';
         // 本文は暗号文のまま載せ、相手の端末の中でだけ復号して通知に出す(サーバーは読めないまま)。
         // FCMの上限4KBに収まる文字メッセージだけ。
         const cipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 3000) ? content : '';
         require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm',
-          { senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '' })
+          { senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '', senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic) })
           .catch(err => console.error('[fcm] new_message failed:', err.message));
       }).catch(() => {});
     }
     if (!isUserOnline(recipientId) && !req.body.noPush) {
-      const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.userId]);
+      const sender = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [req.userId]);
       const { sendPushToUser } = require('../utils/webPush');
       const wpCipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 2800) ? content : undefined;
       let senderPub;
@@ -203,6 +203,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         type: 'new_message',
         senderId: req.userId,
         senderName: sender?.display_name || 'ユーザー',
+        senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic),
         preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ',
         // 本文は暗号文のまま。受け取った端末のService Workerの中でだけ復号して表示する
         cipher: wpCipher,

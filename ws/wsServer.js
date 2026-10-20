@@ -59,9 +59,9 @@ function clearPendingCall(callId) {
 async function cancelRinging(userId, callId, missedFrom) {
   if (missedFrom) {
     try {
-      const caller = await db.get('SELECT display_name, username FROM users WHERE id = ?', [missedFrom]);
+      const caller = await db.get('SELECT display_name, username, profile_pic FROM users WHERE id = ?', [missedFrom]);
       const callerName = caller?.display_name || caller?.username || '不明なユーザー';
-      sendPushToUser(userId, { type: 'call_missed', callId, callerId: missedFrom, callerName }, { ttl: 3600 })
+      sendPushToUser(userId, { type: 'call_missed', callId, callerId: missedFrom, callerName, callerPic: require('../utils/pushPic').pushPic(caller?.profile_pic) }, { ttl: 3600 })
         .catch(err => console.error('[push] call_missed failed:', err.message));
     } catch (err) {
       console.error('[push] call_missed lookup failed:', err.message);

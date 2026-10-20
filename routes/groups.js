@@ -571,7 +571,8 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
     [groupId]
   );
   const { broadcastToUser, isUserOnline } = require('../ws/wsServer');
-  const sender = await db.get('SELECT display_name FROM users WHERE id = ?', [req.user.userId]);
+  const sender = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [req.user.userId]);
+  const senderPic = require('../utils/pushPic').pushPic(sender?.profile_pic);
   const { sendPushToUser } = require('../utils/webPush');
 
   members.forEach(m => {
@@ -597,7 +598,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
     require('../utils/fcm').sendMessageNotification(
       m.user_id, `${sender?.display_name || 'ユーザー'} (${group.name})`,
       mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
-      'group', { senderId: req.userId, chatId: groupId }
+      'group', { senderId: req.userId, chatId: groupId, senderPic }
     ).catch(err => console.error('[fcm] group message failed:', err.message));
 
     // オフラインのメンバーにはPush通知。E2E暗号化のためcontentは復号できないので、
@@ -608,6 +609,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
         groupId,
         groupName: group.name,
         senderName: sender?.display_name || 'ユーザー',
+        senderPic,
         preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
       }).catch(err => console.error('[push] group message send failed:', err.message));
     }

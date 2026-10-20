@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.234';
+const CACHE_VERSION = 'v1.28.235';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -133,6 +133,12 @@ self.addEventListener('activate', event => {
   );
 });
 
+// 通知のアイコン: 相手のプロフィール画像があればそれを使う(https か このサーバーの /icons/ だけ。それ以外はアプリのアイコン)
+function notifIcon(pic) {
+  return (typeof pic === 'string' && pic.length < 512 && (/^https:\/\//.test(pic) || /^\/icons\/[A-Za-z0-9-]+$/.test(pic)))
+    ? pic : '/images/icons/icon-192.png';
+}
+
 // 通話着信通知（バックグラウンドで受け取り）
 self.addEventListener('push', event => {
   if (!event.data) return;
@@ -150,7 +156,7 @@ self.addEventListener('push', event => {
       const title = `${isVideo ? 'ビデオ通話' : '音声通話'}着信: ${callerName || 'ユーザー'}`;
       const options = {
         body: 'タップして応答',
-        icon: '/images/icons/icon-192.png',
+        icon: notifIcon(callerPic),
         badge: '/images/icons/icon-192.png',
         tag: `call-${callId}`,
         renotify: true, // 同じtagでも再通知（バイブ/音を再度鳴らす）
@@ -179,11 +185,11 @@ self.addEventListener('push', event => {
     // 応答されないまま切れた/時間切れ → 着信通知を「不在着信」に差し替える(同じtagで置き換わる)
     // タップすると発信者とのトークが開く
     if (data.type === 'call_missed') {
-      const { callId, callerId, callerName } = data;
+      const { callId, callerId, callerName, callerPic } = data;
       pendingCalls.delete(callId);
       event.waitUntil(self.registration.showNotification('不在着信', {
         body: callerName || 'ユーザー',
-        icon: '/images/icons/icon-192.png',
+        icon: notifIcon(callerPic),
         badge: '/images/icons/icon-192.png',
         tag: `call-${callId}`,
         data: { type: 'dm', senderId: callerId },
@@ -192,13 +198,13 @@ self.addEventListener('push', event => {
 
     // 1対1チャットの新着メッセージ
     if (data.type === 'new_message') {
-      const { senderId, senderName, preview, cipher, senderPub } = data;
+      const { senderId, senderName, senderPic, preview, cipher, senderPub } = data;
       const title = senderName || 'メッセージ';
       event.waitUntil((async () => {
       const text = (await swDecrypt(cipher, senderPub)) || preview || 'メッセージ';
       const options = {
         body: text,
-        icon: '/images/icons/icon-192.png',
+        icon: notifIcon(senderPic),
         badge: '/images/icons/icon-192.png',
         tag: `dm-${senderId}`, // 同じ相手からの連続通知はまとめる(通知欄が埋まらないように)
         renotify: true,
@@ -222,11 +228,11 @@ self.addEventListener('push', event => {
 
     // グループチャットの新着メッセージ
     if (data.type === 'new_group_message') {
-      const { groupId, groupName, senderName, preview } = data;
+      const { groupId, groupName, senderName, senderPic, preview } = data;
       const title = groupName || 'グループ';
       const options = {
         body: `${senderName || 'ユーザー'}: ${preview || 'メッセージ'}`,
-        icon: '/images/icons/icon-192.png',
+        icon: notifIcon(senderPic),
         badge: '/images/icons/icon-192.png',
         tag: `group-${groupId}`,
         renotify: true,
