@@ -299,8 +299,11 @@
   }
 
   // 遷移元でアバターを飛ばし、完了後にnavigateFnを呼ぶ。
+  let flightBusy = null;
   function flyAvatarTo(sourceEl, navigateFn) {
     if (!sourceEl) { navigateFn(); return; }
+    // 飛行中・読み込み待ちの間の連打は無視(2つ目の遷移が走って別のトークに引き込まれていた)
+    if (flightBusy) return;
 
     let target = null;
     try {
@@ -353,14 +356,39 @@
     // 以前は380ms待ってから遷移していて、その後さらに読み込み待ちがあったので
     // 押してから開くまでが長く、間に何も無い画面が挟まってカクついて見えた。
     // 飛行が着地する頃(220ms)にはもう遷移を始める(読み込み中は今の画面がそのまま残る)
-    setTimeout(() => {
+    // 押した直後に別の所を触ったら(戻る・別タブ・別の行)、遷移を取り消して今の画面に留まる。
+    // 以前は220ms後に必ず遷移が走り、すでに別の画面へ行こうとしていても引き戻されていた。
+    let navStarted = false;
+    const undo = () => {
+      document.removeEventListener('pointerdown', onOther, true);
+      clearTimeout(timer);
+      flightBusy = null;
+      main.classList.remove('lg-page-recede');
+      clone.remove();
+      sourceEl.style.visibility = prevVisibility;
+      try { sessionStorage.removeItem(FLIGHT_KEY); } catch (e) {}
+    };
+    const onOther = e => {
+      if (e.target && e.target.closest && sourceEl.closest('.ti, .litem, .gi, li, a, button') && e.target.closest('.ti, .litem, .gi, li, a, button') === sourceEl.closest('.ti, .litem, .gi, li, a, button')) return;
+      if (navStarted) { try { window.stop(); } catch (_) {} }
+      undo();
+    };
+    document.addEventListener('pointerdown', onOther, true);
+    const timer = setTimeout(() => {
+      navStarted = true;
       navigateFn();
-      setTimeout(() => { sourceEl.style.visibility = prevVisibility; }, 600);
+      // 画面が切り替わらないまま(遷移失敗・キャンセル)でも、数秒後には操作できる状態に戻す
+      setTimeout(() => {
+        document.removeEventListener('pointerdown', onOther, true);
+        if (flightBusy) undo();
+      }, 4000);
     }, 220);
+    flightBusy = { undo };
   }
 
   // 「戻る」でこの画面がキャッシュから復元された時、沈ませた状態と飛ばしたアバターが残らないようにする
   window.addEventListener('pageshow', () => {
+    flightBusy = null;
     document.querySelectorAll('.lg-page-recede').forEach(el => el.classList.remove('lg-page-recede'));
     document.querySelectorAll('.lg-flying-avatar').forEach(el => el.remove());
   });
