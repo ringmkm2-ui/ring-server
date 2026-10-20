@@ -246,16 +246,51 @@ function broadcastToUser(userId, payload) {
 // 相手全員に通知する。誰が「相手」かはDBに問い合わせず、単純にトークしたことの
 // ある全ユーザーへブロードキャストすると重いので、実際に接続中のユーザーのうち
 // 過去にメッセージをやり取りしたことがある相手にだけ送る。
+// 画面を移るたびに接続が切れてすぐ繋ぎ直されるので、そのたびに「オフライン→オンライン」を
+// 相手に送ると、相手の画面でオンライン表示がちらつき、DBも毎回重い検索をしていた。
+// ・オフラインは少し待ってから送る(その間に戻ってきたら何も送らない)
+// ・すでにその状態を伝えてあれば送り直さない
+// ・相手の一覧(トークしたことのある人)は30秒だけ覚える
+const PRESENCE_OFFLINE_GRACE_MS = 4000;
+const presenceSent = new Map();    // userId -> true(相手に「オンライン」と伝えてある)
+const offlineTimers = new Map();   // userId -> timer
+const contactCache = new Map();    // userId -> { ts, ids }
+function announceOnline(userId) {
+  const t = offlineTimers.get(userId);
+  if (t) { clearTimeout(t); offlineTimers.delete(userId); }
+  if (presenceSent.get(userId)) return;
+  presenceSent.set(userId, true);
+  broadcastPresence(userId, true);
+}
+function announceOffline(userId) {
+  if (offlineTimers.has(userId)) return;
+  offlineTimers.set(userId, setTimeout(() => {
+    offlineTimers.delete(userId);
+    if (!presenceSent.get(userId)) return;
+    presenceSent.delete(userId);
+    broadcastPresence(userId, false);
+  }, PRESENCE_OFFLINE_GRACE_MS));
+}
+async function presenceContacts(userId) {
+  const hit = contactCache.get(userId);
+  if (hit && Date.now() - hit.ts < 30000) return hit.ids;
+  const rows = await db.all(
+    `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
+     FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
+    [userId, userId, userId]
+  );
+  const ids = rows.map(r => r.other_id);
+  if (contactCache.size > 2000) contactCache.clear();
+  contactCache.set(userId, { ts: Date.now(), ids });
+  return ids;
+}
+
 async function broadcastPresence(userId, online) {
   try {
     // 「オンライン状態を見せない」設定の人は、相手の画面に常にオフラインとして映る
     const st = await getSettings(userId);
     if (!st.showOnlineStatus && online) return;
-    const rows = await db.all(
-      `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
-       FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
-      [userId, userId, userId]
-    );
+    const rows = (await presenceContacts(userId)).map(other_id => ({ other_id }));
     // ブロックしている/されている相手には、オンラインになったことを知らせない
     const blocks = await db.all('SELECT blocker_id, blocked_id FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', [userId, userId]);
     const hide = new Set(blocks.map(b => (b.blocker_id === userId ? b.blocked_id : b.blocker_id)));
@@ -272,11 +307,13 @@ async function flushOfflineQueue(userId) {
   // (新しく積まれることはもう無い。昔の残りを一度に全部メモリに読まないよう上限付き)
   const rows = await db.all('SELECT * FROM offline_queue WHERE recipient_id = ? ORDER BY created_at ASC LIMIT 200', [userId]);
   rows.forEach(row => {
+    let payload;
+    try { payload = JSON.parse(row.payload); } catch (_) { return; } // 壊れた行1件で、接続の後始末まで止まらないように
     broadcastToUser(userId, {
       type: 'message',
       senderId: row.sender_id,
       msgUuid: row.msg_uuid,
-      payload: JSON.parse(row.payload),
+      payload,
       queued: true,
     });
   });
@@ -474,12 +511,12 @@ function initWebSocketServer(server) {
       // --- チャット画面を開いた/閉じた通知 ---
       if (data.type === 'chat_open') {
         if (!userId) return;
-        broadcastPresence(userId, true);
+        announceOnline(userId);
         return;
       }
       if (data.type === 'chat_close') {
         if (!userId) return;
-        broadcastPresence(userId, false);
+        announceOffline(userId);
         return;
       }
 
@@ -1037,7 +1074,7 @@ function initWebSocketServer(server) {
         connections.get(userId).delete(ws);
         if (connections.get(userId).size === 0) {
           connections.delete(userId);
-          broadcastPresence(userId, false); // 相手に「オフラインになった」ことを通知
+          announceOffline(userId); // 相手に「オフラインになった」ことを通知(すぐ繋ぎ直した時は送らない)
         }
       }
     });

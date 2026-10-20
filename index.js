@@ -1,5 +1,6 @@
 // index.js - Ring サーバー エントリーポイント
 const express = require('express');
+require('./utils/asyncErrors').installProcessGuards();
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');

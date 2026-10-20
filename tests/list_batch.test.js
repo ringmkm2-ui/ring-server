@@ -71,3 +71,17 @@ describe('DM履歴のリアクション', () => {
     assert.deepEqual(h2.reactions, []);
   });
 });
+
+describe('退会', () => {
+  test('オーナーが退会すると、残りの人に引き継がれ、退会者はメンバーから外れる', async () => {
+    const a = await S.user('Owner'); const b = await S.user('Member');
+    await S.befriend(a, b);
+    const g = (await a.call('POST', '/api/groups/create', { name: 'GD', memberIds: [b.userId] })).data;
+    assert.equal((await a.call('POST', '/api/auth/delete-account', { password: a.password })).status, 200);
+    const l = (await b.call('GET', '/api/groups/list')).data.groups.find(x => x.groupId === g.groupId);
+    assert.ok(l, 'グループは残る');
+    assert.equal(l.ownerId, b.userId);
+    assert.equal(l.isOwner, true);
+    assert.deepEqual(l.members.map(m => m.userId), [b.userId]);
+  });
+});

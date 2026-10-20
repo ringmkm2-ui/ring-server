@@ -290,9 +290,11 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     const row = await db.get('SELECT * FROM email_codes WHERE username = ?', [username]);
     const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
     if (!user || !row) return invalid();
-    if (resetMissCount(username) >= RESET_MISS_MAX_PER_DAY) {
-      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
-      return res.status(429).json({ error: '失敗が続いたため、このアカウントの再設定を24時間止めました' });
+    // 認証コードの当てずっぽうが続いたら、そのアカウントの認証を24時間止める
+    // (以前はパスワード再設定の失敗回数を見ていて、無関係な再設定の失敗で認証が止まり、再設定コードまで消えていた)
+    if (resetMissCount('verify:' + username) >= RESET_MISS_MAX_PER_DAY) {
+      await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
+      return res.status(429).json({ error: '失敗が続いたため、このアカウントの認証を24時間止めました' });
     }
     if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
       await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
@@ -302,6 +304,7 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
       await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE username = ?', [username]);
+      resetMiss('verify:' + username);
       return invalid();
     }
     await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
@@ -549,9 +552,11 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
       );
       user = { id: userId, user_id: userIdCode, username: email, display_name: name || email, profile_pic: picture || '' };
     } else {
-      // 既存ユーザー：プロフィール写真を更新
-      if (picture) {
+      // 既存ユーザー：プロフィール写真を更新。ただし自分で設定した画像は上書きしない
+      // (以前はGoogleでログインし直すたびに、設定したアイコンがGoogleの写真に戻っていた)
+      if (picture && (!user.profile_pic || /^https:\/\/[^/]*googleusercontent\.com\//.test(String(user.profile_pic)))) {
         await db.run('UPDATE users SET profile_pic = ? WHERE id = ?', [picture, user.id]);
+        user.profile_pic = picture;
       }
       // メール認証待ちのまま残っていた登録に、そのメールの本当の持ち主がGoogleで来た場合。
       // 認証前のパスワードは第三者が設定した可能性があるので消して、Googleで認証済みにする
@@ -978,7 +983,24 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
     try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
     try { await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] user_pubkeys cleanup:', e.message); }
-    // ユーザー情報の匿名化(外部キー制約のため行自体は残す)
+    // 入っていたグループから抜ける(以前は退会後もメンバーのまま残り、オーナーだった場合は誰も管理できないグループになった)
+    try {
+      const mine = await db.all(
+        'SELECT g.id, g.owner_id FROM groups g JOIN group_members gm ON gm.group_id = g.id WHERE gm.user_id = ? AND gm.left_at IS NULL',
+        [userId]
+      );
+      for (const g of mine) {
+        if (g.owner_id !== userId) continue;
+        const next = await db.get(
+          'SELECT user_id FROM group_members WHERE group_id = ? AND user_id <> ? AND left_at IS NULL ORDER BY joined_at ASC LIMIT 1',
+          [g.id, userId]
+        );
+        if (next) await db.run('UPDATE groups SET owner_id = ? WHERE id = ?', [next.user_id, g.id]);
+      }
+      await db.run('UPDATE group_members SET left_at = CURRENT_TIMESTAMP WHERE user_id = ? AND left_at IS NULL', [userId]);
+    } catch (e) { console.error('[auth] group cleanup:', e.message); }
+    // ユーザー情報の匿名化(外部キー制約のため行自体は残す)。本名も消す
+    await db.run('UPDATE users SET real_name = NULL WHERE id = ?', [userId]);
     await db.run(
       "UPDATE users SET username = ?, password_hash = '', display_name = '退会済みユーザー', profile_pic = '', bio = '', public_key = NULL, totp_secret = NULL, totp_enabled = ?, backup_codes = NULL, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
       [`deleted_${userId}`, false, userId]
