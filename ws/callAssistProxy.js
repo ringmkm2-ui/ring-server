@@ -68,7 +68,8 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
 
   dgWs.on('close', () => {
     console.log(`[callAssist] Deepgramセッション終了: ${sessionId}`);
-    activeSessions.delete(sessionId);
+    // 同じIDで作り直された新しいセッションを、古い方のcloseで消さない
+    if (activeSessions.get(sessionId) === dgWs) activeSessions.delete(sessionId);
     if (onClose) onClose();
   });
 

@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.239';
+const CACHE_VERSION = 'v1.28.240';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -333,7 +333,7 @@ self.addEventListener('notificationclick', event => {
 
 // クライアントからのメッセージ受信（キープアライブ + 通話制御）
 self.addEventListener('message', event => {
-  const { type, callId } = event.data;
+  const { type, callId } = event.data || {};
   
   if (type === 'FRESH_NEXT') {
     // ページ側が「サーバーの方が新しい版」と気づいた。しばらくはキャッシュを使わず取りに行く
@@ -348,7 +348,7 @@ self.addEventListener('message', event => {
   if (type === 'KEEPALIVE') {
     // 定期的なキープアライブシグナル（WebSocket リトライ用）
     // Service Workerをアクティブに保つ（デバイス制限下でも通話受信を継続）
-    event.ports[0].postMessage({ ack: true });
+    if (event.ports && event.ports[0]) event.ports[0].postMessage({ ack: true });
   }
 });
 
