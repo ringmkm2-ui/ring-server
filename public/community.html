@@ -399,7 +399,7 @@ setInterval(() => {
 // 退出(オーナーは削除)。以前はAPIだけあって、画面から抜ける手段が無かった
 document.getElementById('leaveBtn').addEventListener('click', async () => {
   if (!communityData) return;
-  const owner = myRole === 'owner' || communityData.community.ownerId === localStorage.getItem('ring_userId');
+  const owner = communityData.community.ownerId === localStorage.getItem('ring_userId');
   const name = communityData.community.name;
   const ok = confirm(owner
     ? '「' + name + '」を削除します。メッセージもメンバーも全部消えて、元に戻せません。'
