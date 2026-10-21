@@ -276,6 +276,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     return res.json({ needsVerification: true, username });
   }
 
+  if (createdNew) await require('../utils/officialFriend').befriendOfficial(userId);
   const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
   res.json(await sessionResponse(user, {}, reqMeta(req)));
 });
@@ -308,6 +309,7 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
       return invalid();
     }
     await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
+    if (!user.email_verified_at) await require('../utils/officialFriend').befriendOfficial(user.id);
     await db.run('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
     res.json(await finishLogin({ ...user, email_verified_at: true }, {}, reqMeta(req)));
   } catch (e) {
@@ -550,6 +552,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
         'INSERT INTO users (id, user_id, username, password_hash, display_name, profile_pic, email_verified_at, real_name) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)',
         [userId, userIdCode, email, '', name || email, picture || '', googleReal]
       );
+      await require('../utils/officialFriend').befriendOfficial(userId);
       user = { id: userId, user_id: userIdCode, username: email, display_name: name || email, profile_pic: picture || '' };
     } else {
       // 既存ユーザー：プロフィール写真を更新。ただし自分で設定した画像は上書きしない
