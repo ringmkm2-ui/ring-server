@@ -271,6 +271,33 @@ router.post('/accept', auth, async (req, res) => {
   }
 });
 
+// 申請の拒否(受け取った側)・取り消し(送った側)・友だちの削除(承認済み)。
+// どれも当事者だけが行える。行を消すだけなので、あとからまた申請し直せる
+async function dropFriendship(req, res, allowed) {
+  try {
+    const { userId } = req.body || {};
+    let { friendshipId } = req.body || {};
+    // 相手のIDだけ渡された時は、その人との関係を探す(トーク画面のメニューから使う)
+    if (!friendshipId && typeof userId === 'string' && userId && userId.length <= 64) {
+      const [a, b] = [req.userId, userId].sort();
+      const r = await db.get('SELECT id FROM friendships WHERE user_a_id = ? AND user_b_id = ?', [a, b]);
+      friendshipId = r && r.id;
+    }
+    if (typeof friendshipId !== 'string' || !friendshipId || friendshipId.length > 64) return res.status(404).json({ error: 'not found' });
+    const f = await db.get('SELECT * FROM friendships WHERE id = ?', [friendshipId]);
+    if (!f) return res.status(404).json({ error: 'not found' });
+    if (f.user_a_id !== req.userId && f.user_b_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
+    if (!allowed(f, req.userId)) return res.status(400).json({ error: 'この状態では実行できません' });
+    await db.run('DELETE FROM friendships WHERE id = ?', [friendshipId]);
+    res.json({ ok: true });
+  } catch (e) {
+    sendServerError(res, e);
+  }
+}
+router.post('/reject', auth, (req, res) => dropFriendship(req, res, (f, me) => f.status === 'pending' && f.requested_by !== me));
+router.post('/cancel', auth, (req, res) => dropFriendship(req, res, (f, me) => f.status === 'pending' && f.requested_by === me));
+router.post('/remove', auth, (req, res) => dropFriendship(req, res, (f) => f.status === 'accepted'));
+
 // 友達リスト
 router.get('/list', auth, async (req, res) => {
   try {

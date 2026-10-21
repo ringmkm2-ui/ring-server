@@ -555,7 +555,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.243 beta</div>
+  <div class="version-badge">Bro Chat v1.28.244 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3028,6 +3028,20 @@ async function loadPendingRequests(animate = false) {
 
       row.appendChild(av);
       row.appendChild(info);
+
+      // 拒否(受け取った側)/ 取り消し(送った側)
+      const dropBtn = document.createElement('button');
+      dropBtn.className = 'glass-clear glass-interactive';
+      dropBtn.style.cssText = 'padding:8px 14px;color:#64748b;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
+      dropBtn.textContent = p.isSentByMe ? '取り消し' : '拒否';
+      dropBtn.addEventListener('click', async () => {
+        dropBtn.disabled = true;
+        try {
+          const d = await api(p.isSentByMe ? '/api/friends/cancel' : '/api/friends/reject', { method: 'POST', body: JSON.stringify({ friendshipId: p.friendshipId }) });
+          if (d && d.ok) loadPendingRequests(true); else dropBtn.disabled = false;
+        } catch (e) { dropBtn.disabled = false; }
+      });
+      row.appendChild(dropBtn);
 
       if (!p.isSentByMe) {
         const btn = document.createElement('button');
