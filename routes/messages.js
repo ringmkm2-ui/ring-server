@@ -586,10 +586,19 @@ router.post('/react', auth, async (req, res) => {
       await db.run('DELETE FROM message_reactions WHERE id = ?', [existing.id]);
       action = 'removed';
     } else {
-      await db.run(
-        'INSERT INTO message_reactions (id, message_id, user_id, emoji) VALUES (?, ?, ?, ?)',
-        [uuidv4(), messageId, req.userId, emoji]
-      );
+      // 1人が1通に付けられる種類は12まで(連打でDBを埋められないように)
+      const cnt = await db.get('SELECT COUNT(*) AS c FROM message_reactions WHERE message_id = ? AND user_id = ?', [messageId, req.userId]);
+      if (Number(cnt && cnt.c) >= 12) return res.status(429).json({ error: 'リアクションが多すぎます' });
+      try {
+        await db.run(
+          'INSERT INTO message_reactions (id, message_id, user_id, emoji) VALUES (?, ?, ?, ?)',
+          [uuidv4(), messageId, req.userId, emoji]
+        );
+      } catch (e) {
+        // 同時に2回押された時は片方が重複で弾かれる。付いた状態になっていれば成功として扱う
+        const again = await db.get('SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [messageId, req.userId, emoji]);
+        if (!again) throw e;
+      }
       action = 'added';
     }
 
