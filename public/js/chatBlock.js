@@ -30,6 +30,7 @@
   }
   const ICON_BLOCK = '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>';
   const ICON_UNBLOCK = '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/>';
+  const ICON_UNFRIEND = '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M17 8h5"/>';
   const ICON_FLAG = '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>';
   const ICON_SHIELD = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>';
   const ICON_BG = '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>';
@@ -84,6 +85,19 @@
         row(card, ICON_BLOCK, T('block', 'ブロック'), 'danger', openBlockConfirm);
       }
       row(card, ICON_FLAG, T('report_user_short', '通報する'), 'danger', openReport);
+      row(card, ICON_UNFRIEND, T('remove_friend', '友だちを削除'), 'danger', openRemoveConfirm);
+    });
+  }
+
+  function openRemoveConfirm() {
+    frame(card => {
+      const p = document.createElement('div'); p.className = 'peer-sub'; p.style.paddingTop = '12px';
+      p.textContent = T('remove_friend_desc', '友だちから削除します。相手には知らされません。メッセージ・通話はできなくなりますが、あとからまた友だち申請できます。');
+      card.appendChild(p);
+      row(card, ICON_UNFRIEND, T('remove_friend_confirm', '削除する'), 'danger', async () => {
+        try { await call('/api/friends/remove', { userId: otherId }); close(); location.replace('/talklist.html'); }
+        catch (e) { alert(e.message); }
+      });
     });
   }
 
