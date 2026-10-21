@@ -121,7 +121,11 @@ html.dark-mode .name{color:#f1f5f9}
 .input-bar-container{padding:10px 16px 14px;width:100%}
 .input-floating-bar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(20px) saturate(200%);-webkit-backdrop-filter:blur(20px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
 .input-floating-bar.media-open{max-height:230px;border-radius:22px}
-.input-main-row{display:flex;align-items:center;width:100%;height:34px;min-width:0}
+.input-main-row{display:flex;align-items:center;width:100%;min-height:34px;min-width:0}
+/* 複数行になったら枠ごと伸ばす(以前は54px固定で、2行目以降が枠からはみ出して切れていた) */
+.input-floating-bar.multi{max-height:170px;border-radius:22px}
+.input-floating-bar.multi.media-open{max-height:370px}
+.input-floating-bar.multi .input-main-row{align-items:flex-end}
 /* plus-btn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
 /* plus-btn: 添付メニューを開くボタン。send-btnと同様の理由で
    入れ子backdrop-filterを避け、不透明度の高い背景色のみにする。 */
@@ -379,7 +383,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.240 beta</div>
+  <div class="version-badge">Bro Chat v1.28.241 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1367,7 +1371,8 @@ async function sendMediaViaCloudinary(f, t) {
 // スマホのEnterは改行、PC(物理キーボード)はEnterで送信・Shift+Enterで改行。
 (function () {
   const ta = document.getElementById('msgInput');
-  const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 6 * 21.6 + 12) + 'px'; };
+  const bar = document.getElementById('inputBar');
+  const fit = () => { ta.style.height = 'auto'; const h = Math.min(ta.scrollHeight, 6 * 21.6 + 12); ta.style.height = h + 'px'; bar.classList.toggle('multi', h > 40); };
   ta.addEventListener('input', fit);
   window.fitMsgInput = fit;
   const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
@@ -3102,6 +3107,7 @@ document.getElementById('delBtn').onclick = () => {
   if (isEditing) {
     isEditing = false; editNode = null; editMeta = null; editMsgId = null;
     document.getElementById('msgInput').value = '';
+    if (window.fitMsgInput) fitMsgInput();
     document.getElementById('sendBtn').innerHTML = paperPlane;
   }
   // 送信中(まだ仮のID)は取り消せない。以前は取り消したように見えて、その後相手に届いていた
