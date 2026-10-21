@@ -14,6 +14,7 @@ class DeepgramVoiceRecognizer {
     this.track = track === 'remote' ? 'remote' : 'mic';
     this.audioContext = null;
     this.stream = null;
+    this.ownsStream = false;
     this.processor = null;
     this.source = null;
     this.isStreaming = false;
@@ -35,6 +36,7 @@ class DeepgramVoiceRecognizer {
       console.error('[deepgram] マイクアクセスエラー:', e);
       return false;
     }
+    this.ownsStream = true;
     return this._startWithStream(callId, language, this.stream);
   }
 
@@ -52,6 +54,7 @@ class DeepgramVoiceRecognizer {
       return false;
     }
     this.stream = mediaStream;
+    this.ownsStream = false; // 通話と共有しているストリームは止めない
     return this._startWithStream(callId, language, mediaStream);
   }
 
@@ -65,6 +68,7 @@ class DeepgramVoiceRecognizer {
           if (this.onTranscriptCallback) this.onTranscriptCallback(data.text, data.isFinal);
         } else if (data.type === 'call_assist_error' && data.track === this.track) {
           console.error(`[deepgram:${this.track}] サーバーエラー:`, data.error);
+          if (this.onErrorCallback) this.onErrorCallback(data.error);
         }
       } catch (e) { /* 他のJSONメッセージは無視 */ }
     };
@@ -80,6 +84,8 @@ class DeepgramVoiceRecognizer {
   // フレーム先頭1バイトはtrack識別子(サーバー側がmic/remoteを判別するため)。
   _streamAudioToServer(mediaStream) {
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    // 自動で始まる場合(相手の音声が後から届いた時)はsuspendedのことがある
+    if (this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
     this.source = this.audioContext.createMediaStreamSource(mediaStream);
     this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -111,6 +117,10 @@ class DeepgramVoiceRecognizer {
     return buffer;
   }
 
+  onError(callback) {
+    this.onErrorCallback = callback;
+  }
+
   onTranscript(callback) {
     this.onTranscriptCallback = callback;
   }
@@ -129,7 +139,7 @@ class DeepgramVoiceRecognizer {
     if (this.audioContext) { try { this.audioContext.close(); } catch (e) {} this.audioContext = null; }
     // マイク由来のstreamは自分で止める。相手の音声(remoteAudio由来)は
     // 通話全体で共有されているストリームなので、ここではtrackを止めない。
-    if (this.track === 'mic' && this.stream) {
+    if (this.ownsStream && this.stream) {
       this.stream.getTracks().forEach((track) => track.stop());
     }
     this.stream = null;

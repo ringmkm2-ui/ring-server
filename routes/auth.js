@@ -411,7 +411,12 @@ router.get('/features', (req, res) => {
     const u = new URL(String(process.env.BUYMEACOFFEE_URL || '').trim());
     if (u.protocol === 'https:') supportUrl = u.href;
   } catch (e) { /* 未設定または不正 */ }
-  res.json({ passwordReset: isMailConfigured(), supportUrl });
+  // ライブ翻訳(通話字幕)に必要なキーが揃っているか(真偽値だけ。キー自体は出さない)
+  let liveTranslate = false;
+  try {
+    liveTranslate = require('../ws/callAssistProxy').isDeepgramConfigured() && require('./callAssist').isConfigured();
+  } catch (e) { /* 読めなければ無効扱い */ }
+  res.json({ passwordReset: isMailConfigured(), supportUrl, liveTranslate });
 });
 
 // --- パスワードを忘れた場合の再設定(メール) ---

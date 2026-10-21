@@ -29,16 +29,19 @@ const translateLimiter = userLimiter(60 * 1000, 40, '翻訳の回数が多すぎ
 const summarizeLimiter = userLimiter(60 * 60 * 1000, 10, '要約の回数が多すぎます。しばらくしてからお試しください');
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+// 要約は質重視、リアルタイム翻訳は速さ重視(通話中の字幕なので遅いと使い物にならない)
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+const ANTHROPIC_TRANSLATE_MODEL = process.env.ANTHROPIC_TRANSLATE_MODEL || 'claude-haiku-4-5';
+function isConfigured() { return !!ANTHROPIC_API_KEY; }
 
 // 1リクエストあたりの文字数上限(通話メモ・字幕ログの異常な巨大化を防ぐ)
 const MAX_TEXT_LENGTH = 20000;
 
-async function callAnthropic(systemPrompt, userText) {
+async function callAnthropic(systemPrompt, userText, { model = ANTHROPIC_MODEL, maxTokens = 1024 } = {}) {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY が未設定です');
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const post = (m) => fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -46,12 +49,18 @@ async function callAnthropic(systemPrompt, userText) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
+      model: m,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userText }],
     }),
+    signal: AbortSignal.timeout(20000),
   });
+  let res = await post(model);
+  // 速いモデル名が通らない(未提供/名前違い)場合は標準モデルで一度だけやり直す
+  if ((res.status === 404 || res.status === 400) && model !== ANTHROPIC_MODEL) {
+    res = await post(ANTHROPIC_MODEL);
+  }
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
     throw new Error(`Anthropic APIエラー (status=${res.status}): ${errText.slice(0, 300)}`);
@@ -76,8 +85,10 @@ router.post('/translate', verifyToken, translateLimiter, asyncHandler(async (req
   try {
     const translated = await callAnthropic(
       `あなたは通話字幕のリアルタイム翻訳者です。与えられた発言を${lang}に翻訳してください。` +
-      `翻訳結果の文章だけを出力し、説明や前置きは一切付けないでください。`,
-      text
+      `翻訳結果の文章だけを出力し、説明や前置きは一切付けないでください。` +
+      `すでに${lang}の文章ならそのまま出力してください。`,
+      text,
+      { model: ANTHROPIC_TRANSLATE_MODEL, maxTokens: 400 }
     );
     res.json({ translated: translated.trim() });
   } catch (e) {
@@ -206,3 +217,4 @@ router.get('/summaries', verifyToken, asyncHandler(async (req, res) => {
 }));
 
 module.exports = router;
+module.exports.isConfigured = isConfigured;
