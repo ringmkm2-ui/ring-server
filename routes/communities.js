@@ -197,6 +197,7 @@ router.get('/:id', verifyToken, asyncHandler(async (req, res) => {
       inviteCode: community.invite_code,
       myRole: member.role,
       keyVersion: community.key_version || 1,
+      encrypted: !!(await db.get('SELECT 1 AS ok FROM community_key_distributions WHERE community_id = ? LIMIT 1', [req.params.id])),
     },
     channels,
     members,

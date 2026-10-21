@@ -347,6 +347,7 @@ async function editMessage(m, current) {
   const profane = !!(window.BCProfanity && window.BCProfanity.containsBannedWord(text));
   if (profane) text = window.BCProfanity.censor(text);
   let body = { content: text };
+  if (communityData && communityData.community.encrypted && !communityKey) { alert('暗号鍵がまだ届いていません'); return; }
   if (communityKey) {
     try { body = { content: await communityE2E.encryptText(text, communityKey), encrypted: true, keyVersion: communityKeyVersion }; }
     catch (e) { alert('暗号化できなかったので編集しませんでした'); return; }
@@ -391,6 +392,13 @@ async function sendMessage() {
   if (profane) text = window.BCProfanity.censor(text);
 
   let body = { content: text };
+  // 暗号化されたコミュニティで、まだ自分に鍵が届いていない時は、平文で送らない(以前はそのまま平文で送られていた)
+  if (communityData && communityData.community.encrypted && !communityKey) {
+    input.value = text;
+    alert('暗号鍵がまだ届いていません。少し待ってからもう一度送ってください');
+    prepareKey().then(() => loadMessages()).catch(() => {});
+    return;
+  }
   if (communityKey) {
     try {
       body = {
@@ -441,7 +449,22 @@ function copyInvite() {
 }
 
 // ポーリングで新着を取得(5秒ごと)
-setInterval(() => {
+let tick = 0, keyBusy = false;
+setInterval(async () => {
+  tick++;
+  // 鍵がまだ無い人は取り直す。鍵を持っている人は、新しく入った人に配る(開いた時だけだと、入った人が長く待たされる)
+  if (!keyBusy && window.communityE2E && communityData && (tick % 3 === 0 || (communityData.community.encrypted && !communityKey))) {
+    keyBusy = true;
+    try {
+      if (communityData.community.encrypted && !communityKey) {
+        const had = !!communityKey;
+        await prepareKey();
+        if (!had && communityKey) { keyByVersion.clear(); lastMessagesFp = ''; }
+      } else {
+        await communityE2E.distributePendingKeys();
+      }
+    } catch (e) {} finally { keyBusy = false; }
+  }
   if (currentChannelId) loadMessages();
 }, 5000);
 

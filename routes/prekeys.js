@@ -136,7 +136,7 @@ router.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {
 router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
   // このAPIは相手のワンタイム鍵を1個消費する。無関係なユーザーが繰り返し叩くと、相手の鍵を使い切れて
-  // しまう(前方秘匿性が落ちる)ので、友だち・同じグループの人・自分だけに限る。
+  // しまう(前方秘匿性が落ちる)ので、友だち・同じグループ・同じコミュニティの人・自分だけに限る。
   if (targetId !== req.user.userId) {
     const related = await db.get(
       `SELECT 1 AS ok FROM friendships
@@ -145,8 +145,12 @@ router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
        SELECT 1 AS ok FROM group_members g1
          JOIN group_members g2 ON g2.group_id = g1.group_id
         WHERE g1.user_id = ? AND g2.user_id = ? AND g1.left_at IS NULL AND g2.left_at IS NULL
+       UNION ALL
+       SELECT 1 AS ok FROM community_members c1
+         JOIN community_members c2 ON c2.community_id = c1.community_id
+        WHERE c1.user_id = ? AND c2.user_id = ?
        LIMIT 1`,
-      [req.user.userId, targetId, targetId, req.user.userId, req.user.userId, targetId]
+      [req.user.userId, targetId, targetId, req.user.userId, req.user.userId, targetId, req.user.userId, targetId]
     );
     if (!related) return res.status(403).json({ error: 'このユーザーの鍵は取得できません' });
   }

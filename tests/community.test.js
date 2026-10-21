@@ -64,3 +64,16 @@ test('メッセージの編集は本人だけ、削除は本人か管理者だ�
   h = (await o.call('GET', `${base}/channels/${ch}/messages`)).data.messages;
   assert.equal(h.length, 0);
 });
+
+test('同じコミュニティの人(友だちでなくても)とは鍵のやり取りができる。無関係な人は不可', async () => {
+  const o = await S.user('Owner'); const m = await S.user('Member'); const x = await S.user('Stranger');
+  const c = (await o.call('POST', '/api/communities', { name: 'Keys2', encryptedKeyForSelf: KEY })).data.community;
+  await m.call('POST', '/api/communities/join', { inviteCode: c.inviteCode });
+  // 403 = 関係が無いので拒否 / 404 = 関係はあるが相手がまだ鍵を登録していない
+  assert.equal((await o.call('GET', `/api/prekeys/identity/${m.userId}`)).status, 404);
+  assert.equal((await o.call('GET', `/api/prekeys/bundle/${m.userId}`)).status, 404);
+  assert.equal((await x.call('GET', `/api/prekeys/identity/${m.userId}`)).status, 403);
+  assert.equal((await x.call('GET', `/api/prekeys/bundle/${m.userId}`)).status, 403);
+  const d = (await o.call('GET', `/api/communities/${c.id}`)).data;
+  assert.equal(d.community.encrypted, true);
+});
