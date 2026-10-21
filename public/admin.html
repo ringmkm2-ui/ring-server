@@ -126,6 +126,8 @@ html.dark-mode .name{color:#f1f5f9}
 .input-floating-bar.multi{max-height:170px;border-radius:22px}
 .input-floating-bar.multi.media-open{max-height:370px}
 .input-floating-bar.multi .input-main-row{align-items:flex-end}
+/* 閉じている間のメディアメニューは場所も取らせない(取ると複数行の時に下が空白になる) */
+.input-floating-bar.multi:not(.media-open) .media-opts{display:none}
 /* plus-btn: 添付メニュー開閉ボタン。形状のみ定義し、素材はglass-clearに任せる。 */
 /* plus-btn: 添付メニューを開くボタン。send-btnと同様の理由で
    入れ子backdrop-filterを避け、不透明度の高い背景色のみにする。 */
@@ -383,7 +385,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.241 beta</div>
+  <div class="version-badge">Bro Chat v1.28.242 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1252,24 +1254,14 @@ function handleMedia(f, t) {
 }
 
 // 送信中の画像/動画ごとに「送信中 42% [×]」を入力欄の上に出す。×で送信を止める
+// 送信中の表示は送信ボタンのリングだけ(%や×のチップは出さない)。止めたい時は、そのリングの送信ボタンを押す
 function makeUploadChip(t) {
   const ctrl = new AbortController();
-  const box = document.getElementById('uploadChips');
-  const chip = document.createElement('div');
-  chip.className = 'up-chip';
-  const label = document.createElement('span');
-  label.textContent = (t === 'video' ? '動画' : t === 'audio' ? '音声' : '画像') + 'を送信中';
-  const pct = document.createElement('span'); pct.className = 'pct'; pct.textContent = '0%';
-  const x = document.createElement('button'); x.type = 'button'; x.setAttribute('aria-label', '送信をキャンセル');
-  x.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-  x.addEventListener('click', () => { if (window.LiquidGlass) window.LiquidGlass.haptic('light'); ctrl.abort(); });
-  chip.append(label, pct, x);
-  if (box) box.appendChild(chip);
   return {
     signal: ctrl.signal,
     abort: () => ctrl.abort(),
-    progress: p => { pct.textContent = Math.min(100, Math.round(p)) + '%'; },
-    done: () => chip.remove(),
+    progress: () => {},
+    done: () => {},
   };
 }
 const activeDmUploads = new Set();
@@ -1278,7 +1270,7 @@ async function sendMediaViaCloudinary(f, t) {
   const chip = makeUploadChip(t);
   activeDmUploads.add(chip);
   const sendBtn = document.getElementById('sendBtn');
-  sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" fill="none" stroke="rgba(0,122,255,.18)" stroke-width="3"/><circle class="upload-ring-fill" cx="10" cy="10" r="8" fill="none" stroke="#007aff" stroke-width="3" stroke-linecap="round" stroke-dasharray="50.27" stroke-dashoffset="50.27" style="transition:stroke-dashoffset .18s ease"/></svg>';
+  sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" fill="none" stroke="rgba(0,122,255,.18)" stroke-width="3"/><circle class="upload-ring-fill" cx="10" cy="10" r="8" fill="none" stroke="#007aff" stroke-width="3" stroke-linecap="round" stroke-dasharray="50.27" stroke-dashoffset="50.27" style="transition:stroke-dashoffset .18s ease"/><rect x="7" y="7" width="6" height="6" rx="1.2" fill="#007aff" style="transform:rotate(90deg);transform-origin:10px 10px"/></svg>';
 
   try {
     // 1対1チャットの共有鍵: 自分の秘密鍵 + 相手の公開鍵からECDHで導出した32byteの
