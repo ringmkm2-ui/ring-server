@@ -385,7 +385,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.248 beta</div>
+  <div class="version-badge">Bro Chat v1.28.249 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3539,7 +3539,7 @@ function createPeerConnection() {
           window.deepgramRemoteRecognizer && !window.deepgramRemoteRecognizer.isStreaming) {
         window.deepgramRemoteRecognizer.startFromStream(
           currentCallId,
-          document.getElementById('ltOtherLang') ? document.getElementById('ltOtherLang').value : 'ja',
+          ltCode(document.getElementById('ltOtherLang')),
           e.streams[0]
         );
       }
@@ -3654,6 +3654,7 @@ function cleanupCall() {
   } catch (e) {}
   // currentCallIdがリセットされる前に、字幕停止と要約リクエストを済ませておく
   if (typeof deepgramRecognizer !== 'undefined' && deepgramRecognizer && typeof isCallAssistActive !== 'undefined' && isCallAssistActive) {
+    clearInterval(window.__assistRemoteRetry);
     deepgramRecognizer.stopStream();
     if (window.deepgramRemoteRecognizer) window.deepgramRemoteRecognizer.stopStream();
     isCallAssistActive = false;
@@ -4383,6 +4384,45 @@ const ltMyLabel = document.getElementById('ltMyLabel');
 let isCallAssistActive = false;
 let callTranscriptLog = []; // 通話終了後の要約に使う{speaker,text}の配列
 let translateQueue = Promise.resolve(); // 翻訳リクエストの順序を保証する
+// セレクタの値は日本語名。Deepgramには言語コードで渡す(以前は名前のまま送って常に 'ja' 扱いになっていた)
+const LT_CODES = { '日本語': 'ja', '英語': 'en', '中国語': 'zh', '韓国語': 'ko', 'フランス語': 'fr', 'スペイン語': 'es' };
+function ltCode(el) { return (el && LT_CODES[el.value]) || 'ja'; }
+// 翻訳。両方同じ言語なら翻訳しない(API代と待ち時間の無駄)
+async function ltTranslate(text, targetLang) {
+  if (!targetLang || (ltMyLang && ltOtherLang && ltMyLang.value === ltOtherLang.value)) return text;
+  try {
+    const res = await fetch('/api/call-assist/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ text, targetLanguage: targetLang }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.translated) return data.translated;
+    } else if (res.status === 429) {
+      showLtNotice('翻訳の回数が多すぎます。少し待ってください');
+    } else {
+      showLtNotice('翻訳に失敗しました(原文を表示します)');
+    }
+  } catch (e) { console.warn('[callAssist] 翻訳失敗:', e.message); }
+  return text;
+}
+let ltNoticeTimer = null;
+function showLtNotice(msg) {
+  if (!liveTranslateLog) return;
+  let n = document.getElementById('ltNotice');
+  if (!n) {
+    n = document.createElement('div');
+    n.id = 'ltNotice';
+    n.style.cssText = 'align-self:center;font-size:12px;color:#fff;background:rgba(0,0,0,.35);padding:4px 12px;border-radius:12px;margin:4px 0';
+    liveTranslateLog.appendChild(n);
+  }
+  n.textContent = msg;
+  liveTranslateLog.appendChild(n);
+  liveTranslateLog.scrollTop = liveTranslateLog.scrollHeight;
+  clearTimeout(ltNoticeTimer);
+  ltNoticeTimer = setTimeout(() => { if (n.parentNode) n.remove(); }, 4000);
+}
 
 // 吹き出しを1つ追加する。isMine=trueなら右寄せ(自分)、falseなら左寄せ(相手)。
 function addTranslateBubble(originalText, translatedText, isMine) {
@@ -4421,22 +4461,7 @@ function handleIncomingTranscript(text, isFinal) {
 
   const targetLang = ltOtherLang ? ltOtherLang.value : '';
   translateQueue = translateQueue.then(async () => {
-    let translated = text;
-    if (targetLang) {
-      try {
-        const res = await fetch('/api/call-assist/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ text, targetLanguage: targetLang }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.translated) translated = data.translated;
-        }
-      } catch (e) {
-        console.warn('[callAssist] 翻訳失敗:', e.message);
-      }
-    }
+    const translated = await ltTranslate(text, targetLang);
     addTranslateBubble(text, translated, true);
     // 通常の字幕オーバーレイ(パネルを開いていない間の簡易表示)も更新しておく
     const captionEl = document.getElementById('liveCaption');
@@ -4475,22 +4500,7 @@ function handleRemoteTranscript(text, isFinal) {
 
   const targetLang = ltMyLang ? ltMyLang.value : '';
   translateQueue = translateQueue.then(async () => {
-    let translated = text;
-    if (targetLang) {
-      try {
-        const res = await fetch('/api/call-assist/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ text, targetLanguage: targetLang }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.translated) translated = data.translated;
-        }
-      } catch (e) {
-        console.warn('[callAssist] 翻訳失敗(相手):', e.message);
-      }
-    }
+    const translated = await ltTranslate(text, targetLang);
     addTranslateBubble(text, translated, false);
   });
 }
@@ -4498,6 +4508,33 @@ function handleRemoteTranscript(text, isFinal) {
 // Call Assistボタン: 初回タップでLive Translateパネルを開き、自分のマイクと
 // 相手の受信音声(remoteAudio)の両方を同時に文字起こし・翻訳する。
 // もう一度タップで両方停止してパネルを閉じる。
+// 自分のマイク: 通話で既に取得済みのマイク(localStream)を共有する。
+// 2回目のgetUserMediaは端末によって通話のマイクを奪う/止めることがある。
+async function startAssistMic() {
+  const lang = ltCode(ltMyLang);
+  const live = localStream && localStream.getAudioTracks().some((t) => t.readyState === 'live');
+  if (live) return deepgramRecognizer.startFromStream(currentCallId, lang, localStream);
+  return deepgramRecognizer.startRealtimeStream(currentCallId, lang);
+}
+function startAssistRemote() {
+  const rec = window.deepgramRemoteRecognizer;
+  if (!rec || rec.isStreaming) return false;
+  const el = document.getElementById('remoteAudio');
+  const ms = el ? el.srcObject : null;
+  if (!ms || ms.getAudioTracks().length === 0) return false;
+  rec.startFromStream(currentCallId, ltCode(ltOtherLang), ms);
+  return true;
+}
+// 言語を切り替えたら、動いている字幕を新しい言語で張り直す
+async function restartAssistForLangChange() {
+  if (!isCallAssistActive) return;
+  try { deepgramRecognizer.stopStream(); } catch (e) {}
+  try { if (window.deepgramRemoteRecognizer) window.deepgramRemoteRecognizer.stopStream(); } catch (e) {}
+  await new Promise((r) => setTimeout(r, 300));
+  if (!isCallAssistActive) return;
+  await startAssistMic();
+  startAssistRemote();
+}
 if (callAssistBtn) {
   callAssistBtn.onclick = async () => {
     if (!isCallAssistActive) {
@@ -4506,36 +4543,36 @@ if (callAssistBtn) {
         // Deepgram APIキーはサーバー側が保持しクライアントには一切渡らない。
         deepgramRecognizer = new DeepgramVoiceRecognizer(ws, 'mic');
         deepgramRecognizer.onTranscript(handleIncomingTranscript);
+        deepgramRecognizer.onError((m) => showLtNotice(m || '字幕を開始できませんでした'));
       }
       if (!window.deepgramRemoteRecognizer) {
         window.deepgramRemoteRecognizer = new DeepgramVoiceRecognizer(ws, 'remote');
         window.deepgramRemoteRecognizer.onTranscript(handleRemoteTranscript);
+        window.deepgramRemoteRecognizer.onError((m) => showLtNotice(m || '相手の字幕を開始できませんでした'));
       }
 
-      const micSuccess = await deepgramRecognizer.startRealtimeStream(currentCallId, ltMyLang ? ltMyLang.value : 'ja');
+      const micSuccess = await startAssistMic();
       if (!micSuccess) {
         alert(i18n.t('err_mic_denied'));
         return;
       }
-
-      // 相手の音声(remoteAudio要素のsrcObject)にトラックがあれば、そちらも文字起こしする。
-      // 通話開始直後などでまだ相手の音声が来ていない場合はマイクのみで続行する。
-      const remoteAudioEl = document.getElementById('remoteAudio');
-      const remoteMediaStream = remoteAudioEl ? remoteAudioEl.srcObject : null;
-      if (remoteMediaStream && remoteMediaStream.getAudioTracks().length > 0) {
-        await window.deepgramRemoteRecognizer.startFromStream(
-          currentCallId,
-          ltOtherLang ? ltOtherLang.value : 'ja',
-          remoteMediaStream
-        );
-      } else {
-        console.warn('[callAssist] 相手の音声ストリームが未取得のため、自分の発言のみ字幕化します');
-      }
+      startAssistRemote();
+      // 相手の音声がまだ届いていない場合は、届くまで数秒おきに再試行する
+      clearInterval(window.__assistRemoteRetry);
+      let tries = 0;
+      window.__assistRemoteRetry = setInterval(() => {
+        if (!isCallAssistActive || (window.deepgramRemoteRecognizer && window.deepgramRemoteRecognizer.isStreaming) || ++tries > 20) {
+          clearInterval(window.__assistRemoteRetry);
+          return;
+        }
+        startAssistRemote();
+      }, 3000);
 
       isCallAssistActive = true;
       callAssistBtn.style.background = 'rgba(76, 110, 245, 0.85)';
       openLiveTranslatePanel();
     } else {
+      clearInterval(window.__assistRemoteRetry);
       deepgramRecognizer.stopStream();
       if (window.deepgramRemoteRecognizer) window.deepgramRemoteRecognizer.stopStream();
       isCallAssistActive = false;
@@ -4550,8 +4587,8 @@ function syncLangLabels() {
   if (ltOtherLabel && ltOtherLang) ltOtherLabel.textContent = ltOtherLang.selectedOptions[0].textContent;
   if (ltMyLabel && ltMyLang) ltMyLabel.textContent = ltMyLang.selectedOptions[0].textContent;
 }
-if (ltOtherLang) ltOtherLang.onchange = syncLangLabels;
-if (ltMyLang) ltMyLang.onchange = syncLangLabels;
+if (ltOtherLang) ltOtherLang.onchange = () => { syncLangLabels(); restartAssistForLangChange(); };
+if (ltMyLang) ltMyLang.onchange = () => { syncLangLabels(); restartAssistForLangChange(); };
 syncLangLabels();
 
 // --- 通話メモ ---
