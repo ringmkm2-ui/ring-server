@@ -39,6 +39,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .msg-header{display:flex;align-items:baseline;gap:8px}
 .msg-name{font-weight:700;font-size:13px;color:rgba(255,255,255,.9)}
 .msg-time{font-size:11px;color:rgba(255,255,255,.4)}
+.msg-acts{margin-left:auto;display:flex;gap:10px}
+.msg-acts button{background:none;border:0;padding:0;font-size:11px;color:rgba(255,255,255,.4);cursor:pointer}
 .msg-text{font-size:14px;color:rgba(255,255,255,.85);margin-top:2px;word-break:break-word;white-space:pre-wrap}
 .input-bar{padding:12px 16px;background:rgba(255,255,255,.08);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,.1);display:flex;gap:8px;align-items:center}
 .input-bar input{flex:1;padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;font-size:14px;outline:none}
@@ -272,10 +274,18 @@ async function loadMessages() {
   if (!currentChannelId) return;
   const data = await api(`/api/communities/${communityId}/channels/${currentChannelId}/messages`);
   const container = document.getElementById('messages');
-  container.textContent = '';
   if (!data.ok || !data.messages) return;
 
+  // 5秒ごとの自動更新で、変わっていなければ作り直さない(以前は毎回作り直して一番下へ飛び、過去ログを読めなかった)
+  const fp = currentChannelId + '|' + data.messages.map(m => m.id + ':' + (m.edited_at || '')).join(',');
+  if (fp === lastMessagesFp) return;
+  const firstLoad = lastMessagesFp.split('|')[0] !== String(currentChannelId);
+  lastMessagesFp = fp;
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+  const prevTop = container.scrollTop;
+
   const texts = await Promise.all(data.messages.map(readContent));
+  container.textContent = '';
   data.messages.forEach((m, i) => {
     const msg = document.createElement('div');
     msg.className = 'msg';
@@ -303,6 +313,15 @@ async function loadMessages() {
     timeEl.textContent = formatTime(m.created_at);
     header.appendChild(nameEl);
     header.appendChild(timeEl);
+    if (m.edited_at) { const ed = document.createElement('span'); ed.className = 'msg-time'; ed.textContent = '(編集済み)'; header.appendChild(ed); }
+    // 自分のメッセージは編集・削除、管理者は他人のメッセージも削除できる
+    const mine = m.sender_id === localStorage.getItem('ring_userId');
+    if (mine || myRole === 'admin') {
+      const acts = document.createElement('span'); acts.className = 'msg-acts';
+      if (mine) { const e = document.createElement('button'); e.type = 'button'; e.textContent = '編集'; e.addEventListener('click', () => editMessage(m, texts[i])); acts.appendChild(e); }
+      const d = document.createElement('button'); d.type = 'button'; d.textContent = '削除'; d.addEventListener('click', () => deleteMessage(m)); acts.appendChild(d);
+      header.appendChild(acts);
+    }
 
     const text = document.createElement('div');
     text.className = 'msg-text';
@@ -315,7 +334,36 @@ async function loadMessages() {
     container.appendChild(msg);
   });
 
-  container.scrollTop = container.scrollHeight;
+  container.scrollTop = (firstLoad || wasAtBottom) ? container.scrollHeight : prevTop;
+}
+
+let lastMessagesFp = '';
+
+async function editMessage(m, current) {
+  const next = prompt('メッセージを編集', current || '');
+  if (next == null) return;
+  let text = next.trim();
+  if (!text || text === current) return;
+  const profane = !!(window.BCProfanity && window.BCProfanity.containsBannedWord(text));
+  if (profane) text = window.BCProfanity.censor(text);
+  let body = { content: text };
+  if (communityKey) {
+    try { body = { content: await communityE2E.encryptText(text, communityKey), encrypted: true, keyVersion: communityKeyVersion }; }
+    catch (e) { alert('暗号化できなかったので編集しませんでした'); return; }
+  }
+  const d = await api(`/api/communities/${communityId}/messages/${m.id}/edit`, { method: 'POST', body: JSON.stringify(body) });
+  if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
+  lastMessagesFp = '';
+  await loadMessages();
+  if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
+}
+
+async function deleteMessage(m) {
+  if (!confirm('このメッセージを削除しますか?')) return;
+  const d = await api(`/api/communities/${communityId}/messages/${m.id}/delete`, { method: 'POST', body: '{}' });
+  if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
+  lastMessagesFp = '';
+  await loadMessages();
 }
 
 function formatTime(ts) {
@@ -362,6 +410,7 @@ async function sendMessage() {
     body: JSON.stringify(body)
   });
   if (data.ok && data.message) {
+    lastMessagesFp = '';
     await loadMessages();
   }
   if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });

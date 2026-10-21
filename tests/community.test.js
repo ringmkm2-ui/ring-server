@@ -45,3 +45,22 @@ test('鍵の作り直しは、同じ版からだと1回しか通らない', asyn
   const ok = [a, b].filter(r => r.status === 200).length;
   assert.equal(ok, 1, JSON.stringify([a.status, b.status]));
 });
+
+test('メッセージの編集は本人だけ、削除は本人か管理者だけ', async () => {
+  const o = await S.user('Owner'); const m = await S.user('Member'); const x = await S.user('Other');
+  const c = (await o.call('POST', '/api/communities', { name: 'Edit' })).data.community;
+  await m.call('POST', '/api/communities/join', { inviteCode: c.inviteCode });
+  const ch = (await o.call('GET', `/api/communities/${c.id}`)).data.channels[0].id;
+  const base = `/api/communities/${c.id}`;
+  const id = (await m.call('POST', `${base}/channels/${ch}/messages`, { content: 'v1' })).data.message.id;
+  assert.equal((await o.call('POST', `${base}/messages/${id}/edit`, { content: 'hack' })).status, 403);
+  assert.equal((await x.call('POST', `${base}/messages/${id}/edit`, { content: 'hack' })).status, 403);
+  assert.equal((await m.call('POST', `${base}/messages/${id}/edit`, { content: 'v2' })).status, 200);
+  let h = (await o.call('GET', `${base}/channels/${ch}/messages`)).data.messages;
+  assert.equal(h[0].content, 'v2'); assert.ok(h[0].edited_at);
+  assert.equal((await x.call('POST', `${base}/messages/${id}/delete`, {})).status, 403);
+  assert.equal((await o.call('POST', `${base}/messages/${id}/delete`, {})).status, 200); // 管理者
+  assert.equal((await m.call('POST', `${base}/messages/${id}/delete`, {})).status, 404);
+  h = (await o.call('GET', `${base}/channels/${ch}/messages`)).data.messages;
+  assert.equal(h.length, 0);
+});

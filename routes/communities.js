@@ -280,6 +280,49 @@ router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter
   res.json({ ok: true, message: msg });
 }));
 
+// --- 自分のメッセージの編集 ---
+router.post('/:id/messages/:messageId/edit', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
+  const m = await db.get(
+    `SELECT m.id, m.sender_id FROM community_messages m
+     JOIN community_channels c ON c.id = m.channel_id
+     WHERE m.id = ? AND c.community_id = ? AND m.deleted_at IS NULL`,
+    [req.params.messageId, req.params.id]
+  );
+  if (!m) return res.status(404).json({ error: 'メッセージが見つかりません' });
+  if (m.sender_id !== req.user.userId) return res.status(403).json({ error: '自分のメッセージだけ編集できます' });
+  const member = await db.get('SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ?', [req.params.id, req.user.userId]);
+  if (!member) return res.status(403).json({ error: 'メンバーではありません' });
+
+  if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content']);
+  const { content, encrypted, keyVersion } = req.body || {};
+  if (typeof content !== 'string' || !content) return res.status(400).json({ error: 'メッセージが必要です' });
+  if (content.length > MAX_COMMUNITY_TEXT) return res.status(400).json({ error: `メッセージは${MAX_COMMUNITY_TEXT}文字以内にしてください` });
+  const community = await db.get('SELECT key_version FROM communities WHERE id = ?', [req.params.id]);
+  const curVer = (community && community.key_version) || 1;
+  const kv = (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= curVer) ? keyVersion : curVer;
+  await db.run(
+    'UPDATE community_messages SET content = ?, encrypted = ?, key_version = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [content, !!encrypted, encrypted ? kv : null, m.id]
+  );
+  res.json({ ok: true });
+}));
+
+// --- メッセージの削除(自分の分、または管理者) ---
+router.post('/:id/messages/:messageId/delete', verifyToken, asyncHandler(async (req, res) => {
+  const m = await db.get(
+    `SELECT m.id, m.sender_id FROM community_messages m
+     JOIN community_channels c ON c.id = m.channel_id
+     WHERE m.id = ? AND c.community_id = ? AND m.deleted_at IS NULL`,
+    [req.params.messageId, req.params.id]
+  );
+  if (!m) return res.status(404).json({ error: 'メッセージが見つかりません' });
+  const member = await db.get('SELECT role FROM community_members WHERE community_id = ? AND user_id = ?', [req.params.id, req.user.userId]);
+  if (!member) return res.status(403).json({ error: 'メンバーではありません' });
+  if (m.sender_id !== req.user.userId && member.role !== 'admin') return res.status(403).json({ error: '削除できるのは自分のメッセージか、管理者だけです' });
+  await db.run('UPDATE community_messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [m.id]);
+  res.json({ ok: true });
+}));
+
 // --- チャンネル追加(admin/ownerのみ) ---
 router.post('/:id/channels', verifyToken, asyncHandler(async (req, res) => {
   const member = await db.get(

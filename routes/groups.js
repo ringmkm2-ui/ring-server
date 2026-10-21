@@ -730,7 +730,13 @@ router.post('/:groupId/messages/:msgId/react', verifyToken, asyncHandler(async (
     // 1人が付けられる種類は12まで(連打でDBを埋められないように)
     const cnt = await db.get('SELECT COUNT(*) AS c FROM group_message_reactions WHERE message_id = ? AND user_id = ?', [msgId, me]);
     if (Number(cnt && cnt.c) >= 12) return res.status(429).json({ error: 'リアクションが多すぎます' });
-    await db.run('INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [msgId, me, emoji]);
+    try {
+      await db.run('INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [msgId, me, emoji]);
+    } catch (e) {
+      // 同時に2回押された時の重複は成功として扱う
+      const again = await db.get('SELECT 1 AS ok FROM group_message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [msgId, me, emoji]);
+      if (!again) throw e;
+    }
   }
   const rows = await db.all('SELECT emoji, user_id FROM group_message_reactions WHERE message_id = ? ORDER BY created_at ASC', [msgId]);
   const em = new Map();
