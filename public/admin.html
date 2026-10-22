@@ -386,7 +386,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.263 beta</div>
+  <div class="version-badge">Bro Chat v1.28.264 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3248,6 +3248,8 @@ document.getElementById('mediaMod').onclick = e => { if(e.target===document.getE
 let ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.miwifi.com:3478' },
 ];
 
 // TURNサーバーの取得に成功しているかどうか。
@@ -3320,7 +3322,7 @@ async function refreshIceServers() {
     // TURNが全滅していたら、STUNも混ぜて直結(P2P)を許可する(繋がらないよりまし)
     if (!TURN_AVAILABLE) {
       const hasStun = ICE_SERVERS.some(s => [].concat(s.urls).some(u => /^stun:/i.test(u)));
-      if (!hasStun) ICE_SERVERS = ICE_SERVERS.concat([{ urls: 'stun:stun.l.google.com:19302' }]);
+      if (!hasStun) ICE_SERVERS = ICE_SERVERS.concat([{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.miwifi.com:3478' }]);
     }
   })();
   try { await iceProbeRunning; } finally { iceProbeRunning = null; }
