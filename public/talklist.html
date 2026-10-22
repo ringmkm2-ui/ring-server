@@ -566,7 +566,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.253 beta</div>
+  <div class="version-badge">Bro Chat v1.28.254 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1285,8 +1285,8 @@ const TBL = (function () {
   const NS = 'http://www.w3.org/2000/svg', XL = 'http://www.w3.org/1999/xlink';
   const IOR = 1.5, GAIN = 1.8, DISP = [1, 1.035, 1.07];
   const OMX = 18, ZX = 1.18, OMD = 85, OMG = 40;
-  // 屈折(SVGフィルタ)は速く描ける所(Chrome/Android)だけ。iPhoneでは重くカクつくので使わない(lgControlsと同じ判定)
-  const CAN = (() => { try { const t = document.createElement('div'); t.style.backdropFilter = 'url(#x)'; return !!window.chrome && t.style.backdropFilter.indexOf('url') >= 0; } catch (e) { return false; } })();
+  // 屈折はiPhoneでも使う(v1.28.253でiPhoneだけ外したらガラスが消えた)。休止中はフィルタを外すので軽い
+  const CAN = true;
   const CH = ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'];
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const nav = document.getElementById('tabSegment'), lensEl = document.getElementById('slider');
