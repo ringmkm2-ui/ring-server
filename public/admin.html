@@ -385,7 +385,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.256 beta</div>
+  <div class="version-badge">Bro Chat v1.28.257 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -617,7 +617,7 @@ function nameColor(name) {
 }
 
 const params = new URLSearchParams(location.search);
-const partnerName = params.get('name') || 'ユーザー名';
+let partnerName = params.get('name') || 'ユーザー名';
 const otherId = params.get('userId') || params.get('id') || params.get('callerId');
 // アバター画像はURLに乗せると431エラー(ヘッダ肥大化)の原因になるため、
 // API経由で別途取得する(loadPartnerProfile参照)
@@ -2632,7 +2632,14 @@ async function refreshPartnerProfile() {
     const friends = await api('/api/friends/list');
     const partner = Array.isArray(friends) ? friends.find(f => f.userId === otherId) : null;
     if (partner) {
-      document.getElementById('partnerName').textContent = partner.displayName || partnerName;
+      // 着信・通知から開いた時はURLに名前が無いので、ここで確定した名前を通話画面・返信表示などにも反映する
+      if (partner.displayName) partnerName = partner.displayName;
+      document.getElementById('partnerName').textContent = partnerName;
+      const _cn = document.getElementById('callName'); if (_cn) _cn.textContent = partnerName;
+      if (!partner.profilePic) {
+        const _ca = document.getElementById('callAv');
+        if (_ca && !_ca.style.backgroundImage.includes('url(')) _ca.textContent = partnerName.charAt(0);
+      }
       if (partner.profilePic) {
         const imgUrl = partner.profilePic;
         const preload = new Image();
