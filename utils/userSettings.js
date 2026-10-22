@@ -10,7 +10,7 @@ const db = require('../db/db');
 // 既定値。ここに無いキーは保存しない(クライアントから好きなキーを投げ込ませない)
 const DEFAULTS = Object.freeze({
   // --- プライバシー ---
-  sendReadReceipts: true,       // 既読を相手に知らせる
+  sendReadReceipts: true,       // (常にtrue。設定項目は廃止。保存済みのfalseも無視する)
   sendTypingIndicator: true,    // 入力中を相手に見せる
   showOnlineStatus: true,       // オンライン状態を相手に見せる
   allowCallsFrom: 'friends',    // 'friends' | 'nobody'  誰からの着信を受けるか
@@ -21,7 +21,7 @@ const DEFAULTS = Object.freeze({
   loginAlertEmail: true,        // 新しい端末でログインされたらメールで知らせる
 });
 
-const BOOL_KEYS = Object.keys(DEFAULTS).filter(k => typeof DEFAULTS[k] === 'boolean');
+const BOOL_KEYS = Object.keys(DEFAULTS).filter(k => typeof DEFAULTS[k] === 'boolean' && k !== 'sendReadReceipts');
 const ENUMS = { allowCallsFrom: ['friends', 'nobody'] };
 
 // 設定はリクエストのたびに読まれる(WSの入力中表示など高頻度)ので短時間だけ覚える
