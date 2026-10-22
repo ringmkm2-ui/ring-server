@@ -41,6 +41,21 @@
   // 真上からの光線をSnellの法則で曲げ、ガラスの厚みぶんの横ずれを求める。
   // 縁ぎりぎりはフレネル反射で透過が減るので、その分ずらしを弱める。
   // ============================================================
+  // iPhone(WebKit)はCSSで使うSVGフィルタの座標の原点がChromeと違う(ページ基準)ため、ガラスの中身がずれて切れていた。
+  // WebKitでは要素の大きさに対する割合(objectBoundingBox)で指定する。割合だと横のずれは幅、縦のずれは高さ倍になるので、
+  // 縦横比が1でない形はマップ側で補正し、scale は短い辺で割る(デモ v2.5.2 と同じ)
+  const WK = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium|Edg\//.test(navigator.userAgent);
+  const funits = (w, h) => WK
+    ? { x: 0, y: 0, width: 1, height: 1, filterUnits: 'objectBoundingBox', primitiveUnits: 'objectBoundingBox', 'color-interpolation-filters': 'sRGB' }
+    : { x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' };
+  const iunits = (w, h) => ({ x: 0, y: 0, width: WK ? 1 : w, height: WK ? 1 : h, result: 'map', preserveAspectRatio: 'none' });
+  // WebKitの割合指定では、フィルタをかける要素からはみ出す子があると基準の箱がずれるので、レンズの中身を箱で切る
+  function wrapLens(lens) {
+    if (!lens || (lens.firstElementChild && lens.firstElementChild.classList.contains('lg-lw'))) return;
+    const w = document.createElement('span'); w.className = 'lg-lw';
+    while (lens.firstChild) w.appendChild(lens.firstChild);
+    lens.appendChild(w);
+  }
   const convex = x => Math.pow(1 - Math.pow(1 - x, 4), 0.25);
   // 丸ボタン=Appleのガラス玉と同じなだらかなドーム(円弧)。縁だけ急に曲がる squircle だと
   // 「平らな内側の円 + つぶれた外側の輪」の二重に見えた(デモ v2.5.0 と同じ)
@@ -91,7 +106,8 @@
         const dE = -sd;
         if (dE > 0 && dE < lim) {
           const m = P.prof[Math.min(P.N, Math.round(dE * k))] / P.max;
-          D[i] = 128 - nx * m * 127; D[i + 1] = 128 - ny * m * 127;
+          const ex = WK ? Math.min(w, h) / w : 1, ey = WK ? Math.min(w, h) / h : 1;
+          D[i] = 128 - nx * m * ex * 127; D[i + 1] = 128 - ny * m * ey * 127;
         } else { D[i] = 128; D[i + 1] = 128; }
       }
     }
@@ -152,7 +168,7 @@
       // 覚えるのは丸ボタン用(convex)だけ。吹き出し等の大きさは無数にあり、全部覚えると
       // sessionStorage(約5MB)があふれて、他の保存(通知の登録など)まで失敗する
       const persist = kind === 'convex';
-      const sk = 'lgmap1:' + key;
+      const sk = 'lgmap1:' + (WK ? 'wk:' : '') + key;
       if (persist) { try { const c = sessionStorage.getItem(sk); if (c) map = JSON.parse(c); } catch (_) {} }
       if (!map || !map.url) {
         map = buildMap(w, h, rad, kind);
@@ -165,15 +181,15 @@
     let f;
     if (kind === 'panelh') {
       // パネル用(軽量): 中身はすりガラスなので色分けせず1回だけ曲げる(RGB3回→1回)
-      f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
-      const fi2 = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
+      f = mk('filter', Object.assign({ id }, funits(w, h)), ensureDefs());
+      const fi2 = mk('feImage', iunits(w, h), f);
       fi2.setAttribute('href', map.url);
       dms.push(mk('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'out' }, f));
       mk('feComposite', { in: 'out', in2: 'SourceGraphic', operator: 'over' }, f);
-      return { id, dms, max: map.max, last: -1, node: f, mono: true };
+      return { id, dms, max: map.max, last: -1, node: f, mono: true, k: WK ? 1 / Math.min(w, h) : 1 };
     }
-    f = mk('filter', { id, x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, ensureDefs());
-    const fi = mk('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
+    f = mk('filter', Object.assign({ id }, funits(w, h)), ensureDefs());
+    const fi = mk('feImage', iunits(w, h), f);
     fi.setAttribute('href', map.url);
     {
       ['r', 'g', 'b'].forEach((c, i) => {
@@ -185,13 +201,13 @@
     }
     // 端で範囲外を拾って抜けた所は、曲げる前の背景で埋める
     mk('feComposite', { in: 'out', in2: 'SourceGraphic', operator: 'over', result: 'filled' }, f);
-    mk('feGaussianBlur', { in: 'filled', stdDeviation: 0.7 }, f);
-    return { id, dms, max: map.max, last: -1, node: f };
+    mk('feGaussianBlur', { in: 'filled', stdDeviation: WK ? `${(0.7 / w).toFixed(5)} ${(0.7 / h).toFixed(5)}` : 0.7 }, f);
+    return { id, dms, max: map.max, last: -1, node: f, k: WK ? 1 / Math.min(w, h) : 1 };
   }
   function setDisp(f, ds) {
     if (Math.abs(ds - f.last) < 0.05) return;
     f.last = ds;
-    f.dms.forEach((dm, i) => dm.setAttribute('scale', (ds * (f.mono ? 1.035 : DISP[i])).toFixed(2)));
+    f.dms.forEach((dm, i) => dm.setAttribute('scale', (ds * (f.mono ? 1.035 : DISP[i]) * (f.k || 1)).toFixed(4)));
   }
 
   // ============================================================
@@ -554,7 +570,7 @@
     adapt(s);
     if (stateObs) stateObs.observe(e, { attributes: true, attributeOldValue: true, attributeFilter: ['class', 'aria-pressed'] });
     // デモと同じ方式: レンズの中に「ボタンの下にあるもの」の複製を置いて、SVGフィルタで曲げる
-    s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp');
+    s.lens = fx.querySelector('.lg-lens'); s.comp = fx.querySelector('.lg-comp'); wrapLens(s.lens);
     // 曲げるためのSVGフィルタは、普段は見えないので後回し(触った時か、手が空いた時に作る)。
     // 以前はページを開いた瞬間に全ボタン分作っていて、トークを開くのが重くなっていた
     if (materialize) ensureFilter(s);
@@ -803,6 +819,7 @@
     fx.setAttribute('aria-hidden', 'true');
     fx.innerHTML = '<span class="lg-fxclip"><span class="lg-lens lg-half"><span class="lg-q"><span class="lg-comp lg-frost"></span></span></span><span class="lg-tint"></span></span><span class="lg-bloom"><i class="lg-sweep"></i></span><span class="lg-spec"><i class="lg-sweep"></i></span><span class="lg-rim"></span>';
     e.insertBefore(fx, e.firstChild);
+    wrapLens(fx.querySelector('.lg-lens'));
     const s = { e, fx, clip: fx.querySelector('.lg-fxclip'), w: 0, h: 0, filter: null, built: false, panel: true, pad: 14,
       lens: fx.querySelector('.lg-lens'), comp: fx.querySelector('.lg-comp'), tintEl: fx.querySelector('.lg-tint') };
     panels.set(e, s); allPanels.add(s);
@@ -884,7 +901,7 @@
     const trackOn = root.querySelector('.lg-sw-track i');
     const knob = root.querySelector('.lg-sw-knob');
     const fill = root.querySelector('.lg-sw-fill');
-    const klens = root.querySelector('.lg-klens'), kcomp = root.querySelector('.lg-kcomp');
+    const klens = root.querySelector('.lg-klens'), kcomp = root.querySelector('.lg-kcomp'); wrapLens(klens);
     const ktrack = root.querySelector('.lg-ktrack'), ktrackOn = ktrack.querySelector('i');
     // デモと同じ方式: レンズの中に「下にあるもの」(カードの面 + トラック)の複製を置いて、
     // それをSVGフィルタ(CSS filter)で曲げる。backdrop-filterを使わないのでどの端末でも同じ見た目になる

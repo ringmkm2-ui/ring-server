@@ -566,7 +566,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.254 beta</div>
+  <div class="version-badge">Bro Chat v1.28.255 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1284,6 +1284,8 @@ function tbOpen(idx) {
 const TBL = (function () {
   const NS = 'http://www.w3.org/2000/svg', XL = 'http://www.w3.org/1999/xlink';
   const IOR = 1.5, GAIN = 1.8, DISP = [1, 1.035, 1.07];
+  // iPhone(WebKit)はフィルタ座標の原点が違うので割合指定にする(lgControls・デモと同じ)
+  const WK = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium|Edg\//.test(navigator.userAgent);
   const OMX = 18, ZX = 1.18, OMD = 85, OMG = 40;
   // 屈折はiPhoneでも使う(v1.28.253でiPhoneだけ外したらガラスが消えた)。休止中はフィルタを外すので軽い
   const CAN = true;
@@ -1301,7 +1303,7 @@ const TBL = (function () {
 
   const mk = (c, p) => { const d = document.createElement('div'); d.className = c; (p || lensEl).appendChild(d); return d; };
   lensEl.textContent = '';
-  mk('tbl-sh'); const clip = mk('tbl-clip'); const lens = mk('tbl-lens', clip), comp = mk('tbl-comp lg-kcomp', lens); // lg-kcomp: lgControls に複製のバーをガラス化させない
+  mk('tbl-sh'); const clip = mk('tbl-clip'); const lens = mk('tbl-lens', clip), comp = mk('tbl-comp lg-kcomp', mk('lg-lw', lens)); // lg-kcomp: lgControls に複製のバーをガラス化させない
   const tint = mk('tbl-tint', clip); mk('tbl-bloom'); mk('tbl-spec'); const rim = mk('tbl-rim');
   let filterOn = false;
   let cItems = [], rest = null, bgfix = null;
@@ -1327,19 +1329,21 @@ const TBL = (function () {
         const gx = sd(X + .5, Y) - sd(X - .5, Y), gy = sd(X, Y + .5) - sd(X, Y - .5), gl = Math.hypot(gx, gy);
         if (gl > 1e-4) { const m = prof[Math.min(N, Math.round(dE / B * N))] / max; vx = -gx / gl * m; vy = -gy / gl * m; }
       }
-      D[i] = 128 + vx * 127; D[i + 1] = 128 + vy * 127; D[i + 2] = 128; D[i + 3] = 255;
+      const ex = WK ? Math.min(w, h) / w : 1, ey = WK ? Math.min(w, h) / h : 1;
+      D[i] = 128 + vx * ex * 127; D[i + 1] = 128 + vy * ey * 127; D[i + 2] = 128; D[i + 3] = 255;
     }
     x.putImageData(img, 0, 0);
     return { url: cv.toDataURL('image/png'), max };
   }
   const cache = new Map();
   const getMap = (w, h, q) => { const k = w + 'x' + h + 'x' + q; let m = cache.get(k); if (!m) { m = buildPillMap(w, h, .3 + .35 * q / 4); cache.set(k, m); } return m; };
-  let dms = null;
+  let dms = null, fk = 1;
   function setFilter(map, w, h) {
     let f = document.getElementById('tblpill');
     if (!f) {
-      f = el('filter', { id: 'tblpill', x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, defs);
-      el('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
+      f = el('filter', WK ? { id: 'tblpill', x: 0, y: 0, width: 1, height: 1, filterUnits: 'objectBoundingBox', primitiveUnits: 'objectBoundingBox', 'color-interpolation-filters': 'sRGB' }
+        : { id: 'tblpill', x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, defs);
+      el('feImage', { x: 0, y: 0, width: WK ? 1 : w, height: WK ? 1 : h, result: 'map', preserveAspectRatio: 'none' }, f);
       dms = [];
       ['r', 'g', 'b'].forEach((c, i) => {
         dms.push(el('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
@@ -1348,8 +1352,9 @@ const TBL = (function () {
       el('feBlend', { in: 'r', in2: 'g', mode: 'screen', result: 'rg' }, f);
       el('feBlend', { in: 'rg', in2: 'b', mode: 'screen', result: 'rgb' }, f);
     }
-    f.setAttribute('width', w); f.setAttribute('height', h);
-    const fi = f.querySelector('feImage'); fi.setAttribute('width', w); fi.setAttribute('height', h);
+    const fi = f.querySelector('feImage');
+    if (!WK) { f.setAttribute('width', w); f.setAttribute('height', h); fi.setAttribute('width', w); fi.setAttribute('height', h); }
+    fk = WK ? 1 / Math.min(w, h) : 1;
     fi.setAttribute('href', map.url); fi.setAttributeNS(XL, 'xlink:href', map.url);
   }
 
@@ -1499,7 +1504,7 @@ const TBL = (function () {
     const wantF = CAN && g > .01;
     if (wantF !== filterOn) { filterOn = wantF; lens.style.filter = wantF ? 'url(#tblpill)' : 'none'; }
     const ds = 2 * T.max * GAIN * .85 * g * (1 + 1.4 * sv);
-    if (dms && Math.abs(ds - T.lastDs) > .05) { T.lastDs = ds; dms.forEach((dm, i) => dm.setAttribute('scale', (ds * DISP[i]).toFixed(2))); }
+    if (dms && Math.abs(ds - T.lastDs) > .05) { T.lastDs = ds; dms.forEach((dm, i) => dm.setAttribute('scale', (ds * DISP[i] * fk).toFixed(4))); }
     let ang = 315;
     if (lightMode === 'mouse') { const nr = nav.getBoundingClientRect(); ang = (Math.atan2(mouse.x - (nr.left + T.x), -(mouse.y - (nr.top + cy))) * 180 / Math.PI + 360) % 360; }
     else if (lightMode === 'motion') ang = motionAng;
