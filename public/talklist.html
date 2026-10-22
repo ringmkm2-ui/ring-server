@@ -62,22 +62,32 @@ body.has-custom-bg .pc{background:transparent}
 .tb26{position:relative;display:grid;grid-template-columns:repeat(3,80px);gap:6px;padding:8px 10px;border-radius:999px;
   background:var(--panel-soft);box-shadow:14px 14px 36px var(--shadow-dark),-14px -14px 36px var(--shadow-light);
   touch-action:none;user-select:none;-webkit-user-select:none}
-/* 選択中のピル。動かすのは transform だけ(以前のSVG屈折フィルターとleft/widthアニメがカクつきの原因) */
-.tb26-lens{position:absolute;left:10px;top:8px;width:80px;height:calc(100% - 16px);border-radius:999px;pointer-events:none;z-index:0;
-  background:rgba(255,255,255,.22);will-change:transform;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.46),10px 10px 24px var(--shadow-dark),-8px -8px 20px var(--shadow-light)}
-/* 触るとピルがバーから飛び出すように1.5倍に膨らむガラス(以前のLiquid Glassの見た目)。::afterだけを拡大するので位置の計算は崩れない */
-.tb26-lens::after{content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;transform:scale(1);
-  transition:transform .5s var(--spring-bouncy,ease-out),opacity .18s ease;
-  background:radial-gradient(120% 90% at 30% 22%,rgba(255,255,255,.7),rgba(255,255,255,.14) 46%,rgba(255,255,255,.04) 72%);
-  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95),inset 0 -8px 16px rgba(255,255,255,.3),0 12px 30px rgba(15,23,42,.22)}
-.tb26.active-touch .tb26-lens::after{transform:scale(1.5);opacity:1}
-.tb26.active-touch .tb26-lens{background:rgba(255,255,255,.16)}
+/* 選択中のピル = iOS 26 のレンズ (Liquid Glass デモ v2.4.4 と同じ挙動)。
+   休止中はバー内の薄いピル、押すとバーからはみ出す透明なレンズに持ち上がり、指に付いて動く */
+.tb26-lens{position:absolute;left:0;top:0;width:0;height:0;border-radius:999px;pointer-events:none;z-index:3;will-change:transform;opacity:0}
+.tbl-sh,.tbl-clip,.tbl-rim{position:absolute;inset:0;border-radius:inherit}
+.tbl-sh{box-shadow:0 8px 18px -6px rgba(0,0,0,var(--sh,0)),0 1px 3px rgba(0,0,0,calc(var(--sh,0) * .5))}
+.tbl-clip{overflow:hidden;isolation:isolate;-webkit-mask-image:-webkit-radial-gradient(white,black)}
+.tbl-lens{position:absolute;inset:0}
+.tbl-comp{position:absolute;left:0;top:0}
+.tbl-tint{position:absolute;inset:0}
+.tbl-spec,.tbl-bloom{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:conic-gradient(from calc(var(--la,315deg) - 70deg),
+    rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
+    rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
+.tbl-spec{padding:1.4px;opacity:var(--so,0)}
+.tbl-bloom{padding:8px;opacity:calc(var(--so,0) * .3);filter:blur(2.5px)}
+/* 暗い背景だと光のにじみの内側の縁が「2本目の線」に見えるので、ダークでは出さない */
+html.dark-mode .tbl-bloom{display:none}
+.tbl-rim{pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
+.tbl-rest{position:absolute;border-radius:999px;z-index:1;pointer-events:none}
+.tbl-bgfix{position:absolute;left:0;top:0}
 .tb-badge{position:absolute;top:2px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-sizing:border-box;pointer-events:none}
 .tb26-item{position:relative;z-index:1;height:44px;border:none;background:transparent;border-radius:999px;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;color:var(--muted,#3d434e);font-weight:600;font-size:14px;letter-spacing:.01em;
   padding:0;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
-.tb26-item.active,.tb26-item.under-lens{color:var(--accent)}
 .ahdr.tab-min .tb26-item:not(.active){opacity:.55}
 .ahdr.tab-min{transform:translateY(6px) scale(.8)}
 .ahdr.tab-min .sbtn:not(.active){opacity:.55}
@@ -555,7 +565,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.249 beta</div>
+  <div class="version-badge">Bro Chat v1.28.250 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1235,13 +1245,7 @@ const TB_PAGES = () => [
   { el: document.getElementById('btnHome'), page: pageHome, onSelect: () => loadPendingRequests(true) },
   { el: document.getElementById('btnPosts'), page: pagePosts, onSelect: () => loadPosts() },
 ];
-let tbIndex = 0, tbLensX = 0, tbAnim = null;
-
-function tbItemX(i) { const it = TB_PAGES()[i].el; return it.offsetLeft - 10; } // レンズはleft:10px基準
-function tbSetLens(x, stretch = 1) {
-  tbLensX = x;
-  document.getElementById('slider').style.transform = `translateX(${x}px) scaleX(${stretch})`;
-}
+let tbIndex = 0;
 function tbShowPage(idx) {
   const items = TB_PAGES();
   let prevIdx = items.findIndex(it => it.page.style.display !== 'none');
@@ -1249,6 +1253,7 @@ function tbShowPage(idx) {
   const dirClass = idx > prevIdx ? 'lg-page-enter-right' : (idx < prevIdx ? 'lg-page-enter-left' : 'lg-page-enter');
   items.forEach((it, i) => {
     it.el.classList.toggle('active', i === idx);
+    it.el.setAttribute('aria-selected', i === idx ? 'true' : 'false');
     const wasHidden = it.page.style.display === 'none';
     it.page.style.display = i === idx ? 'block' : 'none';
     if (i === idx && wasHidden) {
@@ -1259,16 +1264,7 @@ function tbShowPage(idx) {
   });
   tbIndex = idx;
 }
-function tbGoTo(idx, velocity = 0) {
-  const target = tbItemX(idx);
-  if (tbAnim) tbAnim.stop();
-  if (window.BroSpring) {
-    tbAnim = BroSpring.animate({
-      spring: 'bouncy', from: tbLensX, to: target, velocity,
-      onUpdate: (x, v) => tbSetLens(x, 1 + Math.min(Math.abs(v || 0) / 2600, 0.22)),
-      onComplete: () => { tbSetLens(target); tbAnim = null; },
-    });
-  } else tbSetLens(target);
+function tbOpen(idx) {
   const pages = TB_PAGES();
   if (idx !== tbIndex || pages[idx].page.style.display === 'none') {
     tbShowPage(idx);
@@ -1276,77 +1272,252 @@ function tbGoTo(idx, velocity = 0) {
   }
 }
 
+/* ===== タブのレンズ: Liquid Glass デモ(v2.4.4)のタブバーをそのまま移植 =====
+   動きは実機の録画から測った値:
+   ・休止中: 選択中タブの後ろにバー内の薄いピル。押すと約0.1秒で透明なレンズに持ち上がり、
+     バーより一回り大きく(上下にはみ出す)なる。跳ねない
+   ・引っぱっている間は指にほぼ遅れずに付く(ω=85/s)。離すと一番近いタブへ、ほぼ臨界減衰のバネ
+     (ω=9/s, ζ=1.18、録画にフィット)で行き過ぎなく滑り、着いたら約0.1秒でバーの中のピルに戻る
+   ・速く動くほど厚いガラスになる: 中身が最大約1.45倍に拡大、縁の曲がる幅が広がり、縦に膨らむ
+   ・レンズの中身は 背景 + バーの複製 + ピル + 文字の複製 を同じ位置に置いて曲げている */
+const TBL = (function () {
+  const NS = 'http://www.w3.org/2000/svg', XL = 'http://www.w3.org/1999/xlink';
+  const IOR = 1.5, GAIN = 1.8, DISP = [1, 1.035, 1.07];
+  const OMX = 9, ZX = 1.18, OMD = 85, OMG = 40;
+  const CH = ['1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0', '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const nav = document.getElementById('tabSegment'), lensEl = document.getElementById('slider');
+  const items = TB_PAGES().map(i => i.el);
+  if (!nav || !lensEl) return null;
+
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', '0'); svg.setAttribute('height', '0'); svg.setAttribute('aria-hidden', 'true');
+  svg.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
+  const defs = document.createElementNS(NS, 'defs'); svg.appendChild(defs); document.body.appendChild(svg);
+  const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+
+  const mk = (c, p) => { const d = document.createElement('div'); d.className = c; (p || lensEl).appendChild(d); return d; };
+  lensEl.textContent = '';
+  mk('tbl-sh'); const clip = mk('tbl-clip'); const lens = mk('tbl-lens', clip), comp = mk('tbl-comp lg-kcomp', lens); // lg-kcomp: lgControls に複製のバーをガラス化させない
+  const tint = mk('tbl-tint', clip); mk('tbl-bloom'); mk('tbl-spec'); const rim = mk('tbl-rim');
+  lens.style.filter = 'url(#tblpill)';
+  let cItems = [], rest = null, bgfix = null;
+
+  // ---- 屈折マップ(デモと同じ convex squircle + Snell + Fresnel) ----
+  function buildPillMap(w, h, bf) {
+    const rad = Math.min(w, h) / 2, B = rad * bf, Hh = B * .75, T0 = Hh * .2, N = 200, prof = new Float32Array(N + 1); let max = 0;
+    const f = x => Math.pow(1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 4), .25);
+    for (let i = 0; i <= N; i++) {
+      const x = Math.max(i / N, .004), e = .002, fp = (f(x + e) - f(x - e)) / (2 * e);
+      const ts = Math.atan(fp * Hh / B), tr = Math.asin(Math.sin(ts) / IOR);
+      const Fr = .04 + .96 * Math.pow(1 - Math.cos(ts), 5);
+      const d = (Hh * f(x) + T0) * Math.tan(ts - tr) * (1 - Fr);
+      prof[i] = d; max = Math.max(max, Math.abs(d));
+    }
+    const sd = (px, py) => { const qx = Math.abs(px - w / 2) - (w / 2 - rad), qy = Math.abs(py - h / 2) - (h / 2 - rad);
+      return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad; };
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const x = cv.getContext('2d'), img = x.createImageData(w, h), D = img.data;
+    for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+      const X = px + .5, Y = py + .5, dE = -sd(X, Y), i = (py * w + px) * 4; let vx = 0, vy = 0;
+      if (dE > 0 && dE <= B + .5) {
+        const gx = sd(X + .5, Y) - sd(X - .5, Y), gy = sd(X, Y + .5) - sd(X, Y - .5), gl = Math.hypot(gx, gy);
+        if (gl > 1e-4) { const m = prof[Math.min(N, Math.round(dE / B * N))] / max; vx = -gx / gl * m; vy = -gy / gl * m; }
+      }
+      D[i] = 128 + vx * 127; D[i + 1] = 128 + vy * 127; D[i + 2] = 128; D[i + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+    return { url: cv.toDataURL('image/png'), max };
+  }
+  const cache = new Map();
+  const getMap = (w, h, q) => { const k = w + 'x' + h + 'x' + q; let m = cache.get(k); if (!m) { m = buildPillMap(w, h, .3 + .35 * q / 4); cache.set(k, m); } return m; };
+  let dms = null;
+  function setFilter(map, w, h) {
+    let f = document.getElementById('tblpill');
+    if (!f) {
+      f = el('filter', { id: 'tblpill', x: 0, y: 0, width: w, height: h, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' }, defs);
+      el('feImage', { x: 0, y: 0, width: w, height: h, result: 'map', preserveAspectRatio: 'none' }, f);
+      dms = [];
+      ['r', 'g', 'b'].forEach((c, i) => {
+        dms.push(el('feDisplacementMap', { in: 'SourceGraphic', in2: 'map', scale: 0, xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + c }, f));
+        el('feColorMatrix', { in: 'd' + c, type: 'matrix', values: CH[i], result: c }, f);
+      });
+      el('feBlend', { in: 'r', in2: 'g', mode: 'screen', result: 'rg' }, f);
+      el('feBlend', { in: 'rg', in2: 'b', mode: 'screen', result: 'rgb' }, f);
+    }
+    f.setAttribute('width', w); f.setAttribute('height', h);
+    const fi = f.querySelector('feImage'); fi.setAttribute('width', w); fi.setAttribute('height', h);
+    fi.setAttribute('href', map.url); fi.setAttributeNS(XL, 'xlink:href', map.url);
+  }
+
+  // ---- 色(アプリのテーマに合わせる。ダークの!importantより強くするため important で書く) ----
+  let INK = [61, 67, 78], ACC = [59, 130, 246];
+  const probe = document.createElement('i'); probe.style.cssText = 'position:absolute;visibility:hidden';
+  function rgbOf(v) { probe.style.color = ''; probe.style.color = v; nav.appendChild(probe); const m = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g); probe.remove(); return m ? m.slice(0, 3).map(Number) : [0, 0, 0]; }
+  function readColors() {
+    const dark = document.documentElement.classList.contains('dark-mode'), wa = document.documentElement.classList.contains('theme-wa');
+    INK = dark ? [203, 213, 225] : rgbOf('var(--muted,#3d434e)');
+    ACC = wa ? rgbOf('var(--wa-accent,#00a884)') : rgbOf('var(--accent,#3b82f6)');
+    T.ckey = '';
+  }
+  const mix = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t)).join(',');
+
+  // ---- レンズの中身(バーの複製)。押すたび・画面が変わった時に作り直す ----
+  function rebuild() {
+    const nr = nav.getBoundingClientRect(), sc = nav.offsetWidth ? nr.width / nav.offsetWidth : 1;
+    comp.textContent = '';
+    // バーの外にはみ出す部分用: 画面の背景
+    const pc = document.getElementById('pc'), pcs = pc ? getComputedStyle(pc) : null;
+    bgfix = document.createElement('div'); bgfix.className = 'tbl-bgfix';
+    if (pcs) Object.assign(bgfix.style, { width: innerWidth + 'px', height: innerHeight + 'px', left: (-nr.left / sc) + 'px', top: (-nr.top / sc) + 'px',
+      backgroundColor: pcs.backgroundColor, backgroundImage: pcs.backgroundImage, backgroundSize: pcs.backgroundSize, backgroundPosition: pcs.backgroundPosition, backgroundRepeat: pcs.backgroundRepeat });
+    const bgo = document.querySelector('.pc > .bgo');
+    if (bgo) { const o = document.createElement('div'); o.style.cssText = 'position:absolute;inset:0;background:' + getComputedStyle(bgo).backgroundColor; bgfix.appendChild(o); }
+    comp.appendChild(bgfix);
+    // バーそのもの(ガラスの見た目ごと)
+    const cl = nav.cloneNode(true);
+    cl.removeAttribute('id'); cl.setAttribute('aria-hidden', 'true');
+    cl.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+    const cLens = cl.querySelector('.tb26-lens'); if (cLens) cLens.remove();
+    Object.assign(cl.style, { position: 'absolute', left: '0', top: '0', width: nav.offsetWidth + 'px', height: nav.offsetHeight + 'px', margin: '0', pointerEvents: 'none', transform: 'none' });
+    cItems = [...cl.querySelectorAll('.tb26-item')];
+    cItems.forEach(b => { b.tabIndex = -1; b.removeAttribute('role'); });
+    rest = document.createElement('div'); rest.className = 'tbl-rest';
+    cl.insertBefore(rest, cItems[0] || null);
+    comp.appendChild(cl);
+    T.key = ''; T.ckey = '';
+  }
+
+  const tb = { h: 60, pitch: 86, restW: 0, restH: 0, lensW: 0, lensH: 0 };
+  const T = { pressed: false, lifted: false, x: 0, vx: 0, tx: 0, g: 0, vg: 0, s: 0, sel: 0, lt: 0, key: '', ckey: '', mapKey: '', max: 1, lastDs: -1, ks: items.map((_, i) => i === 0 ? 1 : 0), shown: false };
+  const center = i => items[i].offsetLeft + items[i].offsetWidth / 2;
+  const nearest = x => { let b = 0, d = Infinity; items.forEach((_, i) => { const e = Math.abs(center(i) - x); if (e < d) { d = e; b = i; } }); return b; };
+  function clampX(x) {
+    const a = center(0), b = center(items.length - 1), L = tb.pitch * .3, rub = d => L * (1 - 1 / (d / L + 1));
+    return x < a ? a - rub(a - x) : x > b ? b + rub(x - b) : x;
+  }
+  function localX(clientX) { const nr = nav.getBoundingClientRect(), sc = nav.offsetWidth ? nr.width / nav.offsetWidth : 1; return (clientX - nr.left) / sc; }
+  function layout() {
+    tb.h = nav.offsetHeight || 60;
+    tb.pitch = items.length > 1 ? center(1) - center(0) : items[0].offsetWidth;
+    tb.restH = Math.round((tb.h - 8) / 2) * 2; tb.restW = Math.round(Math.min(tb.pitch + 6, tb.pitch * 1.12) / 2) * 2;
+    tb.lensH = Math.round(tb.h * 1.18 / 2) * 2; tb.lensW = Math.round(tb.pitch * 1.38 / 2) * 2;
+    T.x = T.tx = center(T.sel); T.vx = 0; T.key = '';
+    rebuild(); readColors();
+  }
+  function select(i, lift) {
+    T.sel = i; T.tx = center(i); if (lift) T.lifted = true;
+    tbOpen(i);
+  }
+
+  const wa = () => document.documentElement.classList.contains('theme-wa');
+  nav.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    nav.setPointerCapture(e.pointerId);
+    rebuild();
+    T.pressed = true; if (!wa()) T.lifted = true; T.tx = clampX(localX(e.clientX));
+    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+  });
+  nav.addEventListener('pointermove', e => { if (T.pressed) T.tx = clampX(localX(e.clientX)); });
+  const up = () => {
+    if (!T.pressed) return; T.pressed = false;
+    const i = nearest(T.tx);
+    if (i !== T.sel && window.LiquidGlass) window.LiquidGlass.haptic('light');
+    select(i, false);
+  };
+  nav.addEventListener('pointerup', up); nav.addEventListener('pointercancel', up);
+  // キーボード操作(Enter/Space)だけ click で選ぶ
+  items.forEach((b, i) => b.addEventListener('click', e => { if (e.detail === 0) select(i, !wa()); }));
+
+  // 光源(デモと同じ: マウス or 端末の傾き)
+  let lightMode = 'default', motionAng = 315, mouse = { x: 0, y: 0 };
+  addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { lightMode = 'mouse'; mouse.x = e.clientX; mouse.y = e.clientY; } }, { passive: true });
+  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission !== 'function') {
+    addEventListener('deviceorientation', e => {
+      if (e.gamma == null) return;
+      const lx = -(e.gamma || 0) / 40, ly = ((e.beta || 0) - 55) / 40, a = (Math.atan2(lx, -ly) * 180 / Math.PI + 360) % 360;
+      const d = ((a - motionAng + 540) % 360) - 180; motionAng = (motionAng + d * .15 + 360) % 360;
+      if (lightMode !== 'mouse') lightMode = 'motion';
+    }, { passive: true });
+  }
+
+  const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  let raf = 0, idleFrames = 0;
+  function step(now) {
+    raf = 0;
+    const dt = Math.min(.05, Math.max(0, (now - (T.lt || now)) / 1000)); T.lt = now;
+    if (!T.pressed && T.lifted && Math.abs(T.tx - T.x) < 3 && Math.abs(T.vx) < 80) T.lifted = false;
+    const gt = T.lifted ? 1 : 0;
+    if (RM) { T.x = T.tx; T.vx = 0; T.g = gt; T.vg = 0; }
+    else {
+      const n = Math.max(1, Math.ceil(dt / .004)), h = dt / n, om = T.pressed ? OMD : OMX, z = T.pressed ? 1 : ZX;
+      for (let k = 0; k < n; k++) {
+        T.vx += (om * om * (T.tx - T.x) - 2 * z * om * T.vx) * h; T.x += T.vx * h;
+        T.vg += (OMG * OMG * (gt - T.g) - 2 * OMG * T.vg) * h; T.g += T.vg * h;
+      }
+      if (T.g < 0) { T.g = 0; T.vg = 0; }
+      const sp = Math.abs(T.vx) / tb.pitch, ts = sstep(1.5, 8, sp);
+      T.s += (ts - T.s) * (1 - Math.exp(-dt * (ts > T.s ? 22 : 10)));
+    }
+    const g = T.g, gc = Math.min(1, g), sv = RM ? 0 : T.s * gc;
+    const w = (tb.restW + (tb.lensW - tb.restW) * g) * (1 - .06 * sv), hh = (tb.restH + (tb.lensH - tb.restH) * g) * (1 + .15 * sv);
+    const qw = Math.max(8, Math.round(w / 2) * 2), qh = Math.max(8, Math.round(hh / 2) * 2);
+    const cy = tb.h / 2, bx = T.x - qw / 2, by = cy - qh / 2, mag = 1 + .1 * gc + .35 * sv, tq = Math.round(sv * 4);
+    const key = `${qw}|${qh}|${tq}|${bx.toFixed(1)}|${mag.toFixed(3)}`;
+    if (key !== T.key) {
+      T.key = key;
+      const mkKey = qw + 'x' + qh + 'x' + tq;
+      if (mkKey !== T.mapKey) { T.mapKey = mkKey; const map = getMap(qw, qh, tq); setFilter(map, qw, qh); T.max = map.max; T.lastDs = -1; }
+      lensEl.style.width = qw + 'px'; lensEl.style.height = qh + 'px';
+      lensEl.style.transform = `translate(${bx.toFixed(2)}px,${by.toFixed(2)}px)`;
+      const cs = comp.style; cs.left = (-bx).toFixed(2) + 'px'; cs.top = (-by).toFixed(2) + 'px';
+      cs.transformOrigin = `${(bx + qw / 2).toFixed(2)}px ${(by + qh / 2).toFixed(2)}px`; cs.transform = `scale(${mag.toFixed(4)})`;
+      if (rest) Object.assign(rest.style, { left: bx.toFixed(2) + 'px', top: by.toFixed(2) + 'px', width: qw + 'px', height: qh + 'px' });
+    }
+    if (!T.shown) { T.shown = true; lensEl.style.opacity = 1; }
+    // 持ち上がるほど: ピルが抜けて透明に、縁の光・影・屈折が立ち上がる
+    if (rest) { rest.style.opacity = (1 - gc).toFixed(3); rest.style.background = wa() ? 'rgba(0,168,132,.14)' : (document.documentElement.classList.contains('dark-mode') ? 'rgba(255,255,255,.14)' : 'rgba(120,120,128,.16)'); }
+    tint.style.background = `rgba(255,255,255,${(.08 * gc).toFixed(3)})`;
+    rim.style.opacity = gc.toFixed(3);
+    lensEl.style.setProperty('--so', gc.toFixed(3));
+    lensEl.style.setProperty('--sh', (.2 * gc).toFixed(3));
+    const ds = 2 * T.max * GAIN * .85 * g * (1 + 1.4 * sv);
+    if (dms && Math.abs(ds - T.lastDs) > .05) { T.lastDs = ds; dms.forEach((dm, i) => dm.setAttribute('scale', (ds * DISP[i]).toFixed(2))); }
+    let ang = 315;
+    if (lightMode === 'mouse') { const nr = nav.getBoundingClientRect(); ang = (Math.atan2(mouse.x - (nr.left + T.x), -(mouse.y - (nr.top + cy))) * 180 / Math.PI + 360) % 360; }
+    else if (lightMode === 'motion') ang = motionAng;
+    lensEl.style.setProperty('--la', ang.toFixed(1) + 'deg');
+    // レンズの中心に一番近いタブがアクセント色
+    const hi = nearest(T.x);
+    items.forEach((b, i) => {
+      T.ks[i] += ((i === hi ? 1 : 0) - T.ks[i]) * (RM ? 1 : 1 - Math.exp(-dt * 28));
+      const k = T.ks[i].toFixed(2) + T.ckey;
+      if (k !== b.dataset.k) {
+        b.dataset.k = k; const c = `rgb(${mix(INK, ACC, T.ks[i])})`;
+        b.style.setProperty('color', c, 'important'); if (cItems[i]) cItems[i].style.setProperty('color', c, 'important');
+      }
+    });
+    // 止まっていたらループを止める(電池)
+    const busy = T.pressed || T.lifted || g > .002 || Math.abs(T.tx - T.x) > .05 || Math.abs(T.vx) > .5 || T.s > .002 || T.ks.some((k, i) => Math.abs(k - (i === hi ? 1 : 0)) > .002);
+    idleFrames = busy ? 0 : idleFrames + 1;
+    if (idleFrames < 3) kick();
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(step); }
+  nav.addEventListener('pointerdown', kick); nav.addEventListener('pointermove', kick);
+  let rt = 0;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); kick(); }, 150); });
+  new MutationObserver(() => { readColors(); rebuild(); kick(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  requestAnimationFrame(() => { layout(); kick(); });
+  // lgControls がバーをガラスにした後で中身を取り直す
+  setTimeout(() => { rebuild(); kick(); }, 1200);
+  return { select: (i, lift) => { select(i, lift); kick(); }, get index() { return T.sel; } };
+})();
+
 // switchTab: 外部(ログイン後の初期表示など)から呼ばれる互換関数として維持
+function tbGoTo(idx) { if (TBL) TBL.select(idx, false); else tbOpen(idx); }
 function switchTab(activeBtnId) {
   tbGoTo(activeBtnId === 'btnTalk' ? 0 : activeBtnId === 'btnHome' ? 1 : 2);
 }
-
-(function bindTabBar26() {
-  const nav = document.getElementById('tabSegment');
-  const lens = document.getElementById('slider');
-  const items = TB_PAGES().map(i => i.el);
-  const vt = window.BroSpring ? BroSpring.velocityTracker() : null;
-  let down = null, dragging = false;
-  requestAnimationFrame(() => tbSetLens(tbItemX(tbIndex)));
-
-  // レンズの下にあるアイコンを虫眼鏡のように拡大
-  function magnify(active) {
-    const center = tbLensX + 10 + lens.offsetWidth / 2;
-    items.forEach(el => {
-      const c = el.offsetLeft + el.offsetWidth / 2;
-      const d = Math.abs(c - center) / el.offsetWidth;
-      const k = active ? Math.max(0, 1 - d) : 0;
-      el.classList.toggle('under-lens', active && d < 0.5);
-    });
-  }
-
-  nav.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
-    const hit = e.target.closest('.tb26-item');
-    down = { x: e.clientX, lensX: tbLensX, idx: hit ? items.indexOf(hit) : tbIndex, t: performance.now() };
-    dragging = false;
-    if (tbAnim) { tbAnim.stop(); tbAnim = null; }
-    if (vt) vt.reset();
-    nav.setPointerCapture(e.pointerId);
-    nav.classList.add('active-touch');
-    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
-  });
-  nav.addEventListener('pointermove', e => {
-    if (!down) return;
-    const dx = e.clientX - down.x;
-    if (!dragging && Math.abs(dx) < 6) return;
-    dragging = true;
-    const min = 0, max = tbItemX(items.length - 1);
-    let x = down.lensX + dx;
-    // 端を越えるとゴムのように抵抗
-    if (x < min) x = min - Math.pow(min - x, 0.7);
-    if (x > max) x = max + Math.pow(x - max, 0.7);
-    if (vt) vt.add(x);
-    const v = vt ? vt.get() : 0;
-    tbSetLens(x, 1 + Math.min(Math.abs(v) / 2600, 0.22));
-    magnify(true);
-  });
-  const end = () => {
-    if (!down) return;
-    let idx = down.idx;
-    const v = vt ? vt.get() : 0;
-    if (dragging) {
-      // 離した位置 + 勢いの先で一番近いタブへ
-      const projected = tbLensX + v * 0.12;
-      idx = 0;
-      let best = Infinity;
-      items.forEach((_, i) => { const d = Math.abs(tbItemX(i) - projected); if (d < best) { best = d; idx = i; } });
-    }
-    down = null;
-    nav.classList.remove('active-touch');
-    tbGoTo(idx, dragging ? v : 0);
-    magnify(false);
-    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
-  };
-  nav.addEventListener('pointerup', end);
-  nav.addEventListener('pointercancel', end);
-  window.addEventListener('resize', () => tbSetLens(tbItemX(tbIndex)));
-})();
 
 // iOS 26: スクロールでタブバーを縮める/戻す。縮んでいる時に触ったら、まず元のサイズに戻すだけ
 // (位置計算がずれないよう、戻り切ってから次の操作を受け付ける)
