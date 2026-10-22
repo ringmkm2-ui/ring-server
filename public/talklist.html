@@ -85,9 +85,11 @@ html.dark-mode .tbl-bloom{display:none}
 .tbl-rest{position:absolute;border-radius:999px;z-index:1;pointer-events:none}
 .tbl-bgfix{position:absolute;left:0;top:0}
 .tb-badge{position:absolute;top:2px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-sizing:border-box;pointer-events:none}
-.tb26-item{position:relative;z-index:1;height:44px;border:none;background:transparent;border-radius:999px;cursor:pointer;
-  display:inline-flex;align-items:center;justify-content:center;color:var(--muted,#3d434e);font-weight:600;font-size:14px;letter-spacing:.01em;
+.tb26-item{position:relative;z-index:1;height:52px;border:none;background:transparent;border-radius:999px;cursor:pointer;
+  display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted,#3d434e);font-weight:600;font-size:10px;letter-spacing:.01em;
   padding:0;transition:color .2s ease;-webkit-tap-highlight-color:transparent}
+.tb26-item svg{width:24px;height:24px;fill:currentColor;flex:none}
+.tb26-item span[data-i18n]{white-space:nowrap}
 .ahdr.tab-min .tb26-item:not(.active){opacity:.55}
 .ahdr.tab-min{transform:translateY(6px) scale(.8)}
 .ahdr.tab-min .sbtn:not(.active){opacity:.55}
@@ -432,9 +434,9 @@ window.ensureGroupCrypto = (function () {
     <header class="ahdr">
       <nav class="tb26" id="tabSegment" aria-label="タブ">
         <div class="tb26-lens" id="slider"></div>
-        <button class="tb26-item active" id="btnTalk" type="button"><span data-i18n="talk">トーク</span><span class="tb-badge" id="talkTabBadge" hidden></span></button>
-        <button class="tb26-item" id="btnHome" type="button"><span data-i18n="home">ホーム</span></button>
-        <button class="tb26-item" id="btnPosts" type="button"><span data-i18n="post">投稿</span></button>
+        <button class="tb26-item active" id="btnTalk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c-5 0-9 3.4-9 7.6 0 2.4 1.3 4.5 3.3 5.9-.2 1.3-.9 2.6-1.9 3.5 2 0 3.7-.7 5-1.8.8.2 1.7.3 2.6.3 5 0 9-3.4 9-7.6S17 3.5 12 3.5Z"/></svg><span data-i18n="talk">トーク</span><span class="tb-badge" id="talkTabBadge" hidden></span></button>
+        <button class="tb26-item" id="btnHome" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 2.8 11a1 1 0 0 0 .65 1.76H5V20a1 1 0 0 0 1 1h4v-5.5h4V21h4a1 1 0 0 0 1-1v-7.24h1.55A1 1 0 0 0 21.2 11Z"/></svg><span data-i18n="home">ホーム</span></button>
+        <button class="tb26-item" id="btnPosts" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M6 3.5h12A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5Zm1.8 4.2v2.2h8.4V7.7Zm0 4.5v1.7h8.4v-1.7Zm0 3.6v1.7h5.2v-1.7Z"/></svg><span data-i18n="post">投稿</span></button>
       </nav>
     </header>
     <div id="pwaBanner" class="pwa-banner" style="display:none">
@@ -565,7 +567,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.250 beta</div>
+  <div class="version-badge">Bro Chat v1.28.251 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
