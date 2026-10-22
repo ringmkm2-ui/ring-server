@@ -230,6 +230,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
+<script defer src="/js/fileCard.js"></script>
 <script src="/js/actions.js"></script>
 <script src="/js/profanity.js"></script>
 </head>
@@ -243,7 +244,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.257 beta</div>
+  <div class="version-badge">Bro Chat v1.28.258 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -302,6 +303,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       <div class="mopts">
         <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span data-i18n="send_photo">写真を送る</span><input type="file" id="imgI" accept="image/*" hidden></label>
         <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span data-i18n="send_video">動画を送る</span><input type="file" id="vidI" accept="video/*" hidden></label>
+        <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileI" hidden></label>
         <button class="mopt" type="button" id="locationBtn" style="border:none;background:none;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="8"/></svg><span>位置情報</span></button>
       </div>
     </div>
@@ -678,6 +680,7 @@ function addReact(wrap,emoji){sendReact(wrap,emoji);}
 document.getElementById('pbtn').onclick=()=>document.getElementById('ibar').classList.toggle('open');
 document.getElementById('imgI').onchange=e=>{handleMediaGroup(e.target.files[0],'image');};
 document.getElementById('vidI').onchange=e=>{handleMediaGroup(e.target.files[0],'video');};
+document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0],'file');e.target.value='';};
 // キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
 if(window.bcAttachPasteMedia)bcAttachPasteMedia(document.getElementById('mi'),(f,t)=>handleMediaGroup(f,t));
 
@@ -706,12 +709,6 @@ document.getElementById('locationBtn').onclick = async () => {
 
 async function handleMediaGroup(f,t){
   if(!f)return;
-  if(t==='file'){
-    alert(i18n.t('err_group_file_unsupported'));
-    document.getElementById('ibar').classList.remove('open');
-    return;
-  }
-
   const maxSize = cloudinaryE2EUploader.maxBytes(); // ドライブにつながっていれば200MB、Cloudinaryなら100MB
   if(f.size > maxSize){
     alert(i18n.t('err_file_too_large'));
@@ -732,13 +729,13 @@ async function handleMediaGroup(f,t){
 
   // 楽観的更新用のテンポラリID
   const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
-  const caption = `[${t === 'image' ? '画像' : '動画'}]`;
+  const caption = `[${t === 'image' ? '画像' : t === 'file' ? 'ファイル' : '動画'}]`;
   
   // ローディングメッセージを表示
   // 送った本人の画面には、端末の中のファイルをそのまま見せる(以前は中身が空で、壊れた画像のアイコンが出ていた)
   let localUrl = null;
   try { localUrl = URL.createObjectURL(f); } catch (e) {}
-  const msgDiv = createMsg(caption, { mediaType: t, mediaData: localUrl, uploading: true }, false, null, tempId, null, true);
+  const msgDiv = createMsg(caption, { mediaType: t, mediaData: localUrl, uploading: true, ...(t === 'file' ? { fileOpts: { localFile: f } } : {}) }, false, null, tempId, null, true);
   document.getElementById('ibar').classList.remove('open');
 
   // 送信中は吹き出しの上に進捗リングと×を重ねる。×で送信を止めて吹き出しも消す
@@ -1077,6 +1074,14 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   }else if(media&&media.mediaType==='video'){
     bub.classList.add('mbub');
     mediaEl=document.createElement('video');prepVideoEl(mediaEl,media.mediaData);bub.appendChild(mediaEl);
+  }else if(media&&media.mediaType==='file'&&media.fileOpts){
+    bub.classList.add('mbub');
+    const ph=document.createElement('div');
+    ph.style.cssText='width:210px;height:54px;border-radius:8px;background:rgba(148,163,184,.25);display:flex;align-items:center;justify-content:center;color:#999;font-size:12px';
+    ph.textContent='ファイル 読み込み中...';
+    bub.appendChild(ph);
+    const go=()=>{ if(window.BroFile) BroFile.render(ph,media.fileOpts); else setTimeout(go,100); };
+    setTimeout(go,0);
   }else if(text){
     const sp=document.createElement('span');sp.className='msg-text';setLinkedText(sp,text);bub.appendChild(sp);
   }
@@ -1608,6 +1613,13 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
     try{ parsed=JSON.parse(rawContent); }catch(e){ return{text:rawContent,media:null}; }
 
     // Cloudinary方式のメディア(暗号化された動画/画像)
+    if(parsed && parsed.mediaUrl && parsed.mediaType==='file'){
+      // ファイルは名前とサイズだけ先に出し、本体はタップされた時にだけ落とす
+      return{text:parsed.text||'', media:{mediaType:'file', mediaData:'', fileOpts:{
+        url:parsed.mediaUrl, encryptedMetadata:parsed.encryptedMetadata,
+        getKeys:async()=>[await ensureGroupKey(keyVersion)],
+      }}};
+    }
     if(parsed && parsed.mediaUrl && parsed.mediaType){
       // ダウンロード・復号は後回しにして、吹き出しはすぐ出す。
       // 以前は画像1枚ずつ全部読み終わるまで次のメッセージが出ず、画像の多いグループを開くと固まって見えた

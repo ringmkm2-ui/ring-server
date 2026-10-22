@@ -566,7 +566,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.257 beta</div>
+  <div class="version-badge">Bro Chat v1.28.258 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -2271,6 +2271,7 @@ function dmPreview(t) {
     case 'image': return t2('preview_image', '画像が送信されました');
     case 'video': return t2('preview_video', '動画が送信されました');
     case 'audio': return t2('preview_voicemail', '留守番電話が届きました');
+    case 'file': return t2('preview_file', 'ファイルが送信されました');
     case 'call': return callPreview(t.lastCall, !!t.lastFromMe);
     case 'encrypted': {
       const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe);

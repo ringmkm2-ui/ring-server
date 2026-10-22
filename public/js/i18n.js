@@ -160,6 +160,7 @@
     message_generic: { ja: "メッセージ", en: "Message", "zh-CN": "消息", ko: "메시지" },
     unsent_preview: { ja: "（送信取り消し済み）", en: "(Unsent)", "zh-CN": "（已撤回）", ko: "(전송 취소됨)" },
     preview_image: { ja: "画像が送信されました", en: "Sent a photo", "zh-CN": "发送了图片", ko: "사진을 보냈습니다" },
+    preview_file: { ja: "ファイルが送信されました", en: "Sent a file", "zh-CN": "发送了文件", ko: "파일을 보냈습니다" },
     preview_video: { ja: "動画が送信されました", en: "Sent a video", "zh-CN": "发送了视频", ko: "동영상을 보냈습니다" },
     preview_call: { ja: "通話", en: "Call", "zh-CN": "通话", ko: "통화" },
     preview_voicemail: { ja: "留守番電話が届きました", en: "New voicemail", "zh-CN": "收到语音留言", ko: "음성 메시지가 도착했습니다" },
@@ -357,6 +358,7 @@
     err_send_failed_generic: { ja: "送信に失敗しました。", en: "Failed to send.", "zh-CN": "发送失败。", ko: "전송에 실패했습니다." },
     err_send_failed_size: { ja: "送信に失敗しました。ファイルサイズが大きすぎるか、通信エラーの可能性があります。", en: "Failed to send. The file may be too large, or there may be a connection issue.", "zh-CN": "发送失败。文件可能过大，或存在网络问题。", ko: "전송에 실패했습니다. 파일이 너무 크거나 네트워크 오류일 수 있습니다." },
     media_type_video: { ja: "動画", en: "The video", "zh-CN": "视频", ko: "동영상" },
+    media_type_file: { ja: "ファイル", en: "The file", "zh-CN": "文件", ko: "파일" },
     media_type_image: { ja: "画像", en: "The image", "zh-CN": "图片", ko: "이미지" },
     err_media_too_large_template: { ja: "が大きすぎます（上限: {limit}MB）。もう少し短い動画や軽い画像でお試しください。", en: " is too large (limit: {limit}MB). Please try a shorter video or a smaller image.", "zh-CN": "过大（上限：{limit}MB）。请尝试更短的视频或更小的图片。", ko: "이(가) 너무 큽니다 (제한: {limit}MB). 더 짧은 동영상이나 가벼운 이미지로 시도해 주세요." },
   };
