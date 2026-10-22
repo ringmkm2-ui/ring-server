@@ -24,6 +24,10 @@ const STUN_ONLY = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  // Googleが使えない地域(中国など)向け。上のGoogleが応答しなくても、これで自分の公開アドレスが分かる
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.miwifi.com:3478' },
+  { urls: 'stun:stun.chat.bilibili.com:3478' },
 ];
 
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
