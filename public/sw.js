@@ -6,7 +6,7 @@
 // 新しいコードをデプロイしても誰にも届かない(いわゆる「アプリを開いても
 // 更新されない」問題の典型的な原因)。
 // CACHE_VERSIONはbump-version.js実行時に自動で書き換えられる。
-const CACHE_VERSION = 'v1.28.258';
+const CACHE_VERSION = 'v1.28.259';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
@@ -153,9 +153,11 @@ self.addEventListener('push', event => {
       // 通話データをメモリに保持
       pendingCalls.set(callId, { callerId, callerName, callerPic, isVideo, timestamp: Date.now() });
       
-      const title = `${isVideo ? 'ビデオ通話' : '音声通話'}着信: ${callerName || 'ユーザー'}`;
+      // Chromeは「着信: 〇〇 / タップして応答」のような文面を偽の着信通知(詐欺)として隠すことがあるので、
+      // メッセージ通知と同じ作り(相手の名前 + 短い種類)にする
+      const title = callerName || 'ユーザー';
       const options = {
-        body: 'タップして応答',
+        body: isVideo ? 'Bro Chat ビデオ通話' : 'Bro Chat 音声通話',
         icon: notifIcon(callerPic),
         badge: '/images/icons/icon-192.png',
         tag: `call-${callId}`,
