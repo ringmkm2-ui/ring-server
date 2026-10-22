@@ -277,6 +277,7 @@ async function initDB() {
     // Claude(予約タスク)が手を付けた印とメモ(routes/claudeFeed.js)
     await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS claude_note TEXT');
     await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS claude_at TIMESTAMP');
+    await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS media_urls TEXT');
   } catch (e) {
     console.log('[db] reports migration skip:', e.message);
   }

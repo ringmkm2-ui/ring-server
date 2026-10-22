@@ -80,4 +80,25 @@ router.get('/blockers', auth, requireStaff, asyncHandler(async (req, res) => {
   res.json({ count: users.length, users });
 }));
 
+// 誰が誰をブロックしたか(全員分)。運営だけ。メールアドレスは出さない。
+router.get('/blocks', auth, requireStaff, asyncHandler(async (req, res) => {
+  const rows = await db.all(
+    `SELECT b.created_at AS blocked_at,
+            a.id AS a_id, a.user_id AS a_code, a.display_name AS a_name, a.real_name AS a_real,
+            t.id AS t_id, t.user_id AS t_code, t.display_name AS t_name, t.real_name AS t_real
+       FROM user_blocks b
+       JOIN users a ON a.id = b.blocker_id
+       JOIN users t ON t.id = b.blocked_id
+      WHERE a.username NOT LIKE 'deleted%' AND t.username NOT LIKE 'deleted%'
+      ORDER BY b.created_at DESC LIMIT 500`
+  );
+  const pick = (id, code, name, real) => ({ userId: id, userIdCode: code, displayName: name || '(名前なし)', realName: real || '' });
+  const blocks = rows.map(r => ({
+    blocker: pick(r.a_id, r.a_code, r.a_name, r.a_real),
+    blocked: pick(r.t_id, r.t_code, r.t_name, r.t_real),
+    blockedAt: r.blocked_at,
+  }));
+  res.json({ count: blocks.length, blocks });
+}));
+
 module.exports = router;

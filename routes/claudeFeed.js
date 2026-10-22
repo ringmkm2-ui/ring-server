@@ -29,11 +29,11 @@ router.use(failLimiter, requireKey);
 // まだClaudeが手を付けていない、未対応のバグ報告(古い順・最大20件)
 router.get('/bugs', asyncHandler(async (req, res) => {
   const rows = await db.all(
-    `SELECT id, message, app_version, user_agent, created_at FROM reports
+    `SELECT id, message, app_version, user_agent, created_at, media_urls FROM reports
       WHERE kind = 'bug' AND status = 'open' AND claude_at IS NULL
       ORDER BY created_at ASC LIMIT 20`
   );
-  res.json({ bugs: rows.map(r => ({ id: r.id, message: r.message, appVersion: r.app_version, userAgent: r.user_agent, createdAt: r.created_at })) });
+  res.json({ bugs: rows.map(r => ({ id: r.id, message: r.message, appVersion: r.app_version, userAgent: r.user_agent, createdAt: r.created_at, mediaUrls: (() => { try { return JSON.parse(r.media_urls || '[]'); } catch (e) { return []; } })() })) });
 }));
 
 // 手を付けた印とメモ(「PR #12 で修正案」「再現できず: …」など)。同じ報告を次の回に拾わないようにする。

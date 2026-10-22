@@ -106,7 +106,11 @@
       const p = document.createElement('div'); p.className = 'peer-sub'; p.style.paddingTop = '12px';
       p.textContent = T('block_desc', 'ブロックすると、この人からのメッセージ・通話が届かなくなります。相手には知らされません。トーク一覧からは消えますが、設定の「ブロックしたユーザー」からいつでも解除できます。');
       card.appendChild(p);
-      row(card, ICON_BLOCK, T('block_confirm', 'ブロックする'), 'danger', async () => {
+      const q = document.createElement('div'); q.style.cssText = 'padding:4px 16px 8px;font-size:14px;font-weight:600';
+      q.textContent = T('block_report_q', '通報もしますか?');
+      card.appendChild(q);
+      row(card, ICON_FLAG, T('block_and_report', 'ブロックして通報する'), 'danger', openReport);
+      row(card, ICON_BLOCK, T('block_only', 'ブロックだけする(通報しない)'), 'danger', async () => {
         try { await call('/api/friends/block', { userId: otherId }); applyBlocked(true); close(); }
         catch (e) { alert(e.message); }
       });
@@ -130,6 +134,8 @@
       const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = !blocked;
       lab.append(chk, document.createTextNode(T('report_and_block', 'ブロックもする')));
       if (blocked) lab.style.display = 'none';
+      const attachBox = document.createElement('div');
+      const attach = window.BroReportAttach ? BroReportAttach.mount(attachBox) : null;
       const err = document.createElement('div'); err.className = 'err';
       const send = document.createElement('button'); send.type = 'button'; send.className = 'send'; send.textContent = T('report_send', '通報を送る');
       send.addEventListener('click', async () => {
@@ -139,13 +145,17 @@
         send.disabled = true;
         try {
           const ver = (document.querySelector('.version-badge') || {}).textContent || '';
-          await call('/api/reports', { kind: 'user', targetUserId: otherId, category: sel.value, message, appVersion: ver.replace(/^Bro Chat\s*/, '').trim() });
+          const body = { kind: 'user', targetUserId: otherId, category: sel.value, message, appVersion: ver.replace(/^Bro Chat\s*/, '').trim() };
+          if (attach && attach.count()) {
+            body.mediaUrls = await attach.uploadAll((i, n, pr) => { send.textContent = T('report_uploading', 'アップロード中') + ' ' + i + '/' + n + ' ' + Math.round(pr * 100) + '%'; });
+          }
+          await call('/api/reports', body);
           if (chk.checked && !blocked) { await call('/api/friends/block', { userId: otherId }); applyBlocked(true); }
           close();
           alert(T('report_thanks_user', '通報を送りました。確認します'));
-        } catch (e) { err.textContent = e.message; send.disabled = false; }
+        } catch (e) { err.textContent = e.message; send.disabled = false; send.textContent = T('report_send', '通報を送る'); }
       });
-      f.append(sel, ta, lab, err, send);
+      f.append(sel, ta, attachBox, lab, err, send);
       card.appendChild(f);
       setTimeout(() => ta.focus(), 300);
     });
