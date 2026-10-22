@@ -622,7 +622,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
 
     require('../utils/fcm').sendMessageNotification(
       m.user_id, `${sender?.display_name || 'ユーザー'} (${group.name})`,
-      mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+      mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージが届きました',
       'group', { senderId: req.userId, chatId: groupId, senderPic }
     ).catch(err => console.error('[fcm] group message failed:', err.message));
 
@@ -635,7 +635,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
         groupName: group.name,
         senderName: sender?.display_name || 'ユーザー',
         senderPic,
-        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージが届きました',
+        preview: mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージが届きました',
       }).catch(err => console.error('[push] group message send failed:', err.message));
     }
   });

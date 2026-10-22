@@ -43,8 +43,8 @@ function toPreview(content, encrypted) {
   if (content[0] === '{') { try { parsed = JSON.parse(content); } catch (e) {} }
   if (parsed && typeof parsed === 'object') {
     if ((parsed.media || parsed.mediaUrl) && parsed.mediaType) {
-      const k = parsed.mediaType === 'image' ? 'image' : parsed.mediaType === 'audio' ? 'audio' : 'video';
-      return { kind: k, text: k === 'image' ? '画像が送信されました' : k === 'audio' ? '留守番電話が届きました' : '動画が送信されました' };
+      const k = parsed.mediaType === 'image' ? 'image' : parsed.mediaType === 'audio' ? 'audio' : parsed.mediaType === 'file' ? 'file' : 'video';
+      return { kind: k, text: k === 'image' ? '画像が送信されました' : k === 'audio' ? '留守番電話が届きました' : k === 'file' ? 'ファイルが送信されました' : '動画が送信されました' };
     }
     if (parsed.__call__) {
       // 一覧で「通話時間 3:21」「不在着信」と出せるように、状態と長さだけ渡す
@@ -184,7 +184,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
     if (!req.body.noPush) {
       db.get('SELECT display_name, public_key, profile_pic FROM users WHERE id = ?', [req.userId]).then(sender => {
-        const preview = mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ';
+        const preview = mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージ';
         // 本文は暗号文のまま載せ、相手の端末の中でだけ復号して通知に出す(サーバーは読めないまま)。
         // FCMの上限4KBに収まる文字メッセージだけ。
         const cipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 3000) ? content : '';
@@ -204,7 +204,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         senderId: req.userId,
         senderName: sender?.display_name || 'ユーザー',
         senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic),
-        preview: mediaType ? `[${mediaType === 'image' ? '画像' : '動画'}]` : 'メッセージ',
+        preview: mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージ',
         // 本文は暗号文のまま。受け取った端末のService Workerの中でだけ復号して表示する
         cipher: wpCipher,
         senderPub,

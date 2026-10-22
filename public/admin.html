@@ -363,6 +363,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/deepgramVoice.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
+<script defer src="/js/fileCard.js"></script>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eMulti.js"></script>
@@ -385,7 +386,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.257 beta</div>
+  <div class="version-badge">Bro Chat v1.28.258 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -449,6 +450,10 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
         <label class="mopt">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
           <span data-i18n="send_video">動画を送る</span><input type="file" id="vidInput" accept="video/*" hidden>
+        </label>
+        <label class="mopt">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileInput" hidden>
         </label>
         <button class="mopt" type="button" id="locationBtn" style="border:none;background:none;cursor:pointer">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="8"/></svg>
@@ -1194,6 +1199,7 @@ document.getElementById('plusBtn').onclick = () => document.getElementById('inpu
 
 document.getElementById('imgInput').onchange = e => { handleMedia(e.target.files[0], 'image'); };
 document.getElementById('vidInput').onchange = e => { handleMedia(e.target.files[0], 'video'); };
+document.getElementById('fileInput').onchange = e => { handleMedia(e.target.files[0], 'file'); e.target.value = ''; };
 // キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
 if (window.bcAttachPasteMedia) bcAttachPasteMedia(document.getElementById('msgInput'), (f, t) => handleMedia(f, t));
 
@@ -1230,16 +1236,11 @@ document.getElementById('locationBtn').onclick = async () => {
 
 function handleMedia(f, t) {
   if (!f) return;
-  if (t === 'file') {
-    alert(i18n.t('err_file_send_unsupported'));
-    return;
-  }
-
   // サイズ上限（groupchat.htmlと同じ基準。CloudinaryにE2E暗号化して直接アップロードする方式のため、
   // サーバーのJSON body上限(50MB)には影響されない）
   const maxSize = cloudinaryE2EUploader.maxBytes(); // ドライブにつながっていれば200MB、Cloudinaryなら100MB
   if (f.size > maxSize) {
-    alert(i18n.t(t === 'video' ? 'media_type_video' : 'media_type_image') + i18n.t('err_media_too_large_template').replace('{limit}', maxSize / 1024 / 1024));
+    alert(i18n.t(t === 'video' ? 'media_type_video' : t === 'file' ? 'media_type_file' : 'media_type_image') + i18n.t('err_media_too_large_template').replace('{limit}', maxSize / 1024 / 1024));
     document.getElementById('inputBar').classList.remove('media-open');
     return;
   }
@@ -1287,7 +1288,7 @@ async function sendMediaViaCloudinary(f, t) {
     }
     if (!mediaKeys) sharedKey = nacl.box.before(recipientPublicKey, myKeys.secretKey);
 
-    const caption = `[${t === 'image' ? '画像' : t === 'audio' ? '留守番電話' : '動画'}]`;
+    const caption = `[${t === 'image' ? '画像' : t === 'audio' ? '留守番電話' : t === 'file' ? 'ファイル' : '動画'}]`;
     const metadata = await cloudinaryE2EUploader.uploadEncryptedChunked(
       f,
       sharedKey,
@@ -1303,7 +1304,8 @@ async function sendMediaViaCloudinary(f, t) {
     if (!metadata || !metadata.cloudinaryUrl) {
       throw new Error('Upload failed');
     }
-    try { (window.__localMedia = window.__localMedia || new Map()).set(metadata.cloudinaryUrl, URL.createObjectURL(f)); } catch (_) {}
+    if (t === 'file') { (window.__localFiles = window.__localFiles || new Map()).set(metadata.cloudinaryUrl, f); }
+    else try { (window.__localMedia = window.__localMedia || new Map()).set(metadata.cloudinaryUrl, URL.createObjectURL(f)); } catch (_) {}
     // アップロードが終わった直後に×が押されていたら、トークには出さない
     if (chip.signal.aborted) { const ab = new Error('cancelled'); ab.name = 'AbortError'; throw ab; }
 
@@ -1449,6 +1451,24 @@ async function waitUploader(){ for(let i=0;i<100&&!window.cloudinaryE2EUploader;
 async function loadLazyMedia(placeholder) {
   await waitUploader();
   const mediaType = placeholder.dataset.mediaType;
+  if (mediaType === 'file') {
+    const cm = placeholder._cloudinaryMedia;
+    if (!cm) { placeholder.textContent = '(ファイルを開けませんでした)'; return; }
+    return BroFile.render(placeholder, {
+      url: cm.mediaUrl, encryptedMetadata: cm.encryptedMetadata,
+      localFile: window.__localFiles && window.__localFiles.get(cm.mediaUrl),
+      getKeys: async () => {
+        const mk = cm.mediaKeys;
+        if (mk && window.E2EMulti) {
+          await getOrCreateMyKeyPair();
+          const k = E2EMulti.open(mk, ringForMulti());
+          if (!k) throw new Error('この端末あての鍵がありません');
+          return [k];
+        }
+        return await candidateSharedKeys();
+      },
+    });
+  }
   let mediaSrc = placeholder.dataset.mediaSrc;
 
   // 自分が今送った画像・動画は、手元のファイルをそのまま出す(わざわざダウンロード・復号しない)
@@ -1968,7 +1988,8 @@ function renderMessageImpl(msg) {
     const mediaPlaceholder = document.createElement('div');
     mediaPlaceholder.className = 'media-placeholder';
     mediaPlaceholder.style.cssText = 'background:#f0f0f0;width:200px;height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;';
-    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : mediaType === 'audio' ? '留守番電話 読み込み中...' : '動画読み込み中...';
+    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : mediaType === 'audio' ? '留守番電話 読み込み中...' : mediaType === 'file' ? 'ファイル 読み込み中...' : '動画読み込み中...';
+    if (mediaType === 'file') { mediaPlaceholder.style.width = '210px'; mediaPlaceholder.style.height = '54px'; }
     if (mediaType === 'audio') { mediaPlaceholder.style.width = '240px'; mediaPlaceholder.style.height = '54px'; }
     mediaPlaceholder.dataset.mediaSrc = mediaSrc;
     mediaPlaceholder.dataset.mediaType = mediaType;
@@ -1981,7 +2002,7 @@ function renderMessageImpl(msg) {
     // 共有ObserverにObserveさせる
     lazyLoadObserver.observe(mediaPlaceholder);
     
-    if (displayText && displayText !== '[画像]' && displayText !== '[動画]' && displayText !== '[留守番電話]') {
+    if (displayText && displayText !== '[画像]' && displayText !== '[動画]' && displayText !== '[留守番電話]' && displayText !== '[ファイル]') {
       const cap = document.createElement('div');
       cap.className = 'msg-text';
       cap.style.marginTop = '6px';
@@ -2221,6 +2242,7 @@ function connectRealWS() {
               const { displayText, mediaType } = parseMsgContent(displayContent);
               const notifBody = mediaType === 'image' ? '画像を送信しました'
                 : mediaType === 'video' ? '動画を送信しました'
+                : mediaType === 'file' ? 'ファイルを送信しました'
                 : displayContent;
               sendNotification(partnerName, {
                 body: notifBody,
@@ -2936,7 +2958,7 @@ document.getElementById('copyBtn').onclick = async () => {
   if (!msg) { hideMenu(); return; }
 
   const { displayText, mediaType } = parseMsgContent(msg.content);
-  const textToCopy = displayText || (mediaType === 'image' ? '[画像]' : mediaType === 'video' ? '[動画]' : '');
+  const textToCopy = displayText || (mediaType === 'image' ? '[画像]' : mediaType === 'video' ? '[動画]' : mediaType === 'file' ? '[ファイル]' : '');
   if (!textToCopy) { hideMenu(); return; }
 
   try {
