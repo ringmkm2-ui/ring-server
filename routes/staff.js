@@ -63,4 +63,21 @@ router.get('/users', auth, requireStaff, asyncHandler(async (req, res) => {
   res.json({ count: users.length, online: users.filter(u => u.online).length, users });
 }));
 
+// 自分(運営アカウント)をブロックした人の一覧。普通のユーザーには、この機能があること自体見せない(404)。
+// ブロックは「された側には分からない」のが普通の作りなので、全員には出さず運営だけが見られる。
+router.get('/blockers', auth, requireStaff, asyncHandler(async (req, res) => {
+  const rows = await db.all(
+    `SELECT u.id, u.user_id, u.display_name, u.real_name, u.profile_pic, b.created_at AS blocked_at
+       FROM user_blocks b JOIN users u ON u.id = b.blocker_id
+      WHERE b.blocked_id = ? AND u.username NOT LIKE 'deleted%'
+      ORDER BY b.created_at DESC LIMIT 500`,
+    [req.userId]
+  );
+  const users = rows.map(r => ({
+    userId: r.id, userIdCode: r.user_id, displayName: r.display_name || '(名前なし)', realName: r.real_name || '',
+    profilePic: r.profile_pic || '', blockedAt: r.blocked_at,
+  }));
+  res.json({ count: users.length, users });
+}));
+
 module.exports = router;
