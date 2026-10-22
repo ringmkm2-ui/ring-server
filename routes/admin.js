@@ -137,11 +137,13 @@ router.post('/users/:id/password', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+function parseUrls(s) { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+
 // バグ報告・通報の一覧。status=open|resolved|all(既定open)
 router.get('/reports', asyncHandler(async (req, res) => {
   const st = ['open', 'resolved', 'all'].includes(req.query.status) ? req.query.status : 'open';
   const rows = await db.all(
-    `SELECT r.id, r.kind, r.category, r.message, r.app_version, r.user_agent, r.status, r.created_at, r.claude_note,
+    `SELECT r.id, r.kind, r.category, r.message, r.app_version, r.user_agent, r.status, r.created_at, r.claude_note, r.media_urls,
             rp.username AS reporter_username, rp.display_name AS reporter_name,
             tg.id AS target_id, tg.username AS target_username, tg.display_name AS target_name
        FROM reports r
@@ -156,6 +158,7 @@ router.get('/reports', asyncHandler(async (req, res) => {
       id: r.id, kind: r.kind, category: r.category, message: r.message,
       appVersion: r.app_version, userAgent: r.user_agent, status: r.status, createdAt: r.created_at,
       claudeNote: r.claude_note || null,
+      mediaUrls: parseUrls(r.media_urls),
       reporter: { username: r.reporter_username, displayName: r.reporter_name },
       target: r.target_id ? { id: r.target_id, username: r.target_username, displayName: r.target_name } : null,
     })),

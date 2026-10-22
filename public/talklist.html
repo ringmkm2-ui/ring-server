@@ -397,6 +397,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/groupE2E.js"></script>
 <script src="/js/communityE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
+<script defer src="/js/reportAttach.js"></script>
 <script src="/js/iconUpload.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/keyBackup.js"></script>
@@ -566,7 +567,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.262 beta</div>
+  <div class="version-badge">Bro Chat v1.28.263 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -756,6 +757,7 @@ window.ensureGroupCrypto = (function () {
       <label for="reportMessage" id="reportMsgLabel"></label>
       <textarea id="reportMessage" rows="6" maxlength="2000" style="width:100%;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font-size:15px;box-sizing:border-box;resize:vertical;font-family:inherit"></textarea>
     </div>
+    <div id="reportAttach"></div>
     <p id="reportErr" style="color:#ef4444;font-size:13px;margin:6px 2px 0;min-height:18px"></p>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="reportSend" type="button" data-i18n="report_send">送信</button>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="reportCancel" type="button" data-i18n="cancel">キャンセル</button>
@@ -771,6 +773,7 @@ window.ensureGroupCrypto = (function () {
       <button type="button" data-mode="online" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">オンライン</button>
       <button type="button" data-mode="all" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">全員</button>
       <button type="button" data-mode="blockers" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">ブロック</button>
+      <button type="button" data-mode="blocks" style="flex:1;padding:8px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">全ブロック</button>
     </div>
     <div id="staffList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 14px"></div>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="staffClose" type="button" data-i18n="close">閉じる</button>
@@ -2582,6 +2585,7 @@ document.getElementById('setClearCache').addEventListener('click', () => {
 const reportMov = document.getElementById('reportMov');
 let reportKind = 'bug';
 let reportFriendsLoaded = false;
+let reportAttach = null;
 
 async function loadReportFriends() {
   const sel = document.getElementById('reportFriend');
@@ -2615,6 +2619,7 @@ function openReport(kind) {
   document.getElementById('reportCode').style.display = 'none';
   document.getElementById('reportErr').textContent = '';
   document.getElementById('reportSend').disabled = false;
+  if (window.BroReportAttach) reportAttach = BroReportAttach.mount(document.getElementById('reportAttach'));
   if (kind === 'user') loadReportFriends();
   reportMov.classList.add('open');
 }
@@ -2679,19 +2684,43 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
       b.style.background = on ? '#007aff' : 'rgba(148,163,184,.18)';
       b.style.color = on ? '#fff' : 'inherit';
     });
-    document.getElementById('staffTitle').textContent = mode === 'all' ? '全ユーザー' : mode === 'blockers' ? '自分をブロックした人' : 'オンライン';
+    document.getElementById('staffTitle').textContent = mode === 'all' ? '全ユーザー' : mode === 'blocks' ? '誰が誰をブロック' : mode === 'blockers' ? '自分をブロックした人' : 'オンライン';
   }
   document.querySelectorAll('#staffTabs button').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; paintTabs(); load(); }));
   async function load() {
     const box = document.getElementById('staffList');
     paintTabs();
     try {
-      const res = await fetch(mode === 'all' ? '/api/staff/users' : mode === 'blockers' ? '/api/staff/blockers' : '/api/staff/online', { headers: { 'Authorization': 'Bearer ' + token } });
+      const res = await fetch(mode === 'all' ? '/api/staff/users' : mode === 'blocks' ? '/api/staff/blocks' : mode === 'blockers' ? '/api/staff/blockers' : '/api/staff/online', { headers: { 'Authorization': 'Bearer ' + token } });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || '');
       document.getElementById('staffCount').textContent = mode === 'all' ? d.count + '人(オンライン' + d.online + ')' : d.count + '人';
       if (mode === 'online') document.getElementById('staffOnlineCount').textContent = d.count + '人';
       box.textContent = '';
+      if (mode === 'blocks') {
+        document.getElementById('staffCount').textContent = d.count + '件';
+        if (!d.blocks.length) {
+          const p = document.createElement('p');
+          p.style.cssText = 'color:#94a3b8;font-size:14px;text-align:center;margin:18px 0';
+          p.textContent = 'ブロックはまだありません';
+          box.appendChild(p);
+          return;
+        }
+        const fmt = (x) => x.displayName + (x.realName ? '(' + x.realName + ')' : '') + ' ' + x.userIdCode;
+        d.blocks.forEach(bk => {
+          const row = document.createElement('div');
+          row.style.cssText = 'padding:10px 12px;border-radius:14px;background:rgba(148,163,184,.12);font-size:14px;line-height:1.5';
+          const l1 = document.createElement('div');
+          l1.style.cssText = 'font-weight:600;word-break:break-all';
+          l1.textContent = fmt(bk.blocker) + '  →  ' + fmt(bk.blocked);
+          const l2 = document.createElement('div');
+          l2.style.cssText = 'font-size:12px;color:#64748b';
+          l2.textContent = bk.blockedAt ? new Date(String(bk.blockedAt).includes('T') ? bk.blockedAt : String(bk.blockedAt).replace(' ', 'T') + 'Z').toLocaleString() : '';
+          row.append(l1, l2);
+          box.appendChild(row);
+        });
+        return;
+      }
       if (!d.users.length) {
         const p = document.createElement('p');
         p.style.cssText = 'color:#94a3b8;font-size:14px;text-align:center;margin:18px 0';
@@ -2827,6 +2856,10 @@ document.getElementById('reportSend').addEventListener('click', async () => {
   const btn = document.getElementById('reportSend');
   btn.disabled = true;
   try {
+    if (reportAttach && reportAttach.count()) {
+      body.mediaUrls = await reportAttach.uploadAll((i, n, p) => { btn.textContent = t2('report_uploading', 'アップロード中') + ' ' + i + '/' + n + ' ' + Math.round(p * 100) + '%'; });
+      btn.textContent = t2('report_send', '送信');
+    }
     const res = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -2839,6 +2872,7 @@ document.getElementById('reportSend').addEventListener('click', async () => {
   } catch (e) {
     err.textContent = e.message;
     btn.disabled = false;
+    btn.textContent = t2('report_send', '送信');
   }
 });
 

@@ -440,7 +440,7 @@ async function initDB() {
   // 以前は banned_until が無く、ローカル(SQLite)ではログインした瞬間に「トークンが無効」になっていた
   const addCols = {
     users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT']],
-    reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT']],
+    reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
     groups: [['avatar_url', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],

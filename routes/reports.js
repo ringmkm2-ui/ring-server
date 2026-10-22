@@ -53,9 +53,20 @@ router.post('/', verifyToken, reportLimiter, asyncHandler(async (req, res) => {
     targetName = target.display_name;
   }
 
+  // 添付(画像・動画)。端末から直接Cloudinary / 自サーバーのドライブに上げたURLだけ受け付ける。最大3件
+  let mediaUrls = [];
+  if (body.mediaUrls !== undefined && body.mediaUrls !== null) {
+    if (!Array.isArray(body.mediaUrls) || body.mediaUrls.length > 3) return res.status(400).json({ error: '添付は3つまでです' });
+    const isValidMediaUrl = require('./posts').isValidMediaUrl;
+    for (const u of body.mediaUrls) {
+      if (typeof u !== 'string' || !u || !isValidMediaUrl(u)) return res.status(400).json({ error: '添付の形式が不正です' });
+      mediaUrls.push(u);
+    }
+  }
+
   await db.run(
-    'INSERT INTO reports (id, kind, reporter_id, target_id, category, message, app_version, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [uuidv4(), kind, req.userId, targetId, category, message, clean(body.appVersion, 40) || pkg.version, clean(req.get('user-agent'), 300)]
+    'INSERT INTO reports (id, kind, reporter_id, target_id, category, message, app_version, user_agent, media_urls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [uuidv4(), kind, req.userId, targetId, category, message, clean(body.appVersion, 40) || pkg.version, clean(req.get('user-agent'), 300), mediaUrls.length ? JSON.stringify(mediaUrls) : null]
   );
   res.json({ ok: true });
 

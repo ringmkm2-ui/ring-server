@@ -253,4 +253,5 @@ router.delete('/comments/:commentId', verifyToken, asyncHandler(async (req, res)
   res.json({ ok: true });
 }));
 
+router.isValidMediaUrl = isValidMediaUrl;
 module.exports = router;
