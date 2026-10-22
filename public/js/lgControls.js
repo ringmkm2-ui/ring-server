@@ -42,6 +42,9 @@
   // 縁ぎりぎりはフレネル反射で透過が減るので、その分ずらしを弱める。
   // ============================================================
   const convex = x => Math.pow(1 - Math.pow(1 - x, 4), 0.25);
+  // 丸ボタン=Appleのガラス玉と同じなだらかなドーム(円弧)。縁だけ急に曲がる squircle だと
+  // 「平らな内側の円 + つぶれた外側の輪」の二重に見えた(デモ v2.5.0 と同じ)
+  const dome = x => Math.sqrt(1 - (1 - x) * (1 - x));
   const lip = x => {
     const c = convex(x), v = 1 - 0.45 * c, s = x * x * x * (x * (x * 6 - 15) + 10);
     return c * (1 - s) + v * s;
@@ -67,9 +70,9 @@
   }
   function buildMap(w, h, rad, kind) {
     const half = Math.min(w, h) / 2;
-    const B = kind === 'lip' ? half : kind === 'panel' ? Math.min(half * 0.62, 18) : kind === 'panelh' ? Math.min(half * 0.62, 9) : half * 0.62;
-    const Hh = B * (kind === 'lip' ? 0.8 : 0.75);
-    const P = profile(kind === 'lip' ? lip : convex, B, Hh, kind === 'lip' ? 0.15 : 0.2);
+    const B = kind === 'lip' ? half : kind === 'panel' ? Math.min(half * 0.62, 18) : kind === 'panelh' ? Math.min(half * 0.62, 9) : half;
+    const Hh = B * (kind === 'lip' ? 0.8 : kind === 'convex' ? 0.55 : 0.75);
+    const P = profile(kind === 'lip' ? lip : kind === 'convex' ? dome : convex, B, Hh, kind === 'lip' || kind === 'convex' ? 0.15 : 0.2);
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d'), img = ctx.createImageData(w, h), D = img.data;
@@ -349,7 +352,8 @@
       : (light ? 'rgba(255,255,255,.2)' : 'rgba(10,10,24,.08)'));
     // 触っていない時の見た目(普通の不透明なボタン)。色付きの状態(ミュート中など)はその色のまま
     // 暗い所(通話画面など)では黒く塗りつぶさず、白の半透明(iOSの通話ボタンと同じ)にする
-    e.style.setProperty('--lg-rest', s.on ? s.onColor : (light ? 'rgba(255,255,255,.94)' : 'rgba(255,255,255,.2)'));
+    // 普段も不透明な円盤ではなく、下が透けるガラスの見た目(縁の光と影)。屈折は触っている時だけ(軽さのため)
+    e.style.setProperty('--lg-rest', s.on ? s.onColor : (light ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.1)'));
     s.baseSh = 0.14 + Math.min(0.28, sd * 1.5) + (light ? 0 : 0.08);
     e.style.setProperty('--sh', s.baseSh.toFixed(3));
     e.style.setProperty('--so', light && !s.on ? 0.75 : 1);

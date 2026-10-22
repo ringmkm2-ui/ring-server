@@ -78,9 +78,8 @@ body.has-custom-bg .pc{background:transparent}
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
 .tbl-spec{padding:1.4px;opacity:var(--so,0)}
-.tbl-bloom{padding:8px;opacity:calc(var(--so,0) * .3);filter:blur(2.5px)}
-/* 暗い背景だと光のにじみの内側の縁が「2本目の線」に見えるので、ダークでは出さない */
-html.dark-mode .tbl-bloom{display:none}
+/* 縁に向かってふわっと明るくなる(フレネル反射)。輪にすると暗い所で2本目の線に見えるので内側の影で作る */
+.tbl-bloom{background:none;-webkit-mask:none;mask:none;opacity:var(--so,0);box-shadow:inset 0 0 12px 1px rgba(255,255,255,.3),inset 0 0 3px rgba(255,255,255,.25)}
 .tbl-rim{pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
 .tbl-rest{position:absolute;border-radius:999px;z-index:1;pointer-events:none}
 .tbl-bgfix{position:absolute;left:0;top:0}
@@ -567,7 +566,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.251 beta</div>
+  <div class="version-badge">Bro Chat v1.28.252 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1391,7 +1390,7 @@ const TBL = (function () {
   }
 
   const tb = { h: 60, pitch: 86, restW: 0, restH: 0, lensW: 0, lensH: 0 };
-  const T = { pressed: false, lifted: false, x: 0, vx: 0, tx: 0, g: 0, vg: 0, s: 0, sel: 0, lt: 0, key: '', ckey: '', mapKey: '', max: 1, lastDs: -1, ks: items.map((_, i) => i === 0 ? 1 : 0), shown: false };
+  const T = { pressed: false, drag: false, p0: 0, fx: 0, lifted: false, x: 0, vx: 0, tx: 0, g: 0, vg: 0, s: 0, sel: 0, lt: 0, key: '', ckey: '', mapKey: '', max: 1, lastDs: -1, ks: items.map((_, i) => i === 0 ? 1 : 0), shown: false };
   const center = i => items[i].offsetLeft + items[i].offsetWidth / 2;
   const nearest = x => { let b = 0, d = Infinity; items.forEach((_, i) => { const e = Math.abs(center(i) - x); if (e < d) { d = e; b = i; } }); return b; };
   function clampX(x) {
@@ -1417,13 +1416,18 @@ const TBL = (function () {
     if (e.button !== 0) return;
     nav.setPointerCapture(e.pointerId);
     rebuild();
-    T.pressed = true; if (!wa()) T.lifted = true; T.tx = clampX(localX(e.clientX));
+    // 押しただけではその場で持ち上がるだけ。6px以上動かしたら指に付いて動く(タップで瞬間移動しない)
+    T.pressed = true; T.drag = false; T.p0 = e.clientX; T.fx = localX(e.clientX); if (!wa()) T.lifted = true;
     if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   });
-  nav.addEventListener('pointermove', e => { if (T.pressed) T.tx = clampX(localX(e.clientX)); });
+  nav.addEventListener('pointermove', e => {
+    if (!T.pressed) return; T.fx = localX(e.clientX);
+    if (!T.drag && Math.abs(e.clientX - T.p0) > 6) T.drag = true;
+    if (T.drag) T.tx = clampX(T.fx);
+  });
   const up = () => {
     if (!T.pressed) return; T.pressed = false;
-    const i = nearest(T.tx);
+    const i = nearest(T.drag ? T.tx : T.fx); T.drag = false;
     if (i !== T.sel && window.LiquidGlass) window.LiquidGlass.haptic('light');
     select(i, false);
   };
@@ -1452,13 +1456,14 @@ const TBL = (function () {
     const gt = T.lifted ? 1 : 0;
     if (RM) { T.x = T.tx; T.vx = 0; T.g = gt; T.vg = 0; }
     else {
-      const n = Math.max(1, Math.ceil(dt / .004)), h = dt / n, om = T.pressed ? OMD : OMX, z = T.pressed ? 1 : ZX;
+      const n = Math.max(1, Math.ceil(dt / .004)), h = dt / n, om = T.drag ? OMD : OMX, z = T.drag ? 1 : ZX;
       for (let k = 0; k < n; k++) {
         T.vx += (om * om * (T.tx - T.x) - 2 * z * om * T.vx) * h; T.x += T.vx * h;
         T.vg += (OMG * OMG * (gt - T.g) - 2 * OMG * T.vg) * h; T.g += T.vg * h;
       }
       if (T.g < 0) { T.g = 0; T.vg = 0; }
-      const sp = Math.abs(T.vx) / tb.pitch, ts = sstep(1.5, 8, sp);
+      // 厚くなるのは指で引っぱっている時だけ(タップで滑る時は実機でも形が変わらない)
+      const sp = Math.abs(T.vx) / tb.pitch, ts = T.drag ? sstep(1.5, 8, sp) : 0;
       T.s += (ts - T.s) * (1 - Math.exp(-dt * (ts > T.s ? 22 : 10)));
     }
     const g = T.g, gc = Math.min(1, g), sv = RM ? 0 : T.s * gc;
