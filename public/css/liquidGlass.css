@@ -782,7 +782,9 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
     rgba(255,255,255,0) 0deg,rgba(255,255,255,.95) 70deg,rgba(255,255,255,0) 140deg,
     rgba(255,255,255,0) 180deg,rgba(255,255,255,.5) 250deg,rgba(255,255,255,0) 320deg)}
 .lg-spec{padding:1.4px;opacity:var(--so,1)}
-.lg-bloom{padding:8px;opacity:calc(var(--so,1) * .3);filter:blur(2.5px)}
+/* 縁に向かってふわっと明るくなる(フレネル反射)。以前の「8px内側の輪」は暗い所で2本目の円に見えた */
+.lg-bloom{background:none!important;-webkit-mask:none!important;mask:none!important;opacity:var(--so,1);box-shadow:inset 0 0 12px 1px rgba(255,255,255,.3),inset 0 0 3px rgba(255,255,255,.25)}
+.lg-bloom .lg-sweep{display:none}
 .lg-rim{position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
 
 /* 丸ボタン(= デモの .lg) */
@@ -803,7 +805,7 @@ html.dark-mode .ios-pwa-banner{background:rgba(30,30,32,.9);color:#f2f2f7} html.
 .lg-round .lg-lens{opacity:0;visibility:hidden;transition:opacity .22s ease,visibility 0s linear .22s}
 .lg-round.lg-live .lg-lens{opacity:1;visibility:visible;transition:opacity .12s ease,visibility 0s}
 .lg-round:not(.lg-live) .lg-tint{background:var(--lg-rest,rgba(255,255,255,.94))!important}
-.lg-round:not(.lg-live) .lg-spec,.lg-round:not(.lg-live) .lg-bloom{opacity:.35}
+.lg-round:not(.lg-live) .lg-spec{opacity:.6}
 .lg-comp{position:absolute;left:0;top:0;overflow:hidden}
  /* 画面に出ているパネルのガラス部分だけ別レイヤーに: スクロールで中身が変わっても文字や影を描き直さない */
 .lg-fxclip.lg-on{will-change:transform}
