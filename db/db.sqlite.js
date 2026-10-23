@@ -359,6 +359,18 @@ async function initDB() {
       UNIQUE(call_id, owner_id)
     );
 
+    CREATE TABLE IF NOT EXISTS post_views (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (post_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS user_subscriptions (
+      subscriber_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (subscriber_id, channel_id)
+    );
     CREATE TABLE IF NOT EXISTS reports (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL,
@@ -441,6 +453,7 @@ async function initDB() {
   const addCols = {
     users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
+    posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
