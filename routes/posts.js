@@ -68,6 +68,19 @@ async function attachAuthorAndStats(posts, myUserId) {
   );
   const commentCountMap = new Map(commentCounts.map(c => [c.post_id, c.cnt]));
 
+  // チャンネル(=投稿者)の登録者数と、自分が登録しているか。YouTubeの「登録者」「登録済み」表示用。
+  const authorIds = [...new Set(posts.map(p => p.author_id))];
+  const subCounts = await db.all(
+    `SELECT channel_id, COUNT(*) as cnt FROM user_subscriptions WHERE channel_id IN (${authorIds.map(() => '?').join(',')}) GROUP BY channel_id`,
+    authorIds
+  );
+  const subCountMap = new Map(subCounts.map(s => [s.channel_id, s.cnt]));
+  const mySubs = await db.all(
+    `SELECT channel_id FROM user_subscriptions WHERE subscriber_id = ? AND channel_id IN (${authorIds.map(() => '?').join(',')})`,
+    [myUserId, ...authorIds]
+  );
+  const mySubSet = new Set(mySubs.map(s => s.channel_id));
+
   return posts.map(p => {
     const author = authorMap.get(p.author_id);
     return {
@@ -83,6 +96,9 @@ async function attachAuthorAndStats(posts, myUserId) {
       likeCount: Number(likeCountMap.get(p.id) || 0),
       likedByMe: myLikeSet.has(p.id),
       commentCount: Number(commentCountMap.get(p.id) || 0),
+      viewCount: Number(p.view_count || 0),
+      subscriberCount: Number(subCountMap.get(p.author_id) || 0),
+      subscribedByMe: mySubSet.has(p.author_id),
     };
   });
 }
@@ -96,18 +112,23 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
 
   // ブロックしている/されている相手の投稿は出さない(以前はタイムラインにそのまま出ていた)
   const me = req.user.userId;
-  let rows;
-  if (before) {
-    rows = await db.all(
-      'SELECT * FROM posts WHERE deleted_at IS NULL AND created_at < ? AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) ORDER BY created_at DESC LIMIT ?',
-      [before, me, me, limit]
-    );
-  } else {
-    rows = await db.all(
-      'SELECT * FROM posts WHERE deleted_at IS NULL AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?) ORDER BY created_at DESC LIMIT ?',
-      [me, me, limit]
-    );
-  }
+  // ?channel=<userId> で特定チャンネル(投稿者)だけ。?filter=subscribed で登録中のチャンネルだけ。
+  const channel = typeof req.query.channel === 'string' && req.query.channel.length < 60 ? req.query.channel : null;
+  const subscribedOnly = req.query.filter === 'subscribed';
+
+  const where = ['deleted_at IS NULL',
+    'author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)',
+    'author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)'];
+  const args = [me, me];
+  if (before) { where.push('created_at < ?'); args.push(before); }
+  if (channel) { where.push('author_id = ?'); args.push(channel); }
+  if (subscribedOnly) { where.push('author_id IN (SELECT channel_id FROM user_subscriptions WHERE subscriber_id = ?)'); args.push(me); }
+  args.push(limit);
+
+  const rows = await db.all(
+    `SELECT * FROM posts WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT ?`,
+    args
+  );
 
   const posts = await attachAuthorAndStats(rows, req.user.userId);
   res.json(posts);
@@ -251,6 +272,59 @@ router.delete('/comments/:commentId', verifyToken, asyncHandler(async (req, res)
   }
   await db.run('UPDATE post_comments SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.commentId]);
   res.json({ ok: true });
+}));
+
+// --- 再生回数を数える(1ユーザー1回まで) ---
+// YouTubeの「再生回数」。同じ人が何度開いても1回。視聴者本人の投稿でも数える(YouTube同様)。
+router.post('/:postId/view', verifyToken, asyncHandler(async (req, res) => {
+  const post = await db.get('SELECT view_count FROM posts WHERE id = ? AND deleted_at IS NULL', [req.params.postId]);
+  if (!post) return res.status(404).json({ error: '投稿が見つかりません' });
+  const seen = await db.get('SELECT 1 AS x FROM post_views WHERE post_id = ? AND user_id = ?', [req.params.postId, req.user.userId]);
+  if (!seen) {
+    try {
+      await db.run('INSERT INTO post_views (post_id, user_id) VALUES (?, ?)', [req.params.postId, req.user.userId]);
+      await db.run('UPDATE posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ?', [req.params.postId]);
+    } catch (_) { /* 同時に二重で来たらPK重複で弾かれる。二重カウントを防ぐのが目的なので無視 */ }
+  }
+  const row = await db.get('SELECT view_count FROM posts WHERE id = ?', [req.params.postId]);
+  res.json({ ok: true, viewCount: Number(row?.view_count || 0) });
+}));
+
+// --- チャンネル(=投稿者)登録のトグル ---
+router.post('/channel/:channelId/subscribe', verifyToken, asyncHandler(async (req, res) => {
+  const channelId = req.params.channelId;
+  if (channelId === req.user.userId) return res.status(400).json({ error: '自分のチャンネルには登録できません' });
+  const ch = await db.get('SELECT id FROM users WHERE id = ?', [channelId]);
+  if (!ch) return res.status(404).json({ error: 'チャンネルが見つかりません' });
+  const existing = await db.get('SELECT 1 AS x FROM user_subscriptions WHERE subscriber_id = ? AND channel_id = ?', [req.user.userId, channelId]);
+  let subscribed;
+  if (existing) {
+    await db.run('DELETE FROM user_subscriptions WHERE subscriber_id = ? AND channel_id = ?', [req.user.userId, channelId]);
+    subscribed = false;
+  } else {
+    try { await db.run('INSERT INTO user_subscriptions (subscriber_id, channel_id) VALUES (?, ?)', [req.user.userId, channelId]); } catch (_) {}
+    subscribed = true;
+  }
+  const c = await db.get('SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE channel_id = ?', [channelId]);
+  res.json({ ok: true, subscribed, subscriberCount: Number(c?.cnt || 0) });
+}));
+
+// --- チャンネル情報(ヘッダー表示用) ---
+router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => {
+  const channelId = req.params.channelId;
+  const u = await db.get('SELECT id, display_name, profile_pic FROM users WHERE id = ?', [channelId]);
+  if (!u) return res.status(404).json({ error: 'チャンネルが見つかりません' });
+  const c = await db.get('SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE channel_id = ?', [channelId]);
+  const mine = await db.get('SELECT 1 AS x FROM user_subscriptions WHERE subscriber_id = ? AND channel_id = ?', [req.user.userId, channelId]);
+  const pc = await db.get('SELECT COUNT(*) AS cnt FROM posts WHERE author_id = ? AND deleted_at IS NULL', [channelId]);
+  res.json({
+    id: u.id,
+    name: u.display_name || '不明なユーザー',
+    pic: u.profile_pic || null,
+    subscriberCount: Number(c?.cnt || 0),
+    subscribedByMe: !!mine,
+    postCount: Number(pc?.cnt || 0),
+  });
 }));
 
 router.isValidMediaUrl = isValidMediaUrl;

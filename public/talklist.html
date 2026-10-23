@@ -169,25 +169,87 @@ html.dark-mode{
 .sbtn.active{color:var(--accent);}
 .tc{flex:1;padding:0 16px 16px;overflow-y:auto}
 .card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
-/* 投稿タイムライン */
-.post-card{background:rgba(255,255,255,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.4);border-radius:24px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);margin-bottom:12px}
-.post-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.post-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
-.post-author{font-weight:700;font-size:14px;color:#0f172a}
-.post-time{font-size:12px;color:#94a3b8}
-.post-text{font-size:14px;color:#0f172a;white-space:pre-wrap;word-break:break-word;line-height:1.5}
-.post-media{width:100%;max-height:340px;object-fit:cover;border-radius:16px;margin-top:10px;display:block}
-.post-actions{display:flex;align-items:center;gap:18px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(15,23,42,.06)}
-.post-action-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#64748b;padding:4px}
-.post-action-btn.liked{color:#ef4444}
-.post-del-btn{margin-left:auto;background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px}
-.post-comments{margin-top:10px;padding-top:10px;border-top:1px solid rgba(15,23,42,.06)}
-.post-comment-row{display:flex;gap:8px;margin-bottom:8px;font-size:13px}
-.post-comment-author{font-weight:700;color:#0f172a}
-.post-comment-text{color:#334155;word-break:break-word}
-.post-comment-form{display:flex;gap:8px;margin-top:8px}
-.post-comment-input{flex:1;padding:8px 12px;background:rgba(255,255,255,.7);border:1px solid rgba(15,23,42,.08);border-radius:999px;font-size:13px;outline:none}
-.post-comment-send{background:none;border:none;color:#3b82f6;font-weight:700;font-size:13px;cursor:pointer;padding:4px 8px}
+/* ============ 投稿 = YouTube風フィード ============ */
+/* 色トークン。ダークはhtml.dark-mode(背景#15181f)に合わせる */
+:root{--yt-fg:#0f0f0f;--yt-fg2:#606060;--yt-surf:rgba(255,255,255,.5);--yt-line:rgba(15,23,42,.08);--yt-chip:rgba(15,23,42,.06);--yt-chip-on:#0f0f0f;--yt-chip-on-fg:#fff;--yt-hover:rgba(15,23,42,.05);--yt-accent:#0f0f0f}
+html.dark-mode{--yt-fg:#f1f1f1;--yt-fg2:#aaa;--yt-surf:rgba(255,255,255,.05);--yt-line:rgba(255,255,255,.12);--yt-chip:rgba(255,255,255,.1);--yt-chip-on:#f1f1f1;--yt-chip-on-fg:#0f0f0f;--yt-hover:rgba(255,255,255,.08);--yt-accent:#f1f1f1}
+/* 上部: 検索 + フィルターchips。スクロールしても上に残す */
+.yt-top{position:sticky;top:0;z-index:30;margin:0 -16px;padding:8px 16px 6px;background:var(--bg,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.yt-search{display:flex;align-items:center;gap:8px;background:var(--yt-surf);border:1px solid var(--yt-line);border-radius:999px;padding:9px 16px}
+.yt-search input{flex:1;border:none;background:none;outline:none;font-size:15px;color:var(--yt-fg);font-family:inherit}
+.yt-search svg{width:18px;height:18px;stroke:var(--yt-fg2);flex-shrink:0}
+.yt-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-top:10px;padding-bottom:2px}
+.yt-chips::-webkit-scrollbar{display:none}
+.yt-chip{flex-shrink:0;border:none;background:var(--yt-chip);color:var(--yt-fg);font-size:14px;font-weight:600;padding:7px 13px;border-radius:9px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.yt-chip.on{background:var(--yt-chip-on);color:var(--yt-chip-on-fg)}
+/* フィード: モバイルは1列の大カード、PCはグリッド */
+#postsList{display:grid;grid-template-columns:1fr;gap:18px;margin-top:14px}
+@media(min-width:620px){#postsList{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px 16px}}
+.yt-card{cursor:pointer;animation:ytIn .3s ease both}
+@keyframes ytIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.yt-thumb{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;display:block}
+.yt-thumb img,.yt-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.yt-thumb.text-only{display:flex;align-items:center;justify-content:center;padding:18px;text-align:center}
+.yt-thumb.text-only span{color:#fff;font-weight:800;font-size:19px;line-height:1.35;max-height:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.yt-dur{position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.82);color:#fff;font-size:12px;font-weight:700;padding:1px 5px;border-radius:5px;letter-spacing:.02em}
+.yt-badge-live{position:absolute;left:7px;bottom:7px;background:#ff0033;color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:5px;letter-spacing:.06em;display:flex;align-items:center;gap:4px}
+.yt-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.yt-card:hover .yt-play{opacity:1}
+.yt-play span{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+.yt-meta{display:flex;gap:11px;margin-top:11px}
+.yt-ch-av{width:36px;height:36px;border-radius:50%;flex-shrink:0;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px}
+.yt-mbody{flex:1;min-width:0}
+.yt-title{font-size:15px;font-weight:700;color:var(--yt-fg);line-height:1.32;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.yt-sub{font-size:13px;color:var(--yt-fg2);margin-top:4px;line-height:1.4;word-break:break-word}
+.yt-sub .dot{margin:0 5px}
+.yt-menu{background:none;border:none;color:var(--yt-fg2);padding:2px;cursor:pointer;align-self:flex-start;margin-top:-2px}
+.yt-menu svg{width:20px;height:20px}
+/* ============ 視聴ページ ============ */
+.yt-watch{position:fixed;inset:0;z-index:1200;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none;animation:ytWatchIn .22s ease}
+html.dark-mode .yt-watch{--yt-watch-bg:#0f0f0f}
+@keyframes ytWatchIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.yt-watch.open{display:block}
+.yt-player{position:sticky;top:0;z-index:5;width:100%;background:#000;aspect-ratio:16/9;max-height:56vh}
+.yt-player video,.yt-player img{width:100%;height:100%;object-fit:contain;background:#000;display:block}
+.yt-wback{position:absolute;top:10px;left:10px;z-index:6;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.45);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.yt-wback svg{width:22px;height:22px;stroke:#fff}
+.yt-wbody{padding:14px 16px 40px;max-width:1100px;margin:0 auto}
+.yt-wtitle{font-size:18px;font-weight:700;color:var(--yt-fg);line-height:1.3;word-break:break-word}
+.yt-wmeta{font-size:13px;color:var(--yt-fg2);margin-top:5px}
+.yt-actions{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-top:13px}
+.yt-actions::-webkit-scrollbar{display:none}
+.yt-act{flex-shrink:0;display:flex;align-items:center;gap:7px;background:var(--yt-chip);color:var(--yt-fg);border:none;border-radius:999px;padding:9px 15px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.yt-act svg{width:19px;height:19px;stroke:var(--yt-fg);fill:none}
+.yt-act.on svg{fill:var(--yt-fg)}
+.yt-chrow{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px 0;border-top:1px solid var(--yt-line);border-bottom:1px solid var(--yt-line)}
+.yt-chrow .yt-ch-av{width:42px;height:42px;cursor:pointer}
+.yt-chinfo{flex:1;min-width:0;cursor:pointer}
+.yt-chname{font-size:15px;font-weight:700;color:var(--yt-fg)}
+.yt-chsubs{font-size:12px;color:var(--yt-fg2);margin-top:1px}
+.yt-subbtn{flex-shrink:0;background:var(--yt-fg);color:var(--yt-watch-bg,#fff);border:none;border-radius:999px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+html.dark-mode .yt-subbtn{color:#0f0f0f}
+.yt-subbtn.on{background:var(--yt-chip);color:var(--yt-fg)}
+.yt-desc{background:var(--yt-chip);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--yt-fg);line-height:1.5;white-space:pre-wrap;word-break:break-word;cursor:pointer}
+.yt-desc.clamped{-webkit-line-clamp:3;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}
+.yt-sec-title{font-size:16px;font-weight:700;color:var(--yt-fg);margin:20px 0 12px}
+.yt-cform{display:flex;gap:10px;align-items:center;margin-bottom:16px}
+.yt-cform .yt-ch-av{width:34px;height:34px}
+.yt-cform input{flex:1;background:none;border:none;border-bottom:1px solid var(--yt-line);padding:7px 2px;font-size:14px;color:var(--yt-fg);outline:none;font-family:inherit}
+.yt-cform button{background:none;border:none;color:var(--yt-accent);font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+.yt-crow{display:flex;gap:11px;margin-bottom:16px}
+.yt-crow .yt-ch-av{width:34px;height:34px}
+.yt-cmain{flex:1;min-width:0}
+.yt-chead{font-size:12px;color:var(--yt-fg2);margin-bottom:2px}
+.yt-ctext{font-size:14px;color:var(--yt-fg);line-height:1.45;word-break:break-word}
+.yt-cdel{background:none;border:none;color:var(--yt-fg2);cursor:pointer;font-size:12px;padding:2px 0;margin-top:3px}
+.yt-rec{display:flex;gap:10px;margin-bottom:12px;cursor:pointer}
+.yt-rec .yt-thumb{width:160px;flex-shrink:0;border-radius:10px}
+.yt-rec-body{flex:1;min-width:0}
+.yt-rec-title{font-size:14px;font-weight:700;color:var(--yt-fg);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.yt-rec-sub{font-size:12px;color:var(--yt-fg2);margin-top:4px}
+@media(min-width:900px){.yt-wgrid{display:flex;gap:24px;align-items:flex-start}.yt-wmain{flex:1;min-width:0}.yt-wside{width:360px;flex-shrink:0}.yt-rec .yt-thumb{width:168px}}
+/* 作成パネル(コンポーザー) */
+.yt-compose{margin-top:14px}
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
@@ -533,7 +595,23 @@ window.ensureGroupCrypto = (function () {
       </section>
 
       <section id="pagePosts" style="display:none">
-        <div class="card">
+        <div class="yt-top">
+          <div class="yt-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="feedSearch" type="text" placeholder="検索" data-i18n-placeholder="feed_search" autocomplete="off">
+            <button type="button" id="feedCreateBtn" aria-label="作成" style="background:none;border:none;padding:0;cursor:pointer;display:flex;color:var(--yt-fg2)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+          <div class="yt-chips" id="feedChips">
+            <button type="button" class="yt-chip on" data-filter="all" data-i18n="chip_all">すべて</button>
+            <button type="button" class="yt-chip" data-filter="subscribed" data-i18n="chip_subscribed">登録チャンネル</button>
+            <button type="button" class="yt-chip" data-filter="video" data-i18n="chip_video">動画</button>
+            <button type="button" class="yt-chip" data-filter="image" data-i18n="chip_image">画像</button>
+            <button type="button" class="yt-chip" data-filter="live" data-i18n="chip_live">ライブ</button>
+          </div>
+        </div>
+        <div class="card yt-compose" id="postComposer" style="display:none">
           <textarea id="postTextInput" placeholder="今なにしてる？" data-i18n-placeholder="post_placeholder" rows="3" style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:16px;outline:none;font-size:14px;font-family:inherit;resize:none;"></textarea>
           <div id="postMediaPreview" style="display:none;margin-top:10px;position:relative;">
             <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
@@ -563,12 +641,13 @@ window.ensureGroupCrypto = (function () {
             <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;" data-i18n="post_btn">投稿する</button>
           </div>
         </div>
-        <div id="liveStrip" style="display:none;flex-direction:column;gap:8px;margin:0 0 12px"></div>
-        <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px">読み込み中...</div></div>
+        <div id="liveStrip" style="display:none;flex-direction:column;gap:8px;margin:14px 0 0"></div>
+        <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px" data-i18n="feed_loading">読み込み中...</div></div>
+        <div id="ytWatch" class="yt-watch" aria-hidden="true"></div>
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.267 beta</div>
+  <div class="version-badge">Bro Chat v1.28.268 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3717,7 +3796,12 @@ document.getElementById('postSubmitBtn').onclick = async () => {
       document.getElementById('postVideoLoading').style.display = 'none';
       document.getElementById('postImageFile').value = '';
       document.getElementById('postVideoFile').value = '';
+      const composerEl = document.getElementById('postComposer');
+      if (composerEl) composerEl.style.display = 'none';
       postsOldestTimestamp = null;
+      feedScope = 'all'; feedKind = 'all';
+      const chips = document.getElementById('feedChips');
+      if (chips) chips.querySelectorAll('.yt-chip').forEach(c => c.classList.toggle('on', c.dataset.filter === 'all'));
       loadPosts();
     } else {
       alert(data.error || '投稿に失敗しました');
@@ -3732,37 +3816,90 @@ document.getElementById('postSubmitBtn').onclick = async () => {
 
 let postsReloadPending = false, postsHasMore = true, postsLoadingOld = false;
 const POSTS_PAGE = 20;
+let postsAll = [];          // 取得済みの全投稿(フィルタ前)
+let feedScope = 'all';      // サーバー側の絞り込み: all | subscribed
+let feedKind = 'all';       // 画面側の絞り込み: all | video | image | live
+let feedQuery = '';         // 検索語(小文字)
+
+function feedEndpoint(before) {
+  let q = [];
+  if (feedScope === 'subscribed') q.push('filter=subscribed');
+  if (before) q.push('before=' + encodeURIComponent(before));
+  return '/api/posts' + (q.length ? '?' + q.join('&') : '');
+}
+
+// ---- 投稿のタイトル/説明を本文から作る(YouTube風に1行目=タイトル) ----
+function postTitle(p) {
+  const t = (p.text || '').trim();
+  if (t) { const first = t.split('\n')[0].trim(); if (first) return first; }
+  if (p.mediaType === 'video') return i18n.t('chip_video');
+  if (p.mediaType === 'image') return i18n.t('chip_image');
+  return p.authorName || 'Bro Chat';
+}
+function postDesc(p) {
+  const t = (p.text || '').trim();
+  const nl = t.indexOf('\n');
+  return nl >= 0 ? t.slice(nl + 1).trim() : '';
+}
+
+// ---- 数字を YouTube風に(日本語は万/億、英語は K/M) ----
+function fmtNum(n) {
+  n = Number(n) || 0;
+  const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
+  if (lang === 'ja' || lang === 'zh-CN' || lang === 'ko') {
+    const man = lang === 'ja' ? '万' : lang === 'ko' ? '만' : '万';
+    const oku = lang === 'ja' ? '億' : lang === 'ko' ? '억' : '亿';
+    if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + oku;
+    if (n >= 1e4) return (n / 1e4).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, '') + man;
+    return String(n);
+  }
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+function fmtViews(n) {
+  const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja', c = fmtNum(n);
+  if (lang === 'ja') return c + ' 回視聴';
+  if (lang === 'zh-CN') return c + '次观看';
+  if (lang === 'ko') return '조회수 ' + c + '회';
+  return c + ' views';
+}
+function fmtSubs(n) {
+  const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja', c = fmtNum(n);
+  if (lang === 'ja') return 'チャンネル登録者 ' + c + '人';
+  if (lang === 'zh-CN') return c + '位订阅者';
+  if (lang === 'ko') return '구독자 ' + c + '명';
+  return c + ' subscribers';
+}
+// Cloudinaryの動画URLからサムネ(先頭フレームjpg)を作る
+function cldVideoPoster(url) {
+  if (typeof url !== 'string' || !/res\.cloudinary\.com\/.+\/video\/upload\//.test(url)) return null;
+  return url.replace('/video/upload/', '/video/upload/so_0,w_640,h_360,c_fill,q_auto/').replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, '.jpg');
+}
+function fmtDur(sec) {
+  sec = Math.floor(sec || 0);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
 async function loadPosts() {
   if (window.refreshLiveStrip) window.refreshLiveStrip();
-  // 読み込み中に呼ばれた(投稿した直後など)ら、終わってからもう一度読む。以前は黙って捨てて、出した投稿が出ないことがあった
   if (postsLoading) { postsReloadPending = true; return; }
   postsLoading = true;
   postsHasMore = true;
-  const list = document.getElementById('postsList');
   try {
-    const posts = await api('/api/posts');
-    if (Array.isArray(posts) && posts.length < POSTS_PAGE) postsHasMore = false;
-    list.textContent = '';
-    if (!Array.isArray(posts) || posts.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:24px';
-      empty.textContent = 'まだ投稿がありません';
-      list.appendChild(empty);
-      postsOldestTimestamp = null;
-      return;
-    }
-    posts.forEach((p, idx) => {
-      const card = renderPostCard(p);
-      card.style.animationDelay = Math.min(idx * 40, 320) + 'ms';
-      list.appendChild(card);
-    });
-    postsOldestTimestamp = posts[posts.length - 1].createdAt;
+    const posts = await api(feedEndpoint(null));
+    postsAll = Array.isArray(posts) ? posts : [];
+    if (postsAll.length < POSTS_PAGE) postsHasMore = false;
+    postsOldestTimestamp = postsAll.length ? postsAll[postsAll.length - 1].createdAt : null;
+    renderFeed();
   } catch (e) {
     console.error('loadPosts error:', e);
+    const list = document.getElementById('postsList');
     list.textContent = '';
     const err = document.createElement('div');
     err.style.cssText = 'text-align:center;color:#ef4444;font-size:14px;padding:24px';
-    err.textContent = '読み込みに失敗しました';
+    err.textContent = i18n.t('feed_load_failed');
     list.appendChild(err);
   } finally {
     postsLoading = false;
@@ -3771,17 +3908,55 @@ async function loadPosts() {
   }
 }
 
-// 下まで見たら、もっと前の投稿を読む(以前は最新20件より前は見られなかった)
+function feedFiltered() {
+  let arr = postsAll;
+  if (feedKind === 'video') arr = arr.filter(p => p.mediaType === 'video');
+  else if (feedKind === 'image') arr = arr.filter(p => p.mediaType === 'image');
+  else if (feedKind === 'live') arr = [];
+  if (feedQuery) arr = arr.filter(p => (postTitle(p) + ' ' + (p.text || '') + ' ' + (p.authorName || '')).toLowerCase().includes(feedQuery));
+  return arr;
+}
+function renderFeed() {
+  const list = document.getElementById('postsList');
+  if (!list) return;
+  const arr = feedFiltered();
+  list.textContent = '';
+  if (feedKind === 'live') {
+    const live = document.getElementById('liveStrip');
+    if (!live || live.style.display === 'none' || !live.children.length) {
+      const e = document.createElement('div');
+      e.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--yt-fg2);font-size:14px;padding:30px 10px';
+      e.textContent = (i18n.getLang && i18n.getLang() === 'ja') ? 'ライブ配信中のチャンネルはありません' : 'No one is live right now';
+      list.appendChild(e);
+    }
+    return;
+  }
+  if (!arr.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--yt-fg2);font-size:14px;padding:30px 10px';
+    empty.textContent = i18n.t('no_posts_yet');
+    list.appendChild(empty);
+    return;
+  }
+  arr.forEach((p, idx) => {
+    const card = renderPostCard(p);
+    card.style.animationDelay = Math.min(idx * 35, 280) + 'ms';
+    list.appendChild(card);
+  });
+}
+
+// 下まで見たら、もっと前の投稿を読む
 async function loadOlderPosts() {
   if (!postsHasMore || postsLoadingOld || postsLoading || !postsOldestTimestamp) return;
   postsLoadingOld = true;
   try {
-    const posts = await api('/api/posts?before=' + encodeURIComponent(postsOldestTimestamp));
+    const posts = await api(feedEndpoint(postsOldestTimestamp));
     if (!Array.isArray(posts) || posts.length === 0) { postsHasMore = false; return; }
     if (posts.length < POSTS_PAGE) postsHasMore = false;
-    const list = document.getElementById('postsList');
-    posts.forEach(p => { if (!list.querySelector(`[data-post-id="${CSS.escape(String(p.id))}"]`)) list.appendChild(renderPostCard(p)); });
+    const have = new Set(postsAll.map(p => p.id));
+    posts.forEach(p => { if (!have.has(p.id)) postsAll.push(p); });
     postsOldestTimestamp = posts[posts.length - 1].createdAt;
+    renderFeed();
   } catch (e) {
     console.error('loadOlderPosts error:', e);
   } finally {
@@ -3798,223 +3973,435 @@ function ensurePostsSentinel() {
     s.id = 'postsSentinel';
     s.style.cssText = 'height:1px';
     list.parentNode.insertBefore(s, list.nextSibling);
-    _postsObserver = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadOlderPosts(); }, { rootMargin: '400px 0px' });
+    _postsObserver = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadOlderPosts(); }, { rootMargin: '600px 0px' });
     _postsObserver.observe(s);
   }
 }
 
-function renderPostCard(p) {
-  const card = document.createElement('div');
-  card.className = 'post-card glass-materialize-light';
-  card.dataset.postId = p.id;
-
-  const header = document.createElement('div');
-  header.className = 'post-header';
-
-  const av = document.createElement('div');
-  av.className = 'post-av';
-  setAvatarBackground(av, p.authorPic, (p.authorName || '?')[0]);
-  // 画像アイコンの場合のみタップで全画面プレビューを開く
-  // (頭文字表示のときは拡大しても意味がないため何もしない)
-  if (p.authorPic && (p.authorPic.startsWith('data:image/') || p.authorPic.startsWith('https://'))) {
-    av.style.cursor = 'pointer';
-    av.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      if (window.openTalklistMedia) window.openTalklistMedia(p.authorPic, false);
+// ---- 検索 / フィルターchips / 作成ボタン の配線(1回だけ) ----
+(function setupFeedControls() {
+  const search = document.getElementById('feedSearch');
+  if (search) {
+    let deb;
+    search.addEventListener('input', () => {
+      feedQuery = search.value.trim().toLowerCase();
+      clearTimeout(deb);
+      deb = setTimeout(renderFeed, 140);
     });
   }
-
-  const info = document.createElement('div');
-  info.style.flex = '1';
-  const nameEl = document.createElement('div');
-  nameEl.className = 'post-author';
-  nameEl.textContent = p.authorName;
-  const timeEl = document.createElement('div');
-  timeEl.className = 'post-time';
-  timeEl.textContent = formatPostTime(p.createdAt);
-  info.appendChild(nameEl);
-  info.appendChild(timeEl);
-
-  header.appendChild(av);
-  header.appendChild(info);
-
-  if (p.authorId === myUserId) {
-    const delBtn = document.createElement('button');
-    delBtn.className = 'post-del-btn';
-    delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
-    delBtn.addEventListener('click', () => deletePost(p.id, card));
-    header.appendChild(delBtn);
+  const chips = document.getElementById('feedChips');
+  if (chips) {
+    chips.addEventListener('click', (e) => {
+      const btn = e.target.closest('.yt-chip');
+      if (!btn) return;
+      chips.querySelectorAll('.yt-chip').forEach(c => c.classList.toggle('on', c === btn));
+      const f = btn.dataset.filter;
+      if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+      if (f === 'all') { feedScope = 'all'; feedKind = 'all'; loadPosts(); }
+      else if (f === 'subscribed') { feedScope = 'subscribed'; feedKind = 'all'; loadPosts(); }
+      else { feedKind = f; renderFeed(); }
+    });
   }
-
-  card.appendChild(header);
-
-  if (p.text) {
-    const textEl = document.createElement('div');
-    textEl.className = 'post-text';
-    setLinkedText(textEl, p.text);
-    card.appendChild(textEl);
+  const createBtn = document.getElementById('feedCreateBtn');
+  const composer = document.getElementById('postComposer');
+  if (createBtn && composer) {
+    createBtn.addEventListener('click', () => {
+      const open = composer.style.display !== 'none';
+      composer.style.display = open ? 'none' : 'block';
+      if (!open) { composer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); const ta = document.getElementById('postTextInput'); if (ta) setTimeout(() => ta.focus(), 120); }
+    });
   }
+})();
 
-  if (p.mediaUrl) {
-    if (p.mediaType === 'video') {
-      const video = document.createElement('video');
-      video.className = 'post-media';
-      video.src = p.mediaUrl;
-      video.controls = true;
-      video.style.cursor = 'pointer';
-      card.appendChild(video);
+function loadCardDuration(url, el) {
+  try {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.src = url;
+    v.addEventListener('loadedmetadata', () => { if (isFinite(v.duration) && v.duration > 0) el.textContent = fmtDur(v.duration); v.src = ''; }, { once: true });
+    v.addEventListener('error', () => { v.src = ''; }, { once: true });
+  } catch (_) {}
+}
+
+// YouTube風カード: サムネ + チャンネルアバター + タイトル + (チャンネル・再生回数・時間)
+function renderPostCard(p) {
+  const card = document.createElement('div');
+  card.className = 'yt-card';
+  card.dataset.postId = p.id;
+
+  const thumb = document.createElement('div');
+  thumb.className = 'yt-thumb';
+  if (p.mediaType === 'image' && p.mediaUrl) {
+    const img = document.createElement('img');
+    img.loading = 'lazy'; img.decoding = 'async'; img.alt = '';
+    img.src = window.cldTransform ? window.cldTransform(p.mediaUrl, 'w_640,h_360,c_fill,q_auto,f_auto') : p.mediaUrl;
+    img.onerror = () => { if (img.src !== p.mediaUrl && !img.dataset.fell) { img.dataset.fell = '1'; img.src = p.mediaUrl; } };
+    thumb.appendChild(img);
+  } else if (p.mediaType === 'video' && p.mediaUrl) {
+    const poster = cldVideoPoster(p.mediaUrl);
+    if (poster) {
+      const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async'; img.alt = ''; img.src = poster;
+      thumb.appendChild(img);
     } else {
-      const img = document.createElement('img');
-      img.className = 'post-media';
-      // 50MP級の原寸をそのまま出すと端末のメモリが足りなくなるので、フィードは縮小版で出す
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.src = window.cldTransform ? window.cldTransform(p.mediaUrl, 'w_1080,c_limit,q_auto,f_auto') : p.mediaUrl;
-      img.onerror = () => { if (img.src !== p.mediaUrl && !img.dataset.fell) { img.dataset.fell = '1'; img.src = p.mediaUrl; } };
-      img.alt = '';
-      img.style.cursor = 'pointer';
-      // タップで全画面プレビュー(HD表示・ダウンロードボタン付き)を開く
-      img.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        if (window.openTalklistMedia) window.openTalklistMedia(p.mediaUrl, false, p.mediaUrl);
-      });
-      card.appendChild(img);
+      const v = document.createElement('video'); v.src = p.mediaUrl + '#t=0.1'; v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+      thumb.appendChild(v);
     }
+    const dur = document.createElement('div'); dur.className = 'yt-dur';
+    thumb.appendChild(dur);
+    loadCardDuration(p.mediaUrl, dur);
+    const play = document.createElement('div'); play.className = 'yt-play';
+    play.innerHTML = '<span><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span>';
+    thumb.appendChild(play);
+  } else {
+    thumb.classList.add('text-only');
+    thumb.style.background = 'linear-gradient(135deg,#334155,#0f172a)';
+    const s = document.createElement('span'); s.textContent = postTitle(p);
+    thumb.appendChild(s);
   }
+  card.appendChild(thumb);
 
-  const actions = document.createElement('div');
-  actions.className = 'post-actions';
+  const meta = document.createElement('div'); meta.className = 'yt-meta';
+  const av = document.createElement('div'); av.className = 'yt-ch-av';
+  setAvatarBackground(av, p.authorPic, (p.authorName || '?')[0]);
+  const body = document.createElement('div'); body.className = 'yt-mbody';
+  const title = document.createElement('div'); title.className = 'yt-title'; title.textContent = postTitle(p);
+  const sub = document.createElement('div'); sub.className = 'yt-sub';
+  sub.appendChild(document.createTextNode(p.authorName || ''));
+  const dot1 = document.createElement('span'); dot1.className = 'dot'; dot1.textContent = '・'; sub.appendChild(dot1);
+  sub.appendChild(document.createTextNode(fmtViews(p.viewCount)));
+  const dot2 = document.createElement('span'); dot2.className = 'dot'; dot2.textContent = '・'; sub.appendChild(dot2);
+  sub.appendChild(document.createTextNode(formatPostTime(p.createdAt)));
+  body.appendChild(title); body.appendChild(sub);
+  const menu = document.createElement('button'); menu.className = 'yt-menu'; menu.setAttribute('aria-label', 'メニュー');
+  menu.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+  menu.addEventListener('click', (ev) => { ev.stopPropagation(); openPostMenu(p); });
+  meta.appendChild(av); meta.appendChild(body); meta.appendChild(menu);
+  card.appendChild(meta);
 
-  const likeBtn = document.createElement('button');
-  likeBtn.className = 'post-action-btn' + (p.likedByMe ? ' liked' : '');
-  likeBtn.dataset.liked = p.likedByMe ? '1' : '0';
-  const likeCountSpan = document.createElement('span');
-  likeCountSpan.textContent = p.likeCount;
-  likeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="${p.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
-  likeBtn.appendChild(likeCountSpan);
-  likeBtn.addEventListener('click', () => toggleLike(p.id, likeBtn, likeCountSpan));
-  actions.appendChild(likeBtn);
-
-  const commentBtn = document.createElement('button');
-  commentBtn.className = 'post-action-btn';
-  commentBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>${p.commentCount}</span>`;
-  const commentsWrap = document.createElement('div');
-  commentsWrap.className = 'post-comments';
-  commentsWrap.style.display = 'none';
-  commentBtn.addEventListener('click', () => toggleComments(p.id, commentsWrap));
-  actions.appendChild(commentBtn);
-
-  card.appendChild(actions);
-  card.appendChild(commentsWrap);
-
+  card.addEventListener('click', () => openWatch(p));
   return card;
 }
 
-async function toggleLike(postId, btn, countSpan) {
+// 投稿内の値が変わったら、キャッシュ上の同じ投稿・同じチャンネルに反映して、フィードと視聴ページの表示を揃える
+function syncPostInCache(p, fields) {
+  postsAll.forEach(x => {
+    if (x.id === p.id) Object.assign(x, fields);
+    if ((fields.subscribedByMe !== undefined || fields.subscriberCount !== undefined) && x.authorId === p.authorId) {
+      if (fields.subscribedByMe !== undefined) x.subscribedByMe = fields.subscribedByMe;
+      if (fields.subscriberCount !== undefined) x.subscriberCount = fields.subscriberCount;
+    }
+  });
+}
+
+// ---------- 視聴ページ ----------
+let watchViewed = new Set();
+function closeWatch() {
+  const w = document.getElementById('ytWatch');
+  if (!w) return;
+  const v = w.querySelector('.yt-player video'); if (v) { try { v.pause(); } catch (_) {} }
+  w.classList.remove('open'); w.setAttribute('aria-hidden', 'true'); w.innerHTML = '';
+  document.body.style.overflow = '';
+}
+window.addEventListener('popstate', () => {
+  const w = document.getElementById('ytWatch');
+  if (w && w.classList.contains('open')) closeWatch();
+});
+
+function mkAct(svg, label) {
+  const b = document.createElement('button'); b.className = 'yt-act'; b.innerHTML = svg;
+  const s = document.createElement('span'); s.textContent = label; b.appendChild(s);
+  return b;
+}
+
+async function openWatch(p) {
+  const w = document.getElementById('ytWatch');
+  if (!w) return;
+  const first = !w.classList.contains('open');
+  if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+  w.innerHTML = '';
+  w.classList.add('open'); w.setAttribute('aria-hidden', 'false'); w.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  if (first) { try { history.pushState({ ytWatch: 1 }, ''); } catch (_) {} }
+
+  // プレーヤー
+  const player = document.createElement('div'); player.className = 'yt-player';
+  const back = document.createElement('button'); back.className = 'yt-wback'; back.setAttribute('aria-label', '戻る');
+  back.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  back.addEventListener('click', () => { try { history.back(); } catch (_) { closeWatch(); } });
+  player.appendChild(back);
+  if (p.mediaType === 'video' && p.mediaUrl) {
+    const v = document.createElement('video'); v.src = p.mediaUrl; v.controls = true; v.autoplay = true; v.playsInline = true; v.preload = 'metadata';
+    player.appendChild(v);
+  } else if (p.mediaType === 'image' && p.mediaUrl) {
+    const img = document.createElement('img');
+    img.src = window.cldTransform ? window.cldTransform(p.mediaUrl, 'w_1280,c_limit,q_auto,f_auto') : p.mediaUrl;
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', () => { if (window.openTalklistMedia) window.openTalklistMedia(p.mediaUrl, false, p.mediaUrl); });
+    player.appendChild(img);
+  } else {
+    player.style.aspectRatio = 'auto'; player.style.maxHeight = 'none';
+    const box = document.createElement('div');
+    box.style.cssText = 'padding:64px 20px 28px;color:#fff;font-size:20px;font-weight:800;line-height:1.45;white-space:pre-wrap;word-break:break-word;min-height:150px;background:linear-gradient(135deg,#334155,#0f172a)';
+    box.textContent = (p.text || postTitle(p));
+    player.appendChild(box);
+  }
+  w.appendChild(player);
+
+  const grid = document.createElement('div'); grid.className = 'yt-wbody';
+  const layout = document.createElement('div'); layout.className = 'yt-wgrid';
+  const main = document.createElement('div'); main.className = 'yt-wmain';
+  const side = document.createElement('div'); side.className = 'yt-wside';
+  layout.appendChild(main); layout.appendChild(side); grid.appendChild(layout); w.appendChild(grid);
+
+  const title = document.createElement('div'); title.className = 'yt-wtitle'; title.textContent = postTitle(p); main.appendChild(title);
+  const wmeta = document.createElement('div'); wmeta.className = 'yt-wmeta'; wmeta.textContent = fmtViews(p.viewCount) + ' ・ ' + formatPostTime(p.createdAt); main.appendChild(wmeta);
+
+  // アクション
+  const actions = document.createElement('div'); actions.className = 'yt-actions';
+  const likeBtn = document.createElement('button'); likeBtn.className = 'yt-act' + (p.likedByMe ? ' on' : ''); likeBtn.dataset.liked = p.likedByMe ? '1' : '0';
+  likeBtn.innerHTML = '<svg viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path d="M7 11v9M2 13v6a2 2 0 0 0 2 2h13.3a2 2 0 0 0 2-1.7l1.3-7a2 2 0 0 0-2-2.3H14l1-4.3A2 2 0 0 0 13 3l-6 8H2z"/></svg>';
+  const likeC = document.createElement('span'); likeC.textContent = fmtNum(p.likeCount); likeBtn.appendChild(likeC);
+  likeBtn.addEventListener('click', () => watchToggleLike(p, likeBtn, likeC));
+  actions.appendChild(likeBtn);
+  const shareBtn = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', i18n.t('share'));
+  shareBtn.addEventListener('click', () => sharePost(p)); actions.appendChild(shareBtn);
+  if (p.mediaUrl) {
+    const dl = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>', i18n.t('download'));
+    dl.addEventListener('click', () => downloadPost(p)); actions.appendChild(dl);
+  }
+  if (p.authorId === myUserId) {
+    const del = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>', i18n.getLang && i18n.getLang() === 'ja' ? '削除' : 'Delete');
+    del.addEventListener('click', () => deletePost(p.id)); actions.appendChild(del);
+  }
+  main.appendChild(actions);
+
+  // チャンネル行
+  const chrow = document.createElement('div'); chrow.className = 'yt-chrow';
+  const chav = document.createElement('div'); chav.className = 'yt-ch-av'; setAvatarBackground(chav, p.authorPic, (p.authorName || '?')[0]);
+  const chinfo = document.createElement('div'); chinfo.className = 'yt-chinfo';
+  const chname = document.createElement('div'); chname.className = 'yt-chname'; chname.textContent = p.authorName;
+  const chsubs = document.createElement('div'); chsubs.className = 'yt-chsubs'; chsubs.textContent = fmtSubs(p.subscriberCount);
+  chinfo.appendChild(chname); chinfo.appendChild(chsubs);
+  chrow.appendChild(chav); chrow.appendChild(chinfo);
+  if (p.authorId !== myUserId) {
+    const subBtn = document.createElement('button'); subBtn.className = 'yt-subbtn' + (p.subscribedByMe ? ' on' : '');
+    subBtn.textContent = i18n.t(p.subscribedByMe ? 'subscribed' : 'subscribe');
+    subBtn.addEventListener('click', () => watchToggleSub(p, subBtn, chsubs));
+    chrow.appendChild(subBtn);
+  }
+  main.appendChild(chrow);
+
+  // 説明(本文の2行目以降)
+  const desc = postDesc(p);
+  if (desc) {
+    const d = document.createElement('div'); d.className = 'yt-desc clamped'; setLinkedText(d, desc);
+    d.addEventListener('click', () => d.classList.toggle('clamped'));
+    main.appendChild(d);
+  }
+
+  // コメント
+  const csec = document.createElement('div');
+  const ctitle = document.createElement('div'); ctitle.className = 'yt-sec-title'; ctitle.textContent = i18n.t('comments_label') + ' ' + fmtNum(p.commentCount);
+  csec.appendChild(ctitle);
+  const clist = document.createElement('div');
+  csec.appendChild(watchCommentForm(p, clist, ctitle));
+  csec.appendChild(clist);
+  main.appendChild(csec);
+  loadWatchComments(p, clist);
+
+  // おすすめ(他の投稿)
+  const recs = postsAll.filter(x => x.id !== p.id).slice(0, 14);
+  if (recs.length) {
+    const rt = document.createElement('div'); rt.className = 'yt-sec-title'; rt.textContent = i18n.t('up_next'); side.appendChild(rt);
+    recs.forEach(x => side.appendChild(renderRec(x)));
+  }
+
+  // 再生回数(1人1回)
+  if (!watchViewed.has(p.id)) {
+    watchViewed.add(p.id);
+    api(`/api/posts/${p.id}/view`, { method: 'POST' }).then(r => {
+      if (r && typeof r.viewCount === 'number') {
+        p.viewCount = r.viewCount; syncPostInCache(p, { viewCount: r.viewCount });
+        wmeta.textContent = fmtViews(r.viewCount) + ' ・ ' + formatPostTime(p.createdAt);
+      }
+    }).catch(() => {});
+  }
+}
+
+function renderRec(x) {
+  const rec = document.createElement('div'); rec.className = 'yt-rec';
+  const thumb = document.createElement('div'); thumb.className = 'yt-thumb';
+  if (x.mediaType === 'image' && x.mediaUrl) {
+    const img = document.createElement('img'); img.loading = 'lazy'; img.alt = '';
+    img.src = window.cldTransform ? window.cldTransform(x.mediaUrl, 'w_400,h_225,c_fill,q_auto,f_auto') : x.mediaUrl;
+    thumb.appendChild(img);
+  } else if (x.mediaType === 'video' && x.mediaUrl) {
+    const poster = cldVideoPoster(x.mediaUrl);
+    if (poster) { const img = document.createElement('img'); img.loading = 'lazy'; img.alt = ''; img.src = poster; thumb.appendChild(img); }
+    else { const v = document.createElement('video'); v.src = x.mediaUrl + '#t=0.1'; v.preload = 'metadata'; v.muted = true; thumb.appendChild(v); }
+    const dur = document.createElement('div'); dur.className = 'yt-dur'; thumb.appendChild(dur); loadCardDuration(x.mediaUrl, dur);
+  } else {
+    thumb.classList.add('text-only'); thumb.style.background = 'linear-gradient(135deg,#334155,#0f172a)';
+    const s = document.createElement('span'); s.style.fontSize = '13px'; s.textContent = postTitle(x); thumb.appendChild(s);
+  }
+  const b = document.createElement('div'); b.className = 'yt-rec-body';
+  const t = document.createElement('div'); t.className = 'yt-rec-title'; t.textContent = postTitle(x);
+  const s = document.createElement('div'); s.className = 'yt-rec-sub'; s.textContent = (x.authorName || '') + ' ・ ' + fmtViews(x.viewCount);
+  b.appendChild(t); b.appendChild(s);
+  rec.appendChild(thumb); rec.appendChild(b);
+  rec.addEventListener('click', () => openWatch(x));
+  return rec;
+}
+
+async function watchToggleLike(p, btn, countEl) {
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   try {
-    const data = await api(`/api/posts/${postId}/like`, { method: 'POST' });
+    const data = await api(`/api/posts/${p.id}/like`, { method: 'POST' });
     if (data.ok) {
-      const wasLiked = btn.dataset.liked === '1';
-      btn.dataset.liked = data.liked ? '1' : '0';
-      btn.classList.toggle('liked', data.liked);
-      const svg = btn.querySelector('svg');
-      if (svg) svg.setAttribute('fill', data.liked ? 'currentColor' : 'none');
-      countSpan.textContent = parseInt(countSpan.textContent, 10) + (data.liked ? 1 : -1);
+      p.likedByMe = data.liked;
+      p.likeCount = Math.max(0, (p.likeCount || 0) + (data.liked ? 1 : -1));
+      btn.classList.toggle('on', data.liked);
+      countEl.textContent = fmtNum(p.likeCount);
+      syncPostInCache(p, { likedByMe: p.likedByMe, likeCount: p.likeCount });
     }
-  } catch (e) { console.error('toggleLike error:', e); }
+  } catch (e) { console.error('watchToggleLike error:', e); }
 }
 
-let openCommentsPostId = null;
-async function toggleComments(postId, wrap) {
-  if (wrap.style.display === 'block') {
-    wrap.style.display = 'none';
-    return;
-  }
-  wrap.style.display = 'block';
-  wrap.textContent = '';
-  const loading = document.createElement('div');
-  loading.style.cssText = 'font-size:12px;color:#94a3b8;padding:4px 0';
-  loading.textContent = '読み込み中...';
-  wrap.appendChild(loading);
-
+async function watchToggleSub(p, btn, subsEl) {
+  if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
+  btn.disabled = true;
   try {
-    const comments = await api(`/api/posts/${postId}/comments`);
-    wrap.textContent = '';
-    comments.forEach(c => wrap.appendChild(renderCommentRow(c)));
-    wrap.appendChild(renderCommentForm(postId, wrap));
-  } catch (e) {
-    wrap.textContent = '';
-    const err = document.createElement('div');
-    err.style.cssText = 'font-size:12px;color:#ef4444';
-    err.textContent = 'コメントの読み込みに失敗しました';
-    wrap.appendChild(err);
-  }
+    const data = await api(`/api/posts/channel/${p.authorId}/subscribe`, { method: 'POST' });
+    if (data.ok) {
+      p.subscribedByMe = data.subscribed;
+      p.subscriberCount = data.subscriberCount;
+      btn.classList.toggle('on', data.subscribed);
+      btn.textContent = i18n.t(data.subscribed ? 'subscribed' : 'subscribe');
+      subsEl.textContent = fmtSubs(data.subscriberCount);
+      syncPostInCache(p, { subscribedByMe: data.subscribed, subscriberCount: data.subscriberCount });
+    } else if (data.error) { alert(data.error); }
+  } catch (e) { console.error('watchToggleSub error:', e); }
+  finally { btn.disabled = false; }
 }
 
-function renderCommentRow(c) {
-  const row = document.createElement('div');
-  row.className = 'post-comment-row';
-  const nameEl = document.createElement('span');
-  nameEl.className = 'post-comment-author';
-  nameEl.textContent = c.authorName + '：';
-  const textEl = document.createElement('span');
-  textEl.className = 'post-comment-text';
-  setLinkedText(textEl, c.text);
-  row.appendChild(nameEl);
-  row.appendChild(textEl);
-  return row;
-}
-
-function renderCommentForm(postId, wrap) {
-  const form = document.createElement('div');
-  form.className = 'post-comment-form';
-  const input = document.createElement('input');
-  input.className = 'post-comment-input';
-  input.placeholder = 'コメントを追加...';
-  const sendBtn = document.createElement('button');
-  sendBtn.className = 'post-comment-send';
-  sendBtn.textContent = '送信';
+function watchCommentForm(p, clist, ctitle) {
+  const form = document.createElement('div'); form.className = 'yt-cform';
+  const av = document.createElement('div'); av.className = 'yt-ch-av'; setAvatarBackground(av, window.myProfilePic || null, 'Me'[0]);
+  const input = document.createElement('input'); input.type = 'text'; input.placeholder = i18n.t('add_comment_ph');
+  const send = document.createElement('button'); send.textContent = i18n.t('comment_send');
   const submit = async () => {
-    const text = input.value.trim();
-    if (!text) return;
-    sendBtn.disabled = true;
+    const text = input.value.trim(); if (!text) return;
+    send.disabled = true;
     try {
-      const data = await api(`/api/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ text }) });
+      const data = await api(`/api/posts/${p.id}/comments`, { method: 'POST', body: JSON.stringify({ text }) });
       if (data.ok) {
         input.value = '';
-        const row = renderCommentRow(data.comment);
-        form.parentElement.insertBefore(row, form);
-        // コメント数バッジも更新
-        const card = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-        if (card) {
-          const commentBtn = card.querySelectorAll('.post-action-btn')[1];
-          const span = commentBtn?.querySelector('span');
-          if (span) span.textContent = parseInt(span.textContent, 10) + 1;
-        }
+        clist.insertBefore(renderWatchComment(data.comment, p), clist.firstChild);
+        p.commentCount = (p.commentCount || 0) + 1;
+        ctitle.textContent = i18n.t('comments_label') + ' ' + fmtNum(p.commentCount);
+        syncPostInCache(p, { commentCount: p.commentCount });
       }
     } catch (e) { console.error('comment submit error:', e); }
-    finally { sendBtn.disabled = false; }
+    finally { send.disabled = false; }
   };
-  sendBtn.addEventListener('click', submit);
+  send.addEventListener('click', submit);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-  form.appendChild(input);
-  form.appendChild(sendBtn);
+  form.appendChild(av); form.appendChild(input); form.appendChild(send);
   return form;
 }
 
+async function loadWatchComments(p, clist) {
+  clist.textContent = '';
+  const loading = document.createElement('div'); loading.style.cssText = 'font-size:13px;color:var(--yt-fg2);padding:6px 0'; loading.textContent = i18n.t('feed_loading');
+  clist.appendChild(loading);
+  try {
+    const comments = await api(`/api/posts/${p.id}/comments`);
+    clist.textContent = '';
+    comments.slice().reverse().forEach(c => clist.appendChild(renderWatchComment(c, p)));
+  } catch (e) {
+    clist.textContent = '';
+    const err = document.createElement('div'); err.style.cssText = 'font-size:13px;color:#ef4444'; err.textContent = i18n.t('feed_load_failed');
+    clist.appendChild(err);
+  }
+}
+
+function renderWatchComment(c, p) {
+  const row = document.createElement('div'); row.className = 'yt-crow';
+  const av = document.createElement('div'); av.className = 'yt-ch-av'; setAvatarBackground(av, c.authorPic, (c.authorName || '?')[0]);
+  const main = document.createElement('div'); main.className = 'yt-cmain';
+  const head = document.createElement('div'); head.className = 'yt-chead'; head.textContent = c.authorName + ' ・ ' + formatPostTime(c.createdAt);
+  const text = document.createElement('div'); text.className = 'yt-ctext'; setLinkedText(text, c.text);
+  main.appendChild(head); main.appendChild(text);
+  if (c.authorId === myUserId) {
+    const del = document.createElement('button'); del.className = 'yt-cdel'; del.textContent = i18n.getLang && i18n.getLang() === 'ja' ? '削除' : 'Delete';
+    del.addEventListener('click', async () => {
+      try {
+        const r = await api(`/api/posts/comments/${c.id}`, { method: 'DELETE' });
+        if (r.ok) {
+          row.remove();
+          if (p) { p.commentCount = Math.max(0, (p.commentCount || 0) - 1); syncPostInCache(p, { commentCount: p.commentCount }); }
+        }
+      } catch (e) { console.error('comment delete error:', e); }
+    });
+    main.appendChild(del);
+  }
+  row.appendChild(av); row.appendChild(main);
+  return row;
+}
+
+async function sharePost(p) {
+  const url = location.origin + '/talklist.html';
+  const title = postTitle(p);
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Bro Chat', text: title + ' - ' + (p.authorName || ''), url }); return; }
+    if (navigator.clipboard) { await navigator.clipboard.writeText(title + '\n' + url); }
+    ytToast(i18n.t('link_copied'));
+  } catch (e) { /* ユーザーがキャンセルしただけのこともある */ }
+}
+
+function downloadPost(p) {
+  if (!p.mediaUrl) return;
+  if (p.mediaType === 'image' && window.openTalklistMedia) { window.openTalklistMedia(p.mediaUrl, false, p.mediaUrl); return; }
+  try { window.open(p.mediaUrl, '_blank'); } catch (_) { location.href = p.mediaUrl; }
+}
+
+function ytToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2000;background:rgba(15,15,15,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.3);animation:ytIn .2s ease';
+  t.textContent = msg; document.body.appendChild(t);
+  setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 320); }, 1800);
+}
+
 async function deletePost(postId, card) {
-  if (!confirm('この投稿を削除しますか？')) return;
+  if (!confirm(i18n.getLang && i18n.getLang() === 'ja' ? 'この投稿を削除しますか？' : 'Delete this post?')) return;
   try {
     const data = await api(`/api/posts/${postId}`, { method: 'DELETE' });
     if (data.ok) {
-      if (window.LiquidGlass) {
-        window.LiquidGlass.dematerialize(card, () => card.remove());
-      } else {
-        card.remove();
-      }
+      postsAll = postsAll.filter(x => x.id !== postId);
+      const w = document.getElementById('ytWatch');
+      if (w && w.classList.contains('open')) { try { history.back(); } catch (_) { closeWatch(); } }
+      renderFeed();
     }
   } catch (e) { console.error('deletePost error:', e); }
+}
+
+// カードの3点メニュー: 共有 /(自分の投稿なら)削除
+function openPostMenu(p) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'width:100%;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding:8px 0 max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
+  if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = '#212121';
+  const add = (label, danger, fn) => {
+    const b = document.createElement('button');
+    b.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;padding:15px 22px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#ef4444' : 'var(--yt-fg)');
+    b.textContent = label; b.addEventListener('click', () => { ov.remove(); fn(); }); sheet.appendChild(b);
+  };
+  add(i18n.t('share'), false, () => sharePost(p));
+  if (p.mediaUrl) add(i18n.t('download'), false, () => downloadPost(p));
+  if (p.authorId === myUserId) add(i18n.getLang && i18n.getLang() === 'ja' ? '削除' : 'Delete', true, () => deletePost(p.id));
+  ov.appendChild(sheet);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
 }
 
 // (旧) IndexedDBのキャッシュから友だち一覧を出す処理は止めた。トーク一覧(#talkList)を

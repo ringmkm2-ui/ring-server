@@ -167,7 +167,8 @@ CREATE TABLE IF NOT EXISTS posts (
   media_type TEXT,
   created_at TIMESTAMP DEFAULT now(),
   edited_at TIMESTAMP,
-  deleted_at TIMESTAMP
+  deleted_at TIMESTAMP,
+  view_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS post_likes (
@@ -184,6 +185,22 @@ CREATE TABLE IF NOT EXISTS post_comments (
   text TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT now(),
   deleted_at TIMESTAMP
+);
+
+-- 再生回数の重複防止(1ユーザー1回)。
+CREATE TABLE IF NOT EXISTS post_views (
+  post_id TEXT NOT NULL REFERENCES posts(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT now(),
+  PRIMARY KEY (post_id, user_id)
+);
+
+-- チャンネル登録(subscriber が channel=投稿者ユーザー を登録)。
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+  subscriber_id TEXT NOT NULL REFERENCES users(id),
+  channel_id TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT now(),
+  PRIMARY KEY (subscriber_id, channel_id)
 );
 
 -- Call Assist: 通話中に取るメモ(本人のみが見られる、E2E外の平文メモなので機密情報は避ける想定)
