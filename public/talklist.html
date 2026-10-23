@@ -398,6 +398,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/communityE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script defer src="/js/reportAttach.js"></script>
+<script src="/js/mediaSave.js"></script>
 <script src="/js/iconUpload.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/keyBackup.js"></script>
@@ -567,7 +568,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.265 beta</div>
+  <div class="version-badge">Bro Chat v1.28.266 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1532,6 +1533,14 @@ const TBL = (function () {
   let rt = 0;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); kick(); }, 150); });
   new MutationObserver(() => { readColors(); rebuild(); kick(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  // 背景画像・色は後から(設定を読み込んだ後に)変わる。レンズの中の複製は作った時の色のままなので、
+  // 変わったら作り直す(しないと、下のタブだけ古いグレーのまま残る)
+  { let bt = 0; const again = () => { clearTimeout(bt); bt = setTimeout(() => { readColors(); rebuild(); kick(); }, 120); };
+    new MutationObserver(again).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    new MutationObserver(again).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) again(); });
+    addEventListener('pageshow', again);
+    setTimeout(again, 3000); }
   requestAnimationFrame(() => { layout(); kick(); });
   // lgControls がバーをガラスにした後で中身を取り直す
   setTimeout(() => { rebuild(); kick(); }, 1200);
@@ -4450,25 +4459,10 @@ async function deletePost(postId, card) {
   // プレビュー中のメディアを端末に保存する(原寸のURLから)
   document.getElementById('tlMediaDownload').onclick = async () => {
     const el = inner.firstElementChild;
-    const url0 = curOriginal || (el && el.src);
+    const url0 = curOriginal || (el && (el.currentSrc || el.src));
     if (!url0) return;
-    try {
-      const res = await fetch(url0);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const isVideo = el && el.tagName.toLowerCase() === 'video';
-      const ext = isVideo ? 'mp4' : ((blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
-      a.download = `brochat_${Date.now()}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (window.LiquidGlass) window.LiquidGlass.haptic('success');
-    } catch (e) {
-      console.error('download error:', e);
-    }
+    const ok = await BroMediaSave.save(url0, !!el && el.tagName.toLowerCase() === 'video');
+    if (ok && window.LiquidGlass) window.LiquidGlass.haptic('success');
   };
 })();
 </script>
