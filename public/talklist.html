@@ -647,7 +647,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.268 beta</div>
+  <div class="version-badge">Bro Chat v1.28.269 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3874,7 +3874,12 @@ function fmtSubs(n) {
 // Cloudinaryの動画URLからサムネ(先頭フレームjpg)を作る
 function cldVideoPoster(url) {
   if (typeof url !== 'string' || !/res\.cloudinary\.com\/.+\/video\/upload\//.test(url)) return null;
-  return url.replace('/video/upload/', '/video/upload/so_0,w_640,h_360,c_fill,q_auto/').replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, '.jpg');
+  // Cloudinaryの動画URLは拡張子が無いことが多い(例: .../upload/v1/brochat/posts/abc)。
+  // その場合に .mp4→.jpg 置換が効かず動画URLのままになり、<img>が壊れて真っ黒+壊れアイコンになっていた。
+  // 必ず末尾を .jpg にして、先頭フレームの静止画を取る。
+  let u = url.replace('/video/upload/', '/video/upload/so_0,w_640,h_360,c_fill,q_auto/');
+  u = u.replace(/\?.*$/, '').replace(/\.(mp4|mov|webm|m4v|avi|mkv|m3u8)$/i, '');
+  return u + '.jpg';
 }
 function fmtDur(sec) {
   sec = Math.floor(sec || 0);
@@ -3938,11 +3943,9 @@ function renderFeed() {
     list.appendChild(empty);
     return;
   }
-  arr.forEach((p, idx) => {
-    const card = renderPostCard(p);
-    card.style.animationDelay = Math.min(idx * 35, 280) + 'ms';
-    list.appendChild(card);
-  });
+  const frag = document.createDocumentFragment();
+  arr.forEach((p) => frag.appendChild(renderPostCard(p)));
+  list.appendChild(frag);
 }
 
 // 下まで見たら、もっと前の投稿を読む
@@ -3954,9 +3957,22 @@ async function loadOlderPosts() {
     if (!Array.isArray(posts) || posts.length === 0) { postsHasMore = false; return; }
     if (posts.length < POSTS_PAGE) postsHasMore = false;
     const have = new Set(postsAll.map(p => p.id));
-    posts.forEach(p => { if (!have.has(p.id)) postsAll.push(p); });
+    const fresh = posts.filter(p => !have.has(p.id));
+    fresh.forEach(p => postsAll.push(p));
     postsOldestTimestamp = posts[posts.length - 1].createdAt;
-    renderFeed();
+    // 全カードを作り直すとスクロールのたびに固まる。新しく来た分だけ、今のフィルタ/検索に合うものを末尾に足す。
+    const list = document.getElementById('postsList');
+    if (list && !feedQuery && feedKind !== 'live') {
+      const frag = document.createDocumentFragment();
+      fresh.forEach(p => {
+        if (feedKind === 'video' && p.mediaType !== 'video') return;
+        if (feedKind === 'image' && p.mediaType !== 'image') return;
+        frag.appendChild(renderPostCard(p));
+      });
+      list.appendChild(frag);
+    } else {
+      renderFeed();
+    }
   } catch (e) {
     console.error('loadOlderPosts error:', e);
   } finally {
@@ -4013,13 +4029,53 @@ function ensurePostsSentinel() {
   }
 })();
 
-function loadCardDuration(url, el) {
+// 再生時間はラグの原因になりやすい(動画のメタデータを読む=実質ダウンロード開始)。
+// 全カード分を一斉に読むと弱い端末で固まるので、
+//  (1)画面に入ったカードだけ (2)一度に1本ずつ だけ読む。
+let _durObs = null, _durQueue = [], _durBusy = false;
+function queueDuration(url, el) {
+  if (!url) return;
+  el.dataset.durUrl = url;
+  if (!('IntersectionObserver' in window)) return; // 無ければ諦める(ラグ回避を優先)
+  if (!_durObs) {
+    _durObs = new IntersectionObserver((ents) => {
+      ents.forEach(e => { if (e.isIntersecting && e.target.dataset.durUrl) { _durObs.unobserve(e.target); _durQueue.push(e.target); pumpDuration(); } });
+    }, { rootMargin: '150px 0px' });
+  }
+  _durObs.observe(el);
+}
+function pumpDuration() {
+  if (_durBusy) return;
+  const el = _durQueue.shift();
+  if (!el || !el.isConnected) { if (el) pumpDuration(); return; }
+  _durBusy = true;
+  const url = el.dataset.durUrl; let done = false;
+  const finish = () => { if (done) return; done = true; _durBusy = false; pumpDuration(); };
   try {
     const v = document.createElement('video');
-    v.preload = 'metadata'; v.muted = true; v.src = url;
-    v.addEventListener('loadedmetadata', () => { if (isFinite(v.duration) && v.duration > 0) el.textContent = fmtDur(v.duration); v.src = ''; }, { once: true });
-    v.addEventListener('error', () => { v.src = ''; }, { once: true });
-  } catch (_) {}
+    v.preload = 'metadata'; v.muted = true;
+    const to = setTimeout(() => { try { v.removeAttribute('src'); v.load(); } catch (_) {} finish(); }, 4000);
+    v.addEventListener('loadedmetadata', () => { if (isFinite(v.duration) && v.duration > 0) el.textContent = fmtDur(v.duration); clearTimeout(to); try { v.removeAttribute('src'); v.load(); } catch (_) {} finish(); }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(to); finish(); }, { once: true });
+    v.src = url;
+  } catch (_) { finish(); }
+}
+// 動画サムネ(軽量): Cloudinaryはポスター画像、それ以外はグラデ+再生アイコンのプレースホルダ。
+// フィードに<video>要素を置くと重いので一切置かない。
+function buildVideoThumb(thumb, p) {
+  const place = () => {
+    thumb.querySelectorAll('img').forEach(n => n.remove());
+    thumb.classList.add('text-only');
+    thumb.style.background = 'linear-gradient(135deg,#1f2937,#0b1220)';
+  };
+  const poster = cldVideoPoster(p.mediaUrl);
+  if (poster) {
+    const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async'; img.alt = ''; img.src = poster;
+    img.onerror = () => place();
+    thumb.appendChild(img);
+  } else {
+    place();
+  }
 }
 
 // YouTube風カード: サムネ + チャンネルアバター + タイトル + (チャンネル・再生回数・時間)
@@ -4037,17 +4093,10 @@ function renderPostCard(p) {
     img.onerror = () => { if (img.src !== p.mediaUrl && !img.dataset.fell) { img.dataset.fell = '1'; img.src = p.mediaUrl; } };
     thumb.appendChild(img);
   } else if (p.mediaType === 'video' && p.mediaUrl) {
-    const poster = cldVideoPoster(p.mediaUrl);
-    if (poster) {
-      const img = document.createElement('img'); img.loading = 'lazy'; img.decoding = 'async'; img.alt = ''; img.src = poster;
-      thumb.appendChild(img);
-    } else {
-      const v = document.createElement('video'); v.src = p.mediaUrl + '#t=0.1'; v.preload = 'metadata'; v.muted = true; v.playsInline = true;
-      thumb.appendChild(v);
-    }
+    buildVideoThumb(thumb, p);
     const dur = document.createElement('div'); dur.className = 'yt-dur';
     thumb.appendChild(dur);
-    loadCardDuration(p.mediaUrl, dur);
+    queueDuration(p.mediaUrl, dur);
     const play = document.createElement('div'); play.className = 'yt-play';
     play.innerHTML = '<span><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span>';
     thumb.appendChild(play);
@@ -4235,10 +4284,8 @@ function renderRec(x) {
     img.src = window.cldTransform ? window.cldTransform(x.mediaUrl, 'w_400,h_225,c_fill,q_auto,f_auto') : x.mediaUrl;
     thumb.appendChild(img);
   } else if (x.mediaType === 'video' && x.mediaUrl) {
-    const poster = cldVideoPoster(x.mediaUrl);
-    if (poster) { const img = document.createElement('img'); img.loading = 'lazy'; img.alt = ''; img.src = poster; thumb.appendChild(img); }
-    else { const v = document.createElement('video'); v.src = x.mediaUrl + '#t=0.1'; v.preload = 'metadata'; v.muted = true; thumb.appendChild(v); }
-    const dur = document.createElement('div'); dur.className = 'yt-dur'; thumb.appendChild(dur); loadCardDuration(x.mediaUrl, dur);
+    buildVideoThumb(thumb, x);
+    const dur = document.createElement('div'); dur.className = 'yt-dur'; thumb.appendChild(dur); queueDuration(x.mediaUrl, dur);
   } else {
     thumb.classList.add('text-only'); thumb.style.background = 'linear-gradient(135deg,#334155,#0f172a)';
     const s = document.createElement('span'); s.style.fontSize = '13px'; s.textContent = postTitle(x); thumb.appendChild(s);
