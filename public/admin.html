@@ -386,7 +386,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.265 beta</div>
+  <div class="version-badge">Bro Chat v1.28.266 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3196,34 +3196,8 @@ document.getElementById('mmDownload').onclick = async () => {
       await Filesystem.writeFile({ path: fname, data: b64, directory: dir, recursive: true });
       if (window.LiquidGlass) window.LiquidGlass.haptic('success');
     } else {
-      // 通常ブラウザ: blob URLかhttpsかで分岐
-      const src = el.src;
-      if (src.startsWith('blob:')) {
-        // blob URLは既にメモリにあるのでそのまま使う(re-fetchしない)
-        const a = document.createElement('a');
-        a.href = src;
-        a.download = fname;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        // <a download>が効かないWebView用フォールバック(300ms後にまだ同じページにいたら)
-        const t = setTimeout(() => { window.open(src, '_blank'); }, 300);
-        window.addEventListener('blur', () => clearTimeout(t), { once: true });
-      } else {
-        // https URL(Cloudinary等): fetchしてblobにする
-        const res = await fetch(src);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fname;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        const t = setTimeout(() => { window.open(url, '_blank'); }, 300);
-        window.addEventListener('blur', () => clearTimeout(t), { once: true });
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-      }
+      // 通常ブラウザ・ホーム画面のアプリ: 共有シート → 通常ダウンロード(js/mediaSave.js)
+      await BroMediaSave.save(el.currentSrc || el.src, isVideo);
       if (window.LiquidGlass) window.LiquidGlass.haptic('success');
     }
   } catch (e) {
@@ -4720,6 +4694,7 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
 });
 </script>
 <script src="/js/reportAttach.js"></script>
+<script src="/js/mediaSave.js"></script>
 <script src="/js/chatBlock.js"></script>
 <script src="/js/keepBottom.js"></script>
 <script src="/js/viewportFix.js"></script>
