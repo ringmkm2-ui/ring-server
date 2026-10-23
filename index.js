@@ -131,6 +131,8 @@ async function main() {
           "https://people.googleapis.com",
           "https://res.cloudinary.com",
           "https://api.cloudinary.com",
+          // 復号した画像・動画(blob:)をそのまま端末に保存する時に fetch する。blob: は自分のページが作ったものだけ
+          "blob:",
         ],
         // 'self' はPC用の2列表示(トーク一覧の右に自分のチャット画面を埋め込む)に必要。
         // 以前は無かったため埋め込みが毎回ブロックされ、2列にならず画面ごと切り替わっていた
