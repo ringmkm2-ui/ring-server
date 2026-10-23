@@ -168,7 +168,8 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at TIMESTAMP DEFAULT now(),
   edited_at TIMESTAMP,
   deleted_at TIMESTAMP,
-  view_count INTEGER NOT NULL DEFAULT 0
+  view_count INTEGER NOT NULL DEFAULT 0,
+  duration_sec INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS post_likes (

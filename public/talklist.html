@@ -647,7 +647,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.269 beta</div>
+  <div class="version-badge">Bro Chat v1.28.270 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -3670,6 +3670,8 @@ document.getElementById('postVideoFile').onchange = e => {
       const minutes = Math.floor(duration / 60);
       const seconds = Math.floor(duration % 60);
       videoTime.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      // 測った再生時間を保存して投稿に添える。これでフィード側は動画を読まずに時間を出せる。
+      if (pendingPostMedia && isFinite(duration) && duration > 0) pendingPostMedia.durationSec = Math.round(duration);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
     
@@ -3774,6 +3776,7 @@ document.getElementById('postSubmitBtn').onclick = async () => {
 
         body.mediaUrl = cloudinaryUrl;
         body.mediaType = pendingPostMedia.type;
+        if (pendingPostMedia.type === 'video' && pendingPostMedia.durationSec) body.durationSec = pendingPostMedia.durationSec;
         body.encrypted = false;
         console.log('[postSubmit] Upload complete:', cloudinaryUrl);
       } catch (e) {
@@ -4029,36 +4032,11 @@ function ensurePostsSentinel() {
   }
 })();
 
-// 再生時間はラグの原因になりやすい(動画のメタデータを読む=実質ダウンロード開始)。
-// 全カード分を一斉に読むと弱い端末で固まるので、
-//  (1)画面に入ったカードだけ (2)一度に1本ずつ だけ読む。
-let _durObs = null, _durQueue = [], _durBusy = false;
-function queueDuration(url, el) {
-  if (!url) return;
-  el.dataset.durUrl = url;
-  if (!('IntersectionObserver' in window)) return; // 無ければ諦める(ラグ回避を優先)
-  if (!_durObs) {
-    _durObs = new IntersectionObserver((ents) => {
-      ents.forEach(e => { if (e.isIntersecting && e.target.dataset.durUrl) { _durObs.unobserve(e.target); _durQueue.push(e.target); pumpDuration(); } });
-    }, { rootMargin: '150px 0px' });
-  }
-  _durObs.observe(el);
-}
-function pumpDuration() {
-  if (_durBusy) return;
-  const el = _durQueue.shift();
-  if (!el || !el.isConnected) { if (el) pumpDuration(); return; }
-  _durBusy = true;
-  const url = el.dataset.durUrl; let done = false;
-  const finish = () => { if (done) return; done = true; _durBusy = false; pumpDuration(); };
-  try {
-    const v = document.createElement('video');
-    v.preload = 'metadata'; v.muted = true;
-    const to = setTimeout(() => { try { v.removeAttribute('src'); v.load(); } catch (_) {} finish(); }, 4000);
-    v.addEventListener('loadedmetadata', () => { if (isFinite(v.duration) && v.duration > 0) el.textContent = fmtDur(v.duration); clearTimeout(to); try { v.removeAttribute('src'); v.load(); } catch (_) {} finish(); }, { once: true });
-    v.addEventListener('error', () => { clearTimeout(to); finish(); }, { once: true });
-    v.src = url;
-  } catch (_) { finish(); }
+// 再生時間はアップロード時に測った値(p.durationSec)を使う。フィードで動画を読み込むことは一切しない。
+function durBadge(p) {
+  if (!p.durationSec) return null;
+  const el = document.createElement('div'); el.className = 'yt-dur'; el.textContent = fmtDur(p.durationSec);
+  return el;
 }
 // 動画サムネ(軽量): Cloudinaryはポスター画像、それ以外はグラデ+再生アイコンのプレースホルダ。
 // フィードに<video>要素を置くと重いので一切置かない。
@@ -4094,9 +4072,7 @@ function renderPostCard(p) {
     thumb.appendChild(img);
   } else if (p.mediaType === 'video' && p.mediaUrl) {
     buildVideoThumb(thumb, p);
-    const dur = document.createElement('div'); dur.className = 'yt-dur';
-    thumb.appendChild(dur);
-    queueDuration(p.mediaUrl, dur);
+    const dur = durBadge(p); if (dur) thumb.appendChild(dur);
     const play = document.createElement('div'); play.className = 'yt-play';
     play.innerHTML = '<span><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span>';
     thumb.appendChild(play);
@@ -4285,7 +4261,7 @@ function renderRec(x) {
     thumb.appendChild(img);
   } else if (x.mediaType === 'video' && x.mediaUrl) {
     buildVideoThumb(thumb, x);
-    const dur = document.createElement('div'); dur.className = 'yt-dur'; thumb.appendChild(dur); queueDuration(x.mediaUrl, dur);
+    const dur = durBadge(x); if (dur) thumb.appendChild(dur);
   } else {
     thumb.classList.add('text-only'); thumb.style.background = 'linear-gradient(135deg,#334155,#0f172a)';
     const s = document.createElement('span'); s.style.fontSize = '13px'; s.textContent = postTitle(x); thumb.appendChild(s);

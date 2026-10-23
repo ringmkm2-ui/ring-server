@@ -97,6 +97,7 @@ async function attachAuthorAndStats(posts, myUserId) {
       likedByMe: myLikeSet.has(p.id),
       commentCount: Number(commentCountMap.get(p.id) || 0),
       viewCount: Number(p.view_count || 0),
+      durationSec: p.duration_sec != null ? Number(p.duration_sec) : null,
       subscriberCount: Number(subCountMap.get(p.author_id) || 0),
       subscribedByMe: mySubSet.has(p.author_id),
     };
@@ -154,11 +155,17 @@ router.post('/', verifyToken, asyncHandler(async (req, res) => {
   if (mediaUrl && !['image', 'video'].includes(mediaType)) {
     return res.status(400).json({ error: 'mediaTypeが不正です' });
   }
+  // 動画の再生時間(秒)。クライアントがアップロード時に測った値。0〜24時間の整数だけ受け付ける。
+  let durationSec = null;
+  if (mediaUrl && mediaType === 'video') {
+    const d = Math.round(Number(req.body.durationSec));
+    if (Number.isFinite(d) && d > 0 && d <= 86400) durationSec = d;
+  }
 
   const id = uuidv4();
   await db.run(
-    'INSERT INTO posts (id, author_id, text, media_url, media_type) VALUES (?, ?, ?, ?, ?)',
-    [id, req.user.userId, text || null, mediaUrl || null, mediaUrl ? mediaType : null]
+    'INSERT INTO posts (id, author_id, text, media_url, media_type, duration_sec) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, req.user.userId, text || null, mediaUrl || null, mediaUrl ? mediaType : null, durationSec]
   );
 
   const row = await db.get('SELECT * FROM posts WHERE id = ?', [id]);

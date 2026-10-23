@@ -260,6 +260,8 @@ async function initDB() {
   try {
     // 再生回数。既存のpostsにも0で付く。
     await pool.query('ALTER TABLE posts ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0');
+    // 動画の再生時間(秒)。投稿時にクライアントが測った値を保存し、フィードでは動画を読まずにバッジ表示する。
+    await pool.query('ALTER TABLE posts ADD COLUMN IF NOT EXISTS duration_sec INTEGER');
     // 1ユーザー1回しか数えないための視聴記録。
     await pool.query(`
       CREATE TABLE IF NOT EXISTS post_views (
