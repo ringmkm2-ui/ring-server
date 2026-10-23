@@ -256,6 +256,33 @@ async function initDB() {
     console.log('[db] call_notes/call_summaries migration skip:', e.message);
   }
 
+  // マイグレーション: 投稿のYouTube化(再生回数・チャンネル登録)。
+  try {
+    // 再生回数。既存のpostsにも0で付く。
+    await pool.query('ALTER TABLE posts ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0');
+    // 1ユーザー1回しか数えないための視聴記録。
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS post_views (
+        post_id TEXT NOT NULL REFERENCES posts(id),
+        user_id TEXT NOT NULL REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (post_id, user_id)
+      )
+    `);
+    // チャンネル登録(subscriber が channel を登録)。channel は投稿者ユーザー。
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_subscriptions (
+        subscriber_id TEXT NOT NULL REFERENCES users(id),
+        channel_id TEXT NOT NULL REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (subscriber_id, channel_id)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_user_subs_channel ON user_subscriptions(channel_id)');
+  } catch (e) {
+    console.log('[db] posts view/subscription migration skip:', e.message);
+  }
+
   // バグ報告・ユーザー通報
   try {
     await pool.query(`
