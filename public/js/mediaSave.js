@@ -26,7 +26,13 @@
       blob = await res.blob();
     } catch (e) {
       console.error('[mediaSave] fetch', e);
-      toast('保存できませんでした(通信エラー)');
+      // 読み込めない時の最後の手段: そのURLをそのまま開かせる(ブラウザ側の保存・共有に任せる)
+      try {
+        const a = document.createElement('a');
+        a.href = src; a.download = 'brochat_' + Date.now() + (isVideo ? '.mp4' : '.jpg'); a.target = '_blank'; a.rel = 'noopener';
+        document.body.appendChild(a); a.click(); a.remove();
+        toast('保存を試しています。出ない場合は画像を長押ししてください');
+      } catch (e2) { toast('保存できませんでした(通信エラー)'); }
       return false;
     }
     let type = blob.type && blob.type !== 'application/octet-stream' ? blob.type : (isVideo ? 'video/mp4' : 'image/jpeg');
