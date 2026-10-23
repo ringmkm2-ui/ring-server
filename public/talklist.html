@@ -568,7 +568,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.266 beta</div>
+  <div class="version-badge">Bro Chat v1.28.267 beta</div>
 </div>
 
 <!-- プロフィール設定モーダル -->
@@ -1433,7 +1433,7 @@ const TBL = (function () {
     nav.setPointerCapture(e.pointerId);
     rebuild();
     // 押しただけではその場で持ち上がるだけ。6px以上動かしたら指に付いて動く(タップで瞬間移動しない)
-    T.pressed = true; T.drag = false; T.p0 = e.clientX; T.fx = localX(e.clientX); if (!wa()) T.lifted = true;
+    T.pressed = true; T.pAt = performance.now(); T.drag = false; T.p0 = e.clientX; T.fx = localX(e.clientX); if (!wa()) T.lifted = true;
     if (window.LiquidGlass) window.LiquidGlass.haptic('light');
   });
   nav.addEventListener('pointermove', e => {
@@ -1448,6 +1448,11 @@ const TBL = (function () {
     select(i, false);
   };
   nav.addEventListener('pointerup', up); nav.addEventListener('pointercancel', up);
+  // 指を離したイベントがバーに届かないことがある(Xiaomiのジェスチャー操作・通知バーを引き出した時など)。
+  // 届かないと「持ち上がったグレーのレンズ」が出たままになるので、画面全体でも離したことを拾う
+  nav.addEventListener('lostpointercapture', up);
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'blur'].forEach(ev => addEventListener(ev, up, true));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) up(); });
   // キーボード操作(Enter/Space)だけ click で選ぶ
   items.forEach((b, i) => b.addEventListener('click', e => { if (e.detail === 0) select(i, !wa()); }));
 
@@ -1468,6 +1473,7 @@ const TBL = (function () {
   function step(now) {
     raf = 0;
     const dt = Math.min(.05, Math.max(0, (now - (T.lt || now)) / 1000)); T.lt = now;
+    if (T.pressed && T.pAt && now - T.pAt > 6000 && !T.drag) up(); // 押しっぱなしのまま6秒動きがなければ離したとみなす
     if (!T.pressed && T.lifted && Math.abs(T.tx - T.x) < 3 && Math.abs(T.vx) < 80) T.lifted = false;
     const gt = T.lifted ? 1 : 0;
     if (RM) { T.x = T.tx; T.vx = 0; T.g = gt; T.vg = 0; }
