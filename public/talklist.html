@@ -345,6 +345,7 @@ html.dark-mode .acr{color:#f1f5f9;border-bottom-color:rgba(255,255,255,.08)}
 .mypro{display:flex;align-items:center;gap:14px}
 .myav{width:55px;height:55px;border-radius:50%;background:#cbd5e1;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1);flex-shrink:0}
 .myn{font-size:18px;font-weight:800;color:#0f172a}
+html.dark-mode .myn{color:#f1f5f9}
 .sibtn{background:none;border:none;padding:0;cursor:pointer;outline:none;transition:transform .2s ease}
 .sibtn:hover{transform:rotate(30deg)}
 .siico{width:36px;height:36px;display:block;border-radius:9px;box-shadow:0 3px 8px rgba(0,0,0,.15)}
@@ -486,6 +487,7 @@ html.dark-mode .pwa-banner-close svg{stroke:#94a3b8}
    レイアウト・文字色のみ定義する。主要アクション(保存/作成)は文字を太字化して
    視認性を保つ。 */
 .savebtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:15px}
+html.dark-mode .savebtn{color:#f1f5f9}
 .cancelbtn{width:100%;padding:14px;color:#0f172a;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
 /* btn-glass: liquidGlass.cssに集約 */
 /* glass-plus-btn: 友達追加ボタン。素材はliquidGlass.cssの.glass-clearに統一し、
@@ -742,7 +744,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.283 beta</div>
+  <div class="version-badge">Bro Chat v1.28.284 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
