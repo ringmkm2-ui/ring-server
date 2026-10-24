@@ -304,6 +304,23 @@ html.dark-mode .yt-chan{--yt-watch-bg:#0f0f0f}
 .yt-about .d{font-size:14px;color:var(--yt-fg);line-height:1.6;white-space:pre-wrap;word-break:break-word}
 .yt-about .r{display:flex;align-items:center;gap:14px;font-size:14px;color:var(--yt-fg)}
 .yt-about .r svg{width:20px;height:20px;flex-shrink:0;stroke:var(--yt-fg2);fill:none}
+/* アカウント(ホーム)のチャンネル欄 */
+.acr{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;border-bottom:1px solid rgba(15,23,42,.06);padding:13px 2px;cursor:pointer;color:#0f172a;font-family:inherit;font-size:15px;font-weight:600;text-align:left}
+.acr:last-child{border-bottom:none}
+html.dark-mode .acr{color:#f1f5f9;border-bottom-color:rgba(255,255,255,.08)}
+.acr svg{width:22px;height:22px;flex-shrink:0;stroke:currentColor;fill:none}
+.acr .ac-t{flex:1;min-width:0}
+.acr .ac-s{font-size:13px;font-weight:500;color:#64748b}
+.acr .ac-chev{width:18px;height:18px;opacity:.45}
+/* ユーザー一覧(登録者/登録チャンネル/いいねした人)のシート */
+.yt-urow{display:flex;align-items:center;gap:12px;padding:9px 20px;cursor:pointer}
+.yt-urow:active{background:var(--yt-hover)}
+.yt-urow .yt-ch-av{width:44px;height:44px;font-size:17px}
+.yt-urow .u-n{font-size:15px;font-weight:700;color:var(--yt-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yt-urow .u-s{font-size:12px;color:var(--yt-fg2);margin-top:2px}
+.yt-urow .u-b{flex:1;min-width:0}
+.yt-urow .u-live{flex-shrink:0;background:#ff0033;color:#fff;font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px;letter-spacing:.06em}
+#ytList{z-index:10020}
 /* 作成パネル(コンポーザー) */
 .yt-compose{margin-top:14px}
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
@@ -643,6 +660,26 @@ window.ensureGroupCrypto = (function () {
           </div>
         </div>
 
+        <div class="card" id="acctChannelCard">
+          <div class="slabel" data-i18n="acct_section">チャンネル</div>
+          <button type="button" class="acr" data-acct="mychannel">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><polygon points="10 9 15 12 10 15 10 9"/></svg>
+            <span class="ac-t" data-i18n="acct_my_channel">マイチャンネル</span><span class="ac-s" id="acMyMeta"></span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+          <button type="button" class="acr" data-acct="subscribers">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="ac-t" data-i18n="acct_subscribers">登録者</span><span class="ac-s" id="acSubsMeta"></span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+          <button type="button" class="acr" data-acct="subscriptions">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M7 21h10M12 17v4"/></svg>
+            <span class="ac-t" data-i18n="acct_subscriptions">登録チャンネル</span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+          <button type="button" class="acr" data-acct="liked">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9M2 13v6a2 2 0 0 0 2 2h13.3a2 2 0 0 0 2-1.7l1.3-7a2 2 0 0 0-2-2.3H14l1-4.3A2 2 0 0 0 13 3l-6 8H2z"/></svg>
+            <span class="ac-t" data-i18n="acct_liked">いいねした投稿</span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+        </div>
+
         <!-- 友達リクエストセクション -->
         <div class="card" id="pendingRequestsCard" style="display:none;">
           <div class="slabel" data-i18n="friend_requests">友達リクエスト</div>
@@ -701,11 +738,12 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.274 beta</div>
+  <div class="version-badge">Bro Chat v1.28.275 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
 <div id="ytChannel" class="yt-chan" aria-hidden="true"></div>
+<div id="ytList" class="yt-chan" aria-hidden="true"></div>
 <div id="ytWatch" class="yt-watch" aria-hidden="true"></div>
 
 <!-- プロフィール設定モーダル -->
@@ -1187,7 +1225,7 @@ function bindTalkNavSwitcher(){
   const glow=document.getElementById('navGlow');
   const items=[
     {el:document.getElementById('btnTalk'), page:pageTalk, onSelect:()=>loadTalks(true)},
-    {el:document.getElementById('btnHome'), page:pageHome, onSelect:()=>loadPendingRequests(true)},
+    {el:document.getElementById('btnHome'), page:pageHome, onSelect:()=>{loadPendingRequests(true);if(window.acctRefresh)window.acctRefresh();}},
     {el:document.getElementById('btnPosts'), page:pagePosts, onSelect:loadPosts},
   ];
   if(!nav||!indicator||!glow||!items.length) return;
@@ -1384,7 +1422,7 @@ window.addEventListener('message', e => {
 // onSelect: タブを開いた時に中身を読み込む。書き直しの時にこれを落としていて「投稿」が空のまま動かなかった
 const TB_PAGES = () => [
   { el: document.getElementById('btnTalk'), page: pageTalk, onSelect: () => loadTalks(true) },
-  { el: document.getElementById('btnHome'), page: pageHome, onSelect: () => loadPendingRequests(true) },
+  { el: document.getElementById('btnHome'), page: pageHome, onSelect: () => { loadPendingRequests(true); if (window.acctRefresh) window.acctRefresh(); } },
   { el: document.getElementById('btnPosts'), page: pagePosts, onSelect: () => loadPosts() },
 ];
 let tbIndex = 0;
@@ -4247,7 +4285,9 @@ function closeWatch() {
 window.addEventListener('popstate', () => {
   const w = document.getElementById('ytWatch');
   if (w && w.classList.contains('open')) { closeWatch(); return; }
-  if (window.closeChannel) window.closeChannel();
+  const ch = document.getElementById('ytChannel');
+  if (ch && ch.classList.contains('open')) { window.closeChannel(); return; }
+  if (window.closeYtList) window.closeYtList();
 });
 
 function mkAct(svg, label) {
@@ -4306,6 +4346,10 @@ async function openWatch(p) {
   const likeC = document.createElement('span'); likeC.textContent = fmtNum(p.likeCount); likeBtn.appendChild(likeC);
   likeBtn.addEventListener('click', () => watchToggleLike(p, likeBtn, likeC));
   actions.appendChild(likeBtn);
+  if (p.authorId === myUserId && window.ytShowLikers) {
+    const lk = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', i18n.t('acct_likers'));
+    lk.addEventListener('click', () => window.ytShowLikers(p)); actions.appendChild(lk);
+  }
   const shareBtn = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', i18n.t('share'));
   shareBtn.addEventListener('click', () => sharePost(p)); actions.appendChild(shareBtn);
   if (p.mediaUrl) {
@@ -5627,6 +5671,7 @@ function openPostMenu(p) {
     head.append(av, info);
     wrap.appendChild(head);
     chan.meta = meta; chan.subBtn = null;
+    if (mineCh) { meta.style.cursor = 'pointer'; meta.addEventListener('click', () => window.ytShowSubscribers()); }
 
     if (!mineCh) {
       const row = document.createElement('div'); row.className = 'yt-csubrow';
@@ -5661,6 +5706,128 @@ function openPostMenu(p) {
     const c = chan.el(), t = chan.tabs;
     if (c && t && c.scrollTop > t.offsetTop - 60) c.scrollTop = Math.max(0, t.offsetTop - 60);
   }
+
+  // ---------- アカウント(ホーム)のチャンネル欄: マイチャンネル / 登録者 / 登録チャンネル / いいねした投稿 ----------
+  window.ytIsLive = id => liveList.some(l => l.hostId === id);
+  const acMy = document.getElementById('acMyMeta'), acSubs = document.getElementById('acSubsMeta');
+  const ACCT_KEY = 'acct_meta_' + (myUserId || '');
+  function paintAcct(i) {
+    if (!i) return;
+    if (acSubs) acSubs.textContent = fmtNum(i.subscriberCount || 0);
+    if (acMy) acMy.textContent = counted('ch_n_videos', '動画 {n}本', i.videoCount || 0);
+  }
+  try { paintAcct(JSON.parse(localStorage.getItem(ACCT_KEY) || 'null')); } catch (_) {}
+  window.acctRefresh = async function () {
+    try {
+      const i = await api('/api/posts/channel/' + encodeURIComponent(myUserId));
+      if (!i || i.error) return;
+      paintAcct(i);
+      try { localStorage.setItem(ACCT_KEY, JSON.stringify({ subscriberCount: i.subscriberCount, videoCount: i.videoCount })); } catch (_) {}
+    } catch (_) {}
+  };
+  window.acctRefresh();
+
+  // 人の一覧を出す下からのシート(登録者・登録チャンネル・いいねした人)
+  function openUserSheet(title, load, emptyKey, emptyFb, subFn) {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
+    const sheet = document.createElement('div');
+    sheet.style.cssText = 'width:100%;max-height:75vh;display:flex;flex-direction:column;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding-bottom:max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
+    if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = '#212121';
+    const head = document.createElement('div');
+    head.style.cssText = 'padding:18px 20px 8px;font-size:17px;font-weight:800;color:var(--yt-fg)';
+    head.textContent = title;
+    const list = document.createElement('div');
+    list.style.cssText = 'overflow-y:auto;overscroll-behavior:contain;flex:1;padding-bottom:6px';
+    sheet.append(head, list); ov.appendChild(sheet);
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    const msg = (text, err) => { list.textContent = ''; const d = document.createElement('div'); d.className = 'yt-cempty'; d.textContent = text; if (err) d.style.color = '#ef4444'; list.appendChild(d); };
+    load().then(users => {
+      if (!Array.isArray(users)) return msg(T('feed_load_failed', '読み込みに失敗しました'), true);
+      if (!users.length) return msg(T(emptyKey, emptyFb));
+      list.textContent = '';
+      const frag = document.createDocumentFragment();
+      users.forEach(u => {
+        const row = document.createElement('div'); row.className = 'yt-urow';
+        const av = document.createElement('div'); av.className = 'yt-ch-av'; setAvatarBackground(av, u.pic, (u.name || '?')[0]);
+        const b = document.createElement('div'); b.className = 'u-b';
+        const n = document.createElement('div'); n.className = 'u-n'; n.textContent = u.name || '';
+        const sub = document.createElement('div'); sub.className = 'u-s'; sub.textContent = subFn(u);
+        b.append(n, sub); row.append(av, b);
+        if (window.ytIsLive(u.id)) { const lv = document.createElement('span'); lv.className = 'u-live'; lv.textContent = 'LIVE'; row.appendChild(lv); }
+        row.addEventListener('click', () => { ov.remove(); window.openChannel(u.id, { name: u.name, pic: u.pic }); });
+        frag.appendChild(row);
+      });
+      list.appendChild(frag);
+    }).catch(() => msg(T('feed_load_failed', '読み込みに失敗しました'), true));
+  }
+  window.ytShowSubscribers = () => openUserSheet(T('acct_subscribers', '登録者'), () => api('/api/posts/channel/' + encodeURIComponent(myUserId) + '/subscribers'), 'acct_no_subscribers', 'まだ登録者はいません', u => formatPostTime(u.since));
+  window.ytShowSubscriptions = () => openUserSheet(T('acct_subscriptions', '登録チャンネル'), () => api('/api/posts/subscriptions'), 'acct_no_subscriptions', '登録しているチャンネルはありません', u => fmtSubs(u.subscriberCount || 0));
+  window.ytShowLikers = p => openUserSheet(T('acct_likers', 'いいねした人') + ' ' + fmtNum(p.likeCount || 0), () => api('/api/posts/' + encodeURIComponent(p.id) + '/likes'), 'acct_no_likers', 'まだ誰もいいねしていません', u => formatPostTime(u.at));
+
+  // いいねした投稿(全画面。前回の内容を先に出して、裏で更新)
+  const likedEl = () => document.getElementById('ytList');
+  window.closeYtList = function () {
+    const c = likedEl();
+    if (!c || !c.classList.contains('open')) return;
+    c.classList.remove('open', 'scrolled'); c.setAttribute('aria-hidden', 'true'); c.textContent = '';
+    const w = document.getElementById('ytWatch'), ch = document.getElementById('ytChannel');
+    if (!(w && w.classList.contains('open')) && !(ch && ch.classList.contains('open'))) document.body.style.overflow = '';
+  };
+  async function openLiked() {
+    const c = likedEl(); if (!c) return;
+    if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+    if (!c.classList.contains('open')) { try { history.pushState({ ytList: 1 }, ''); } catch (_) {} }
+    c.classList.add('open', 'scrolled'); c.setAttribute('aria-hidden', 'false'); c.scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+    c.textContent = '';
+    const bar = document.createElement('div'); bar.className = 'yt-cbar';
+    const back = document.createElement('button'); back.type = 'button'; back.setAttribute('aria-label', T('back', '戻る')); back.innerHTML = SVG_BACK;
+    back.addEventListener('click', () => { try { history.back(); } catch (_) { window.closeYtList(); } });
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = T('acct_liked', 'いいねした投稿');
+    bar.append(back, nm); c.appendChild(bar);
+    const wrap = document.createElement('div'); wrap.className = 'yt-cwrap';
+    const body = document.createElement('div'); body.className = 'yt-cbody'; wrap.appendChild(body); c.appendChild(wrap);
+
+    const key = 'liked_cache_' + (myUserId || '');
+    let cur = [], shown = false;
+    const paint = arr => {
+      body.textContent = '';
+      if (!arr.length) { const d = document.createElement('div'); d.className = 'yt-cempty'; d.textContent = T('acct_no_liked', 'いいねした投稿はまだありません'); body.appendChild(d); return; }
+      const g = document.createElement('div'); g.className = 'yt-grid';
+      const frag = document.createDocumentFragment();
+      arr.forEach(x => frag.appendChild(renderPostCard(x)));
+      g.appendChild(frag); body.appendChild(g);
+    };
+    try { const cc = JSON.parse(localStorage.getItem(key) || 'null'); if (Array.isArray(cc)) { cur = cc; shown = true; paint(cur); } } catch (_) {}
+    if (!shown) {
+      const g = document.createElement('div'); g.className = 'yt-grid';
+      for (let i = 0; i < 3; i++) { const k = document.createElement('div'); k.className = 'yt-skel'; k.innerHTML = '<div class="b t"></div><div class="m"><div class="b a"></div><div style="flex:1"><div class="b l" style="width:90%"></div><div class="b l" style="width:55%"></div></div></div>'; g.appendChild(k); }
+      body.appendChild(g);
+    }
+    try {
+      const posts = await api('/api/posts/liked?limit=50');
+      if (!likedEl().classList.contains('open')) return;
+      if (!Array.isArray(posts)) throw new Error('bad');
+      try { localStorage.setItem(key, JSON.stringify(posts.slice(0, 30))); } catch (_) {}
+      if (!shown || feedFp(posts) !== feedFp(cur)) { cur = posts; paint(posts); }
+      // 視聴ページのおすすめにも出せるよう、取得した投稿を共有キャッシュへ
+    } catch (e) {
+      if (!shown && likedEl().classList.contains('open')) { body.textContent = ''; const d = document.createElement('div'); d.className = 'yt-cempty'; d.style.color = '#ef4444'; d.textContent = T('feed_load_failed', '読み込みに失敗しました'); body.appendChild(d); }
+    }
+  }
+
+  const acctCard = document.getElementById('acctChannelCard');
+  if (acctCard) acctCard.addEventListener('click', e => {
+    const b = e.target.closest('[data-acct]'); if (!b) return;
+    if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+    const k = b.dataset.acct;
+    if (k === 'mychannel') window.openChannel(myUserId, { name: localStorage.getItem('myName') || '', pic: localStorage.getItem('myAvatar') || null });
+    else if (k === 'subscribers') window.ytShowSubscribers();
+    else if (k === 'subscriptions') window.ytShowSubscriptions();
+    else if (k === 'liked') openLiked();
+  });
 
   // スクロールしたらバーにチャンネル名を出す
   const cEl = chan.el();

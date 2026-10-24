@@ -136,6 +136,75 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
   res.json(posts);
 }));
 
+// --- 自分がいいねした投稿(アカウント > いいね) ---
+// いいねした順(新しい順)。ブロック関係の投稿・消した投稿は出さない
+router.get('/liked', verifyToken, asyncHandler(async (req, res) => {
+  const me = req.user.userId;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
+  const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
+  const args = [me, me, me];
+  let cond = '';
+  if (before) { cond = ' AND l.created_at < ?'; args.push(before); }
+  args.push(limit);
+  const rows = await db.all(
+    `SELECT p.*, l.created_at AS liked_at FROM post_likes l JOIN posts p ON p.id = l.post_id
+      WHERE l.user_id = ? AND p.deleted_at IS NULL
+        AND p.author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND p.author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)${cond}
+      ORDER BY l.created_at DESC LIMIT ?`, args);
+  const posts = await attachAuthorAndStats(rows, me);
+  const likedAt = new Map(rows.map(r => [r.id, r.liked_at]));
+  res.json(posts.map(p => ({ ...p, likedAt: likedAt.get(p.id) || null })));
+}));
+
+// --- 自分が登録しているチャンネル(アカウント > 登録チャンネル) ---
+router.get('/subscriptions', verifyToken, asyncHandler(async (req, res) => {
+  const me = req.user.userId;
+  const rows = await db.all(
+    `SELECT u.id, u.display_name, u.profile_pic, s.created_at AS since
+       FROM user_subscriptions s JOIN users u ON u.id = s.channel_id
+      WHERE s.subscriber_id = ?
+        AND u.id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND u.id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
+      ORDER BY s.created_at DESC LIMIT 500`, [me, me, me]);
+  if (!rows.length) return res.json([]);
+  const ids = rows.map(r => r.id);
+  const ph = ids.map(() => '?').join(',');
+  const counts = await db.all(`SELECT channel_id, COUNT(*) AS cnt FROM user_subscriptions WHERE channel_id IN (${ph}) GROUP BY channel_id`, ids);
+  const cm = new Map(counts.map(c => [c.channel_id, Number(c.cnt)]));
+  res.json(rows.map(r => ({ id: r.id, name: r.display_name || '不明なユーザー', pic: r.profile_pic || null, since: r.since, subscriberCount: cm.get(r.id) || 0 })));
+}));
+
+// --- 自分のチャンネルの登録者(誰が登録したか)。本人だけが見られる ---
+router.get('/channel/:channelId/subscribers', verifyToken, asyncHandler(async (req, res) => {
+  const me = req.user.userId;
+  if (req.params.channelId !== me) return res.status(403).json({ error: '自分のチャンネルの登録者だけ見られます' });
+  const rows = await db.all(
+    `SELECT u.id, u.display_name, u.profile_pic, s.created_at AS since
+       FROM user_subscriptions s JOIN users u ON u.id = s.subscriber_id
+      WHERE s.channel_id = ?
+        AND u.id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND u.id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
+      ORDER BY s.created_at DESC LIMIT 500`, [me, me, me]);
+  res.json(rows.map(r => ({ id: r.id, name: r.display_name || '不明なユーザー', pic: r.profile_pic || null, since: r.since })));
+}));
+
+// --- 投稿にいいねした人(誰がいいねしたか)。投稿者本人だけが見られる ---
+router.get('/:postId/likes', verifyToken, asyncHandler(async (req, res) => {
+  const me = req.user.userId;
+  const post = await db.get('SELECT author_id FROM posts WHERE id = ? AND deleted_at IS NULL', [req.params.postId]);
+  if (!post) return res.status(404).json({ error: '投稿が見つかりません' });
+  if (post.author_id !== me) return res.status(403).json({ error: '自分の投稿のいいねだけ見られます' });
+  const rows = await db.all(
+    `SELECT u.id, u.display_name, u.profile_pic, l.created_at AS at
+       FROM post_likes l JOIN users u ON u.id = l.user_id
+      WHERE l.post_id = ?
+        AND u.id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND u.id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
+      ORDER BY l.created_at DESC LIMIT 500`, [req.params.postId, me, me]);
+  res.json(rows.map(r => ({ id: r.id, name: r.display_name || '不明なユーザー', pic: r.profile_pic || null, at: r.at })));
+}));
+
 // --- 投稿作成 ---
 router.post('/', verifyToken, asyncHandler(async (req, res) => {
   censorBodyAndBanAfter(req, res, ['text']); // 禁止語は f*** にして投稿、本人は3日間停止
