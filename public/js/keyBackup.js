@@ -758,8 +758,9 @@
         // 断られたら、登録直後は1日、それ以外は3日あけて再度
         var sn = Number(localStorage.getItem('e2e_bk_snooze_' + uid()) || 0);
         if (!fresh && Date.now() < sn) return;
-        if (fresh) localStorage.removeItem(NEW_ACCOUNT);
+        // 印は、セットアップを終える(預けた/あとで)まで残す。途中で画面が閉じても、次に開いた時にまた出る
         var res = await (fresh ? showSetupWizard() : showModal('setup'));
+        if (fresh) localStorage.removeItem(NEW_ACCOUNT);
         if (res === 'later') localStorage.setItem('e2e_bk_snooze_' + uid(), String(Date.now() + (fresh ? 1 : 3) * 24 * 3600 * 1000));
       }
     } catch (e) { console.warn('[keyBackup] init:', e); }

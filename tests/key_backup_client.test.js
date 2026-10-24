@@ -120,9 +120,10 @@ test('登録直後: 鍵ができるのを待って、全画面のセットアッ
   assert.equal(latest(env, 'kbwTitle').textContent, '暗号鍵を設定しましょう');
   assert.equal(env.calls.keyFactory, 1, '鍵を作る処理を呼んだ');
   assert.ok(env.localStorage.getItem('e2e_keypair_u1'), '案内の時点で鍵がある');
-  assert.equal(env.localStorage.getItem('bc_new_account'), null, '印は使ったら消す');
+  assert.equal(env.localStorage.getItem('bc_new_account'), '1', '画面が開いている間は印を残す(途中で閉じても、次に開いた時にまた出す)');
   latest(env, 'kbwSkip').onclick();
   await p;
+  assert.equal(env.localStorage.getItem('bc_new_account'), null, '終えたら印を消す');
   const snooze = Number(env.localStorage.getItem('e2e_bk_snooze_u1'));
   assert.ok(Math.abs(snooze - (Date.now() + DAY)) < 60 * 1000, '再案内は約1日後');
   assert.equal(env.server.blob, null, 'あとでなら何も預けない');
