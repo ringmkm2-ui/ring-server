@@ -151,16 +151,13 @@
     const ae = document.activeElement;
     if (!ae) return false;
     const tag = ae.tagName;
-    // 入力欄に焦点がある間(=キーボードが出ている間)は、まだ空でも更新しない。
-    // 以前は「中身がある時だけ」入力中としていたので、欄をタップした直後(空)に更新が走って
-    // ページごとリロードされ、キーボードが閉じて画面も消えていた
-    if (tag === 'TEXTAREA') return !ae.readOnly && !ae.disabled;
+    if (tag === 'TEXTAREA') return (ae.value || '').trim().length > 0;
     if (tag === 'INPUT') {
       const t = (ae.type || 'text').toLowerCase();
-      if (['checkbox', 'radio', 'button', 'submit', 'range', 'file', 'color', 'image', 'reset'].includes(t)) return false;
-      return !ae.readOnly && !ae.disabled;
+      if (['checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(t)) return false;
+      return (ae.value || '').trim().length > 0;
     }
-    return !!ae.isContentEditable;
+    return !!ae.isContentEditable && (ae.textContent || '').trim().length > 0;
   }
   // 新しい版へのリロード。SWのキャッシュに古いページが残っていても、次の1回はネットワークから取らせる
   function freshReload() {

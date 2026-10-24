@@ -300,7 +300,6 @@
     gk_rekey_done: { ja: "鍵を作り直しました", en: "A new key has been created", "zh-CN": "已重新创建密钥", ko: "키를 다시 만들었습니다" },
     gk_rekey_fail: { ja: "鍵を作り直せませんでした。少し待ってからもう一度試してください", en: "Could not create a new key. Please try again shortly", "zh-CN": "无法重新创建密钥,请稍后重试", ko: "키를 다시 만들 수 없습니다. 잠시 후 다시 시도하세요" },
     kb_setup_title: { ja: "暗号鍵をバックアップ", en: "Back up your encryption key", "zh-CN": "备份加密密钥", ko: "암호화 키 백업" },
-    kb_logout_nobackup: { ja: "この端末の暗号鍵は、まだバックアップされていません。このままログアウトすると鍵は端末に残ります(共用の端末では、先にバックアップを作ってください)。ログアウトしますか？", en: "The encryption key on this device hasn't been backed up. If you log out now, the key stays on this device (on a shared device, set up a backup first). Log out?", "zh-CN": "此设备上的加密密钥尚未备份。现在退出登录，密钥会保留在此设备上（共用设备请先创建备份）。要退出登录吗？", ko: "이 기기의 암호화 키는 아직 백업되지 않았습니다. 지금 로그아웃하면 키가 기기에 남습니다(공용 기기라면 먼저 백업을 만드세요). 로그아웃할까요?" },
     kbw_title1: { ja: "暗号鍵を設定しましょう", en: "Set up your encryption key", "zh-CN": "设置你的加密密钥", ko: "암호화 키를 설정하세요" },
     kbw_sub1: { ja: "アカウントができました。メッセージを守る鍵を、最初に設定します。", en: "Your account is ready. First, let's set up the key that protects your messages.", "zh-CN": "账号已创建。先来设置保护你消息的密钥。", ko: "계정이 만들어졌습니다. 먼저 메시지를 보호하는 키를 설정합니다." },
     kbw_f1: { ja: "鍵はこの端末の中で作られます", en: "The key is made on this device", "zh-CN": "密钥在此设备上生成", ko: "키는 이 기기 안에서 만들어집니다" },
