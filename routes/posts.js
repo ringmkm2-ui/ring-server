@@ -11,6 +11,7 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { sendServerError } = require('../utils/errorResponse');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
+const { isBlockedEither } = require('../utils/relations');
 
 const router = express.Router();
 
@@ -319,18 +320,30 @@ router.post('/channel/:channelId/subscribe', verifyToken, asyncHandler(async (re
 // --- チャンネル情報(ヘッダー表示用) ---
 router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => {
   const channelId = req.params.channelId;
-  const u = await db.get('SELECT id, display_name, profile_pic FROM users WHERE id = ?', [channelId]);
+  const me = req.user.userId;
+  const u = await db.get('SELECT id, display_name, profile_pic, bio, created_at FROM users WHERE id = ?', [channelId]);
   if (!u) return res.status(404).json({ error: 'チャンネルが見つかりません' });
+  // ブロック関係の相手のチャンネルは存在しないのと同じ扱い(フィードと同じ)
+  if (channelId !== me && await isBlockedEither(me, channelId)) return res.status(404).json({ error: 'チャンネルが見つかりません' });
   const c = await db.get('SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE channel_id = ?', [channelId]);
-  const mine = await db.get('SELECT 1 AS x FROM user_subscriptions WHERE subscriber_id = ? AND channel_id = ?', [req.user.userId, channelId]);
-  const pc = await db.get('SELECT COUNT(*) AS cnt FROM posts WHERE author_id = ? AND deleted_at IS NULL', [channelId]);
+  const mine = await db.get('SELECT 1 AS x FROM user_subscriptions WHERE subscriber_id = ? AND channel_id = ?', [me, channelId]);
+  const pc = await db.get(
+    `SELECT COUNT(*) AS cnt, COALESCE(SUM(view_count), 0) AS views,
+            SUM(CASE WHEN media_type = 'video' THEN 1 ELSE 0 END) AS videos,
+            SUM(CASE WHEN media_type = 'image' THEN 1 ELSE 0 END) AS images
+       FROM posts WHERE author_id = ? AND deleted_at IS NULL`, [channelId]);
   res.json({
     id: u.id,
     name: u.display_name || '不明なユーザー',
     pic: u.profile_pic || null,
+    bio: typeof u.bio === 'string' ? u.bio.slice(0, 500) : '',
+    joinedAt: u.created_at || null,
     subscriberCount: Number(c?.cnt || 0),
     subscribedByMe: !!mine,
     postCount: Number(pc?.cnt || 0),
+    videoCount: Number(pc?.videos || 0),
+    imageCount: Number(pc?.images || 0),
+    totalViews: Number(pc?.views || 0),
   });
 }));
 
