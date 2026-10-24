@@ -262,6 +262,19 @@
     return e;
   }
 
+  // 入力欄の横に置くボタンは、押しても入力欄から焦点を奪わないようにする。
+  // 奪うと、スマホではキーボードが閉じてしまう(目のボタンや「自動で作る」を押すたびに閉じていた)
+  function keepFocus(b) {
+    b.tabIndex = -1;
+    b.onmousedown = function (e) { e.preventDefault(); };
+    return b;
+  }
+  // スマホでは自動で焦点を当てない。ユーザーの操作なしに当てた焦点ではキーボードが出ず、
+  // 焦点済みの欄をタップしても出ない(「キーボードが出てこない」の原因)。パソコンだけ自動で当てる
+  function canAutoFocus() {
+    try { return !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return true; }
+  }
+
   // mode: 'setup' | 'restore' | 'restore-mismatch'
   function showModal(mode) {
     return new Promise(function (resolve) {
@@ -299,7 +312,7 @@
         box.appendChild(p2);
         // 自分で考えると弱くなりがちなので、強いものを作るボタン(約93ビット)。作ったら見えるようにして控えてもらう
         var gen = el('button', 'border:0;background:none;color:#10b981;font-size:13px;font-weight:700;padding:2px 2px 8px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
-        gen.type = 'button';
+        gen.type = 'button'; keepFocus(gen);
         gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; p1.type = 'text'; p2.type = 'text'; msg.style.color = sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません'); };
         box.appendChild(gen);
       }
@@ -317,7 +330,7 @@
       box.appendChild(row);
       wrap.appendChild(box);
       document.body.appendChild(wrap);
-      setTimeout(function () { try { p1.focus(); } catch (e) {} }, 50);
+      if (canAutoFocus()) setTimeout(function () { try { p1.focus(); } catch (e) {} }, 50);
 
       var busy = false;
       function close(result) { try { wrap.remove(); } catch (e) {} resolve(result); }
@@ -398,6 +411,8 @@
         '@keyframes kbwDraw{to{stroke-dashoffset:0}}' +
         '@keyframes kbwSpin{to{transform:rotate(360deg)}}' +
         '#kbw button:active{opacity:.7}' +
+        // キーボードが出て画面が低くなったら、上の大きな丸いアイコンをたたんで、入力欄とボタンが隠れないようにする
+        '@media (max-height:640px){#kbw .kbw-hero{display:none!important}#kbw .kbw-title{font-size:22px!important;margin-bottom:6px!important}#kbw .kbw-sub{display:none!important}#kbw .kbw-bottom{padding-top:6px!important}#kbw .kbw-later{height:40px!important}}' +
         '@media (prefers-reduced-motion:reduce){#kbw *{animation-duration:.01ms!important}}';
       wrap.appendChild(css);
 
@@ -419,21 +434,23 @@
       // ---- 部品 ----
       function page() { return el('div', 'flex:1;min-height:0;display:flex;flex-direction:column;animation:kbwIn .28s ease both'); }
       function scroller() { return el('div', 'flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 28px 16px'); }
-      function bottom() { return el('div', 'flex:none;display:flex;flex-direction:column;gap:2px;padding:12px 24px calc(14px + env(safe-area-inset-bottom))'); }
+      function bottom() { var d = el('div', 'flex:none;display:flex;flex-direction:column;gap:2px;padding:12px 24px calc(14px + env(safe-area-inset-bottom))'); d.className = 'kbw-bottom'; return d; }
       function hero(name, size, circle, pulse) {
         var c = el('div', 'width:' + circle + 'px;height:' + circle + 'px;margin:10px auto 22px;border-radius:50%;background:' + C.soft + ';color:' + C.green + ';display:flex;align-items:center;justify-content:center' + (pulse ? ';animation:kbwPulse 2.6s ease-in-out infinite' : ''));
+        c.className = 'kbw-hero';
         c.innerHTML = svgIcon(name, size, 1.5);
         return c;
       }
-      function title(id, text) { var t = el('div', 'font-size:26px;font-weight:800;line-height:1.3;text-align:center;letter-spacing:-.01em;margin:0 0 10px', text); t.id = id; return t; }
-      function sub(text) { return el('div', 'font-size:15px;line-height:1.65;text-align:center;color:' + C.sub + ';margin:0 4px 6px', text); }
+      function title(id, text) { var t = el('div', 'font-size:26px;font-weight:800;line-height:1.3;text-align:center;letter-spacing:-.01em;margin:0 0 10px', text); t.id = id; t.className = 'kbw-title'; return t; }
+      // fold=true の補足は、画面が低い時(キーボード表示中)は隠す。控えを促す大事な文は fold しない
+      function sub(text, fold) { var d = el('div', 'font-size:15px;line-height:1.65;text-align:center;color:' + C.sub + ';margin:0 4px 6px', text); if (fold) d.className = 'kbw-sub'; return d; }
       function primary(id, text) {
         var b = el('button', 'width:100%;height:54px;border:0;border-radius:27px;background:' + C.green + ';color:#fff;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer', text);
         b.id = id; b.type = 'button'; return b;
       }
       function later(id) {
         var b = el('button', 'width:100%;height:48px;border:0;background:none;color:' + C.sub + ';font-size:15px;font-family:inherit;cursor:pointer', T('kbw_skip', 'あとで設定する'));
-        b.id = id; b.type = 'button'; b.onclick = function () { if (!busy) close('later'); }; return b;
+        b.id = id; b.type = 'button'; b.className = 'kbw-later'; b.onclick = function () { if (!busy) close('later'); }; return b;
       }
       function feature(icon, head, desc) {
         var row = el('div', 'display:flex;align-items:flex-start;gap:14px');
@@ -468,25 +485,27 @@
         var p = page(), sc = scroller(), bt = bottom();
         sc.appendChild(hero('key', 44, 92, false));
         sc.appendChild(title('kbwTitle', T('kbw_title2', 'パスフレーズを決める')));
-        sc.appendChild(sub(T('kbw_sub2', '12文字以上。機種変更や別の端末で鍵を戻す時に使います。')));
+        sc.appendChild(sub(T('kbw_sub2', '12文字以上。機種変更や別の端末で鍵を戻す時に使います。'), true));
         var inCss = 'display:block;width:100%;height:54px;box-sizing:border-box;border:0;outline:0;border-radius:16px;background:' + C.input + ';color:' + C.fg + ';font-size:17px;font-family:inherit;padding:0 50px 0 16px';
         var form = el('div', 'margin-top:22px');
         var f1 = el('div', 'position:relative;margin-bottom:10px');
-        var p1 = el('input', inCss); p1.id = 'kbwPass1'; p1.type = 'password'; p1.autocomplete = 'new-password';
+        var p1 = el('input', inCss); p1.id = 'kbwPass1'; p1.type = 'password'; p1.autocomplete = 'off';
         p1.placeholder = T('kb_pass_strong', 'パスフレーズ(12文字以上)'); p1.value = pass;
+        p1.enterKeyHint = 'next';
         var eye = el('button', 'position:absolute;top:5px;right:5px;width:44px;height:44px;border:0;border-radius:22px;background:none;color:' + C.sub + ';display:flex;align-items:center;justify-content:center;cursor:pointer');
-        eye.type = 'button'; eye.id = 'kbwEye'; eye.innerHTML = svgIcon('eye', 22, 1.7);
+        eye.type = 'button'; eye.id = 'kbwEye'; eye.innerHTML = svgIcon('eye', 22, 1.7); keepFocus(eye);
         if (eye.setAttribute) eye.setAttribute('aria-label', T('kbw_show', '表示を切り替え'));
         f1.appendChild(p1); f1.appendChild(eye);
-        var p2 = el('input', inCss); p2.id = 'kbwPass2'; p2.type = 'password'; p2.autocomplete = 'new-password';
+        var p2 = el('input', inCss); p2.id = 'kbwPass2'; p2.type = 'password'; p2.autocomplete = 'off';
         p2.placeholder = T('kb_pass2', 'もう一度入力'); p2.value = pass;
+        p2.enterKeyHint = 'done';
         var shown = false;
         eye.onclick = function () {
           shown = !shown; p1.type = p2.type = shown ? 'text' : 'password';
           eye.innerHTML = svgIcon(shown ? 'eyeoff' : 'eye', 22, 1.7);
         };
         var gen = el('button', 'border:0;background:none;color:' + C.green + ';font-size:14.5px;font-weight:700;font-family:inherit;padding:12px 2px 4px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
-        gen.id = 'kbwGen'; gen.type = 'button';
+        gen.id = 'kbwGen'; gen.type = 'button'; keepFocus(gen);
         var msg = el('div', 'min-height:22px;font-size:13.5px;line-height:1.5;color:' + C.err + ';margin:6px 2px 0');
         msg.id = 'kbwMsg';
         gen.onclick = function () {
@@ -504,9 +523,12 @@
           if (p1.value !== p2.value) { msg.textContent = T('kb_err_match', '2つのパスフレーズが一致しません'); return; }
           pass = p1.value; go(3);
         };
+        // キーボードの「次へ/完了」キー: 1つ目の欄なら2つ目へ、2つ目なら次の画面へ
+        p1.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); p2.focus(); } };
+        p2.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); next.onclick(); } };
         bt.appendChild(next); bt.appendChild(later('kbwSkip'));
         p.appendChild(sc); p.appendChild(bt);
-        setTimeout(function () { try { p1.focus(); } catch (e) {} }, 320);
+        if (canAutoFocus()) setTimeout(function () { try { p1.focus(); } catch (e) {} }, 320);
         return p;
       }
 

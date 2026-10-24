@@ -15,7 +15,7 @@ class El {
   constructor(tag, all) { this.tag = tag; this.style = {}; this.children = []; this.textContent = ''; this.value = ''; all.push(this); }
   appendChild(c) { this.children.push(c); return c; }
   remove() {}
-  focus() {}
+  focus() { this.focusCount = (this.focusCount || 0) + 1; }
 }
 
 function makeEnv({ withKeyFactory = true } = {}) {
@@ -51,12 +51,13 @@ function makeEnv({ withKeyFactory = true } = {}) {
     body: new El('body', all),
     createElement: (tag) => new El(tag, all),
   };
-  const calls = { confirm: 0, confirmAnswer: true, keyFactory: 0 };
+  const calls = { confirm: 0, confirmAnswer: true, keyFactory: 0, coarse: false };
   const ctx = {
     console, setTimeout, clearTimeout, TextEncoder, TextDecoder, Uint8Array, Promise, JSON, Date, Math, Array, Object, Set, String, Number,
     crypto: webcrypto, localStorage, fetch, document, atob, btoa,
     confirm: () => { calls.confirm++; return calls.confirmAnswer; },
-    matchMedia: () => ({ matches: false }),
+    // coarse=true はスマホ(指で操作する端末)。ダークモードの判定は常に false
+    matchMedia: (q) => ({ matches: !!(calls.coarse && /pointer:\s*coarse/.test(q)) }),
   };
   ctx.window = ctx; ctx.self = ctx; ctx.location = { reload() {} };
   vm.createContext(ctx);
@@ -167,6 +168,62 @@ test('セットアップ画面: 弱い/一致しないパスフレーズでは�
   latest(env, 'kbwNext').onclick();
   assert.match(latest(env, 'kbwMsg').textContent, /一致しません/);
   assert.equal(env.all.filter((e) => e.id === 'kbwCheck').length, 0);
+  latest(env, 'kbwSkip').onclick();
+  await p;
+});
+
+async function toStep2(env) {
+  env.localStorage.setItem('bc_new_account', '1');
+  const p = env.kb.init();
+  (await waitId(env, 'kbwContinue')).onclick();
+  await waitId(env, 'kbwPass1');
+  return { p }; // Promise をそのまま返すと、画面が閉じるまで待ってしまうので包む
+}
+
+test('セットアップ画面: スマホでは入力欄に自動で焦点を当てない(当てるとキーボードが出なくなる)', async () => {
+  const env = makeEnv();
+  env.calls.coarse = true;
+  const { p } = await toStep2(env);
+  await new Promise((r) => setTimeout(r, 500)); // 自動フォーカスがあるなら 320ms で走る
+  assert.equal(latest(env, 'kbwPass1').focusCount || 0, 0);
+  latest(env, 'kbwSkip').onclick();
+  await p;
+});
+
+test('セットアップ画面: パソコンでは入力欄に自動で焦点を当てる', async () => {
+  const env = makeEnv();
+  const { p } = await toStep2(env);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(latest(env, 'kbwPass1').focusCount, 1);
+  latest(env, 'kbwSkip').onclick();
+  await p;
+});
+
+test('セットアップ画面: 目のボタンと「自動で作る」は、押しても入力欄から焦点を奪わない', async () => {
+  const env = makeEnv();
+  const { p } = await toStep2(env);
+  for (const id of ['kbwEye', 'kbwGen']) {
+    const b = latest(env, id);
+    assert.equal(b.tabIndex, -1, id + ' はTabで焦点が当たらない');
+    let prevented = false;
+    b.onmousedown({ preventDefault() { prevented = true; } }); // 押した瞬間の既定動作(焦点移動)を止める
+    assert.equal(prevented, true, id + ' の押下で焦点が移らない');
+  }
+  latest(env, 'kbwSkip').onclick();
+  await p;
+});
+
+test('セットアップ画面: キーボードの「次へ」で2つ目の欄へ、「完了」で次の画面へ進む', async () => {
+  const env = makeEnv();
+  const { p } = await toStep2(env);
+  const p1 = latest(env, 'kbwPass1'), p2 = latest(env, 'kbwPass2');
+  p1.value = STRONG; p2.value = STRONG;
+  let prevented = false;
+  p1.onkeydown({ key: 'Enter', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(p2.focusCount, 1, '2つ目の欄へ移る');
+  p2.onkeydown({ key: 'Enter', preventDefault() {} });
+  await waitId(env, 'kbwCheck'); // 次の画面(控えの確認)へ
   latest(env, 'kbwSkip').onclick();
   await p;
 });
