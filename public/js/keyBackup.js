@@ -715,20 +715,6 @@
     return true;
   }
 
-  // ログアウトの前に呼ぶ。端末の暗号鍵を消してよいかを決める。
-  //   'wipe'   … バックアップに全部入っていると確かめられた。鍵を端末から消す(共用の端末・紛失に備える)
-  //   'keep'   … 確かめられない/バックアップが無い。消すと過去のメッセージが読めなくなるので、鍵は端末に残す
-  //   'cancel' … 本人がログアウトをやめた
-  async function logoutPlan() {
-    try {
-      if (!nacl() || !crypto || !crypto.subtle) return 'keep';
-      var s = localState();
-      if (!s.keypair && !s.keyring.length && !s.identity) return 'keep'; // 消すものが無い
-      if (await backupCoversLocal()) return 'wipe';
-    } catch (e) {}
-    return confirm(T('kb_logout_nobackup', 'この端末の暗号鍵は、まだバックアップされていません。このままログアウトすると鍵は端末に残ります(共用の端末では、先にバックアップを作ってください)。ログアウトしますか？')) ? 'keep' : 'cancel';
-  }
-
   // ---------- 入口 ----------
   var inFlight = null;
 
@@ -821,7 +807,6 @@
     guardCreate: guardCreate,
     syncIfNeeded: syncIfNeeded,
     syncSoon: syncSoon,
-    logoutPlan: logoutPlan,
     // 設定画面から: 'setup' で預け直し(パスフレーズ変更)、'restore' で復元
     openSetup: function () { return showModal('setup'); },
     openRestore: function () { return showModal('restore-mismatch'); },

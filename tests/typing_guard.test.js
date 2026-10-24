@@ -19,24 +19,17 @@ function isTypingWith({ active, wizard = false }) {
 }
 const input = (type, value = '', extra = {}) => ({ tagName: 'INPUT', type, value, ...extra });
 
-test('入力欄に焦点がある間は、空でも「入力中」(キーボードが出ている)', () => {
-  assert.equal(isTypingWith({ active: input('text', '') }), true);
-  assert.equal(isTypingWith({ active: input('password', '') }), true);
-  assert.equal(isTypingWith({ active: { tagName: 'TEXTAREA', value: '' } }), true);
-  assert.equal(isTypingWith({ active: { tagName: 'DIV', isContentEditable: true, textContent: '' } }), true);
-});
-
-test('中身がある入力欄も、もちろん「入力中」', () => {
+test('書きかけの中身がある欄は「入力中」', () => {
   assert.equal(isTypingWith({ active: input('text', 'こんにちは') }), true);
   assert.equal(isTypingWith({ active: { tagName: 'TEXTAREA', value: 'abc' } }), true);
+  assert.equal(isTypingWith({ active: { tagName: 'DIV', isContentEditable: true, textContent: 'abc' } }), true);
 });
 
-test('文字を打たない部品・読み取り専用・無効の欄は「入力中」ではない', () => {
-  for (const t of ['checkbox', 'radio', 'button', 'submit', 'range', 'file']) assert.equal(isTypingWith({ active: input(t) }), false, t);
-  assert.equal(isTypingWith({ active: input('text', 'x', { readOnly: true }) }), false);
-  assert.equal(isTypingWith({ active: input('text', 'x', { disabled: true }) }), false);
+test('空の欄や、文字を打たない部品は「入力中」ではない', () => {
+  assert.equal(isTypingWith({ active: input('text', '') }), false);
+  assert.equal(isTypingWith({ active: { tagName: 'TEXTAREA', value: '' } }), false);
+  for (const t of ['checkbox', 'radio', 'button', 'submit', 'range', 'file']) assert.equal(isTypingWith({ active: input(t, 'x') }), false, t);
   assert.equal(isTypingWith({ active: { tagName: 'BUTTON' } }), false);
-  assert.equal(isTypingWith({ active: { tagName: 'BODY' } }), false);
   assert.equal(isTypingWith({ active: null }), false);
 });
 

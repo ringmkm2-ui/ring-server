@@ -742,7 +742,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.282 beta</div>
+  <div class="version-badge">Bro Chat v1.28.283 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -3630,25 +3630,15 @@ setInterval(() => {
 // 登録した直後(auth.html が印を付ける)は待たずに出す。鍵ができるのを待つ処理は init の中にある
 window.addEventListener('load', () => setTimeout(() => { if (window.bcKeyBackup) window.bcKeyBackup.init(); }, localStorage.getItem('bc_new_account') === '1' ? 800 : 2500));
 
-async function logout() {
-  // 端末の暗号鍵を消してよいかを先に決める。バックアップに全部入っていると確かめられた時だけ消す
-  // (確かめられないのに消すと、再ログイン後に過去のメッセージが全部読めなくなる)。バックアップが無ければ確認を出す
-  let keyPlan = 'keep';
-  try { if (window.bcKeyBackup) keyPlan = await window.bcKeyBackup.logoutPlan(); } catch (e) {}
-  if (keyPlan === 'cancel') return;
+function logout() {
   // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める
   try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fcmToken: localStorage.getItem('fcm_token') || undefined }) }).catch(() => {}); } catch (e) {}
-  // 鍵を残す時は、E2Eの秘密鍵と自分の送信控えを消さない。消すと再ログイン時に新しい鍵が作られ、
-  // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)。
-  // バックアップで戻せると確かめられた時('wipe')は鍵を消す。再ログインすると復元の案内が出る。
-  // 自分の送信控え(own_plaintext_)はバックアップに入っていないので、どちらの場合も残す
-  const keepRe = keyPlan === 'wipe'
-    ? /^(e2e_peerkeys_|own_plaintext_)/
-    : /^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/;
+  // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
+  // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)
   const keep = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (keepRe.test(k)) keep[k] = localStorage.getItem(k);
+    if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/.test(k)) keep[k] = localStorage.getItem(k);
   }
   localStorage.clear();
   for (const k in keep) localStorage.setItem(k, keep[k]);
