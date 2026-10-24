@@ -105,3 +105,30 @@ test('アカウント欄: いいねした投稿・登録チャンネル・登録
   assert.ok(!(await b.call('GET', '/api/posts/subscriptions')).data.some(s => s.id === a.userId));
   assert.ok(!(await b.call('GET', '/api/posts/liked')).data.some(p => p.id === pa.id));
 });
+
+test('いいねされた: 自分の投稿に来たいいねが 誰が・どの投稿に で返る(自分/ブロック/消した投稿は除く)', async () => {
+  const a = await S.user('Recv A'); const b = await S.user('Recv B'); const c = await S.user('Recv C');
+  const p1 = (await a.call('POST', '/api/posts', { text: 'mine 1' })).data.post;
+  const p2 = (await a.call('POST', '/api/posts', { text: 'mine 2' })).data.post;
+  const other = (await b.call('POST', '/api/posts', { text: 'B own' })).data.post;
+  await b.call('POST', `/api/posts/${p1.id}/like`);
+  await c.call('POST', `/api/posts/${p1.id}/like`);
+  await c.call('POST', `/api/posts/${p2.id}/like`);
+  await a.call('POST', `/api/posts/${p1.id}/like`);       // 自分で自分にしたいいねは数えない
+  await a.call('POST', `/api/posts/${other.id}/like`);    // 他人の投稿へのいいねは対象外
+  let r = (await a.call('GET', '/api/posts/likes-received')).data;
+  assert.equal(r.total, 3);
+  assert.equal(r.items.length, 3);
+  assert.ok(r.items.every(i => i.user.id !== a.userId && i.post.authorId === a.userId));
+  assert.ok(r.items.some(i => i.user.id === b.userId && i.post.id === p1.id && i.user.name === 'Recv B'));
+  const rb = (await b.call('GET', '/api/posts/likes-received')).data;
+  assert.equal(rb.total, 1, 'b には a のいいね1件だけ');
+  assert.equal(rb.items[0].user.id, a.userId);
+  assert.deepEqual((await c.call('GET', '/api/posts/likes-received')).data, { total: 0, items: [] }, 'c は何もいいねされていない');
+  // 消した投稿とブロックした人は除く
+  await a.call('DELETE', `/api/posts/${p2.id}`);
+  await a.call('POST', '/api/friends/block', { userId: b.userId });
+  r = (await a.call('GET', '/api/posts/likes-received')).data;
+  assert.equal(r.total, 1);
+  assert.deepEqual(r.items.map(i => i.user.id), [c.userId]);
+});

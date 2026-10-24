@@ -678,6 +678,10 @@ window.ensureGroupCrypto = (function () {
             <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9M2 13v6a2 2 0 0 0 2 2h13.3a2 2 0 0 0 2-1.7l1.3-7a2 2 0 0 0-2-2.3H14l1-4.3A2 2 0 0 0 13 3l-6 8H2z"/></svg>
             <span class="ac-t" data-i18n="acct_liked">いいねした投稿</span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
           </button>
+          <button type="button" class="acr" data-acct="received">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <span class="ac-t" data-i18n="acct_received">いいねされた</span><span class="ac-s" id="acRecvMeta"></span><svg class="ac-chev" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
         </div>
 
         <!-- 友達リクエストセクション -->
@@ -738,7 +742,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.275 beta</div>
+  <div class="version-badge">Bro Chat v1.28.276 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -5715,6 +5719,7 @@ function openPostMenu(p) {
     if (!i) return;
     if (acSubs) acSubs.textContent = fmtNum(i.subscriberCount || 0);
     if (acMy) acMy.textContent = counted('ch_n_videos', '動画 {n}本', i.videoCount || 0);
+    const ar = document.getElementById('acRecvMeta'); if (ar && i.likesReceived != null) ar.textContent = fmtNum(i.likesReceived);
   }
   try { paintAcct(JSON.parse(localStorage.getItem(ACCT_KEY) || 'null')); } catch (_) {}
   window.acctRefresh = async function () {
@@ -5722,7 +5727,7 @@ function openPostMenu(p) {
       const i = await api('/api/posts/channel/' + encodeURIComponent(myUserId));
       if (!i || i.error) return;
       paintAcct(i);
-      try { localStorage.setItem(ACCT_KEY, JSON.stringify({ subscriberCount: i.subscriberCount, videoCount: i.videoCount })); } catch (_) {}
+      try { localStorage.setItem(ACCT_KEY, JSON.stringify({ subscriberCount: i.subscriberCount, videoCount: i.videoCount, likesReceived: i.likesReceived })); } catch (_) {}
     } catch (_) {}
   };
   window.acctRefresh();
@@ -5775,8 +5780,9 @@ function openPostMenu(p) {
     const w = document.getElementById('ytWatch'), ch = document.getElementById('ytChannel');
     if (!(w && w.classList.contains('open')) && !(ch && ch.classList.contains('open'))) document.body.style.overflow = '';
   };
-  async function openLiked() {
-    const c = likedEl(); if (!c) return;
+  // 全画面の一覧ページの枠(戻るボタン+タイトル)。履歴を1つ積む
+  function listFrame(titleText) {
+    const c = likedEl(); if (!c) return null;
     if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
     if (!c.classList.contains('open')) { try { history.pushState({ ytList: 1 }, ''); } catch (_) {} }
     c.classList.add('open', 'scrolled'); c.setAttribute('aria-hidden', 'false'); c.scrollTop = 0;
@@ -5785,37 +5791,87 @@ function openPostMenu(p) {
     const bar = document.createElement('div'); bar.className = 'yt-cbar';
     const back = document.createElement('button'); back.type = 'button'; back.setAttribute('aria-label', T('back', '戻る')); back.innerHTML = SVG_BACK;
     back.addEventListener('click', () => { try { history.back(); } catch (_) { window.closeYtList(); } });
-    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = T('acct_liked', 'いいねした投稿');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = titleText;
     bar.append(back, nm); c.appendChild(bar);
     const wrap = document.createElement('div'); wrap.className = 'yt-cwrap';
     const body = document.createElement('div'); body.className = 'yt-cbody'; wrap.appendChild(body); c.appendChild(wrap);
+    return body;
+  }
+  function skelGrid(body, n) {
+    const g = document.createElement('div'); g.className = 'yt-grid';
+    for (let i = 0; i < n; i++) { const k = document.createElement('div'); k.className = 'yt-skel'; k.innerHTML = '<div class="b t"></div><div class="m"><div class="b a"></div><div style="flex:1"><div class="b l" style="width:90%"></div><div class="b l" style="width:55%"></div></div></div>'; g.appendChild(k); }
+    body.appendChild(g);
+  }
+  function listMsg(body, text, err) {
+    body.textContent = '';
+    const d = document.createElement('div'); d.className = 'yt-cempty'; d.textContent = text; if (err) d.style.color = '#ef4444';
+    body.appendChild(d);
+  }
+  // 前回の内容を先に出して、裏で取り直し、変化があった時だけ描画し直す共通処理
+  async function cachedList(body, key, url, fp, paint, emptyKey, emptyFb, pick) {
+    let cur = null, shown = false;
+    try { const cc = JSON.parse(localStorage.getItem(key) || 'null'); if (cc) { cur = cc; shown = true; paint(cur); } } catch (_) {}
+    if (!shown) skelGrid(body, 3);
+    try {
+      const data = await api(url);
+      if (!likedEl().classList.contains('open')) return;
+      const arr = pick(data);
+      if (!arr) throw new Error('bad');
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch (_) {}
+      if (!shown || fp(data) !== fp(cur)) paint(data);
+    } catch (e) {
+      if (!shown && likedEl().classList.contains('open')) listMsg(body, T('feed_load_failed', '読み込みに失敗しました'), true);
+    }
+  }
 
-    const key = 'liked_cache_' + (myUserId || '');
-    let cur = [], shown = false;
+  // いいねした投稿
+  function openLiked() {
+    const body = listFrame(T('acct_liked', 'いいねした投稿')); if (!body) return;
     const paint = arr => {
       body.textContent = '';
-      if (!arr.length) { const d = document.createElement('div'); d.className = 'yt-cempty'; d.textContent = T('acct_no_liked', 'いいねした投稿はまだありません'); body.appendChild(d); return; }
+      if (!arr.length) return listMsg(body, T('acct_no_liked', 'いいねした投稿はまだありません'));
       const g = document.createElement('div'); g.className = 'yt-grid';
       const frag = document.createDocumentFragment();
       arr.forEach(x => frag.appendChild(renderPostCard(x)));
       g.appendChild(frag); body.appendChild(g);
     };
-    try { const cc = JSON.parse(localStorage.getItem(key) || 'null'); if (Array.isArray(cc)) { cur = cc; shown = true; paint(cur); } } catch (_) {}
-    if (!shown) {
-      const g = document.createElement('div'); g.className = 'yt-grid';
-      for (let i = 0; i < 3; i++) { const k = document.createElement('div'); k.className = 'yt-skel'; k.innerHTML = '<div class="b t"></div><div class="m"><div class="b a"></div><div style="flex:1"><div class="b l" style="width:90%"></div><div class="b l" style="width:55%"></div></div></div>'; g.appendChild(k); }
-      body.appendChild(g);
-    }
-    try {
-      const posts = await api('/api/posts/liked?limit=50');
-      if (!likedEl().classList.contains('open')) return;
-      if (!Array.isArray(posts)) throw new Error('bad');
-      try { localStorage.setItem(key, JSON.stringify(posts.slice(0, 30))); } catch (_) {}
-      if (!shown || feedFp(posts) !== feedFp(cur)) { cur = posts; paint(posts); }
-      // 視聴ページのおすすめにも出せるよう、取得した投稿を共有キャッシュへ
-    } catch (e) {
-      if (!shown && likedEl().classList.contains('open')) { body.textContent = ''; const d = document.createElement('div'); d.className = 'yt-cempty'; d.style.color = '#ef4444'; d.textContent = T('feed_load_failed', '読み込みに失敗しました'); body.appendChild(d); }
-    }
+    cachedList(body, 'liked_cache_' + (myUserId || ''), '/api/posts/liked?limit=50', d => feedFp(d), paint, 'acct_no_liked', '', d => Array.isArray(d) ? d : null);
+  }
+
+  // いいねされた(自分の投稿に来たいいね。誰が・どの投稿に・いつ)
+  function openReceived() {
+    const body = listFrame(T('acct_received', 'いいねされた')); if (!body) return;
+    const paint = data => {
+      body.textContent = '';
+      const items = data.items || [];
+      if (!items.length) return listMsg(body, T('acct_no_received', 'まだいいねされていません'));
+      const total = document.createElement('div'); total.className = 'yt-sec-title'; total.style.marginTop = '0';
+      total.textContent = T('acct_received', 'いいねされた') + ' ' + fmtNum(data.total || items.length);
+      body.appendChild(total);
+      const frag = document.createDocumentFragment();
+      items.forEach(it => {
+        const row = document.createElement('div'); row.className = 'yt-urow'; row.style.padding = '9px 0';
+        const av = document.createElement('div'); av.className = 'yt-ch-av'; av.dataset.ch = '1'; setAvatarBackground(av, it.user.pic, (it.user.name || '?')[0]);
+        av.addEventListener('click', e => { e.stopPropagation(); window.openChannel(it.user.id, { name: it.user.name, pic: it.user.pic }); });
+        const b = document.createElement('div'); b.className = 'u-b';
+        const n = document.createElement('div'); n.className = 'u-n'; n.style.whiteSpace = 'normal';
+        n.textContent = fill(T('acct_received_item', '{name}さんがいいねしました'), { name: it.user.name || '' });
+        const sub = document.createElement('div'); sub.className = 'u-s';
+        sub.textContent = postTitle(it.post) + '・' + formatPostTime(it.at);
+        b.append(n, sub); row.append(av, b);
+        // 右に投稿のサムネ(画像のみ。動画は読み込まない)
+        if (it.post.mediaType === 'image' && it.post.mediaUrl) {
+          const th = document.createElement('img'); th.alt = ''; th.loading = 'lazy'; th.decoding = 'async';
+          th.style.cssText = 'width:64px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#000';
+          th.src = window.cldTransform ? window.cldTransform(it.post.mediaUrl, 'w_160,h_100,c_fill,q_auto,f_auto') : it.post.mediaUrl;
+          row.appendChild(th);
+        }
+        row.addEventListener('click', () => openWatch(it.post));
+        frag.appendChild(row);
+      });
+      body.appendChild(frag);
+    };
+    cachedList(body, 'recv_cache_' + (myUserId || ''), '/api/posts/likes-received?limit=50', d => JSON.stringify((d.items || []).map(i => [i.user.id, i.post.id, i.at, i.post.likeCount])) + d.total, paint, 'acct_no_received', '', d => d && Array.isArray(d.items) ? d.items : null);
   }
 
   const acctCard = document.getElementById('acctChannelCard');
@@ -5827,6 +5883,7 @@ function openPostMenu(p) {
     else if (k === 'subscribers') window.ytShowSubscribers();
     else if (k === 'subscriptions') window.ytShowSubscriptions();
     else if (k === 'liked') openLiked();
+    else if (k === 'received') openReceived();
   });
 
   // スクロールしたらバーにチャンネル名を出す
