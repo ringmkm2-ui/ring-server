@@ -453,6 +453,8 @@
     // --- 共通: セッション保存 / 画面切替 ---
     let pendingVerifyEmail = null;
     let pendingTwoFaToken = null;
+    // メールで新規登録が通った(確認コード待ちを含む)。最初のログインで、トーク一覧が暗号鍵の設定を案内する
+    let pendingNewAccount = false;
 
     function storeSession(data) {
       localStorage.setItem('ring_token', data.token);
@@ -511,6 +513,7 @@
         if (!res.ok) throw new Error(data.error || '確認に失敗しました');
         if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
         storeSession(data);
+        if (pendingNewAccount) localStorage.setItem('bc_new_account', '1');
         window.location.replace('/talklist.html');
       } catch (err) {
         showError(err.message);
@@ -723,11 +726,13 @@
 
         const data = await response.json();
 
+        if (response.ok) pendingNewAccount = true;
         if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || '登録に失敗しました');
         }
 
+        localStorage.setItem('bc_new_account', '1');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
