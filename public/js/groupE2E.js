@@ -66,6 +66,9 @@
       }),
     });
 
+    // 作ったばかりの身元鍵もバックアップに入れる(先にバックアップを設定していても、次に開くまで漏れていた)
+    if (window.bcKeyBackup) window.bcKeyBackup.syncSoon();
+
     return myFullBundle;
   }
 

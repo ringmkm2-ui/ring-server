@@ -275,11 +275,14 @@
       var box = el('div', 'width:100%;max-width:360px;background:' + card + ';color:' + fg + ';border-radius:22px;padding:22px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif');
       var ic = el('div', 'color:#10b981;margin-bottom:8px'); ic.innerHTML = LOCK_SVG; box.appendChild(ic);
 
-      var isSetup = mode === 'setup' || mode === 'upgrade';
+      var isSetup = mode === 'setup' || mode === 'upgrade' || mode === 'signup';
       var title = isSetup ? T('kb_setup_title', '暗号鍵をバックアップ') : T('kb_restore_title', '暗号鍵を復元');
       if (mode === 'upgrade') title = T('kb_upgrade_title', 'パスフレーズを強くしてください');
+      if (mode === 'signup') title = T('kb_signup_title', '暗号鍵を設定しましょう');
       var body = mode === 'upgrade'
         ? T('kb_upgrade_body', '今のバックアップは、前の基準(8文字以上)のパスフレーズで預けられています。短いと、万一サーバーのデータが漏れた時に総当たりで破られるおそれがあります。新しいパスフレーズで預け直すと、古いバックアップは置き換わります。')
+        : mode === 'signup'
+        ? T('kb_signup_body', 'アカウントができました。メッセージはこの端末の鍵で暗号化されます。鍵をパスフレーズで暗号化して預けておくと、機種変更や別の端末でも過去のメッセージが読めます。パスフレーズはサーバーにも分かりません。忘れると復元できないので控えてください。')
         : isSetup
         ? T('kb_setup_body', '別の端末でも過去のメッセージを読めるように、鍵をパスフレーズで暗号化して預けます。パスフレーズはサーバーにも分かりません。忘れると復元できないので、控えておいてください。')
         : (mode === 'restore-mismatch'
@@ -383,6 +386,45 @@
     return out;
   }
 
+  // ---------- ログアウト時の鍵の扱い ----------
+  // 預けたバックアップが、この端末の鍵を全部含んでいるか(=端末から消しても復元で戻せるか)。
+  // 信頼済みの端末で、最新の鍵を預け直した上で、実際に開いて中身を確かめる。確かめられなければ false
+  async function backupCoversLocal() {
+    var trust = readJson(trustName(), null);
+    if (!trust) return false;
+    try { await syncIfNeeded(); } catch (e) {}
+    var info = await serverInfo(true);
+    if (!info.exists) return false;
+    var u = unpack(info.blob);
+    if (!u || u.saltB64 !== trust.salt) return false;
+    var data = open(u.sealed, b64d(trust.key));
+    if (!data) return false;
+
+    var s = localState();
+    var have = {};
+    (data.keyring || []).concat(data.keypair ? [data.keypair] : []).forEach(function (k) { if (k && k.publicKey) have[pubOf(k)] = 1; });
+    var mine = s.keyring.concat(s.keypair ? [s.keypair] : []);
+    for (var i = 0; i < mine.length; i++) if (!have[pubOf(mine[i])]) return false;
+    if (s.identity && identityPub(data.identity) !== identityPub(s.identity)) return false;
+    var gk = data.groupKeys || {};
+    for (var name in s.groupKeys) if (!gk[name]) return false;
+    return true;
+  }
+
+  // ログアウトの前に呼ぶ。端末の暗号鍵を消してよいかを決める。
+  //   'wipe'   … バックアップに全部入っていると確かめられた。鍵を端末から消す(共用の端末・紛失に備える)
+  //   'keep'   … 確かめられない/バックアップが無い。消すと過去のメッセージが読めなくなるので、鍵は端末に残す
+  //   'cancel' … 本人がログアウトをやめた
+  async function logoutPlan() {
+    try {
+      if (!nacl() || !crypto || !crypto.subtle) return 'keep';
+      var s = localState();
+      if (!s.keypair && !s.keyring.length && !s.identity) return 'keep'; // 消すものが無い
+      if (await backupCoversLocal()) return 'wipe';
+    } catch (e) {}
+    return confirm(T('kb_logout_nobackup', 'この端末の暗号鍵は、まだバックアップされていません。このままログアウトすると鍵は端末に残ります(共用の端末では、先にバックアップを作ってください)。ログアウトしますか？')) ? 'keep' : 'cancel';
+  }
+
   // ---------- 入口 ----------
   var inFlight = null;
 
@@ -408,12 +450,26 @@
     return inFlight;
   }
 
+  // 登録した直後に auth.html が付ける印
+  var NEW_ACCOUNT = 'bc_new_account';
+
+  // 個人チャットの鍵が端末にあるようにする(別の処理が作っている最中なら、同じ処理を待つ)。
+  // 登録直後は鍵がまだ無いことがあり、鍵が無いままだと預けるものが無い
+  async function ensureLocalKey() {
+    var s = localState();
+    if (!s.keypair && !s.keyring.length && typeof window.getOrCreateMyKeyPair === 'function') {
+      try { await window.getOrCreateMyKeyPair(); } catch (e) {}
+    }
+    return hasLocalKey();
+  }
+
   // トーク一覧を開いた時に呼ぶ。状況に合わせて、必要な時だけ案内を出す。
   async function init() {
     try {
       if (!nacl() || !uid() || !token() || !crypto || !crypto.subtle) return;
       var info = await serverInfo(false);
       if (info.exists === null) return;
+      if (info.exists) localStorage.removeItem(NEW_ACCOUNT); // もうバックアップがあるなら、登録直後の案内は要らない
       var trusted = !!readJson(trustName(), null);
       if (info.exists) {
         if (!hasLocalKey()) { await guardCreate(); return; } // 鍵が無い端末: 復元を促す
@@ -439,12 +495,18 @@
           if (r === 'later') localStorage.setItem('e2e_bk_snooze_' + uid(), String(Date.now() + 24 * 3600 * 1000));
           if (r === 'restored') location.reload();
         }
-      } else if (hasLocalKey()) {
-        // まだバックアップが無く、この端末には鍵がある: 設定を勧める(断られたら3日あけて再度)
+      } else {
+        // まだバックアップが無い。登録した直後(auth.html が印を付ける)なら、鍵ができるのを待って、
+        // 登録の流れとしてバックアップの設定まで案内する。それ以外は、鍵がある端末にだけ勧める
+        var fresh = localStorage.getItem(NEW_ACCOUNT) === '1';
+        if (fresh) await ensureLocalKey();
+        if (!hasLocalKey()) return; // 鍵がまだ作れていなければ印を残して、次に開いた時にやり直す
+        // 断られたら、登録直後は1日、それ以外は3日あけて再度
         var sn = Number(localStorage.getItem('e2e_bk_snooze_' + uid()) || 0);
-        if (Date.now() < sn) return;
-        var res = await showModal('setup');
-        if (res === 'later') localStorage.setItem('e2e_bk_snooze_' + uid(), String(Date.now() + 3 * 24 * 3600 * 1000));
+        if (!fresh && Date.now() < sn) return;
+        if (fresh) localStorage.removeItem(NEW_ACCOUNT);
+        var res = await showModal(fresh ? 'signup' : 'setup');
+        if (res === 'later') localStorage.setItem('e2e_bk_snooze_' + uid(), String(Date.now() + (fresh ? 1 : 3) * 24 * 3600 * 1000));
       }
     } catch (e) { console.warn('[keyBackup] init:', e); }
   }
@@ -454,11 +516,12 @@
     guardCreate: guardCreate,
     syncIfNeeded: syncIfNeeded,
     syncSoon: syncSoon,
+    logoutPlan: logoutPlan,
     // 設定画面から: 'setup' で預け直し(パスフレーズ変更)、'restore' で復元
     openSetup: function () { return showModal('setup'); },
     openRestore: function () { return showModal('restore-mismatch'); },
     status: async function () { var i = await serverInfo(false); return { server: i.exists, local: hasLocalKey(), trusted: !!readJson(trustName(), null) }; },
     // テスト用
-    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack: pack, unpack: unpack, deriveKey: deriveKey }
+    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack: pack, unpack: unpack, deriveKey: deriveKey, backupCoversLocal: backupCoversLocal }
   };
 })();
