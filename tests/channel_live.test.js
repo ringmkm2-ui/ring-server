@@ -63,3 +63,45 @@ test('ライブ一覧: 配信者の名前・アイコン・登録者数・登録
     assert.equal((await other.call('GET', '/api/live/active')).data.find(l => l.hostId === host.userId).subscribedByMe, false);
   } finally { ws.close(); }
 });
+
+test('アカウント欄: いいねした投稿・登録チャンネル・登録者・いいねした人(本人だけ)', async () => {
+  const a = await S.user('Acct A'); const b = await S.user('Acct B'); const c = await S.user('Acct C');
+  const pa = (await a.call('POST', '/api/posts', { text: 'A post 1' })).data.post;
+  const pa2 = (await a.call('POST', '/api/posts', { text: 'A post 2' })).data.post;
+  const pc = (await c.call('POST', '/api/posts', { text: 'C post' })).data.post;
+  // B が2つにいいね、A と C を登録
+  await b.call('POST', `/api/posts/${pa.id}/like`);
+  await sleep(1100); // いいね順(created_at は秒精度)を確かめるため
+  await b.call('POST', `/api/posts/${pc.id}/like`);
+  await b.call('POST', `/api/posts/channel/${a.userId}/subscribe`);
+  await b.call('POST', `/api/posts/channel/${c.userId}/subscribe`);
+  await c.call('POST', `/api/posts/${pa.id}/like`);
+
+  // いいねした投稿は新しい順
+  const liked = (await b.call('GET', '/api/posts/liked')).data;
+  assert.deepEqual(liked.map(p => p.id), [pc.id, pa.id]);
+  assert.equal(liked[0].likedByMe, true);
+  assert.deepEqual((await a.call('GET', '/api/posts/liked')).data, [], '自分がいいねしていなければ空');
+  // 登録チャンネル
+  const subs = (await b.call('GET', '/api/posts/subscriptions')).data;
+  assert.equal(subs.length, 2);
+  assert.ok(subs.some(s => s.id === a.userId && s.name === 'Acct A' && s.subscriberCount === 1));
+  // 登録者は本人だけ
+  const who = await a.call('GET', `/api/posts/channel/${a.userId}/subscribers`);
+  assert.equal(who.status, 200);
+  assert.deepEqual(who.data.map(u => u.id), [b.userId]);
+  assert.equal((await b.call('GET', `/api/posts/channel/${a.userId}/subscribers`)).status, 403);
+  // いいねした人は投稿者本人だけ
+  const likers = await a.call('GET', `/api/posts/${pa.id}/likes`);
+  assert.equal(likers.status, 200);
+  assert.deepEqual(likers.data.map(u => u.id).sort(), [b.userId, c.userId].sort());
+  assert.equal((await b.call('GET', `/api/posts/${pa.id}/likes`)).status, 403);
+  assert.equal((await a.call('GET', `/api/posts/${pa2.id}/likes`)).data.length, 0);
+  assert.equal((await a.call('GET', '/api/posts/nope/likes')).status, 404);
+  // ブロックしたら一覧から消える
+  await a.call('POST', '/api/friends/block', { userId: b.userId });
+  assert.deepEqual((await a.call('GET', `/api/posts/channel/${a.userId}/subscribers`)).data, []);
+  assert.ok(!(await a.call('GET', `/api/posts/${pa.id}/likes`)).data.some(u => u.id === b.userId));
+  assert.ok(!(await b.call('GET', '/api/posts/subscriptions')).data.some(s => s.id === a.userId));
+  assert.ok(!(await b.call('GET', '/api/posts/liked')).data.some(p => p.id === pa.id));
+});
