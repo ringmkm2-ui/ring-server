@@ -157,6 +157,34 @@ router.get('/liked', verifyToken, asyncHandler(async (req, res) => {
   res.json(posts.map(p => ({ ...p, likedAt: likedAt.get(p.id) || null })));
 }));
 
+// --- 自分の投稿に来たいいね(アカウント > いいねされた)。誰が・どの投稿に・いつ ---
+// 自分で自分にしたいいね、ブロック関係の人、消した投稿は除く
+router.get('/likes-received', verifyToken, asyncHandler(async (req, res) => {
+  const me = req.user.userId;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+  const base = `FROM post_likes l JOIN posts p ON p.id = l.post_id
+      WHERE p.author_id = ? AND p.deleted_at IS NULL AND l.user_id <> ?
+        AND l.user_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND l.user_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)`;
+  const args = [me, me, me, me];
+  const t = await db.get(`SELECT COUNT(*) AS cnt ${base}`, args);
+  const rows = await db.all(`SELECT l.user_id AS liker_id, l.created_at AS liked_at, p.* ${base} ORDER BY l.created_at DESC LIMIT ?`, [...args, limit]);
+  if (!rows.length) return res.json({ total: Number(t?.cnt || 0), items: [] });
+  const postRows = [...new Map(rows.map(r => [r.id, r])).values()];
+  const posts = await attachAuthorAndStats(postRows, me);
+  const postMap = new Map(posts.map(p => [p.id, p]));
+  const likerIds = [...new Set(rows.map(r => r.liker_id))];
+  const users = await db.all(`SELECT id, display_name, profile_pic FROM users WHERE id IN (${likerIds.map(() => '?').join(',')})`, likerIds);
+  const um = new Map(users.map(u => [u.id, u]));
+  res.json({
+    total: Number(t?.cnt || 0),
+    items: rows.map(r => {
+      const u = um.get(r.liker_id);
+      return { user: { id: r.liker_id, name: (u && u.display_name) || '不明なユーザー', pic: (u && u.profile_pic) || null }, at: r.liked_at, post: postMap.get(r.id) };
+    }),
+  });
+}));
+
 // --- 自分が登録しているチャンネル(アカウント > 登録チャンネル) ---
 router.get('/subscriptions', verifyToken, asyncHandler(async (req, res) => {
   const me = req.user.userId;
@@ -401,8 +429,19 @@ router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => 
             SUM(CASE WHEN media_type = 'video' THEN 1 ELSE 0 END) AS videos,
             SUM(CASE WHEN media_type = 'image' THEN 1 ELSE 0 END) AS images
        FROM posts WHERE author_id = ? AND deleted_at IS NULL`, [channelId]);
+  // 自分のチャンネルだけ、もらったいいねの合計(自分のいいね・ブロック相手・消した投稿は除く)
+  let likesReceived;
+  if (channelId === me) {
+    const lr = await db.get(
+      `SELECT COUNT(*) AS cnt FROM post_likes l JOIN posts p ON p.id = l.post_id
+        WHERE p.author_id = ? AND p.deleted_at IS NULL AND l.user_id <> ?
+          AND l.user_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+          AND l.user_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)`, [me, me, me, me]);
+    likesReceived = Number(lr?.cnt || 0);
+  }
   res.json({
     id: u.id,
+    likesReceived,
     name: u.display_name || '不明なユーザー',
     pic: u.profile_pic || null,
     bio: typeof u.bio === 'string' ? u.bio.slice(0, 500) : '',
