@@ -98,19 +98,98 @@ async function waitModal(env, dismiss) {
   return null;
 }
 
-test('登録直後: 鍵ができるのを待って、専用の案内を出し、「あとで」は1日あけて再案内する', async () => {
+// 全画面のセットアップ画面(ステップ式)を操作するための小道具
+const latest = (env, id) => { const l = env.all.filter((e) => e.id === id); return l[l.length - 1] || null; };
+async function waitId(env, id) {
+  for (let i = 0; i < 400; i++) {
+    // 古いステップの部品が残っていても、いま画面にあるのは「最後に作られたもの」
+    if (latest(env, id)) return latest(env, id);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('not shown: ' + id);
+}
+const STRONG = 'Tq7-mWzK-92xB-vLpe';
+
+test('登録直後: 鍵ができるのを待って、全画面のセットアップを出し、「あとで」は1日あけて再案内する', async () => {
   const env = makeEnv();
   env.localStorage.setItem('bc_new_account', '1');
   assert.equal(env.localStorage.getItem('e2e_keypair_u1'), null); // 鍵はまだ無い
   const p = env.kb.init();
-  const title = await waitModal(env, true);
-  await p;
-  assert.equal(title, '暗号鍵を設定しましょう');
+  await waitId(env, 'kbwContinue');
+  assert.equal(latest(env, 'kbwTitle').textContent, '暗号鍵を設定しましょう');
   assert.equal(env.calls.keyFactory, 1, '鍵を作る処理を呼んだ');
   assert.ok(env.localStorage.getItem('e2e_keypair_u1'), '案内の時点で鍵がある');
   assert.equal(env.localStorage.getItem('bc_new_account'), null, '印は使ったら消す');
+  latest(env, 'kbwSkip').onclick();
+  await p;
   const snooze = Number(env.localStorage.getItem('e2e_bk_snooze_u1'));
   assert.ok(Math.abs(snooze - (Date.now() + DAY)) < 60 * 1000, '再案内は約1日後');
+  assert.equal(env.server.blob, null, 'あとでなら何も預けない');
+});
+
+test('セットアップ画面: 説明 → パスフレーズ → 控え → 完了まで進むと、鍵が預けられ端末が信頼済みになる', async () => {
+  const env = makeEnv();
+  env.localStorage.setItem('bc_new_account', '1');
+  const p = env.kb.init();
+  (await waitId(env, 'kbwContinue')).onclick();
+  const p1 = await waitId(env, 'kbwPass1'); const p2 = await waitId(env, 'kbwPass2');
+  p1.value = STRONG; p2.value = STRONG;
+  latest(env, 'kbwNext').onclick();
+  await waitId(env, 'kbwCheck');
+  assert.equal(latest(env, 'kbwShown').textContent, STRONG, '決めたパスフレーズを見せて控えさせる');
+  assert.equal(latest(env, 'kbwSave').disabled, true, '控えたと答えるまで預けられない');
+  latest(env, 'kbwSave').onclick(); // 押しても何も起きない
+  assert.equal(env.server.blob, null);
+  latest(env, 'kbwCheck').onclick();
+  assert.equal(latest(env, 'kbwSave').disabled, false);
+  latest(env, 'kbwSave').onclick();
+  (await waitId(env, 'kbwStart')).onclick();
+  assert.equal(await p, undefined);
+  assert.ok(env.server.blob, 'バックアップが預けられた');
+  assert.equal(env.server.strong, true);
+  assert.ok(env.localStorage.getItem('e2e_bk_key_u1'), 'この端末は信頼済みになる');
+  assert.equal(env.localStorage.getItem('e2e_bk_snooze_u1'), null, '預けたので再案内の印は付かない');
+  // 預けた中身が、この端末の鍵を全部含んでいる(=ログアウトで消しても戻せる)
+  assert.ok(await env.kb._internal.backupCoversLocal());
+});
+
+test('セットアップ画面: 弱い/一致しないパスフレーズでは次へ進めない', async () => {
+  const env = makeEnv();
+  env.localStorage.setItem('bc_new_account', '1');
+  const p = env.kb.init();
+  (await waitId(env, 'kbwContinue')).onclick();
+  let p1 = await waitId(env, 'kbwPass1'); let p2 = await waitId(env, 'kbwPass2');
+  p1.value = 'password1234'; p2.value = 'password1234';
+  latest(env, 'kbwNext').onclick();
+  assert.match(latest(env, 'kbwMsg').textContent, /よく使われる言葉/);
+  assert.equal(env.all.filter((e) => e.id === 'kbwCheck').length, 0, '3番目の画面には進まない');
+  p1.value = STRONG; p2.value = STRONG + 'x';
+  latest(env, 'kbwNext').onclick();
+  assert.match(latest(env, 'kbwMsg').textContent, /一致しません/);
+  assert.equal(env.all.filter((e) => e.id === 'kbwCheck').length, 0);
+  latest(env, 'kbwSkip').onclick();
+  await p;
+});
+
+test('セットアップ画面: 預けるのに失敗したら画面に残って、エラーを出す(直ったら続けられる)', async () => {
+  const env = makeEnv();
+  env.localStorage.setItem('bc_new_account', '1');
+  env.server.failPut = true;
+  const p = env.kb.init();
+  (await waitId(env, 'kbwContinue')).onclick();
+  (await waitId(env, 'kbwPass1')).value = STRONG; (await waitId(env, 'kbwPass2')).value = STRONG;
+  latest(env, 'kbwNext').onclick();
+  (await waitId(env, 'kbwCheck')).onclick();
+  latest(env, 'kbwSave').onclick();
+  for (let i = 0; i < 400 && !/失敗/.test(latest(env, 'kbwMsg').textContent); i++) await new Promise((r) => setTimeout(r, 10));
+  assert.match(latest(env, 'kbwMsg').textContent, /失敗しました/);
+  assert.equal(env.all.filter((e) => e.id === 'kbwStart').length, 0, '完了にはならない');
+  assert.equal(env.localStorage.getItem('e2e_bk_key_u1'), null, '信頼済みにもならない');
+  env.server.failPut = false;
+  latest(env, 'kbwSave').onclick();
+  (await waitId(env, 'kbwStart')).onclick();
+  await p;
+  assert.ok(env.server.blob);
 });
 
 test('登録直後の印が無ければ、従来どおり汎用の案内(3日あける)', async () => {
