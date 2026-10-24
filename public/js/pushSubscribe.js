@@ -145,16 +145,22 @@
   // 文字を入力している最中に急にリロードすると、書きかけの文章が消えて「固まった・バグってる」ように見える。
   // 入力中は保留して、入力が空になった/アプリが裏に回った時に反映する。
   function isTyping() {
+    // 暗号鍵のセットアップ画面が開いている間は、入力中でなくても更新しない
+    // (画面に出している控えていないパスフレーズが、預ける前に消えてしまう)
+    if (document.getElementById('kbw')) return true;
     const ae = document.activeElement;
     if (!ae) return false;
     const tag = ae.tagName;
-    if (tag === 'TEXTAREA') return (ae.value || '').trim().length > 0;
+    // 入力欄に焦点がある間(=キーボードが出ている間)は、まだ空でも更新しない。
+    // 以前は「中身がある時だけ」入力中としていたので、欄をタップした直後(空)に更新が走って
+    // ページごとリロードされ、キーボードが閉じて画面も消えていた
+    if (tag === 'TEXTAREA') return !ae.readOnly && !ae.disabled;
     if (tag === 'INPUT') {
       const t = (ae.type || 'text').toLowerCase();
-      if (['checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(t)) return false;
-      return (ae.value || '').trim().length > 0;
+      if (['checkbox', 'radio', 'button', 'submit', 'range', 'file', 'color', 'image', 'reset'].includes(t)) return false;
+      return !ae.readOnly && !ae.disabled;
     }
-    return !!ae.isContentEditable && (ae.textContent || '').trim().length > 0;
+    return !!ae.isContentEditable;
   }
   // 新しい版へのリロード。SWのキャッシュに古いページが残っていても、次の1回はネットワークから取らせる
   function freshReload() {
