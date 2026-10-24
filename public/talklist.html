@@ -197,7 +197,7 @@ html.dark-mode{--yt-fg:#f1f1f1;--yt-fg2:#aaa;--yt-surf:rgba(255,255,255,.05);--y
 .yt-card:hover .yt-play{opacity:1}
 .yt-play span{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
 .yt-meta{display:flex;gap:11px;margin-top:11px}
-.yt-ch-av{width:36px;height:36px;border-radius:50%;flex-shrink:0;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px}
+.yt-ch-av{width:36px;height:36px;border-radius:50%;flex-shrink:0;background-color:#475569;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px}
 .yt-mbody{flex:1;min-width:0}
 .yt-title{font-size:15px;font-weight:700;color:var(--yt-fg);line-height:1.32;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .yt-sub{font-size:13px;color:var(--yt-fg2);margin-top:4px;line-height:1.4;word-break:break-word}
@@ -205,7 +205,7 @@ html.dark-mode{--yt-fg:#f1f1f1;--yt-fg2:#aaa;--yt-surf:rgba(255,255,255,.05);--y
 .yt-menu{background:none;border:none;color:var(--yt-fg2);padding:2px;cursor:pointer;align-self:flex-start;margin-top:-2px}
 .yt-menu svg{width:20px;height:20px}
 /* ============ 視聴ページ ============ */
-.yt-watch{position:fixed;inset:0;z-index:1200;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none;animation:ytWatchIn .22s ease}
+.yt-watch{position:fixed;inset:0;z-index:10100;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none;animation:ytWatchIn .22s ease}
 html.dark-mode .yt-watch{--yt-watch-bg:#0f0f0f}
 @keyframes ytWatchIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .yt-watch.open{display:block}
@@ -248,6 +248,62 @@ html.dark-mode .yt-subbtn{color:#0f0f0f}
 .yt-rec-title{font-size:14px;font-weight:700;color:var(--yt-fg);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .yt-rec-sub{font-size:12px;color:var(--yt-fg2);margin-top:4px}
 @media(min-width:900px){.yt-wgrid{display:flex;gap:24px;align-items:flex-start}.yt-wmain{flex:1;min-width:0}.yt-wside{width:360px;flex-shrink:0}.yt-rec .yt-thumb{width:168px}}
+/* カードの描画を画面外では省く(弱い端末でも長いフィードが軽い) */
+.yt-card{content-visibility:auto;contain-intrinsic-size:auto 280px}
+.yt-live-block{display:contents}
+.yt-link{cursor:pointer}
+.yt-ch-av[data-ch]{cursor:pointer}
+/* 初回(キャッシュ無し)だけ出す骨組み。トーク一覧の骨組みと同じ考え方 */
+.yt-skel{animation:ytIn .3s ease both}
+.yt-skel .b{background:var(--yt-chip);border-radius:10px;position:relative;overflow:hidden}
+.yt-skel .b::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--yt-hover),transparent);transform:translateX(-100%);animation:ytShimmer 1.3s infinite}
+.yt-skel .t{aspect-ratio:16/9;border-radius:14px}
+.yt-skel .m{display:flex;gap:11px;margin-top:11px}
+.yt-skel .a{width:36px;height:36px;border-radius:50%;flex-shrink:0}
+.yt-skel .l{height:13px;margin-bottom:8px}
+@keyframes ytShimmer{to{transform:translateX(100%)}}
+/* ライブカード */
+.yt-live-thumb{background:radial-gradient(circle at 50% 40%,#3b1020 0%,#14070d 70%);display:flex;align-items:center;justify-content:center}
+.yt-live-av{width:25%;aspect-ratio:1;max-width:96px;border-radius:50%;background-size:cover;background-position:center;background-color:#475569;color:#fff;font-weight:800;font-size:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px #ff0033,0 0 0 6px rgba(255,0,51,.25)}
+.yt-badge-live i{width:6px;height:6px;border-radius:50%;background:#fff;display:inline-block;animation:ytPulse 1.4s ease-in-out infinite}
+@keyframes ytPulse{50%{opacity:.25}}
+.yt-badge-live svg{display:block}
+.yt-viewers{position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.82);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:5px;display:flex;align-items:center;gap:4px}
+.yt-live-tag{color:#ff0033;font-weight:700}
+html.dark-mode .yt-live-tag{color:#ff5a76}
+@media(prefers-reduced-motion:reduce){.yt-skel .b::after,.yt-badge-live i{animation:none}}
+/* チャンネルページ */
+.yt-chan{--yt-cbar-h:calc(env(safe-area-inset-top,0px) + 52px);position:fixed;inset:0;z-index:10050;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none}
+html.dark-mode .yt-chan{--yt-watch-bg:#0f0f0f}
+.yt-chan.open{display:block;animation:ytWatchIn .22s ease}
+.yt-cbar{position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:6px;height:var(--yt-cbar-h);box-sizing:border-box;padding:env(safe-area-inset-top,0px) 8px 0;background:var(--yt-watch-bg,#fff)}
+.yt-cbar button{width:40px;height:40px;border-radius:50%;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--yt-fg);flex-shrink:0}
+.yt-cbar button svg{width:22px;height:22px}
+.yt-cbar .nm{font-size:17px;font-weight:700;color:var(--yt-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0;transition:opacity .15s}
+.yt-chan.scrolled .yt-cbar .nm{opacity:1}
+.yt-cwrap{max-width:1100px;margin:0 auto}
+.yt-cbanner{height:104px;margin:0 12px;border-radius:14px}
+.yt-chead2{display:flex;gap:16px;align-items:center;padding:16px 16px 4px}
+.yt-cavbig{width:76px;height:76px;border-radius:50%;flex-shrink:0;background-size:cover;background-position:center;background-color:#475569;color:#fff;font-weight:800;font-size:30px;display:flex;align-items:center;justify-content:center}
+.yt-cinfo2{flex:1;min-width:0}
+.yt-cname2{font-size:22px;font-weight:800;color:var(--yt-fg);line-height:1.2;word-break:break-word}
+.yt-cmeta2{font-size:13px;color:var(--yt-fg2);margin-top:5px;line-height:1.5}
+.yt-cbio{font-size:13px;color:var(--yt-fg2);margin-top:5px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;word-break:break-word}
+.yt-csubrow{padding:10px 16px 6px}
+.yt-csubrow .yt-subbtn{width:100%;padding:11px 16px}
+.yt-ctabs{position:sticky;top:var(--yt-cbar-h);z-index:7;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;background:var(--yt-watch-bg,#fff);border-bottom:1px solid var(--yt-line);padding:0 8px;margin-top:6px}
+.yt-ctabs::-webkit-scrollbar{display:none}
+.yt-ctab{flex-shrink:0;background:none;border:none;border-bottom:2px solid transparent;color:var(--yt-fg2);font-size:14px;font-weight:700;padding:12px 14px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.yt-ctab.on{color:var(--yt-fg);border-bottom-color:var(--yt-fg)}
+.yt-cbody{padding:16px 16px 48px}
+.yt-grid{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:620px){.yt-grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px 16px}.yt-cbanner{height:150px}}
+@media(min-width:900px){.yt-cbanner{height:200px}.yt-cavbig{width:128px;height:128px;font-size:48px}.yt-cname2{font-size:30px}.yt-csubrow{padding-top:0}.yt-csubrow .yt-subbtn{width:auto}}
+.yt-cempty{text-align:center;color:var(--yt-fg2);font-size:14px;padding:44px 10px}
+.yt-about{display:flex;flex-direction:column;gap:18px;max-width:640px}
+.yt-about .d{font-size:14px;color:var(--yt-fg);line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.yt-about .r{display:flex;align-items:center;gap:14px;font-size:14px;color:var(--yt-fg)}
+.yt-about .r svg{width:20px;height:20px;flex-shrink:0;stroke:var(--yt-fg2);fill:none}
 /* 作成パネル(コンポーザー) */
 .yt-compose{margin-top:14px}
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
@@ -641,14 +697,16 @@ window.ensureGroupCrypto = (function () {
             <button type="button" id="postSubmitBtn" class="glass-clear glass-interactive" data-no-auto-haptic="1" style="padding:8px 20px;border-radius:999px;border:none;font-size:14px;font-weight:700;color:#0f172a;cursor:pointer;" data-i18n="post_btn">投稿する</button>
           </div>
         </div>
-        <div id="liveStrip" style="display:none;flex-direction:column;gap:8px;margin:14px 0 0"></div>
-        <div id="postsList"><div style="text-align:center;color:#94a3b8;font-size:14px;padding:24px" data-i18n="feed_loading">読み込み中...</div></div>
-        <div id="ytWatch" class="yt-watch" aria-hidden="true"></div>
+        <div id="postsList"></div>
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.273 beta</div>
+  <div class="version-badge">Bro Chat v1.28.274 beta</div>
 </div>
+<!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
+     position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
+<div id="ytChannel" class="yt-chan" aria-hidden="true"></div>
+<div id="ytWatch" class="yt-watch" aria-hidden="true"></div>
 
 <!-- プロフィール設定モーダル -->
 <div class="mov" id="settingsMov">
@@ -2283,7 +2341,7 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('setNotifVal').textContent = !('Notification' in window) ? (window.Capacitor ? t2('managed_by_app','アプリで管理') : '-')
     : Notification.permission === 'granted' ? t2('on','オン') : Notification.permission === 'denied' ? t2('blocked','ブロック中') : t2('tap_to_enable','タップで許可');
   let bytes = 0;
-  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_)/.test(k)) bytes += (localStorage.getItem(k) || '').length * 2; }
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_|feed_cache_|chan_cache_)/.test(k)) bytes += (localStorage.getItem(k) || '').length * 2; }
   document.getElementById('setCacheSize').textContent = (bytes / 1024).toFixed(0) + ' KB';
   const vb = document.querySelector('.version-badge');
   document.getElementById('setVersion').textContent = vb ? vb.textContent.replace('Bro Chat ', '') : '';
@@ -2671,7 +2729,7 @@ document.getElementById('setNotif').addEventListener('click', async () => {
 });
 document.getElementById('setClearCache').addEventListener('click', () => {
   const del = [];
-  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_)/.test(k)) del.push(k); }
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(talk_cache_|chat_cache_|feed_cache_|chan_cache_)/.test(k)) del.push(k); }
   del.forEach(k => localStorage.removeItem(k));
   document.getElementById('setCacheSize').textContent = '0 KB';
 });
@@ -3579,15 +3637,21 @@ let postsLoading = false;
 
 function formatPostTime(ts) {
   const d = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
-  const now = new Date();
-  const diffMs = now - d;
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return 'たった今';
-  if (diffMin < 60) return `${diffMin}分前`;
+  const diffMin = Math.floor((new Date() - d) / 60000);
+  const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
+  const W = {
+    ja: ['たった今', n => `${n}分前`, n => `${n}時間前`, n => `${n}日前`],
+    en: ['Just now', n => `${n} min ago`, n => `${n} hr ago`, n => `${n} day${n > 1 ? 's' : ''} ago`],
+    'zh-CN': ['刚刚', n => `${n}分钟前`, n => `${n}小时前`, n => `${n}天前`],
+    ko: ['방금', n => `${n}분 전`, n => `${n}시간 전`, n => `${n}일 전`],
+  }[lang] || null;
+  const w = W || ['たった今', n => `${n}分前`, n => `${n}時間前`, n => `${n}日前`];
+  if (diffMin < 1) return w[0];
+  if (diffMin < 60) return w[1](diffMin);
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}時間前`;
+  if (diffHour < 24) return w[2](diffHour);
   const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 7) return `${diffDay}日前`;
+  if (diffDay < 7) return w[3](diffDay);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
@@ -3872,7 +3936,7 @@ function fmtSubs(n) {
   if (lang === 'ja') return 'チャンネル登録者 ' + c + '人';
   if (lang === 'zh-CN') return c + '位订阅者';
   if (lang === 'ko') return '구독자 ' + c + '명';
-  return c + ' subscribers';
+  return c + (Number(n) === 1 ? ' subscriber' : ' subscribers');
 }
 // Cloudinaryの動画URLからサムネ(先頭フレームjpg)を作る
 function cldVideoPoster(url) {
@@ -3890,25 +3954,81 @@ function fmtDur(sec) {
   return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
 }
 
+let postsScopeLoaded = null;
+let lastRenderSig = '';   // 最後に描画した内容の指紋(絞り込み+先頭ページ)。同じなら描画し直さない
+const feedSig = (arr) => feedScope + '|' + feedKind + '|' + feedQuery + '|' + feedFp(arr.slice(0, POSTS_PAGE));
+function feedCacheKey() { return 'feed_cache_' + (myUserId || '') + '_' + feedScope; }
+// 一覧の変化を見分ける指紋。変わっていなければ描画し直さない(チカチカ防止)
+function feedFp(a) {
+  return a.map(p => [p.id, p.likeCount, p.viewCount, p.commentCount, p.subscribedByMe ? 1 : 0, p.subscriberCount, p.editedAt || '', p.authorName || '', (p.authorPic || '').length].join(':')).join('|');
+}
+function saveFeedCache(arr) {
+  try {
+    let str = JSON.stringify(arr.slice(0, POSTS_PAGE));
+    // 昔のアイコンはdata:URIで重い。多すぎる時はアイコンだけ省いてlocalStorageの容量を守る
+    if (str.length > 400000) str = JSON.stringify(arr.slice(0, POSTS_PAGE).map(p => ({ ...p, authorPic: /^data:/.test(p.authorPic || '') ? null : p.authorPic })));
+    localStorage.setItem(feedCacheKey(), str);
+  } catch (_) {}
+}
+function feedEmpty(text) {
+  const e = document.createElement('div');
+  e.className = 'yt-cempty'; e.style.gridColumn = '1/-1';
+  e.textContent = text;
+  return e;
+}
+// キャッシュが無い最初の1回だけ出す骨組み(「読み込み中」の文字は出さない)
+function renderFeedSkeleton() {
+  const list = document.getElementById('postsList');
+  if (!list) return;
+  list.textContent = '';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 4; i++) {
+    const c = document.createElement('div'); c.className = 'yt-skel';
+    c.innerHTML = '<div class="b t"></div><div class="m"><div class="b a"></div><div style="flex:1"><div class="b l" style="width:90%"></div><div class="b l" style="width:55%"></div></div></div>';
+    frag.appendChild(c);
+  }
+  list.appendChild(frag);
+}
+
+// 投稿一覧は前回の内容を端末に持っておき、開いた瞬間に出す(トーク一覧と同じLINE方式)。
+// 裏で最新を取り、先頭ページに変化があった時だけ描画し直す
 async function loadPosts() {
   if (window.refreshLiveStrip) window.refreshLiveStrip();
   if (postsLoading) { postsReloadPending = true; return; }
   postsLoading = true;
   postsHasMore = true;
+  const scope = feedScope;
+  let shown = false;
+  if (postsScopeLoaded !== scope) {
+    postsAll = [];
+    try {
+      const c = JSON.parse(localStorage.getItem(feedCacheKey()) || 'null');
+      if (Array.isArray(c) && c.length) { postsAll = c; shown = true; }
+    } catch (_) {}
+    postsOldestTimestamp = postsAll.length ? postsAll[postsAll.length - 1].createdAt : null;
+    if (shown) renderFeed(); else renderFeedSkeleton();
+  } else if (postsAll.length) { shown = true; }
   try {
     const posts = await api(feedEndpoint(null));
-    postsAll = Array.isArray(posts) ? posts : [];
-    if (postsAll.length < POSTS_PAGE) postsHasMore = false;
-    postsOldestTimestamp = postsAll.length ? postsAll[postsAll.length - 1].createdAt : null;
-    renderFeed();
+    if (!Array.isArray(posts)) throw new Error('bad response');
+    if (scope !== feedScope) return; // 取得中に別の絞り込みへ切り替わった(finallyで取り直す)
+    postsScopeLoaded = scope;
+    saveFeedCache(posts);
+    if (!shown || feedSig(posts) !== lastRenderSig) {
+      postsAll = posts;
+      postsHasMore = posts.length >= POSTS_PAGE;
+      postsOldestTimestamp = postsAll.length ? postsAll[postsAll.length - 1].createdAt : null;
+      renderFeed();
+    }
   } catch (e) {
     console.error('loadPosts error:', e);
-    const list = document.getElementById('postsList');
-    list.textContent = '';
-    const err = document.createElement('div');
-    err.style.cssText = 'text-align:center;color:#ef4444;font-size:14px;padding:24px';
-    err.textContent = i18n.t('feed_load_failed');
-    list.appendChild(err);
+    if (!shown) {
+      const list = document.getElementById('postsList');
+      list.textContent = '';
+      const err = feedEmpty(i18n.t('feed_load_failed'));
+      err.style.color = '#ef4444';
+      list.appendChild(err);
+    }
   } finally {
     postsLoading = false;
     if (postsReloadPending) { postsReloadPending = false; loadPosts(); }
@@ -3928,27 +4048,17 @@ function renderFeed() {
   const list = document.getElementById('postsList');
   if (!list) return;
   const arr = feedFiltered();
+  const lives = window.ytLiveForFeed ? window.ytLiveForFeed() : [];
   list.textContent = '';
-  if (feedKind === 'live') {
-    const live = document.getElementById('liveStrip');
-    if (!live || live.style.display === 'none' || !live.children.length) {
-      const e = document.createElement('div');
-      e.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--yt-fg2);font-size:14px;padding:30px 10px';
-      e.textContent = (i18n.getLang && i18n.getLang() === 'ja') ? 'ライブ配信中のチャンネルはありません' : 'No one is live right now';
-      list.appendChild(e);
-    }
-    return;
-  }
-  if (!arr.length) {
-    const empty = document.createElement('div');
-    empty.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--yt-fg2);font-size:14px;padding:30px 10px';
-    empty.textContent = i18n.t('no_posts_yet');
-    list.appendChild(empty);
+  lastRenderSig = feedSig(postsAll);
+  if (!arr.length && !lives.length) {
+    list.appendChild(feedEmpty(feedKind === 'live' ? i18n.t('no_live_now') : i18n.t('no_posts_yet')));
     return;
   }
   const frag = document.createDocumentFragment();
   arr.forEach((p) => frag.appendChild(renderPostCard(p)));
   list.appendChild(frag);
+  if (window.ytSyncLive) window.ytSyncLive(true);
 }
 
 // 下まで見たら、もっと前の投稿を読む
@@ -4057,7 +4167,8 @@ function buildVideoThumb(thumb, p) {
 }
 
 // YouTube風カード: サムネ + チャンネルアバター + タイトル + (チャンネル・再生回数・時間)
-function renderPostCard(p) {
+function renderPostCard(p, opts) {
+  const compact = !!(opts && opts.compact);
   const card = document.createElement('div');
   card.className = 'yt-card';
   card.dataset.postId = p.id;
@@ -4085,13 +4196,19 @@ function renderPostCard(p) {
   card.appendChild(thumb);
 
   const meta = document.createElement('div'); meta.className = 'yt-meta';
-  const av = document.createElement('div'); av.className = 'yt-ch-av';
+  const openCh = (ev) => { ev.stopPropagation(); if (window.openChannel) window.openChannel(p.authorId, { name: p.authorName, pic: p.authorPic }); };
+  const av = document.createElement('div'); av.className = 'yt-ch-av'; av.dataset.ch = '1';
   setAvatarBackground(av, p.authorPic, (p.authorName || '?')[0]);
+  av.addEventListener('click', openCh);
   const body = document.createElement('div'); body.className = 'yt-mbody';
   const title = document.createElement('div'); title.className = 'yt-title'; title.textContent = postTitle(p);
   const sub = document.createElement('div'); sub.className = 'yt-sub';
-  sub.appendChild(document.createTextNode(p.authorName || ''));
-  const dot1 = document.createElement('span'); dot1.className = 'dot'; dot1.textContent = '・'; sub.appendChild(dot1);
+  if (!compact) {
+    const nm = document.createElement('span'); nm.className = 'yt-link'; nm.textContent = p.authorName || '';
+    nm.addEventListener('click', openCh);
+    sub.appendChild(nm);
+    const dot1 = document.createElement('span'); dot1.className = 'dot'; dot1.textContent = '・'; sub.appendChild(dot1);
+  }
   sub.appendChild(document.createTextNode(fmtViews(p.viewCount)));
   const dot2 = document.createElement('span'); dot2.className = 'dot'; dot2.textContent = '・'; sub.appendChild(dot2);
   sub.appendChild(document.createTextNode(formatPostTime(p.createdAt)));
@@ -4099,7 +4216,8 @@ function renderPostCard(p) {
   const menu = document.createElement('button'); menu.className = 'yt-menu'; menu.setAttribute('aria-label', 'メニュー');
   menu.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
   menu.addEventListener('click', (ev) => { ev.stopPropagation(); openPostMenu(p); });
-  meta.appendChild(av); meta.appendChild(body); meta.appendChild(menu);
+  if (!compact) meta.appendChild(av);
+  meta.appendChild(body); meta.appendChild(menu);
   card.appendChild(meta);
 
   card.addEventListener('click', () => openWatch(p));
@@ -4128,7 +4246,8 @@ function closeWatch() {
 }
 window.addEventListener('popstate', () => {
   const w = document.getElementById('ytWatch');
-  if (w && w.classList.contains('open')) closeWatch();
+  if (w && w.classList.contains('open')) { closeWatch(); return; }
+  if (window.closeChannel) window.closeChannel();
 });
 
 function mkAct(svg, label) {
@@ -4207,6 +4326,8 @@ async function openWatch(p) {
   const chsubs = document.createElement('div'); chsubs.className = 'yt-chsubs'; chsubs.textContent = fmtSubs(p.subscriberCount);
   chinfo.appendChild(chname); chinfo.appendChild(chsubs);
   chrow.appendChild(chav); chrow.appendChild(chinfo);
+  chav.dataset.ch = '1';
+  [chav, chinfo].forEach(x => x.addEventListener('click', () => { if (window.openChannel) window.openChannel(p.authorId, { name: p.authorName, pic: p.authorPic }); }));
   if (p.authorId !== myUserId) {
     const subBtn = document.createElement('button'); subBtn.className = 'yt-subbtn' + (p.subscribedByMe ? ' on' : '');
     subBtn.textContent = i18n.t(p.subscribedByMe ? 'subscribed' : 'subscribe');
@@ -4389,7 +4510,7 @@ function downloadPost(p) {
 
 function ytToast(msg) {
   const t = document.createElement('div');
-  t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2000;background:rgba(15,15,15,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.3);animation:ytIn .2s ease';
+  t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10300;background:rgba(15,15,15,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.3);animation:ytIn .2s ease';
   t.textContent = msg; document.body.appendChild(t);
   setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 320); }, 1800);
 }
@@ -4410,7 +4531,7 @@ async function deletePost(postId, card) {
 // カードの3点メニュー: 共有 /(自分の投稿なら)削除
 function openPostMenu(p) {
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
   const sheet = document.createElement('div');
   sheet.style.cssText = 'width:100%;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding:8px 0 max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
   if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = '#212121';
@@ -5166,42 +5287,384 @@ function openPostMenu(p) {
 </script>
 <script src="/js/live.js"></script>
 <script>
-// 投稿タブのライブ配信: 「LIVE」ボタンで友だちに向けて配信、配信中の人は投稿の上に並ぶ
+// 投稿タブのライブ配信 + YouTube風のライブカード + チャンネルページ
 (function () {
   if (!window.Live) return;
   window.Live.init({ groupId: null, token, myUserId, getWs: () => talkWs, feed: true, noBanner: true,
     confirmText: 'ライブ配信を始めますか?(カメラとマイクを使います。友だちに通知が届き、投稿タブから誰でも見られます)' });
   document.getElementById('postLiveBtn').addEventListener('click', () => window.Live.start());
-  const strip = document.getElementById('liveStrip');
-  const ago = ts => { const m = Math.max(0, Math.floor((Date.now() - ts) / 60000)); return m < 1 ? 'たった今から' : m + '分前から'; };
+
+  const T = (k, fb) => (window.i18n && i18n.t ? i18n.t(k, fb) : fb);
+  const fill = (str, o) => String(str).replace(/\{(\w+)\}/g, (_, k) => (o[k] != null ? o[k] : ''));
+  // 件数つきの文言。英語だけ1件の時は単数形にする
+  const counted = (key, fb, n) => { let r = fill(T(key, fb), { n: fmtNum(n) }); if (Number(n) === 1 && (window.i18n && i18n.getLang && i18n.getLang()) === 'en') r = r.replace(/s$/, ''); return r; };
+  const SVG_EYE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const SVG_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  const SVG_CAL = '<svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+  const SVG_TREND = '<svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>';
+  const SVG_PLAY = '<svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><polygon points="10 9 15 12 10 15 10 9"/></svg>';
+  const SVG_POST = '<svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+  // ---------- ライブ一覧 ----------
+  let liveList = [];
+  const openChan = (id, hint) => (ev) => { if (ev) ev.stopPropagation(); window.openChannel(id, hint); };
+
+  function sinceText(ts) {
+    const m = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+    if (m < 1) return T('live_since_now', 'たった今開始');
+    if (m < 60) return fill(T('live_since_min', '{n}分前に開始'), { n: m });
+    return fill(T('live_since_hour', '{n}時間前に開始'), { n: Math.floor(m / 60) });
+  }
+
+  function buildLiveCard(l) {
+    const card = document.createElement('div');
+    card.className = 'yt-card';
+    card.dataset.liveKey = l.key;
+    const thumb = document.createElement('div'); thumb.className = 'yt-thumb yt-live-thumb';
+    const lav = document.createElement('div'); lav.className = 'yt-live-av';
+    setAvatarBackground(lav, l.hostPic, (l.hostName || '?')[0]);
+    thumb.appendChild(lav);
+    const badge = document.createElement('div'); badge.className = 'yt-badge-live'; badge.innerHTML = '<i></i>LIVE';
+    thumb.appendChild(badge);
+    const vw = document.createElement('div'); vw.className = 'yt-viewers';
+    vw.innerHTML = SVG_EYE;
+    const vn = document.createElement('span'); vn.textContent = fmtNum(l.viewers); vw.appendChild(vn);
+    thumb.appendChild(vw);
+    card.appendChild(thumb);
+
+    const hint = { name: l.hostName, pic: l.hostPic };
+    const meta = document.createElement('div'); meta.className = 'yt-meta';
+    const av = document.createElement('div'); av.className = 'yt-ch-av'; av.dataset.ch = '1';
+    setAvatarBackground(av, l.hostPic, (l.hostName || '?')[0]);
+    av.addEventListener('click', openChan(l.hostId, hint));
+    const body = document.createElement('div'); body.className = 'yt-mbody';
+    const title = document.createElement('div'); title.className = 'yt-title';
+    title.textContent = fill(T('live_stream_title', '{name}のライブ配信'), { name: l.hostName || '' });
+    const sub = document.createElement('div'); sub.className = 'yt-sub';
+    const nm = document.createElement('span'); nm.className = 'yt-link'; nm.textContent = l.hostName || '';
+    nm.addEventListener('click', openChan(l.hostId, hint));
+    const watching = document.createElement('span'); watching.className = 'yt-live-tag';
+    watching.textContent = fill(T('live_watching', '{n}人が視聴中'), { n: fmtNum(l.viewers) });
+    const d1 = document.createElement('span'); d1.className = 'dot'; d1.textContent = '・';
+    const d2 = document.createElement('span'); d2.className = 'dot'; d2.textContent = '・';
+    sub.append(nm, d1, watching, d2, document.createTextNode(sinceText(l.startedAt)));
+    body.append(title, sub);
+    meta.append(av, body);
+    card.appendChild(meta);
+    card.addEventListener('click', () => window.Live.watchFeed(l.key, l.hostId, l.hostName));
+    return card;
+  }
+
+  // いまのフィルタ(登録チャンネル/動画/画像/検索)に合うライブだけ
+  window.ytLiveForFeed = function () {
+    if (feedKind === 'video' || feedKind === 'image') return [];
+    let arr = liveList;
+    if (feedScope === 'subscribed') arr = arr.filter(l => l.subscribedByMe);
+    if (feedQuery) arr = arr.filter(l => (l.hostName || '').toLowerCase().includes(feedQuery));
+    return arr;
+  };
+
+  // フィード先頭のライブカード枠を最新にする。変化が無ければ何もしない
+  window.ytSyncLive = function (force) {
+    const list = document.getElementById('postsList');
+    if (!list) return;
+    const arr = window.ytLiveForFeed();
+    const first = list.firstElementChild;
+    const block = first && first.classList.contains('yt-live-block') ? first : null;
+    const fp = arr.map(l => l.key + ':' + l.viewers + ':' + (l.hostPic ? l.hostPic.length : 0) + ':' + l.hostName).join(',');
+    if (block && block.dataset.fp === fp && !force) return;
+    if (!arr.length) {
+      if (block) block.remove();
+      if (!list.children.length) renderFeed();
+      return;
+    }
+    list.querySelectorAll(':scope > .yt-cempty').forEach(n => n.remove());
+    const nb = document.createElement('div'); nb.className = 'yt-live-block'; nb.dataset.fp = fp;
+    arr.forEach(l => nb.appendChild(buildLiveCard(l)));
+    if (block) block.replaceWith(nb); else list.insertBefore(nb, list.firstChild);
+  };
+
   window.refreshLiveStrip = async () => {
     try {
       const r = await fetch('/api/live/active', { headers: { Authorization: 'Bearer ' + token } });
-      const list = r.ok ? await r.json() : [];
-      strip.textContent = '';
-      list.filter(l => l.hostId !== myUserId).forEach(l => {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:0;border-radius:18px;background:linear-gradient(135deg,#e11d48,#f43f5e);color:#fff;cursor:pointer;text-align:left;font-family:inherit;box-shadow:0 6px 18px rgba(225,29,72,.25)';
-        const badge = document.createElement('span');
-        badge.textContent = 'LIVE';
-        badge.style.cssText = 'background:#fff;color:#e11d48;border-radius:6px;padding:2px 7px;font-weight:800;font-size:11px;letter-spacing:.06em';
-        const t = document.createElement('span');
-        t.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700';
-        t.textContent = l.hostName + 'がライブ配信中';
-        const sub = document.createElement('span');
-        sub.style.cssText = 'font-size:12px;opacity:.9;flex-shrink:0';
-        sub.textContent = ago(l.startedAt) + ' · ' + l.viewers + '人';
-        row.append(badge, t, sub);
-        row.addEventListener('click', () => window.Live.watchFeed(l.key, l.hostId, l.hostName));
-        strip.appendChild(row);
-      });
-      strip.style.display = strip.children.length ? 'flex' : 'none';
+      if (!r.ok) return;
+      const list = await r.json();
+      liveList = Array.isArray(list) ? list.filter(l => l.hostId !== myUserId) : [];
+      window.ytSyncLive(false);
+      if (chan.open()) chanLiveMaybeChanged();
     } catch (_) {}
   };
   window.refreshLiveStrip();
   // 通知を取りこぼしても出るように、開いている間はときどき見直す
   setInterval(() => { if (!document.hidden) window.refreshLiveStrip(); }, 30000);
+
+  // ---------- チャンネルページ ----------
+  const chan = {
+    el: () => document.getElementById('ytChannel'),
+    open: () => { const c = document.getElementById('ytChannel'); return !!(c && c.classList.contains('open')); },
+    id: null, info: null, posts: [], tab: 'home', loaded: false, liveFp: '',
+    body: null, tabs: null, meta: null, subBtn: null,
+  };
+  const TABS = [['home', 'ch_tab_home', 'ホーム'], ['videos', 'ch_tab_videos', '動画'], ['live', 'ch_tab_live', 'ライブ'], ['posts', 'ch_tab_posts', '投稿'], ['about', 'ch_tab_about', '概要']];
+
+  function gradFor(id) {
+    let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const a = h % 360, b = (a + 48) % 360;
+    return 'linear-gradient(135deg,hsl(' + a + ' 55% 38%),hsl(' + b + ' 60% 24%))';
+  }
+  const chanFp = () => JSON.stringify([chan.info && [chan.info.name, (chan.info.pic || '').length, chan.info.bio, chan.info.subscriberCount, chan.info.subscribedByMe, chan.info.postCount, chan.info.totalViews], feedFp(chan.posts)]);
+  const chanLive = () => liveList.find(l => l.hostId === chan.id) || null;
+  const cacheKey = id => 'chan_cache_' + (myUserId || '') + '_' + id;
+  function saveChanCache() {
+    try {
+      const pic = chan.info && chan.info.pic;
+      localStorage.setItem(cacheKey(chan.id), JSON.stringify({ info: chan.info, posts: chan.posts.map(p => ({ ...p, authorPic: null })), pic: !!pic }));
+    } catch (_) {}
+  }
+
+  window.closeChannel = function () {
+    const c = chan.el();
+    if (!c || !c.classList.contains('open')) return;
+    c.classList.remove('open', 'scrolled'); c.setAttribute('aria-hidden', 'true'); c.textContent = '';
+    chan.id = null; chan.body = chan.tabs = chan.meta = chan.subBtn = null;
+    const w = document.getElementById('ytWatch');
+    if (!(w && w.classList.contains('open'))) document.body.style.overflow = '';
+  };
+
+  window.openChannel = async function (id, hint) {
+    const c = chan.el();
+    if (!c || !id) return;
+    const w = document.getElementById('ytWatch');
+    const watchOpen = !!(w && w.classList.contains('open'));
+    const wasOpen = chan.open();
+    if (wasOpen && chan.id === id) {
+      if (watchOpen) { try { history.back(); } catch (_) { closeWatch(); } } else c.scrollTop = 0;
+      return;
+    }
+    if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+    if (watchOpen) closeWatch();
+    if (!wasOpen) { try { (watchOpen ? history.replaceState : history.pushState).call(history, { ytChannel: 1 }, ''); } catch (_) {} }
+    chan.id = id; chan.tab = 'home'; chan.loaded = false; chan.posts = [];
+    chan.info = hint ? { id, name: hint.name || '', pic: hint.pic || null } : { id, name: '', pic: null };
+    c.classList.add('open'); c.classList.remove('scrolled'); c.setAttribute('aria-hidden', 'false'); c.scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+
+    // 前回の内容があれば、待たずにそれを出す
+    let shown = false, fp0 = '';
+    try {
+      const cc = JSON.parse(localStorage.getItem(cacheKey(id)) || 'null');
+      if (cc && cc.info && cc.info.id === id) {
+        chan.info = cc.info;
+        chan.posts = (Array.isArray(cc.posts) ? cc.posts : []).map(p => ({ ...p, authorPic: cc.info.pic || null }));
+        chan.loaded = true; shown = true; fp0 = chanFp();
+      }
+    } catch (_) {}
+    renderChannel();
+
+    const mine = id;
+    try {
+      const [info, posts] = await Promise.all([
+        api('/api/posts/channel/' + encodeURIComponent(id)),
+        api('/api/posts?channel=' + encodeURIComponent(id) + '&limit=50'),
+      ]);
+      if (chan.id !== mine) return;
+      if (!info || info.error || !Array.isArray(posts)) throw new Error((info && info.error) || 'load');
+      chan.info = info; chan.posts = posts; chan.loaded = true;
+      saveChanCache();
+      if (!shown || chanFp() !== fp0) renderChannel();
+    } catch (e) {
+      if (chan.id !== mine || shown) return;
+      renderChannelError(e && e.message);
+    }
+  };
+
+  function renderChannelError(msg) {
+    const c = chan.el(); if (!c || !chan.body) return;
+    chan.body.textContent = '';
+    const box = document.createElement('div'); box.className = 'yt-cempty';
+    const t = document.createElement('div'); t.textContent = msg && msg !== 'load' ? msg : T('feed_load_failed', '読み込みに失敗しました');
+    t.style.color = '#ef4444';
+    const b = document.createElement('button'); b.className = 'yt-subbtn on'; b.style.marginTop = '14px'; b.textContent = T('ch_retry', '再読み込み');
+    b.addEventListener('click', () => { const id = chan.id, h = { name: chan.info && chan.info.name, pic: chan.info && chan.info.pic }; closeChannelKeepHistory(); window.openChannel(id, h); });
+    box.append(t, b); chan.body.appendChild(box);
+  }
+  // 履歴を触らずに表示だけ閉じる(再読み込み用)
+  function closeChannelKeepHistory() {
+    const c = chan.el(); if (!c) return;
+    c.classList.remove('open', 'scrolled'); c.textContent = ''; chan.id = null;
+  }
+
+  function secTitle(text) { const d = document.createElement('div'); d.className = 'yt-sec-title'; d.style.marginTop = '4px'; d.textContent = text; return d; }
+  function gridOf(arr) {
+    const g = document.createElement('div'); g.className = 'yt-grid';
+    const frag = document.createDocumentFragment();
+    arr.forEach(p => frag.appendChild(renderPostCard(p, { compact: true })));
+    g.appendChild(frag);
+    return g;
+  }
+  function emptyBox(text) { const d = document.createElement('div'); d.className = 'yt-cempty'; d.textContent = text; return d; }
+  function liveGrid(l) { const g = document.createElement('div'); g.className = 'yt-grid'; g.appendChild(buildLiveCard(l)); return g; }
+
+  function fmtJoined(ts) {
+    if (!ts) return '';
+    const d = new Date(String(ts).includes('T') ? ts : String(ts).replace(' ', 'T') + 'Z');
+    if (isNaN(d)) return '';
+    const lang = (window.i18n && i18n.getLang && i18n.getLang()) || 'ja';
+    try { return d.toLocaleDateString(lang === 'zh-CN' ? 'zh-CN' : lang, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (_) { return d.toISOString().slice(0, 10); }
+  }
+  function aboutRow(svg, text) {
+    const r = document.createElement('div'); r.className = 'r'; r.innerHTML = svg;
+    const s = document.createElement('span'); s.textContent = text; r.appendChild(s); return r;
+  }
+
+  function renderChannelBody() {
+    const body = chan.body; if (!body) return;
+    body.textContent = '';
+    if (!chan.loaded) {
+      const g = document.createElement('div'); g.className = 'yt-grid';
+      for (let i = 0; i < 2; i++) {
+        const c = document.createElement('div'); c.className = 'yt-skel';
+        c.innerHTML = '<div class="b t"></div><div class="m"><div style="flex:1"><div class="b l" style="width:90%"></div><div class="b l" style="width:55%"></div></div></div>';
+        g.appendChild(c);
+      }
+      body.appendChild(g); return;
+    }
+    const live = chanLive();
+    chan.liveFp = live ? live.key + ':' + live.viewers : '';
+    const nonVideo = chan.posts.filter(p => p.mediaType !== 'video');
+    if (chan.tab === 'home') {
+      if (live) { body.appendChild(secTitle(T('ch_live_now', 'ライブ配信中'))); body.appendChild(liveGrid(live)); }
+      const latest = chan.posts.slice(0, 8);
+      if (latest.length) {
+        const t = secTitle(T('ch_latest', '最新の投稿')); if (live) t.style.marginTop = '24px';
+        body.appendChild(t); body.appendChild(gridOf(latest));
+      } else if (!live) body.appendChild(emptyBox(T('ch_no_posts', '投稿がありません')));
+    } else if (chan.tab === 'videos') {
+      const v = chan.posts.filter(p => p.mediaType === 'video');
+      body.appendChild(v.length ? gridOf(v) : emptyBox(T('ch_no_videos', '動画がありません')));
+    } else if (chan.tab === 'live') {
+      body.appendChild(live ? liveGrid(live) : emptyBox(T('ch_no_live', '現在ライブ配信はありません')));
+    } else if (chan.tab === 'posts') {
+      body.appendChild(nonVideo.length ? gridOf(nonVideo) : emptyBox(T('ch_no_posts', '投稿がありません')));
+    } else {
+      const i = chan.info || {};
+      const box = document.createElement('div'); box.className = 'yt-about';
+      const d = document.createElement('div'); d.className = 'd';
+      if (i.bio) setLinkedText(d, i.bio); else { d.textContent = T('ch_no_desc', '説明はありません'); d.style.color = 'var(--yt-fg2)'; }
+      box.appendChild(d);
+      const j = fmtJoined(i.joinedAt); if (j) box.appendChild(aboutRow(SVG_CAL, T('ch_joined', 'Bro Chat登録日') + ': ' + j));
+      box.appendChild(aboutRow(SVG_TREND, T('ch_total_views', '総再生回数') + ': ' + fmtNum(i.totalViews || 0)));
+      box.appendChild(aboutRow(SVG_PLAY, counted('ch_n_videos', '動画 {n}本', i.videoCount || 0)));
+      box.appendChild(aboutRow(SVG_POST, counted('ch_n_posts', '投稿 {n}件', i.postCount || 0)));
+      body.appendChild(box);
+    }
+  }
+
+  // ライブの出入りがあった時だけ、開いているチャンネルのライブ部分を直す
+  function chanLiveMaybeChanged() {
+    const l = chanLive();
+    const fp = l ? l.key + ':' + l.viewers : '';
+    if (fp !== chan.liveFp && (chan.tab === 'home' || chan.tab === 'live')) renderChannelBody();
+  }
+
+  function metaText() {
+    const i = chan.info || {};
+    if (!chan.loaded) return '';
+    return fmtSubs(i.subscriberCount || 0) + '・' + counted('ch_n_videos', '動画 {n}本', i.videoCount || 0);
+  }
+
+  async function chanToggleSub() {
+    const btn = chan.subBtn; if (!btn || !chan.info) return;
+    if (window.LiquidGlass) window.LiquidGlass.haptic('medium');
+    btn.disabled = true;
+    try {
+      const data = await api('/api/posts/channel/' + encodeURIComponent(chan.id) + '/subscribe', { method: 'POST' });
+      if (data.ok) {
+        chan.info.subscribedByMe = data.subscribed; chan.info.subscriberCount = data.subscriberCount;
+        btn.classList.toggle('on', data.subscribed);
+        btn.textContent = T(data.subscribed ? 'subscribed' : 'subscribe');
+        if (chan.meta) chan.meta.textContent = metaText();
+        syncPostInCache({ id: '', authorId: chan.id }, { subscribedByMe: data.subscribed, subscriberCount: data.subscriberCount });
+        liveList.forEach(l => { if (l.hostId === chan.id) { l.subscribedByMe = data.subscribed; l.subscriberCount = data.subscriberCount; } });
+        chan.posts.forEach(p => { p.subscribedByMe = data.subscribed; p.subscriberCount = data.subscriberCount; });
+        saveChanCache();
+      } else if (data.error) { alert(data.error); }
+    } catch (e) { console.error('chanToggleSub error:', e); }
+    finally { btn.disabled = false; }
+  }
+
+  function renderChannel() {
+    const c = chan.el(); if (!c) return;
+    const i = chan.info || {};
+    const mineCh = chan.id === myUserId;
+    const keepScroll = c.scrollTop;
+    c.textContent = '';
+
+    const bar = document.createElement('div'); bar.className = 'yt-cbar';
+    const back = document.createElement('button'); back.type = 'button'; back.setAttribute('aria-label', T('back', '戻る')); back.innerHTML = SVG_BACK;
+    back.addEventListener('click', () => { try { history.back(); } catch (_) { window.closeChannel(); } });
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = i.name || '';
+    bar.append(back, nm); c.appendChild(bar);
+
+    const wrap = document.createElement('div'); wrap.className = 'yt-cwrap';
+    const banner = document.createElement('div'); banner.className = 'yt-cbanner'; banner.style.background = gradFor(chan.id);
+    wrap.appendChild(banner);
+
+    const head = document.createElement('div'); head.className = 'yt-chead2';
+    const av = document.createElement('div'); av.className = 'yt-cavbig'; setAvatarBackground(av, i.pic, (i.name || '?')[0]);
+    const info = document.createElement('div'); info.className = 'yt-cinfo2';
+    const name = document.createElement('div'); name.className = 'yt-cname2'; name.textContent = i.name || '';
+    const meta = document.createElement('div'); meta.className = 'yt-cmeta2'; meta.textContent = metaText();
+    info.append(name, meta);
+    if (i.bio) {
+      const bio = document.createElement('div'); bio.className = 'yt-cbio'; bio.textContent = i.bio.split('\n')[0];
+      bio.addEventListener('click', () => switchTab('about'));
+      info.appendChild(bio);
+    } else if (mineCh) {
+      const you = document.createElement('div'); you.className = 'yt-cbio'; you.style.cursor = 'default'; you.textContent = T('ch_your_channel', 'あなたのチャンネル');
+      info.appendChild(you);
+    }
+    head.append(av, info);
+    wrap.appendChild(head);
+    chan.meta = meta; chan.subBtn = null;
+
+    if (!mineCh) {
+      const row = document.createElement('div'); row.className = 'yt-csubrow';
+      const sb = document.createElement('button'); sb.type = 'button';
+      sb.className = 'yt-subbtn' + (i.subscribedByMe ? ' on' : '');
+      sb.textContent = T(i.subscribedByMe ? 'subscribed' : 'subscribe');
+      sb.addEventListener('click', chanToggleSub);
+      row.appendChild(sb); wrap.appendChild(row); chan.subBtn = sb;
+    }
+
+    const tabs = document.createElement('div'); tabs.className = 'yt-ctabs'; tabs.setAttribute('role', 'tablist');
+    TABS.forEach(([k, key, fb]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'yt-ctab' + (k === chan.tab ? ' on' : '');
+      b.dataset.tab = k; b.setAttribute('role', 'tab'); b.textContent = T(key, fb);
+      b.addEventListener('click', () => switchTab(k));
+      tabs.appendChild(b);
+    });
+    wrap.appendChild(tabs); chan.tabs = tabs;
+
+    const body = document.createElement('div'); body.className = 'yt-cbody'; wrap.appendChild(body); chan.body = body;
+    c.appendChild(wrap);
+    renderChannelBody();
+    c.scrollTop = keepScroll;
+  }
+
+  function switchTab(k) {
+    if (chan.tab === k || !chan.tabs) return;
+    if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+    chan.tab = k;
+    chan.tabs.querySelectorAll('.yt-ctab').forEach(b => b.classList.toggle('on', b.dataset.tab === k));
+    renderChannelBody();
+    const c = chan.el(), t = chan.tabs;
+    if (c && t && c.scrollTop > t.offsetTop - 60) c.scrollTop = Math.max(0, t.offsetTop - 60);
+  }
+
+  // スクロールしたらバーにチャンネル名を出す
+  const cEl = chan.el();
+  if (cEl) cEl.addEventListener('scroll', () => { cEl.classList.toggle('scrolled', cEl.scrollTop > 150); }, { passive: true });
 })();
 </script>
 <script>document.body.setAttribute('data-pick-talk', window.i18n ? i18n.t('pick_talk', 'トークを選んでください') : 'トークを選んでください');</script>
