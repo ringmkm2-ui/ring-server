@@ -30,12 +30,11 @@
       background: #ffffff;
       min-height: 100vh;
       display: flex;
-      align-items: center;
-      justify-content: center;
       padding: 20px;
     }
 
     .container {
+      margin: auto; /* 縦横中央。キーボードで高さが変わっても上端が切れず、中央寄せの再計算でガタつかない */
       background: white;
       border-radius: 16px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
@@ -369,17 +368,17 @@
 
       <form data-submit="emailSignup">
         <div class="form-group">
-          <input type="text" id="signupName" placeholder="表示名" required>
+          <input type="text" id="signupName" name="nickname" placeholder="表示名" required autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
         </div>
         <div class="form-group">
-          <input type="text" id="signupRealName" placeholder="本名(フルネーム)" data-i18n-placeholder="real_name_ph" required maxlength="50" autocomplete="name">
+          <input type="text" id="signupRealName" placeholder="本名(フルネーム)" data-i18n-placeholder="real_name_ph" required maxlength="50" autocomplete="name" enterkeyhint="next">
           <p class="field-note" data-i18n="real_name_note" style="font-size:12px;opacity:.65;margin:6px 4px 0">本名はほかの人には表示されません</p>
         </div>
         <div class="form-group">
-          <input type="email" id="signupEmail" placeholder="メールアドレス" required>
+          <input type="email" id="signupEmail" name="signup-email" placeholder="メールアドレス" required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next">
         </div>
         <div class="form-group">
-          <input type="password" id="signupPassword" placeholder="パスワード（8文字以上）" required minlength="8">
+          <input type="password" id="signupPassword" name="new-password" placeholder="パスワード（8文字以上）" required minlength="8" autocomplete="new-password" enterkeyhint="go">
         </div>
         <button type="submit" class="btn btn-login" data-i18n="register">登録</button>
       </form>
