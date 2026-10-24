@@ -275,6 +275,37 @@
     try { return !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return true; }
   }
 
+  // パスフレーズ欄を type=password にすると、ブラウザがログイン欄だと勘違いして
+  // 「保存したパスワード」の一覧を欄の上にかぶせて出し、キーボードを押しのけてしまう。
+  // これはアカウントのパスワードではないので、見た目だけ伏せ字にした普通の文字欄にして、
+  // パスワード保存機能の対象から外す(伏せ字が使えないブラウザだけ今まで通り password)
+  var SECRET_CSS_OK = (function () {
+    try { return !!(window.CSS && CSS.supports && CSS.supports('-webkit-text-security', 'disc')); } catch (e) { return false; }
+  })();
+  var secretStyled = false;
+  function secretStyle() {
+    if (secretStyled || !SECRET_CSS_OK) return;
+    secretStyled = true;
+    var st = document.createElement('style');
+    st.textContent = '.bc-secret{-webkit-text-security:disc;text-security:disc}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function secretInput(css, name) {
+    secretStyle();
+    var i = el('input', css);
+    i.name = name || 'bc-passphrase';
+    i.autocapitalize = 'off'; i.spellcheck = false;
+    try { i.setAttribute('autocorrect', 'off'); i.setAttribute('data-form-type', 'other'); } catch (e) {}
+    if (SECRET_CSS_OK) { i.type = 'text'; i.autocomplete = 'off'; i.className = 'bc-secret'; }
+    else { i.type = 'password'; i.autocomplete = 'new-password'; }
+    return i;
+  }
+  function secretShow(i, show) {
+    if (!i) return;
+    if (SECRET_CSS_OK) i.className = show ? '' : 'bc-secret';
+    else i.type = show ? 'text' : 'password';
+  }
+
   // mode: 'setup' | 'restore' | 'restore-mismatch'
   function showModal(mode) {
     return new Promise(function (resolve) {
@@ -302,18 +333,18 @@
       box.appendChild(el('div', 'font-size:13px;line-height:1.55;color:' + sub + ';margin-bottom:14px', body));
 
       var inCss = 'width:100%;box-sizing:border-box;border:0;outline:0;border-radius:12px;background:' + inputBg + ';color:' + fg + ';font-size:16px;padding:12px 14px;margin-bottom:8px';
-      var p1 = el('input', inCss); p1.type = 'password'; p1.autocomplete = isSetup ? 'new-password' : 'current-password';
+      var p1 = secretInput(inCss, 'bc-passphrase');
       p1.placeholder = isSetup ? T('kb_pass_strong', 'パスフレーズ(12文字以上)') : T('kb_pass', 'パスフレーズ');
       box.appendChild(p1);
       var p2 = null;
       if (isSetup) {
-        p2 = el('input', inCss); p2.type = 'password'; p2.autocomplete = 'new-password';
+        p2 = secretInput(inCss, 'bc-passphrase2');
         p2.placeholder = T('kb_pass2', 'もう一度入力');
         box.appendChild(p2);
         // 自分で考えると弱くなりがちなので、強いものを作るボタン(約93ビット)。作ったら見えるようにして控えてもらう
         var gen = el('button', 'border:0;background:none;color:#10b981;font-size:13px;font-weight:700;padding:2px 2px 8px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
         gen.type = 'button'; keepFocus(gen);
-        gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; p1.type = 'text'; p2.type = 'text'; msg.style.color = sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません'); };
+        gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; secretShow(p1, true); secretShow(p2, true); msg.style.color = sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません'); };
         box.appendChild(gen);
       }
       var msg = el('div', 'min-height:18px;font-size:12.5px;color:#ef4444;margin:2px 2px 8px');
@@ -401,7 +432,7 @@
       var busy = false;
       var checked = false;
 
-      var wrap = el('div', 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483000;display:flex;flex-direction:column;box-sizing:border-box;padding-top:env(safe-area-inset-top);background:' + C.bg + ';color:' + C.fg + ';font-family:' + font);
+      var wrap = el('div', 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483000;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding-top:env(safe-area-inset-top);background:' + C.bg + ';color:' + C.fg + ';font-family:' + font);
       wrap.id = 'kbw';
       var css = el('style');
       css.textContent =
@@ -461,7 +492,25 @@
         tx.appendChild(el('div', 'font-size:13.5px;line-height:1.55;color:' + C.sub + ';margin-top:2px', desc));
         row.appendChild(ic); row.appendChild(tx); return row;
       }
-      function close(result) { pass = ''; try { wrap.remove(); } catch (e) {} resolve(result); }
+      // キーボードが出ると表示領域が縮む。縮んだぶんに合わせて高さを合わせないと、
+      // 画面の下に前のページがはみ出して見えたり、中身が上下にガタつく
+      var vv = window.visualViewport || null;
+      function fitViewport() {
+        if (!vv || !wrap.isConnected) return;
+        wrap.style.bottom = 'auto';
+        wrap.style.top = Math.max(0, vv.offsetTop) + 'px';
+        wrap.style.height = vv.height + 'px';
+      }
+      if (vv) {
+        vv.addEventListener('resize', fitViewport);
+        vv.addEventListener('scroll', fitViewport);
+      }
+      function close(result) {
+        pass = '';
+        if (vv) { vv.removeEventListener('resize', fitViewport); vv.removeEventListener('scroll', fitViewport); }
+        try { wrap.remove(); } catch (e) {}
+        resolve(result);
+      }
 
       // ---- 1. 説明 ----
       function page1() {
@@ -489,19 +538,19 @@
         var inCss = 'display:block;width:100%;height:54px;box-sizing:border-box;border:0;outline:0;border-radius:16px;background:' + C.input + ';color:' + C.fg + ';font-size:17px;font-family:inherit;padding:0 50px 0 16px';
         var form = el('div', 'margin-top:22px');
         var f1 = el('div', 'position:relative;margin-bottom:10px');
-        var p1 = el('input', inCss); p1.id = 'kbwPass1'; p1.type = 'password'; p1.autocomplete = 'off';
+        var p1 = secretInput(inCss, 'bc-passphrase'); p1.id = 'kbwPass1';
         p1.placeholder = T('kb_pass_strong', 'パスフレーズ(12文字以上)'); p1.value = pass;
         p1.enterKeyHint = 'next';
         var eye = el('button', 'position:absolute;top:5px;right:5px;width:44px;height:44px;border:0;border-radius:22px;background:none;color:' + C.sub + ';display:flex;align-items:center;justify-content:center;cursor:pointer');
         eye.type = 'button'; eye.id = 'kbwEye'; eye.innerHTML = svgIcon('eye', 22, 1.7); keepFocus(eye);
         if (eye.setAttribute) eye.setAttribute('aria-label', T('kbw_show', '表示を切り替え'));
         f1.appendChild(p1); f1.appendChild(eye);
-        var p2 = el('input', inCss); p2.id = 'kbwPass2'; p2.type = 'password'; p2.autocomplete = 'off';
+        var p2 = secretInput(inCss, 'bc-passphrase2'); p2.id = 'kbwPass2';
         p2.placeholder = T('kb_pass2', 'もう一度入力'); p2.value = pass;
         p2.enterKeyHint = 'done';
         var shown = false;
         eye.onclick = function () {
-          shown = !shown; p1.type = p2.type = shown ? 'text' : 'password';
+          shown = !shown; secretShow(p1, shown); secretShow(p2, shown);
           eye.innerHTML = svgIcon(shown ? 'eyeoff' : 'eye', 22, 1.7);
         };
         var gen = el('button', 'border:0;background:none;color:' + C.green + ';font-size:14.5px;font-weight:700;font-family:inherit;padding:12px 2px 4px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
@@ -510,7 +559,7 @@
         msg.id = 'kbwMsg';
         gen.onclick = function () {
           var v = genPass(); p1.value = v; p2.value = v;
-          shown = true; p1.type = p2.type = 'text'; eye.innerHTML = svgIcon('eyeoff', 22, 1.7);
+          shown = true; secretShow(p1, true); secretShow(p2, true); eye.innerHTML = svgIcon('eyeoff', 22, 1.7);
           msg.style.color = C.sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません');
         };
         form.appendChild(f1); form.appendChild(p2); form.appendChild(gen); form.appendChild(msg);
@@ -603,6 +652,7 @@
       back.onclick = function () { if (!busy && step > 1 && step < 4) go(step - 1); };
 
       document.body.appendChild(wrap);
+      fitViewport();
       go(1);
     });
   }
