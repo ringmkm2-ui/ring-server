@@ -2597,10 +2597,18 @@ async function appendKeyBackup() {
   let st;
   try { st = await window.bcKeyBackup.status(); } catch (e) { return; }
   if (st.server === null) return;
-  holder.appendChild(secNode('p', st.server ? t2('kb_status_on', 'バックアップ済み') : t2('kb_status_off', '未設定'), 'font-size:14px;font-weight:600;margin:0 2px 8px'));
+  const state = st.server
+    ? t2('kb_status_on', 'バックアップ済み') + (st.code ? ' / ' + t2('kb_status_code', '回復コードあり') : '')
+    : t2('kb_status_off', '未設定');
+  holder.appendChild(secNode('p', state, 'font-size:14px;font-weight:600;margin:0 2px 8px'));
   const again = async (fn) => { await fn(); closeSec(); };
   if (st.local) {
     holder.appendChild(secButton(st.server ? t2('kb_btn_change', 'パスフレーズを変えて預け直す') : t2('kb_btn_setup', 'パスフレーズを設定して預ける'), 'cancelbtn', () => again(() => window.bcKeyBackup.openSetup())));
+  }
+  // 回復コードは、今のバックアップを開ける端末でしか作れない(元鍵を包み直すため)
+  if (st.server && st.trusted) {
+    holder.appendChild(secButton(st.code ? t2('kb_btn_code', '回復コードを作り直す') : t2('kb_btn_code_new', '回復コードを作る'), 'cancelbtn',
+      () => again(() => window.bcKeyBackup.showRecoveryCode())));
   }
   if (st.server) {
     holder.appendChild(secButton(t2('kb_btn_restore', 'バックアップから鍵を復元'), 'cancelbtn', async () => {

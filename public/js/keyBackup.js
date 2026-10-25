@@ -108,13 +108,51 @@
     try { return JSON.parse(nacl().util.encodeUTF8(plain)); } catch (e) { return null; }
   }
 
-  // blob = bk1.<個人鍵の公開鍵 or ->.<salt>.<sealed>[.<グループ身元鍵の公開鍵 or ->]
-  // (末尾の5つ目は後から足した。4つだけの古いバックアップも読める)
-  function pack(pub, salt, sealed, idpub) { return 'bk1.' + (pub || '-') + '.' + b64e(salt) + '.' + sealed + '.' + (idpub || '-'); }
+  // 預ける形
+  //   bk1 … bk1.<個人鍵の公開鍵 or ->.<salt>.<鍵一式をパスフレーズで暗号化>[.<グループ身元鍵の公開鍵 or ->]
+  //          (古い形。読めるようにしてあるだけで、新しく書くことはない)
+  //   bk2 … bk2.<公開鍵 or ->.<身元鍵の公開鍵 or ->.<psalt>.<元鍵をパスフレーズで暗号化>.
+  //              <鍵一式を元鍵で暗号化>.<rsalt or ->.<元鍵を回復コードで暗号化 or ->
+  //
+  // bk2 は、鍵一式そのものを「元鍵(ランダムな32バイト)」で暗号化し、その元鍵だけを
+  // パスフレーズと回復コードの両方で包む。こうすると:
+  //   - パスフレーズを変えても、包み直すだけで済む(回復コードはそのまま使える)
+  //   - 鍵が増えて預け直す時も、元鍵は変わらないので回復コードが古くならない
+  var MK_LEN = 32;
+  function pack2(o) {
+    return ['bk2', o.pub || '-', o.idpub || '-', b64e(o.psalt), o.wrapPass, o.sealed,
+      o.rsalt ? b64e(o.rsalt) : '-', o.wrapCode || '-'].join('.');
+  }
   function unpack(blob) {
     var p = String(blob || '').split('.');
-    if ((p.length !== 4 && p.length !== 5) || p[0] !== 'bk1') return null;
-    return { pub: p[1] === '-' ? null : p[1], salt: b64d(p[2]), saltB64: p[2], sealed: p[3], idpub: p[4] && p[4] !== '-' ? p[4] : null };
+    if (p[0] === 'bk1' && (p.length === 4 || p.length === 5)) {
+      return { v: 1, pub: p[1] === '-' ? null : p[1], salt: b64d(p[2]), saltB64: p[2], sealed: p[3],
+        idpub: p[4] && p[4] !== '-' ? p[4] : null, wrapPass: null, rsaltB64: null, wrapCode: null };
+    }
+    if (p[0] === 'bk2' && p.length === 8) {
+      return { v: 2, pub: p[1] === '-' ? null : p[1], idpub: p[2] === '-' ? null : p[2],
+        salt: b64d(p[3]), saltB64: p[3], wrapPass: p[4], sealed: p[5],
+        rsalt: p[6] === '-' ? null : b64d(p[6]), rsaltB64: p[6] === '-' ? null : p[6],
+        wrapCode: p[7] === '-' ? null : p[7] };
+    }
+    return null;
+  }
+  // 古い形との両対応: パスフレーズから作った鍵で、元鍵と鍵一式を取り出す
+  function openMk(u, key) {
+    if (u.v === 1) return null;              // bk1 に元鍵は無い(鍵一式が直接包まれている)
+    var w = open(u.wrapPass, key);
+    return w && w.mk ? b64d(w.mk) : null;
+  }
+  function openPayload(u, key) {
+    if (u.v === 1) return open(u.sealed, key);
+    var mk = openMk(u, key);
+    return mk ? open(u.sealed, mk) : null;
+  }
+  function openWithCode(u, codeKey) {
+    if (u.v !== 2 || !u.wrapCode) return null;
+    var w = open(u.wrapCode, codeKey);
+    var mk = w && w.mk ? b64d(w.mk) : null;
+    return mk ? { mk: mk, data: open(u.sealed, mk) } : null;
   }
 
   function payloadFromLocal() {
@@ -136,6 +174,24 @@
     } catch (e) { return { exists: null }; } // 取得失敗(オフライン等)は「不明」
   }
 
+  // 今あるバックアップを、この端末が開けるなら開く。元鍵と中身と回復コードの包みを引き継ぐため
+  async function openCurrent() {
+    try {
+      var trust = readJson(trustName(), null);
+      if (!trust) return null;
+      var cur = await serverInfo(true);
+      var cu = cur && cur.exists ? unpack(cur.blob) : null;
+      if (!cu || cu.saltB64 !== trust.salt) return null;
+      var key = b64d(trust.key);
+      var data = openPayload(cu, key);
+      if (!data) return null;
+      return { u: cu, data: data, mk: cu.v === 2 ? openMk(cu, key) : null };
+    } catch (e) { return null; }
+  }
+
+  // 回復コードで復元した直後は、パスフレーズを知らないまま預け直す必要がある。その間だけ元鍵を覚えておく
+  var pendingMk = null;
+
   async function upload(pass, saltOverride, strong) {
     var salt = saltOverride || nacl().randomBytes(16);
     var key = await deriveKey(pass, salt);
@@ -143,23 +199,81 @@
     if (!payload.keypair && !payload.identity) throw new Error('no local key');
     // パスフレーズを変える時、ほかの端末だけが持っていた鍵がバックアップから消えないよう、今のバックアップと混ぜてから預け直す
     // (この端末が今のバックアップを開ける時だけ。開けなければこの端末の分だけになる)
-    try {
-      var trust = readJson(trustName(), null);
-      var cur = trust ? await serverInfo(true) : null;
-      var cu = cur && cur.exists ? unpack(cur.blob) : null;
-      var old = cu && cu.saltB64 === trust.salt ? open(cu.sealed, b64d(trust.key)) : null;
-      if (old) {
-        if (payload.keypair) payload.keyring = mergeRing(payload.keypair, [payload.keyring, old.keyring || []]);
-        payload.groupKeys = Object.assign({}, old.groupKeys || {}, payload.groupKeys || {});
-        if (!payload.identity && old.identity) payload.identity = old.identity;
-      }
-    } catch (e) {}
-    var blob = pack(payload.keypair ? pubOf(payload.keypair) : null, salt, seal(payload, key), identityPub(payload.identity));
+    var cur = await openCurrent();
+    if (cur) {
+      var old = cur.data;
+      if (payload.keypair) payload.keyring = mergeRing(payload.keypair, [payload.keyring, old.keyring || []]);
+      payload.groupKeys = Object.assign({}, old.groupKeys || {}, payload.groupKeys || {});
+      if (!payload.identity && old.identity) payload.identity = old.identity;
+    }
+    // 元鍵は引き継ぐ(引き継げる時だけ)。引き継げれば、今ある回復コードはそのまま使える
+    var mk = (cur && cur.mk) || pendingMk || nacl().randomBytes(MK_LEN);
+    var keep = cur && cur.u.v === 2 && cur.mk && cur.u.wrapCode ? cur.u : null;
+    if (!keep && !cur && pendingMk) {
+      // 回復コードで戻した直後。元鍵は今のバックアップと同じなので、そのコードは引き続き使える
+      try {
+        var cu2 = unpack((await serverInfo(true)).blob);
+        if (cu2 && cu2.v === 2 && cu2.wrapCode) keep = cu2;
+      } catch (e) {}
+    }
+    var blob = pack2({
+      pub: payload.keypair ? pubOf(payload.keypair) : null,
+      idpub: identityPub(payload.identity),
+      psalt: salt,
+      wrapPass: seal({ mk: b64e(mk) }, key),
+      sealed: seal(payload, mk),
+      rsalt: keep ? keep.rsalt : null,
+      wrapCode: keep ? keep.wrapCode : null
+    });
     var r = await http('PUT', '/api/friends/key-backup', { blob: blob, strong: !!strong });
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
+    pendingMk = null;
     // この端末を「信頼済み」にして、以後は鍵が増えたら黙って更新できるようにする
     localStorage.setItem(trustName(), JSON.stringify({ salt: b64e(salt), key: b64e(key) }));
     return true;
+  }
+
+  // 回復コード。パスフレーズを忘れた時のもう1つの入口。
+  // 鍵一式そのものではなく元鍵だけを包むので、作り直してもほかの端末の預け直しに影響しない
+  function genCode() {
+    var A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 見間違えやすい I,O,0,1 は除く(32文字=1文字5ビット)
+    var out = '', n = 0, b = new Uint8Array(32);
+    while (n < 20) {
+      crypto.getRandomValues(b);
+      for (var i = 0; i < b.length && n < 20; i++) {
+        out += A[b[i] % A.length]; n++;
+        if (n % 5 === 0 && n < 20) out += '-';
+      }
+    }
+    return out; // 20文字で100ビット
+  }
+  function normCode(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+  // 新しい回復コードを作って預ける。前のコードは使えなくなる。戻り値はユーザーに見せるコード
+  async function makeRecoveryCode() {
+    var cur = await openCurrent();
+    if (!cur) throw new Error('cannot open backup');
+    var mk = cur.mk;
+    var payload = cur.data;
+    if (!mk) { // 古い形(bk1)なら、この機会に新しい形へ移す
+      mk = nacl().randomBytes(MK_LEN);
+    }
+    var code = genCode();
+    var rsalt = nacl().randomBytes(16);
+    var rkey = await deriveKey(normCode(code), rsalt);
+    var trust = readJson(trustName(), null);
+    var blob = pack2({
+      pub: payload.keypair ? pubOf(payload.keypair) : null,
+      idpub: identityPub(payload.identity),
+      psalt: cur.u.salt,
+      wrapPass: seal({ mk: b64e(mk) }, b64d(trust.key)),
+      sealed: cur.u.v === 2 && cur.mk ? cur.u.sealed : seal(payload, mk),
+      rsalt: rsalt,
+      wrapCode: seal({ mk: b64e(mk) }, rkey)
+    });
+    var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
+    if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
+    return code;
   }
 
   // 復元したグループ用の身元鍵を、サーバーの登録にも反映する
@@ -179,13 +293,22 @@
     });
   }
 
-  async function restore(pass) {
+  // byCode=true なら、パスフレーズではなく回復コードで開く
+  async function restore(secret, byCode) {
     var info = await serverInfo(true);
     if (!info.exists) throw new Error('no backup');
     var u = unpack(info.blob);
     if (!u) throw new Error('bad backup');
-    var key = await deriveKey(pass, u.salt);
-    var data = open(u.sealed, key);
+    var key = null, data = null, mk = null;
+    if (byCode) {
+      if (u.v !== 2 || !u.wrapCode) { var e0 = new Error('no recovery code'); e0.code = 'NOCODE'; throw e0; }
+      key = await deriveKey(normCode(secret), u.rsalt);
+      var got = openWithCode(u, key);
+      if (got) { data = got.data; mk = got.mk; }
+    } else {
+      key = await deriveKey(secret, u.salt);
+      data = openPayload(u, key);
+    }
     if (!data || (!data.keypair && !data.identity)) { var e = new Error('wrong passphrase'); e.code = 'WRONG'; throw e; }
 
     var s = localState();
@@ -209,7 +332,14 @@
         localStorage.setItem(k, JSON.stringify(gk[k]));
       }
     });
-    localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
+    if (byCode) {
+      // パスフレーズは分からないので、この端末はまだ信頼済みにしない。
+      // 元鍵だけ覚えておき、このあと新しいパスフレーズで預け直してもらう
+      pendingMk = mk;
+      localStorage.removeItem(trustName());
+    } else {
+      localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
+    }
     return true;
   }
 
@@ -223,7 +353,8 @@
     if (!u) return false;
     if (u.saltB64 !== trust.salt) { localStorage.removeItem(trustName()); return false; } // 別の端末でパスフレーズが変えられた
     var key = b64d(trust.key);
-    var data = open(u.sealed, key);
+    var mk = u.v === 2 ? openMk(u, key) : key; // bk1 は鍵一式が直接包まれている
+    var data = mk ? openPayload(u, key) : null;
     if (!data) { localStorage.removeItem(trustName()); return false; }
 
     var s = localState();
@@ -239,7 +370,13 @@
     if (sameKeys && sameId && sameGroups) return false;
 
     var payload = { keypair: canon, keyring: merged, identity: identity, groupKeys: groupKeys };
-    var blob = pack(canon ? pubOf(canon) : null, u.salt, seal(payload, key), identityPub(identity));
+    // 元鍵は変えない。変えると、ほかの端末で作った回復コードが使えなくなる
+    var blob = pack2({
+      pub: canon ? pubOf(canon) : null, idpub: identityPub(identity), psalt: u.salt,
+      wrapPass: u.v === 2 ? u.wrapPass : seal({ mk: b64e(mk) }, key),
+      sealed: seal(payload, mk),
+      rsalt: u.rsalt || null, wrapCode: u.wrapCode || null
+    });
     var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
     if (r && r.ok && canon) localStorage.setItem(ringName(), JSON.stringify(merged));
     return !!(r && r.ok);
@@ -254,6 +391,19 @@
 
   // ---------- 画面 ----------
   var LOCK_SVG = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>';
+
+  // 文言の **…** を赤い太字で出す(「必ず」のような、読み飛ばされると困る言葉)
+  function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function markup(text) {
+    return String(text).split('**').map(function (part, i) {
+      return i % 2 ? '<strong style="color:#ef4444;font-weight:800;white-space:nowrap">' + esc(part) + '</strong>' : esc(part);
+    }).join('');
+  }
+  function say(node, text, color) {
+    if (!node) return;
+    if (color) node.style.color = color;
+    node.innerHTML = markup(text);
+  }
 
   function el(tag, css, text) {
     var e = document.createElement(tag);
@@ -319,18 +469,22 @@
       var box = el('div', 'width:100%;max-width:360px;background:' + card + ';color:' + fg + ';border-radius:22px;padding:22px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif');
       var ic = el('div', 'color:#10b981;margin-bottom:8px'); ic.innerHTML = LOCK_SVG; box.appendChild(ic);
 
-      var isSetup = mode === 'setup' || mode === 'upgrade';
+      var isSetup = mode === 'setup' || mode === 'upgrade' || mode === 'setup-after-code';
       var title = isSetup ? T('kb_setup_title', '暗号鍵をバックアップ') : T('kb_restore_title', '暗号鍵を復元');
       if (mode === 'upgrade') title = T('kb_upgrade_title', 'パスフレーズを強くしてください');
-      var body = mode === 'upgrade'
+      var body = mode === 'setup-after-code'
+        ? T('kb_code_then_pass', '回復コードで戻しました。この端末のために、新しいパスフレーズを決めてください。')
+        : mode === 'upgrade'
         ? T('kb_upgrade_body', '今のバックアップは、前の基準(8文字以上)のパスフレーズで預けられています。短いと、万一サーバーのデータが漏れた時に総当たりで破られるおそれがあります。新しいパスフレーズで預け直すと、古いバックアップは置き換わります。')
         : isSetup
         ? T('kb_setup_body', '別の端末でも過去のメッセージを読めるように、鍵をパスフレーズで暗号化して預けます。パスフレーズはサーバーにも分かりません。忘れると復元できないので、控えておいてください。')
         : (mode === 'restore-mismatch'
           ? T('kb_mismatch_body', 'この端末の鍵が、バックアップの鍵と違っています。このままだと一部のメッセージが読めません。バックアップのパスフレーズを入力すると、鍵が揃います。')
           : T('kb_restore_body', 'この端末にはまだ暗号鍵がありません。バックアップのパスフレーズを入力すると、過去のメッセージが読めるようになります。'));
-      box.appendChild(el('div', 'font-size:18px;font-weight:700;margin-bottom:6px', title));
-      box.appendChild(el('div', 'font-size:13px;line-height:1.55;color:' + sub + ';margin-bottom:14px', body));
+      var titleNode = el('div', 'font-size:18px;font-weight:700;margin-bottom:6px', title);
+      var bodyNode = el('div', 'font-size:13px;line-height:1.55;color:' + sub + ';margin-bottom:14px');
+      say(bodyNode, body);
+      box.appendChild(titleNode); box.appendChild(bodyNode);
 
       var inCss = 'width:100%;box-sizing:border-box;border:0;outline:0;border-radius:12px;background:' + inputBg + ';color:' + fg + ';font-size:16px;padding:12px 14px;margin-bottom:8px';
       var p1 = secretInput(inCss, 'bc-passphrase');
@@ -344,7 +498,7 @@
         // 自分で考えると弱くなりがちなので、強いものを作るボタン(約93ビット)。作ったら見えるようにして控えてもらう
         var gen = el('button', 'border:0;background:none;color:#10b981;font-size:13px;font-weight:700;padding:2px 2px 8px;cursor:pointer;text-align:left', T('kb_generate', '強いパスフレーズを自動で作る'));
         gen.type = 'button'; keepFocus(gen);
-        gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; secretShow(p1, true); secretShow(p2, true); msg.style.color = sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません'); };
+        gen.onclick = function () { var v = genPass(); p1.value = v; p2.value = v; secretShow(p1, true); secretShow(p2, true); say(msg, T('kb_generated', 'これを**必ず**控えてください(スクショやメモ)。忘れると復元できません'), sub); };
         box.appendChild(gen);
       }
       var msg = el('div', 'min-height:18px;font-size:12.5px;color:#ef4444;margin:2px 2px 8px');
@@ -355,6 +509,24 @@
       box.appendChild(btn);
 
       var row = el('div', 'display:flex;flex-direction:column;gap:2px;margin-top:6px');
+      // パスフレーズを忘れた人のための、もう1つの入口
+      var byCode = false, toggle = null;
+      if (!isSetup) {
+        toggle = el('button', 'border:0;background:none;color:#10b981;font-size:13.5px;font-weight:700;font-family:inherit;padding:10px', T('kb_use_code', '回復コードで復元する'));
+        toggle.type = 'button';
+        toggle.onclick = function () {
+          if (busy) return;
+          byCode = !byCode;
+          p1.value = '';
+          msg.textContent = '';
+          secretShow(p1, byCode); // コードは手元の控えを見て打つものなので、伏せ字にしない
+          p1.placeholder = byCode ? T('kb_code_ph', '回復コード(5文字×4)') : T('kb_pass', 'パスフレーズ');
+          p1.autocapitalize = byCode ? 'characters' : 'off';
+          toggle.textContent = byCode ? T('kb_use_pass', 'パスフレーズで復元する') : T('kb_use_code', '回復コードで復元する');
+          try { p1.focus(); } catch (e) {}
+        };
+        row.appendChild(toggle);
+      }
       var later = el('button', 'border:0;background:none;color:' + sub + ';font-size:14px;padding:10px', mode === 'restore' ? T('kb_make_new', '新しい鍵を作る(過去のメッセージは読めません)') : T('kb_later', 'あとで'));
       later.type = 'button';
       row.appendChild(later);
@@ -372,15 +544,24 @@
         msg.textContent = '';
         msg.style.color = '#ef4444';
         if (isSetup) { var weak = weakReason(pass); if (weak) { msg.textContent = weak; return; } }
+        else if (byCode) { if (normCode(pass).length !== 20) { msg.textContent = T('kb_err_code_len', '回復コードは20文字です(区切りの「-」は入れても入れなくても構いません)'); return; } }
         else if (pass.length < MIN_PASS) { msg.textContent = T('kb_err_short', 'パスフレーズは8文字以上にしてください'); return; }
         if (isSetup && pass !== p2.value) { msg.textContent = T('kb_err_match', '2つのパスフレーズが一致しません'); return; }
         busy = true; btn.disabled = true; btn.style.opacity = '.6';
         btn.textContent = T('kb_working', '処理中…');
         try {
-          if (isSetup) await upload(pass, null, !weakReason(pass)); else await restore(pass);
-          close(isSetup ? 'saved' : 'restored');
+          if (isSetup) { await upload(pass, null, !weakReason(pass)); close('saved'); return; }
+          await restore(pass, byCode);
+          if (!byCode) { close('restored'); return; }
+          // 回復コードで戻した端末は、まだパスフレーズを知らない。続けて新しいものを決めてもらう
+          try { wrap.remove(); } catch (e2) {}
+          await showModal('setup-after-code');
+          resolve('restored');
+          return;
         } catch (e) {
-          msg.textContent = e && e.code === 'WRONG' ? T('kb_err_wrong', 'パスフレーズが違います') : T('kb_err_fail', '失敗しました。通信を確認してもう一度試してください');
+          msg.textContent = e && e.code === 'NOCODE' ? T('kb_err_nocode', 'このバックアップには回復コードが設定されていません')
+            : e && e.code === 'WRONG' ? (byCode ? T('kb_err_code', '回復コードが違います') : T('kb_err_wrong', 'パスフレーズが違います'))
+            : T('kb_err_fail', '失敗しました。通信を確認してもう一度試してください');
           busy = false; btn.disabled = false; btn.style.opacity = '1';
           btn.textContent = isSetup ? T('kb_do_setup', '預ける') : T('kb_do_restore', '復元する');
         }
@@ -391,6 +572,41 @@
           close('new');
         } else close('later');
       };
+    });
+  }
+
+  // 設定から回復コードを作り直す時の画面。作ってから見せる(前のコードはここで使えなくなる)
+  function showCodeModal() {
+    return new Promise(function (resolve) {
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var fg = dark ? '#f2f2f7' : '#111';
+      var card = dark ? '#2c2c2e' : '#fff';
+      var sub = dark ? 'rgba(235,235,245,.65)' : 'rgba(60,60,67,.65)';
+      var inner = dark ? 'rgba(120,120,128,.28)' : 'rgba(120,120,128,.12)';
+      var wrap = el('div', 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)');
+      var box = el('div', 'width:100%;max-width:360px;background:' + card + ';color:' + fg + ';border-radius:22px;padding:22px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif');
+      var ic = el('div', 'color:#10b981;margin-bottom:8px'); ic.innerHTML = LOCK_SVG; box.appendChild(ic);
+      box.appendChild(el('div', 'font-size:18px;font-weight:700;margin-bottom:6px', T('kb_code_title', '回復コード')));
+      var note = el('div', 'font-size:13px;line-height:1.55;color:' + sub + ';margin-bottom:14px');
+      say(note, T('kb_code_warn', '前の回復コードは使えなくなります。新しいコードを**必ず**控えてください。'));
+      box.appendChild(note);
+      var out = el('div', 'border-radius:14px;background:' + inner + ';padding:16px 12px;text-align:center;font-size:18px;font-weight:700;letter-spacing:.06em;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace', T('kbw_code_making', '作っています…'));
+      out.id = 'kbCodeOut';
+      box.appendChild(out);
+      var btn = el('button', 'width:100%;border:0;border-radius:14px;padding:13px;margin-top:14px;font-size:16px;font-weight:700;color:#fff;background:#10b981;opacity:.6', T('kb_working', '処理中…'));
+      btn.id = 'kbCodeClose'; btn.type = 'button'; btn.disabled = true;
+      box.appendChild(btn);
+      wrap.appendChild(box); document.body.appendChild(wrap);
+      function done(result) { try { wrap.remove(); } catch (e) {} resolve(result); }
+      btn.onclick = function () { if (!btn.disabled) done('ok'); };
+      makeRecoveryCode().then(function (code) {
+        out.textContent = code;
+        btn.textContent = T('close', '閉じる'); btn.disabled = false; btn.style.opacity = '1';
+      }).catch(function () {
+        out.style.display = 'none';
+        say(note, T('kb_err_fail', '失敗しました。通信を確認してもう一度試してください'), '#ef4444');
+        btn.textContent = T('close', '閉じる'); btn.disabled = false; btn.style.opacity = '1';
+      });
     });
   }
 
@@ -453,7 +669,7 @@
       back.id = 'kbwBack'; back.type = 'button'; back.innerHTML = svgIcon('back', 24, 2);
       if (back.setAttribute) back.setAttribute('aria-label', T('kbw_back', '戻る'));
       var dotsBox = el('div', 'display:flex;gap:6px;align-items:center');
-      var dots = [0, 1, 2].map(function () {
+      var dots = [0, 1, 2, 3].map(function () {
         var d = el('span', 'height:8px;width:8px;border-radius:4px;background:' + C.line + ';transition:width .25s,background .25s');
         dotsBox.appendChild(d); return d;
       });
@@ -474,7 +690,7 @@
       }
       function title(id, text) { var t = el('div', 'font-size:26px;font-weight:800;line-height:1.3;text-align:center;letter-spacing:-.01em;margin:0 0 10px', text); t.id = id; t.className = 'kbw-title'; return t; }
       // fold=true の補足は、画面が低い時(キーボード表示中)は隠す。控えを促す大事な文は fold しない
-      function sub(text, fold) { var d = el('div', 'font-size:15px;line-height:1.65;text-align:center;color:' + C.sub + ';margin:0 4px 6px', text); if (fold) d.className = 'kbw-sub'; return d; }
+      function sub(text, fold) { var d = el('div', 'font-size:15px;line-height:1.65;text-align:center;color:' + C.sub + ';margin:0 4px 6px'); say(d, text); if (fold) d.className = 'kbw-sub'; return d; }
       function primary(id, text) {
         var b = el('button', 'width:100%;height:54px;border:0;border-radius:27px;background:' + C.green + ';color:#fff;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer', text);
         b.id = id; b.type = 'button'; return b;
@@ -560,7 +776,7 @@
         gen.onclick = function () {
           var v = genPass(); p1.value = v; p2.value = v;
           shown = true; secretShow(p1, true); secretShow(p2, true); eye.innerHTML = svgIcon('eyeoff', 22, 1.7);
-          msg.style.color = C.sub; msg.textContent = T('kb_generated', 'これを必ず控えてください(スクショやメモ)。忘れると復元できません');
+          say(msg, T('kb_generated', 'これを**必ず**控えてください(スクショやメモ)。忘れると復元できません'), C.sub);
         };
         form.appendChild(f1); form.appendChild(p2); form.appendChild(gen); form.appendChild(msg);
         sc.appendChild(form);
@@ -586,7 +802,7 @@
         var p = page(), sc = scroller(), bt = bottom();
         sc.appendChild(hero('lock', 44, 92, false));
         sc.appendChild(title('kbwTitle', T('kbw_title3', '控えましたか？')));
-        sc.appendChild(sub(T('kbw_sub3', '忘れると、鍵も過去のメッセージも戻せません。メモやスクリーンショットで控えてください。')));
+        sc.appendChild(sub(T('kbw_sub3', '忘れると、鍵も過去のメッセージも戻せません。**必ず**メモやスクリーンショットで控えてください。')));
         var card = el('div', 'margin-top:22px;border-radius:18px;background:' + C.card + ';padding:20px 16px;text-align:center;font-size:20px;font-weight:700;letter-spacing:.04em;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace', pass);
         card.id = 'kbwShown';
         var row = el('button', 'margin-top:14px;width:100%;display:flex;align-items:center;gap:12px;border:0;border-radius:16px;background:' + C.card + ';color:' + C.fg + ';padding:16px;font-size:15.5px;font-family:inherit;text-align:left;cursor:pointer');
@@ -622,8 +838,51 @@
         return p;
       }
 
-      // ---- 4. 完了 ----
+      // ---- 4. 回復コード ----
+      // パスフレーズを忘れた時のための、もう1つの入口。鍵はもう預けてあるので、ここで失敗しても先に進める
       function page4() {
+        var p = page(), sc = scroller(), bt = bottom();
+        sc.appendChild(hero('key', 44, 92, false));
+        sc.appendChild(title('kbwTitle', T('kbw_title4', '回復コード')));
+        sc.appendChild(sub(T('kbw_sub4', 'パスフレーズを忘れた時のための、もう1つの入口です。このコードでも鍵を戻せます。**必ず**控えてください。')));
+        var card = el('div', 'margin-top:22px;border-radius:18px;background:' + C.card + ';padding:20px 16px;text-align:center;font-size:19px;font-weight:700;letter-spacing:.06em;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace', T('kbw_code_making', '作っています…'));
+        card.id = 'kbwCode';
+        var row = el('button', 'margin-top:14px;width:100%;display:flex;align-items:center;gap:12px;border:0;border-radius:16px;background:' + C.card + ';color:' + C.fg + ';padding:16px;font-size:15.5px;font-family:inherit;text-align:left;cursor:pointer;visibility:hidden');
+        row.id = 'kbwCodeCheck'; row.type = 'button';
+        var box = el('span', 'flex:none;width:24px;height:24px;box-sizing:border-box;border-radius:7px;border:2px solid ' + C.line + ';display:flex;align-items:center;justify-content:center;color:#fff;transition:background .15s,border-color .15s');
+        row.appendChild(box); row.appendChild(el('span', 'flex:1', T('kbw_code_check', '回復コードを控えました')));
+        var msg = el('div', 'min-height:22px;font-size:13.5px;line-height:1.5;color:' + C.err + ';margin:10px 2px 0');
+        msg.id = 'kbwMsg';
+        sc.appendChild(card); sc.appendChild(row); sc.appendChild(msg);
+        var ok = false, done = false;
+        var next = primary('kbwCodeNext', T('kbw_next', '次へ'));
+        function paint() {
+          box.style.background = ok ? C.green : 'transparent';
+          box.style.borderColor = ok ? C.green : C.line;
+          box.innerHTML = ok ? svgIcon('check', 16, 3) : '';
+          next.disabled = !(ok || done); next.style.opacity = next.disabled ? '.4' : '1';
+        }
+        row.onclick = function () { ok = !ok; paint(); };
+        next.onclick = function () { if (ok || done) go(5); };
+        makeRecoveryCode().then(function (code) {
+          card.textContent = code;
+          row.style.visibility = 'visible';
+          paint();
+        }).catch(function () {
+          done = true; // 作れなくても、鍵はもう預けてある。設定からやり直せる
+          card.style.display = 'none';
+          say(msg, T('kbw_code_fail', '回復コードを作れませんでした。あとで設定からやり直せます(鍵はもう預けてあります)'), C.sub);
+          paint();
+        });
+        bt.appendChild(next);
+        bt.appendChild(el('div', 'height:48px'));
+        p.appendChild(sc); p.appendChild(bt);
+        paint();
+        return p;
+      }
+
+      // ---- 5. 完了 ----
+      function page5() {
         var p = page(), sc = scroller(), bt = bottom();
         var c = el('div', 'width:120px;height:120px;margin:56px auto 26px;border-radius:50%;background:' + C.green + ';color:#fff;display:flex;align-items:center;justify-content:center;animation:kbwPop .5s ease both');
         c.innerHTML = '<svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-dasharray="24" stroke-dashoffset="24" style="animation:kbwDraw .45s .3s ease forwards"/></svg>';
@@ -641,13 +900,13 @@
         step = n;
         host.innerHTML = '';
         back.style.visibility = (n === 2 || n === 3) ? 'visible' : 'hidden';
-        dotsBox.style.visibility = n === 4 ? 'hidden' : 'visible';
-        var cur = Math.min(n, 3);
+        dotsBox.style.visibility = n === 5 ? 'hidden' : 'visible';
+        var cur = Math.min(n, 4);
         dots.forEach(function (d, i) {
           d.style.width = (i + 1) === cur ? '22px' : '8px';
           d.style.background = (i + 1) <= cur ? C.green : C.line;
         });
-        host.appendChild([null, page1, page2, page3, page4][n]());
+        host.appendChild([null, page1, page2, page3, page4, page5][n]());
       }
       back.onclick = function () { if (!busy && step > 1 && step < 4) go(step - 1); };
 
@@ -701,7 +960,7 @@
     if (!info.exists) return false;
     var u = unpack(info.blob);
     if (!u || u.saltB64 !== trust.salt) return false;
-    var data = open(u.sealed, b64d(trust.key));
+    var data = openPayload(u, b64d(trust.key));
     if (!data) return false;
 
     var s = localState();
@@ -810,8 +1069,17 @@
     // 設定画面から: 'setup' で預け直し(パスフレーズ変更)、'restore' で復元
     openSetup: function () { return showModal('setup'); },
     openRestore: function () { return showModal('restore-mismatch'); },
-    status: async function () { var i = await serverInfo(false); return { server: i.exists, local: hasLocalKey(), trusted: !!readJson(trustName(), null) }; },
+    // 回復コードを作り直す(前のコードは使えなくなる)。画面はこの関数を呼ぶ側で出す
+    newRecoveryCode: makeRecoveryCode,
+    // 設定から: 回復コードを作り直して見せる
+    showRecoveryCode: showCodeModal,
+    status: async function () {
+      var i = await serverInfo(false);
+      var out = { server: i.exists, local: hasLocalKey(), trusted: !!readJson(trustName(), null), code: false };
+      if (i.exists) { try { var u = unpack((await serverInfo(true)).blob); out.code = !!(u && u.wrapCode); } catch (e) {} }
+      return out;
+    },
     // テスト用
-    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack: pack, unpack: unpack, deriveKey: deriveKey, backupCoversLocal: backupCoversLocal }
+    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack2: pack2, unpack: unpack, deriveKey: deriveKey, backupCoversLocal: backupCoversLocal, makeRecoveryCode: makeRecoveryCode, genCode: genCode, normCode: normCode }
   };
 })();
