@@ -3711,7 +3711,7 @@ function formatPostTime(ts) {
 document.getElementById('postAttachImageBtn').onclick = () => document.getElementById('postImageFile').click();
 document.getElementById('postAttachVideoBtn').onclick = () => document.getElementById('postVideoFile').click();
 
-// 投稿の上限: Cloudinary(無料枠)は1ファイル100MBまで。Googleドライブにつながっていれば200MBまで(超えた分はドライブに置く)
+// 投稿の上限: Cloudinary(無料枠)は1ファイル100MBまで。Googleドライブにつながっていれば600MBまで(超えた分はドライブに置く)
 const POST_CLD_MAX = 100 * 1024 * 1024;
 function postMaxBytes() { return window.cloudinaryE2EUploader ? cloudinaryE2EUploader.maxBytes() : POST_CLD_MAX; }
 function postTooLarge(kind) {
