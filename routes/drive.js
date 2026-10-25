@@ -11,7 +11,7 @@ const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
 
 const router = express.Router();
-const MAX_BYTES = 210 * 1024 * 1024; // 端末側の上限(200MB)+暗号化の分
+const MAX_BYTES = 610 * 1024 * 1024; // 端末側の上限(600MB)+暗号化の分
 
 async function isStaff(userId) {
   try { return (await adminUserIds('STAFF_USERS', require('../utils/adminNotify').DEFAULT_STAFF)).includes(userId); } catch (e) { return false; }

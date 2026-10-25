@@ -402,10 +402,10 @@ class CloudinaryE2EUploader {
   }
 }
 
-// 1ファイルの上限。ドライブ: 200MB / Cloudinary: 100MB
+// 1ファイルの上限。ドライブ: 600MB / Cloudinary: 100MB
 // (端末は暗号化・復号の時にファイル全体をメモリに持つので、これ以上はスマホのブラウザが落ちやすい)
 CloudinaryE2EUploader.prototype.maxBytes = function () {
-  return this._drive && this._drive.on ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
+  return this._drive && this._drive.on ? 600 * 1024 * 1024 : 100 * 1024 * 1024;
 };
 const cloudinaryE2EUploader = new CloudinaryE2EUploader();
 window.cloudinaryE2EUploader = cloudinaryE2EUploader;
