@@ -12,11 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="Bro Chat">
   <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script>
-    // 最初の描画より前に、保存してあるダーク設定(または端末の設定)をhtmlに付ける(白く光ってから暗くなるのを防ぐ)
-    (function(){try{var d=document.documentElement,m=localStorage.getItem('darkMode'),mm=window.matchMedia;
-    if(m==='1'||(m!=='0'&&mm&&mm('(prefers-color-scheme: dark)').matches))d.classList.add('dark-mode');}catch(e){}})();
-  </script>
+  <script src="/js/themeBoot.js"></script>
   <script src="/js/i18n.js"></script>
   <style>
     * {

@@ -145,3 +145,29 @@ html.reduce-motion *::after{
   transition-duration:0.001ms !important;
   scroll-behavior:auto !important;
 }
+
+/* 真っ黒(有機EL向け)。「外観」で「真っ黒にする」を選んだ時だけ、ダークの背景・カード・入力欄を黒に寄せる。
+   境界は白の細い線で見せる(黒の上に黒の面を重ねるので、段差は線で出す) */
+html.dark-mode.dark-black,
+html.dark-mode.dark-black body,
+html.dark-mode.dark-black .phone-container,
+html.dark-mode.dark-black .pc{background:#000 !important}
+html.dark-mode.dark-black body.has-custom-bg,
+html.dark-mode.dark-black body.has-custom-bg .phone-container,
+html.dark-mode.dark-black body.has-custom-bg .pc{background:transparent !important}
+html.dark-mode.dark-black .sc,
+html.dark-mode.dark-black .mc{background:#0d0e11 !important}
+html.dark-mode.dark-black .card{background:#08090b !important;border-color:rgba(255,255,255,.09) !important;box-shadow:none !important}
+html.dark-mode.dark-black.has-bg .card{background:rgba(0,0,0,.6) !important}
+html.dark-mode.dark-black .tav{background-color:#161b26 !important}
+html.dark-mode.dark-black .bubble,
+html.dark-mode.dark-black .bub{background:#14161b !important}
+html.dark-mode.dark-black .outgoing .bubble,
+html.dark-mode.dark-black .msg.out .bub{background:linear-gradient(180deg,#3b82f6,#2f6fe4) !important}
+html.dark-mode.dark-black input[type="text"],
+html.dark-mode.dark-black textarea{background:#0f1114 !important}
+html.dark-mode.dark-black #msgInput,
+html.dark-mode.dark-black #mi{background:transparent !important}
+html.dark-mode.dark-black .bg-orb{opacity:.12}
+html.dark-mode.dark-black .phone-container::before,
+html.dark-mode.dark-black .pc::before{opacity:.1 !important}

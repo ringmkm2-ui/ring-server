@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<script src="/js/themeBoot.js"></script>
 <script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
 // 違う色で描かれてから切り替わる(チカチカする)ことがあった。
-(function(){try{var d=document.documentElement,ls=localStorage,mm=window.matchMedia,m=ls.getItem('darkMode');
-if(m==='1'||(m!=='0'&&mm&&mm('(prefers-color-scheme: dark)').matches))d.classList.add('dark-mode');
+// ダーク/ライトの判定は themeBoot.js(システム/ライト/ダーク/時間指定/真っ黒)が行う。
+(function(){try{var d=document.documentElement,ls=localStorage,mm=window.matchMedia;
 if(ls.getItem('uiTheme')==='whatsapp')d.classList.add('theme-wa');
 if(ls.getItem('batterySaverAnimations')==='1'||(mm&&mm('(prefers-reduced-motion: reduce)').matches))d.classList.add('reduce-motion');
 if(ls.getItem('myBgImage'))d.classList.add('has-bg');}catch(e){}})();
@@ -369,6 +370,36 @@ html.dark-mode .set-page-head{background:rgba(0,0,0,.8)}
 .set-section-title{font-size:13px;color:#8e8e93;margin:18px 6px 6px;text-transform:uppercase;letter-spacing:.02em}
 .set-group{background:#fff;border-radius:14px;overflow:hidden}
 html.dark-mode .set-group{background:#1c1c1e}
+/* 外観の選択(システム/ライト/ダーク/時間指定) */
+.sgrow[hidden]{display:none}
+#settingsMov .thm-row{flex-direction:column;align-items:stretch;gap:12px}
+.thm-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.thm-seg button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 2px 9px;border-radius:14px;border:1.5px solid rgba(120,120,128,.28);background:transparent;color:#475569;font-size:12px;font-weight:600;line-height:1.2;min-width:0;transition:border-color .2s,background .2s,color .2s}
+.thm-seg button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.thm-seg button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thm-seg button[aria-checked="true"]{border-color:var(--accent,#3b82f6);color:var(--accent,#3b82f6);background:rgba(59,130,246,.1)}
+.thm-times{display:flex;align-items:center;gap:6px;flex:none;margin-left:14px}
+.thm-time{font:inherit;font-size:14px;padding:7px 8px;border-radius:10px;border:1px solid rgba(120,120,128,.3);background:rgba(255,255,255,.8);color:#0f172a;min-width:0;width:92px}
+.thm-dash{color:#94a3b8}
+html.dark-mode .thm-seg button{border-color:rgba(255,255,255,.16);color:#aab4c4}
+html.dark-mode .thm-seg button[aria-checked="true"]{border-color:var(--accent,#4f8cff);color:#8db4ff;background:rgba(79,140,255,.16)}
+/* ダークの設定画面: 項目名が紺色のまま暗い面に載って読めなかった */
+html.dark-mode .sgrow-label .sgtitle{color:#f1f5f9}
+html.dark-mode .sgrow-label .sgdesc{color:#8b97a8}
+html.dark-mode #langSelectSettings{background:#1a1f29 !important;color:#e8ecf3 !important;border-color:rgba(255,255,255,.14) !important}
+html.dark-mode .cfb{background:#1a1f29;border-color:rgba(255,255,255,.22);color:#cbd5e1}
+html.dark-mode.dark-black .cfb{background:#101216}
+/* 時間指定の行は縦に並べる(英語の「08:00 PM」でも欠けないように) */
+#settingsMov #themeSchedRow{flex-direction:column;align-items:stretch;gap:10px}
+#themeSchedRow .thm-times{margin-left:0}
+#themeSchedRow .thm-time{flex:1;width:auto;min-width:0}
+html.dark-mode .thm-time{background:#1a1f29;color:#e8ecf3;border-color:rgba(255,255,255,.12);color-scheme:dark}
+/* 真っ黒(有機EL向け): ダークの背景・カード・設定の面を黒に寄せる */
+html.dark-mode.dark-black{background:#000}
+html.dark-mode.dark-black .set-group,html.dark-mode.dark-black #settingsMov .sg{background:#0d0d0f}
+html.dark-mode.dark-black .set-page-head{background:rgba(0,0,0,.85)}
+html.dark-mode.dark-black .yt-watch,html.dark-mode.dark-black .yt-chan{--yt-watch-bg:#000}
+html.dark-mode.dark-black .tl-skel i{background:rgba(255,255,255,.06)}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:0 14px;font-size:15px;color:inherit;border:none;background:transparent;text-align:left;border-bottom:.5px solid rgba(60,60,67,.18);box-sizing:border-box}
 .set-row:last-child{border-bottom:none}
 .set-row[hidden]{display:none}
@@ -500,6 +531,7 @@ html.dark-mode .savebtn{color:#f1f5f9}
   flex-shrink:0;padding:0;outline:0;
 }
 .glass-plus-btn::before,.glass-plus-btn::after{content:"";position:absolute;background:#0f172a;border-radius:10px}
+html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{background:#e8ecf3}
 .glass-plus-btn::before{width:40%;height:2px}
 .glass-plus-btn::after{width:2px;height:40%}
 </style>
@@ -744,7 +776,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.285 beta</div>
+  <div class="version-badge">Bro Chat v1.28.286 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -794,30 +826,47 @@ window.ensureGroupCrypto = (function () {
       </div>
     </div>
     <div class="sg">
-      <div class="sgrow">
-        <div class="sgrow-label"><span class="sgtitle" data-i18n="dark_mode">ダークモード</span><span class="sgdesc">システム設定に連動 (手動で切替も可能)</span></div>
-        <div class="ts-wrap" id="tsDarkMode">
-          <div class="ts-track" id="tsTrackDarkMode">
-            <div class="ts-thumb" id="tsThumbDarkMode">
-              <div class="ts-thumb-clone"><div class="ts-thumb-clone-inner" id="tsCloneInnerDarkMode"></div></div>
-              <div class="ts-thumb-inner"></div>
-              <svg style="width:0;height:0;position:absolute"><defs>
-                <filter id="tsGlassFilter" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
-                  <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="blurred"/>
-                  <feImage id="tsDispImg" href="" x="0" y="0" width="72" height="46" result="dmap" preserveAspectRatio="none"/>
-                  <feDisplacementMap id="tsDispMap" in="blurred" in2="dmap" scale="20" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
-                  <feColorMatrix in="displaced" type="saturate" values="4" result="saturated"/>
-                  <feImage id="tsSpecImg" href="" x="0" y="0" width="72" height="46" result="specular" preserveAspectRatio="none"/>
-                  <feComposite in="saturated" in2="specular" operator="in" result="spec_sat"/>
-                  <feComponentTransfer in="specular" result="spec_fade"><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
-                  <feBlend in="spec_sat" in2="displaced" mode="normal" result="ws"/>
-                  <feBlend in="spec_fade" in2="ws" mode="normal"/>
-                </filter>
-              </defs></svg>
-            </div>
-          </div>
-          <input type="checkbox" id="toggleDarkMode" style="display:none">
+      <div class="sgrow thm-row">
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="theme_appearance">外観</span><span class="sgdesc" id="themeDesc"></span></div>
+        <div class="thm-seg" id="themeSeg" role="radiogroup" aria-label="外観">
+        <button type="button" role="radio" aria-checked="false" data-mode="system">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i18n="theme_system">システム</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-mode="light">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span data-i18n="theme_light">ライト</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-mode="dark">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span data-i18n="theme_dark">ダーク</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-mode="schedule">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="theme_schedule">時間指定</span>
+        </button>
         </div>
+      </div>
+      <svg style="width:0;height:0;position:absolute" aria-hidden="true"><defs>
+        <filter id="tsGlassFilter" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="0.2" result="blurred"/>
+          <feImage id="tsDispImg" href="" x="0" y="0" width="72" height="46" result="dmap" preserveAspectRatio="none"/>
+          <feDisplacementMap id="tsDispMap" in="blurred" in2="dmap" scale="20" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+          <feColorMatrix in="displaced" type="saturate" values="4" result="saturated"/>
+          <feImage id="tsSpecImg" href="" x="0" y="0" width="72" height="46" result="specular" preserveAspectRatio="none"/>
+          <feComposite in="saturated" in2="specular" operator="in" result="spec_sat"/>
+          <feComponentTransfer in="specular" result="spec_fade"><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+          <feBlend in="spec_sat" in2="displaced" mode="normal" result="ws"/>
+          <feBlend in="spec_fade" in2="ws" mode="normal"/>
+        </filter>
+      </defs></svg>
+      <div class="sgrow" id="themeSchedRow" hidden>
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="theme_sched_range">ダークにする時間</span><span class="sgdesc" data-i18n="theme_sched_desc">この時間の間だけダークになります</span></div>
+        <div class="thm-times">
+          <input type="time" class="thm-time" id="themeFrom" aria-label="開始">
+          <span class="thm-dash">–</span>
+          <input type="time" class="thm-time" id="themeTo" aria-label="終了">
+        </div>
+      </div>
+      <div class="sgrow" id="themeBlackRow">
+        <div class="sgrow-label"><span class="sgtitle" data-i18n="theme_black">真っ黒にする</span><span class="sgdesc" data-i18n="theme_black_desc">ダークの時、背景を真っ黒にします(有機ELで電池の節約になります)</span></div>
+        <input type="checkbox" class="ios-switch" id="toggleDarkBlack">
       </div>
       <div class="sgrow">
         <div class="sgrow-label"><span class="sgtitle" data-i18n="mobile_data_saver">モバイルデータ節約</span><span class="sgdesc">モバイル回線を自動検出して画質を下げます</span></div>
@@ -2369,11 +2418,7 @@ async function sendFriendRequest(targetId, btn) {
 const settingsMov=document.getElementById('settingsMov');
 document.getElementById('openSettings').onclick=()=>{
   // 現在の設定値をトグルに反映してから開く
-  // ダークモード: 手動設定がなければシステム設定に従う
-  const darkManual = localStorage.getItem('darkMode');
-  if (darkManual === '1') document.getElementById('toggleDarkMode').checked = true;
-  else if (darkManual === '0') document.getElementById('toggleDarkMode').checked = false;
-  else document.getElementById('toggleDarkMode').checked = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  syncThemeUI();
   document.getElementById('toggleDataSaver').checked = localStorage.getItem('mobileDataSaver') === '1';
   document.getElementById('toggleChatBgBlur').checked = localStorage.getItem('chatBgBlur') === '1';
   document.getElementById('toggleBatterySaver').checked = localStorage.getItem('batterySaverAnimations') === '1';
@@ -3088,9 +3133,38 @@ settingsMov.onclick=e=>{if(e.target===settingsMov)history.back();};
 
 // 各トグルは変更した瞬間に即座に反映する(保存ボタンを待たずに体感できた方が良いため)
 // Tactile Switchがchange eventを発火するのでそれを受け取る
-document.getElementById('toggleDarkMode').addEventListener('change', e=>{
-  localStorage.setItem('darkMode', e.target.checked ? '1' : '0');
-  window.dispatchEvent(new Event('settings-changed'));
+// 外観: システム / ライト / ダーク / 時間指定 + 真っ黒。選んだ瞬間に全画面へ反映する
+function syncThemeUI(){
+  const T = window.BroTheme; if (!T) return;
+  const m = T.mode(), sc = T.schedule();
+  document.querySelectorAll('#themeSeg button').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === m ? 'true' : 'false'));
+  document.getElementById('themeSchedRow').hidden = m !== 'schedule';
+  const f = document.getElementById('themeFrom'), t = document.getElementById('themeTo');
+  if (f && f.value !== sc.from) f.value = sc.from;
+  if (t && t.value !== sc.to) t.value = sc.to;
+  document.getElementById('toggleDarkBlack').checked = T.black();
+  const tt = (k, fb) => (window.i18n ? i18n.t(k, fb) : fb);
+  const d = {
+    system: tt('theme_desc_system', '端末のダーク/ライト設定に合わせます'),
+    light: tt('theme_desc_light', '常にライトで表示します'),
+    dark: tt('theme_desc_dark', '常にダークで表示します'),
+    schedule: tt('theme_desc_schedule', '{from} から {to} までダークにします').replace('{from}', sc.from).replace('{to}', sc.to),
+  };
+  document.getElementById('themeDesc').textContent = d[m] || '';
+}
+document.getElementById('themeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-mode]'); if (!b || !window.BroTheme) return;
+  if (window.LiquidGlass && window.LiquidGlass.haptic) window.LiquidGlass.haptic('selection');
+  BroTheme.set({ mode: b.dataset.mode });
+  syncThemeUI();
+});
+['themeFrom', 'themeTo'].forEach(id => document.getElementById(id).addEventListener('change', e => {
+  if (!e.target.value || !window.BroTheme) return;
+  BroTheme.set(id === 'themeFrom' ? { from: e.target.value } : { to: e.target.value });
+  syncThemeUI();
+}));
+document.getElementById('toggleDarkBlack').addEventListener('change', e => {
+  if (window.BroTheme) BroTheme.set({ black: e.target.checked });
 });
 document.getElementById('toggleDataSaver').addEventListener('change', e=>{
   localStorage.setItem('mobileDataSaver', e.target.checked ? '1' : '0');
@@ -4593,7 +4667,7 @@ function openPostMenu(p) {
   ov.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
   const sheet = document.createElement('div');
   sheet.style.cssText = 'width:100%;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding:8px 0 max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
-  if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = '#212121';
+  if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = document.documentElement.classList.contains('dark-black') ? '#0d0d0f' : '#212121';
   const add = (label, danger, fn) => {
     const b = document.createElement('button');
     b.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;padding:15px 22px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#ef4444' : 'var(--yt-fg)');
@@ -4865,7 +4939,6 @@ function openPostMenu(p) {
 
     // 各スイッチを初期化
     const switches=[
-      {thumb:'tsThumbDarkMode',  track:'tsTrackDarkMode',  clone:'tsCloneInnerDarkMode',  input:'toggleDarkMode',   dispImg:'tsDispImg',  dispMap:'tsDispMap'},
       {thumb:'tsThumbDataSaver', track:'tsTrackDataSaver', clone:'tsCloneInnerDataSaver', input:'toggleDataSaver',  dispImg:null,         dispMap:null},
       {thumb:'tsThumbBatterySaver',track:'tsTrackBatterySaver',clone:'tsCloneInnerBatterySaver',input:'toggleBatterySaver',dispImg:null,dispMap:null},
       {thumb:'tsThumbChatBgBlur',track:'tsTrackChatBgBlur',clone:'tsCloneInnerChatBgBlur',input:'toggleChatBgBlur',dispImg:null,dispMap:null},
@@ -5749,7 +5822,7 @@ function openPostMenu(p) {
     ov.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
     const sheet = document.createElement('div');
     sheet.style.cssText = 'width:100%;max-height:75vh;display:flex;flex-direction:column;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding-bottom:max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
-    if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = '#212121';
+    if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = document.documentElement.classList.contains('dark-black') ? '#0d0d0f' : '#212121';
     const head = document.createElement('div');
     head.style.cssText = 'padding:18px 20px 8px;font-size:17px;font-weight:800;color:var(--yt-fg)';
     head.textContent = title;

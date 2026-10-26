@@ -175,9 +175,20 @@
     // 隠している間は、次に出るトーク一覧と同じ色で塗っておく(黒や白が一瞬挟まらないように)
     if (localStorage.getItem('ring_token')) {
       window.location.replace('/talklist.html');
-      var dk = localStorage.getItem('darkMode'), mm = window.matchMedia;
-      var isDark = dk === '1' || (dk !== '0' && mm && mm('(prefers-color-scheme: dark)').matches);
-      document.documentElement.style.background = isDark ? '#15181f' : '#e0f2fe';
+      // 次に出るトーク一覧と同じ判定(システム/時間指定/真っ黒)で色を決める
+      var bg = '#e0f2fe';
+      try {
+        var m = localStorage.getItem('themeMode') || (localStorage.getItem('darkMode') === '1' ? 'dark' : localStorage.getItem('darkMode') === '0' ? 'light' : 'system');
+        var isDark = m === 'dark';
+        if (m === 'system') isDark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        if (m === 'schedule') {
+          var tm = function (s, df) { var x = /^(\d{1,2}):(\d{2})$/.exec(s || '') || /^(\d{1,2}):(\d{2})$/.exec(df); return +x[1] * 60 + +x[2]; };
+          var a = tm(localStorage.getItem('darkSchedFrom'), '20:00'), b = tm(localStorage.getItem('darkSchedTo'), '07:00'), n = new Date(); n = n.getHours() * 60 + n.getMinutes();
+          isDark = a === b ? false : (a < b ? (n >= a && n < b) : (n >= a || n < b));
+        }
+        if (isDark) bg = localStorage.getItem('darkBlack') === '1' ? '#000' : '#0e1014';
+      } catch (e) {}
+      document.documentElement.style.background = bg;
       var hide = document.createElement('style');
       hide.textContent = 'body{display:none!important}';
       document.head.appendChild(hide);
