@@ -3,9 +3,10 @@
 // <script defer src="/js/globalSettings.js"></script> として読み込むこと。
 (function applyGlobalSettings(){
   // --- ダークモード ---
-  // 優先順位: 手動設定 > システム設定
-  // localStorage 'darkMode': '1'=強制ON, '0'=強制OFF, null/''=システムに従う
+  // 判定と適用は /js/themeBoot.js (システム/ライト/ダーク/時間指定/真っ黒)。
+  // 読み込まれていない画面でも動くよう、無い時だけ従来どおりの簡易判定に落とす。
   function applyDarkMode(){
+    if (window.BroTheme) return window.BroTheme.apply();
     const manual = localStorage.getItem('darkMode');
     let dark;
     if (manual === '1') dark = true;
