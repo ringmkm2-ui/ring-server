@@ -143,6 +143,11 @@ function kickFromGroupCall(groupId, userId) {
 // 配信者の回線で送れる量に限りがあるので、同時に見られるのは10人まで。
 const liveRooms = new Map(); // groupId -> { host, hostWs, hostName, viewers: Map<userId, ws>, startedAt }
 const LIVE_MAX_VIEWERS = 10;
+// このユーザーとブロックし合っている人のID(コメントを届けるかどうかの判定用)
+async function liveBlockSet(userId) {
+  const rows = await db.all('SELECT blocker_id, blocked_id FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', [userId, userId]);
+  return new Set(rows.map(b => (b.blocker_id === userId ? b.blocked_id : b.blocker_id)));
+}
 function liveSend(ws, obj) { try { if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); } catch (_) {} }
 function liveCount(groupId) {
   const r = liveRooms.get(groupId);
@@ -150,6 +155,40 @@ function liveCount(groupId) {
   const msg = { type: 'live_count', groupId, viewers: r.viewers.size };
   liveSend(r.hostWs, msg);
   r.viewers.forEach(w => liveSend(w, msg));
+  liveViewersBroadcast(groupId);
+}
+// 「誰が見ているか」の名簿。配信者と、見ている全員に送る(最大10人なので小さい)
+function liveViewerList(r) {
+  const list = [];
+  r.viewers.forEach((w, id) => {
+    const i = r.info.get(id) || {};
+    list.push({ id, name: i.name || 'ユーザー', pic: i.pic || null, muted: r.muted.has(id) });
+  });
+  return list;
+}
+function liveViewersMsg(groupId, r) {
+  return { type: 'live_viewers', groupId, host: { id: r.host, name: r.hostName, pic: r.hostPic || null }, viewers: liveViewerList(r) };
+}
+function liveViewersBroadcast(groupId) {
+  const r = liveRooms.get(groupId);
+  if (!r) return;
+  const msg = liveViewersMsg(groupId, r);
+  liveSend(r.hostWs, msg);
+  r.viewers.forEach(w => liveSend(w, msg));
+}
+function liveMetaMsg(groupId, r) { return { type: 'live_meta', groupId, title: r.title || '', comments: r.comments !== false }; }
+const LIVE_TITLE_MAX = 60, LIVE_COMMENT_MAX = 200, LIVE_COMMENT_GAP_MS = 700, LIVE_CHAT_KEEP = 50;
+// 制御文字を落として、前後の空白を詰め、長さを切る
+function liveClean(v, max) {
+  if (typeof v !== 'string') return '';
+  return v.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+// 禁止語は「f***」にして通し、言った本人は3日間停止(投稿・コメントと同じ扱い)
+function liveModerate(userId, text) {
+  const mod = require('../utils/moderation');
+  if (!text || !mod.containsBannedWord(text)) return text;
+  mod.banUser(userId, 'profanity').catch(() => {});
+  return mod.censor(text);
 }
 function endLive(groupId) {
   const r = liveRooms.get(groupId);
@@ -189,7 +228,7 @@ async function listFeedLives(viewerId) {
   for (const [gid, r] of liveRooms) {
     if (!gid.startsWith('u:')) continue;
     if (r.host !== viewerId && await isBlockedEither(viewerId, r.host)) continue;
-    out.push({ key: gid, hostId: r.host, hostName: r.hostName, viewers: r.viewers.size, startedAt: r.startedAt });
+    out.push({ key: gid, hostId: r.host, hostName: r.hostName, viewers: r.viewers.size, startedAt: r.startedAt, title: r.title || '', fps: r.fps || 30 });
   }
   return out;
 }
@@ -199,6 +238,7 @@ function leaveLive(groupId, userId, ws) {
   if (r.host === userId && r.hostWs === ws) return endLive(groupId);
   if (r.viewers.get(userId) !== ws) return;
   r.viewers.delete(userId);
+  r.info.delete(userId);
   liveSend(r.hostWs, { type: 'live_viewer_left', groupId, userId });
   liveCount(groupId);
 }
@@ -932,24 +972,36 @@ function initWebSocketServer(server) {
           const r = liveRooms.get(gid);
           if (!gid.startsWith('u:') && !(await isActiveGroupMember(gid, userId))) return;
           if (gid.startsWith('u:') && r && !(await liveAllowed(gid, userId, false)) && r.host !== userId) return;
-          liveSend(ws, { type: 'live_status', groupId: gid, live: !!r, hostId: r ? r.host : null, hostName: r ? r.hostName : null, viewers: r ? r.viewers.size : 0, startedAt: r ? r.startedAt : null });
+          liveSend(ws, { type: 'live_status', groupId: gid, live: !!r, hostId: r ? r.host : null, hostName: r ? r.hostName : null, viewers: r ? r.viewers.size : 0, startedAt: r ? r.startedAt : null, title: r ? (r.title || '') : '' });
           return;
         }
         if (data.type === 'live_start') {
           if (!(await liveAllowed(gid, userId, true))) return;
           const cur = liveRooms.get(gid);
           if (cur && cur.host !== userId) { liveSend(ws, { type: 'live_error', groupId: gid, error: cur.hostName + 'が配信中です' }); return; }
-          const me = await db.get('SELECT display_name FROM users WHERE id = ?', [userId]);
+          const me = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [userId]);
           const hostName = (me && me.display_name) || 'ユーザー';
-          liveRooms.set(gid, { host: userId, hostWs: ws, hostName, viewers: cur ? cur.viewers : new Map(), startedAt: cur ? cur.startedAt : Date.now() });
+          // 配信の設定(タイトル・コメント許可・fps)。つなぎ直しで送られなかった項目は前のまま
+          const title = data.title !== undefined ? liveModerate(userId, liveClean(data.title, LIVE_TITLE_MAX)) : (cur ? cur.title : '');
+          const comments = data.comments !== undefined ? data.comments !== false : (cur ? cur.comments : true);
+          const fps = [30, 60, 120].includes(data.fps) ? data.fps : (cur ? cur.fps : 30);
+          liveRooms.set(gid, {
+            host: userId, hostWs: ws, hostName, hostPic: (me && me.profile_pic) || null,
+            viewers: cur ? cur.viewers : new Map(), info: cur ? cur.info : new Map(), muted: cur ? cur.muted : new Set(),
+            chat: cur ? cur.chat : [], lastComment: cur ? cur.lastComment : new Map(),
+            title, comments, fps, startedAt: cur ? cur.startedAt : Date.now(),
+          });
           liveSend(ws, { type: 'live_ready', groupId: gid });
+          liveSend(ws, liveMetaMsg(gid, liveRooms.get(gid)));
+          liveSend(ws, liveViewersMsg(gid, liveRooms.get(gid)));
+          if (cur) { const nr = liveRooms.get(gid); nr.viewers.forEach(w => { liveSend(w, liveMetaMsg(gid, nr)); }); liveViewersBroadcast(gid); }
           // 配信者がつなぎ直した時は、見ている人へ送り直す
           if (cur) cur.viewers.forEach((w, vid) => liveSend(ws, { type: 'live_viewer', groupId: gid, userId: vid }));
           if (!cur && gid.startsWith('u:')) {
             try {
               (await liveFriends(userId)).forEach(id => {
-                broadcastToUser(id, { type: 'live_started', groupId: gid, hostId: userId, hostName, feed: true });
-                require('../utils/fcm').sendMessageNotification(id, hostName, 'ライブ配信を始めました', 'system', { senderId: userId, chatId: '' }).catch(() => {});
+                broadcastToUser(id, { type: 'live_started', groupId: gid, hostId: userId, hostName, feed: true, title: liveRooms.get(gid).title || '' });
+                require('../utils/fcm').sendMessageNotification(id, hostName, liveRooms.get(gid).title || 'ライブ配信を始めました', 'system', { senderId: userId, chatId: '' }).catch(() => {});
               });
             } catch (e) { console.error('[live] notify failed:', e.message); }
           } else if (!cur) {
@@ -959,7 +1011,7 @@ function initWebSocketServer(server) {
               const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [gid]);
               members.forEach(m => {
                 if (m.user_id === userId) return;
-                broadcastToUser(m.user_id, { type: 'live_started', groupId: gid, groupName, hostId: userId, hostName });
+                broadcastToUser(m.user_id, { type: 'live_started', groupId: gid, groupName, hostId: userId, hostName, title: liveRooms.get(gid).title || '' });
                 require('../utils/fcm').sendMessageNotification(
                   m.user_id, `${hostName} (${groupName})`, 'ライブ配信を始めました', 'group', { senderId: userId, chatId: gid }
                 ).catch(() => {});
@@ -977,9 +1029,63 @@ function initWebSocketServer(server) {
           if (userId === r.host) return;
           if (!(await liveAllowed(gid, userId, false))) return;
           if (!r.viewers.has(userId) && r.viewers.size >= LIVE_MAX_VIEWERS) { liveSend(ws, { type: 'live_error', groupId: gid, error: '満員です(最大' + LIVE_MAX_VIEWERS + '人)' }); return; }
+          const vu = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [userId]);
+          if (liveRooms.get(gid) !== r) return; // 待っている間に配信が終わった
+          if (!r.viewers.has(userId) && r.viewers.size >= LIVE_MAX_VIEWERS) { liveSend(ws, { type: 'live_error', groupId: gid, error: '満員です(最大' + LIVE_MAX_VIEWERS + '人)' }); return; }
           r.viewers.set(userId, ws);
+          r.info.set(userId, { name: (vu && vu.display_name) || 'ユーザー', pic: (vu && vu.profile_pic) || null });
           liveSend(r.hostWs, { type: 'live_viewer', groupId: gid, userId });
+          liveSend(ws, liveMetaMsg(gid, r));
+          // 入った人に、直近のコメントを送る(ブロック関係の人のコメントは除く)
+          if (r.chat.length) {
+            const blocks = await liveBlockSet(userId);
+            liveSend(ws, { type: 'live_chat', groupId: gid, items: r.chat.filter(c => !blocks.has(c.userId)) });
+          }
           liveCount(gid);
+          return;
+        }
+        if (data.type === 'live_comment') {
+          const isHost = userId === r.host && r.hostWs === ws;
+          if (!isHost && r.viewers.get(userId) !== ws) return;
+          const text = liveModerate(userId, liveClean(data.text, LIVE_COMMENT_MAX));
+          if (!text) return;
+          if (r.comments === false && !isHost) { liveSend(ws, { type: 'live_comment_rejected', groupId: gid, reason: 'off' }); return; }
+          if (!isHost && r.muted.has(userId)) { liveSend(ws, { type: 'live_comment_rejected', groupId: gid, reason: 'muted' }); return; }
+          const now = Date.now();
+          if (now - (r.lastComment.get(userId) || 0) < LIVE_COMMENT_GAP_MS) { liveSend(ws, { type: 'live_comment_rejected', groupId: gid, reason: 'rate' }); return; }
+          r.lastComment.set(userId, now);
+          const who = isHost ? { name: r.hostName, pic: r.hostPic } : (r.info.get(userId) || {});
+          const c = { id: uuidv4(), userId, name: who.name || 'ユーザー', pic: who.pic || null, text, at: now, host: isHost };
+          r.chat.push(c); if (r.chat.length > LIVE_CHAT_KEEP) r.chat.shift();
+          const blocks = await liveBlockSet(userId); // 送った人とブロック関係の人には届けない
+          const out = { type: 'live_comment', groupId: gid, comment: c };
+          if (!blocks.has(r.host)) liveSend(r.hostWs, out); else liveSend(ws, out);
+          r.viewers.forEach((w, id) => { if (!blocks.has(id) || id === userId) liveSend(w, out); });
+          return;
+        }
+        // 以下は配信者だけ
+        if (['live_settings', 'live_mute', 'live_comment_delete', 'live_kick'].includes(data.type)) {
+          if (!(userId === r.host && r.hostWs === ws)) return;
+          if (data.type === 'live_settings') {
+            if (data.title !== undefined) r.title = liveModerate(userId, liveClean(data.title, LIVE_TITLE_MAX));
+            if (data.comments !== undefined) r.comments = data.comments !== false;
+            const m = liveMetaMsg(gid, r);
+            liveSend(r.hostWs, m); r.viewers.forEach(w => liveSend(w, m));
+          } else if (data.type === 'live_mute') {
+            if (typeof data.userId !== 'string' || !r.viewers.has(data.userId)) return;
+            if (data.on === false) r.muted.delete(data.userId); else r.muted.add(data.userId);
+            liveViewersBroadcast(gid);
+          } else if (data.type === 'live_comment_delete') {
+            const i = r.chat.findIndex(c => c.id === data.id);
+            if (i < 0) return;
+            r.chat.splice(i, 1);
+            const m = { type: 'live_comment_deleted', groupId: gid, id: data.id };
+            liveSend(r.hostWs, m); r.viewers.forEach(w => liveSend(w, m));
+          } else if (data.type === 'live_kick') {
+            const w = r.viewers.get(data.userId);
+            if (!w) return;
+            liveSend(w, { type: 'live_ended', groupId: gid }); leaveLive(gid, data.userId, w);
+          }
           return;
         }
         if (data.type === 'live_signal') {

@@ -59,6 +59,8 @@
     if (key !== last) {
       last = key;
       setThemeColor(black ? BG.black : dark ? BG.dark : BG.light);
+      // インストール済みアプリ(PWA)の色もテーマに合わせるため、サーバーの /manifest.json がこのクッキーを見て色を変える
+      try { document.cookie = 'bro_theme=' + (black ? 'b' : dark ? 'd' : 'l') + '; path=/; max-age=31536000; SameSite=Lax'; } catch (e) {}
       try { window.dispatchEvent(new CustomEvent('themechange', { detail: { dark: dark, black: black } })); } catch (e) {}
     }
     scheduleNext();

@@ -269,6 +269,7 @@ html.dark-mode .yt-subbtn{color:#0f0f0f}
 .yt-badge-live i{width:6px;height:6px;border-radius:50%;background:#fff;display:inline-block;animation:ytPulse 1.4s ease-in-out infinite}
 @keyframes ytPulse{50%{opacity:.25}}
 .yt-badge-live svg{display:block}
+.yt-fps{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.02em}
 .yt-viewers{position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.82);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:5px;display:flex;align-items:center;gap:4px}
 .yt-live-tag{color:#ff0033;font-weight:700}
 html.dark-mode .yt-live-tag{color:#ff5a76}
@@ -776,7 +777,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.286 beta</div>
+  <div class="version-badge">Bro Chat v1.28.287 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -4364,10 +4365,12 @@ function syncPostInCache(p, fields) {
 
 // ---------- 視聴ページ ----------
 let watchViewed = new Set();
+let watchPlayer = null;
 function closeWatch() {
   const w = document.getElementById('ytWatch');
   if (!w) return;
   const v = w.querySelector('.yt-player video'); if (v) { try { v.pause(); } catch (_) {} }
+  if (watchPlayer) { try { watchPlayer.destroy(); } catch (_) {} watchPlayer = null; }
   w.classList.remove('open'); w.setAttribute('aria-hidden', 'true'); w.innerHTML = '';
   document.body.style.overflow = '';
 }
@@ -4390,6 +4393,8 @@ async function openWatch(p) {
   if (!w) return;
   const first = !w.classList.contains('open');
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
+  if (watchPlayer) { try { watchPlayer.destroy(); } catch (_) {} watchPlayer = null; }
+  const prevV = w.querySelector('.yt-player video'); if (prevV) { try { prevV.pause(); } catch (_) {} }
   w.innerHTML = '';
   w.classList.add('open'); w.setAttribute('aria-hidden', 'false'); w.scrollTop = 0;
   document.body.style.overflow = 'hidden';
@@ -4402,8 +4407,11 @@ async function openWatch(p) {
   back.addEventListener('click', () => { try { history.back(); } catch (_) { closeWatch(); } });
   player.appendChild(back);
   if (p.mediaType === 'video' && p.mediaUrl) {
-    const v = document.createElement('video'); v.src = p.mediaUrl; v.controls = true; v.autoplay = true; v.playsInline = true; v.preload = 'metadata';
+    const v = document.createElement('video'); v.src = p.mediaUrl; v.autoplay = true; v.playsInline = true; v.preload = 'metadata';
     player.appendChild(v);
+    // 独自の操作バー(速度・ダブルタップ10秒・PiP・続きから再生など)。作れなかった時は標準の操作バーにする
+    if (window.BroPlayer) { try { watchPlayer = window.BroPlayer.attach(player, v, { id: p.id }); } catch (e) { v.controls = true; } }
+    else v.controls = true;
   } else if (p.mediaType === 'image' && p.mediaUrl) {
     const img = document.createElement('img');
     img.src = window.cldTransform ? window.cldTransform(p.mediaUrl, 'w_1280,c_limit,q_auto,f_auto') : p.mediaUrl;
@@ -5417,13 +5425,14 @@ function openPostMenu(p) {
   else setTimeout(work, 5000);
 })();
 </script>
+<script src="/js/videoPlayer.js"></script>
 <script src="/js/live.js"></script>
 <script>
 // 投稿タブのライブ配信 + YouTube風のライブカード + チャンネルページ
 (function () {
   if (!window.Live) return;
   window.Live.init({ groupId: null, token, myUserId, getWs: () => talkWs, feed: true, noBanner: true,
-    confirmText: 'ライブ配信を始めますか?(カメラとマイクを使います。友だちに通知が届き、投稿タブから誰でも見られます)' });
+    confirmText: (window.i18n && i18n.t ? i18n.t('live_feed_confirm', 'カメラとマイクを使います。友だちに通知が届き、投稿タブから誰でも見られます') : 'カメラとマイクを使います。友だちに通知が届き、投稿タブから誰でも見られます') });
   document.getElementById('postLiveBtn').addEventListener('click', () => window.Live.start());
 
   const T = (k, fb) => (window.i18n && i18n.t ? i18n.t(k, fb) : fb);
@@ -5462,6 +5471,7 @@ function openPostMenu(p) {
     vw.innerHTML = SVG_EYE;
     const vn = document.createElement('span'); vn.textContent = fmtNum(l.viewers); vw.appendChild(vn);
     thumb.appendChild(vw);
+    if (l.fps > 30) { const fb = document.createElement('div'); fb.className = 'yt-fps'; fb.textContent = l.fps + 'fps'; thumb.appendChild(fb); }
     card.appendChild(thumb);
 
     const hint = { name: l.hostName, pic: l.hostPic };
@@ -5471,7 +5481,7 @@ function openPostMenu(p) {
     av.addEventListener('click', openChan(l.hostId, hint));
     const body = document.createElement('div'); body.className = 'yt-mbody';
     const title = document.createElement('div'); title.className = 'yt-title';
-    title.textContent = fill(T('live_stream_title', '{name}のライブ配信'), { name: l.hostName || '' });
+    title.textContent = l.title ? l.title : fill(T('live_stream_title', '{name}のライブ配信'), { name: l.hostName || '' });
     const sub = document.createElement('div'); sub.className = 'yt-sub';
     const nm = document.createElement('span'); nm.className = 'yt-link'; nm.textContent = l.hostName || '';
     nm.addEventListener('click', openChan(l.hostId, hint));
@@ -5503,7 +5513,7 @@ function openPostMenu(p) {
     const arr = window.ytLiveForFeed();
     const first = list.firstElementChild;
     const block = first && first.classList.contains('yt-live-block') ? first : null;
-    const fp = arr.map(l => l.key + ':' + l.viewers + ':' + (l.hostPic ? l.hostPic.length : 0) + ':' + l.hostName).join(',');
+    const fp = arr.map(l => l.key + ':' + l.viewers + ':' + (l.hostPic ? l.hostPic.length : 0) + ':' + l.hostName + ':' + (l.title || '') + ':' + (l.fps || 30)).join(',');
     if (block && block.dataset.fp === fp && !force) return;
     if (!arr.length) {
       if (block) block.remove();
