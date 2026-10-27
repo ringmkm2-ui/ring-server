@@ -87,6 +87,11 @@ html.dark-mode .msg.out .bub{
   background:linear-gradient(180deg,#3b82f6,#2f6fe4) !important;
   color:#fff !important;
 }
+/* グループの時刻・既読チェック。暗い吹き出しの上で黒のままだと読めなかった */
+html.dark-mode .bub .mmeta{color:#8f9aad !important}
+html.dark-mode .msg.out .bub .mmeta{color:rgba(255,255,255,.72) !important}
+html.dark-mode .bub .chk1{stroke:rgba(255,255,255,.35)}
+html.dark-mode .bub .chk1.lit{stroke:#34d399}
 
 /* 背景のぼかし玉。ライトは桃・ミント・ピンクだが、暗い背景に載せると茶色と緑の染みになる。
    ダークは藍・青・紫に替えて、明るさも落とす */

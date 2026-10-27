@@ -46,8 +46,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
    持つため、入れ子backdrop-filterを外す。 */
 .gav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;background-size:cover;background-position:center;background:rgba(255,255,255,.55);box-shadow:0 4px 10px rgba(0,0,0,.1)}
 .hinfo{flex:1;min-width:0;cursor:pointer}
-.gname{font-weight:700;font-size:15px;color:#1e293b}
-.mcnt{font-size:12px;color:#64748b;font-weight:500}
+.gname{font-weight:700;font-size:15px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcnt{font-size:12px;color:#64748b;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* hbtn: ヘッダーの電話/設定アイコンボタン。素材はliquidGlass.cssの.glass-clearに
    統一し、形状のみ定義する。 */
 /* hbtn: ヘッダー内ボタン。親の.hdrが既にbackdrop-filterを持つため重ねない。 */
@@ -245,7 +245,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.287 beta</div>
+  <div class="version-badge">Bro Chat v1.28.288 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
