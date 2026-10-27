@@ -42,7 +42,7 @@
     // グループ鍵が読めなくなる。バックアップがあるなら、作る前に復元を促す(keyBackup.js)
     if (window.bcKeyBackup) {
       try {
-        await window.bcKeyBackup.guardCreate();
+        await window.bcKeyBackup.guardCreate('identity');
         const restored = localStorage.getItem(storageKey);
         if (restored) { myFullBundle = JSON.parse(restored); return myFullBundle; }
       } catch (e) {}

@@ -38,7 +38,7 @@ async function _getOrCreateMyKeyPair() {
   // バックアップがあるなら、作る前に復元を促す(keyBackup.js)
   if (!keyStr && window.bcKeyBackup) {
     try {
-      if ((await window.bcKeyBackup.guardCreate()) === 'restored') keyStr = localStorage.getItem(keyStorageName);
+      if ((await window.bcKeyBackup.guardCreate('keypair')) === 'restored') keyStr = localStorage.getItem(keyStorageName);
     } catch (e) {}
   }
 

@@ -127,10 +127,10 @@
     var p = String(blob || '').split('.');
     if (p[0] === 'bk1' && (p.length === 4 || p.length === 5)) {
       return { v: 1, pub: p[1] === '-' ? null : p[1], salt: b64d(p[2]), saltB64: p[2], sealed: p[3],
-        idpub: p[4] && p[4] !== '-' ? p[4] : null, wrapPass: null, rsaltB64: null, wrapCode: null };
+        idpub: p[4] && p[4] !== '-' ? p[4] : null, idKnown: p.length === 5, wrapPass: null, rsaltB64: null, wrapCode: null };
     }
     if (p[0] === 'bk2' && p.length === 8) {
-      return { v: 2, pub: p[1] === '-' ? null : p[1], idpub: p[2] === '-' ? null : p[2],
+      return { v: 2, pub: p[1] === '-' ? null : p[1], idpub: p[2] === '-' ? null : p[2], idKnown: true,
         salt: b64d(p[3]), saltB64: p[3], wrapPass: p[4], sealed: p[5],
         rsalt: p[6] === '-' ? null : b64d(p[6]), rsaltB64: p[6] === '-' ? null : p[6],
         wrapCode: p[7] === '-' ? null : p[7] };
@@ -311,6 +311,20 @@
     }
     if (!data || (!data.keypair && !data.identity)) { var e = new Error('wrong passphrase'); e.code = 'WRONG'; throw e; }
 
+    await applyData(data);
+    if (byCode) {
+      // パスフレーズは分からないので、この端末はまだ信頼済みにしない。
+      // 元鍵だけ覚えておき、このあと新しいパスフレーズで預け直してもらう
+      pendingMk = mk;
+      localStorage.removeItem(trustName());
+    } else {
+      localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
+    }
+    return true;
+  }
+
+  // バックアップの中身をこの端末に戻す(端末に既にある鍵は消さない)
+  async function applyData(data) {
     var s = localState();
     // 個人チャットの鍵
     if (data.keypair) {
@@ -332,15 +346,6 @@
         localStorage.setItem(k, JSON.stringify(gk[k]));
       }
     });
-    if (byCode) {
-      // パスフレーズは分からないので、この端末はまだ信頼済みにしない。
-      // 元鍵だけ覚えておき、このあと新しいパスフレーズで預け直してもらう
-      pendingMk = mk;
-      localStorage.removeItem(trustName());
-    } else {
-      localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
-    }
-    return true;
   }
 
   // 信頼済みの端末なら、鍵が増えた時にバックアップを黙って更新する
@@ -975,16 +980,32 @@
   }
 
   // ---------- 入口 ----------
-  var inFlight = null;
+  var inFlight = {};
 
   // 新しい鍵を作る直前に呼ぶ。バックアップがあるなら先に復元を促す。
   // 戻り値: 'restored'(復元できた→鍵を読み直す) | 'new'(新しい鍵を作ってよい)
-  function guardCreate() {
-    if (inFlight) return inFlight;
-    inFlight = (async function () {
+  // kind: これから作る鍵の種類。'keypair'(個人チャット) | 'identity'(グループ/コミュニティの身元鍵)。
+  // 以前は種類を見ずに、バックアップがあれば必ず「暗号鍵を復元」を出していた。登録時に鍵を預けた人が
+  // 初めてグループやコミュニティを使うと、バックアップに身元鍵が入っていないのに復元を求められていた
+  function guardCreate(kind) {
+    var slot = kind || '*';
+    if (inFlight[slot]) return inFlight[slot];
+    inFlight[slot] = (async function () {
       try {
         if (!nacl() || !crypto || !crypto.subtle) return 'new';
-        var info = await serverInfo(false);
+        var info = await serverInfo(!!kind);
+        if (info.exists === true && kind) {
+          var u = unpack(info.blob);
+          // バックアップに、これから作る種類の鍵が入っていないと分かれば、作ってよい(後で預け直される)
+          if (u && kind === 'identity' && u.idKnown && !u.idpub) { syncSoon(); return 'new'; }
+          if (u && kind === 'keypair' && !u.pub) { syncSoon(); return 'new'; }
+          // 信頼済みの端末なら、パスフレーズを聞かずにそのまま戻す
+          var cur = await openCurrent();
+          if (cur && cur.data && ((kind === 'identity' && cur.data.identity) || (kind === 'keypair' && cur.data.keypair))) {
+            await applyData(cur.data);
+            return 'restored';
+          }
+        }
         if (info.exists === true) {
           if ((await showModal('restore')) === 'restored') {
             // 表示済みの「復号に失敗しました」を直すため、読み込み直す
@@ -995,8 +1016,8 @@
         }
       } catch (e) {}
       return 'new';
-    })().then(function (r) { inFlight = null; return r; });
-    return inFlight;
+    })().then(function (r) { inFlight[slot] = null; return r; });
+    return inFlight[slot];
   }
 
   // 登録した直後に auth.html が付ける印

@@ -238,17 +238,23 @@
       const token = localStorage.getItem('ring_token');
       const destination = token ? '/talklist.html' : '/welcome.html';
 
+      // 表示言語(splash は i18n.js を読まないので、ここで出す文言だけ持つ)
+      const L = (localStorage.getItem('ring_language') || navigator.language || 'ja').slice(0, 2);
+      const TX = { ja: ['準備完了', 'サーバー起動中', '接続中', '接続できません。再読み込みしてください。'],
+        zh: ['准备就绪', '服务器启动中', '连接中', '无法连接，请刷新。'], ko: ['준비 완료', '서버 시작 중', '연결 중', '연결할 수 없습니다. 새로고침하세요.'],
+        en: ['Ready', 'Starting server', 'Connecting', "Can't connect. Please reload."] }[L] ||
+        ['Ready', 'Starting server', 'Connecting', "Can't connect. Please reload."];
+
+      statusEl.firstChild && statusEl.firstChild.nodeType === 3 && (statusEl.firstChild.nodeValue = TX[2]);
+
       // サーバー起動チェック（ポーリング）
       let serverReady = false;
       let attempts = 0;
 
       function checkServer() {
         attempts++;
-        fetch('/api/auth/me', {
-          method: 'GET',
-          headers: token ? { 'Authorization': 'Bearer ' + token } : {},
-          signal: AbortSignal.timeout(5000)
-        })
+        // 存在しない /api/auth/me を叩いていた(毎回404)。起きているかだけ見るので /health で足りる
+        fetch('/health', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(5000) })
         .then(r => {
           // 200でも401でもサーバーは起きてる
           serverReady = true;
@@ -257,11 +263,11 @@
         .catch(() => {
           // サーバーまだ起きてない
           if (attempts < 60) {
-            const msg = attempts > 5 ? 'サーバー起動中' : '接続中';
+            const msg = attempts > 5 ? TX[1] : TX[2];
             statusEl.innerHTML = msg + '<span class="dots"><span></span><span></span><span></span></span>';
             setTimeout(checkServer, 2000);
           } else {
-            statusEl.textContent = '接続できません。再読み込みしてください。';
+            statusEl.textContent = TX[3];
             statusEl.style.color = 'rgba(239,68,68,.8)';
           }
         });
@@ -274,7 +280,7 @@
         ring.classList.remove('active');
         ring.classList.add('done');
 
-        statusEl.innerHTML = '準備完了';
+        statusEl.textContent = TX[0];
         statusEl.classList.add('ready');
 
         setTimeout(() => {
