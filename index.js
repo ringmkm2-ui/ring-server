@@ -208,9 +208,20 @@ async function main() {
   });
 
   // manifest.jsonも同様に、アイコン更新等がすぐ反映されるようキャッシュを抑制
+  // 見た目(ライト/ダーク/真っ黒)に合わせて、アプリの枠・起動時の背景色を変えて返す。
+  // 色はクッキー bro_theme(l/d/b)で決まる。クッキーが無ければファイルのまま。
+  const MANIFEST_FILE = path.join(__dirname, 'public', 'manifest.json');
+  const MANIFEST_COLORS = { l: '#e0f2fe', d: '#0e1014', b: '#000000' };
   app.get('/manifest.json', (req, res) => {
     res.set('Cache-Control', 'no-cache, must-revalidate');
-    res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
+    res.set('Vary', 'Cookie');
+    const m = /(?:^|;\s*)bro_theme=([ldb])(?:;|$)/.exec(req.headers.cookie || '');
+    if (!m) return res.sendFile(MANIFEST_FILE);
+    try {
+      const j = JSON.parse(require('fs').readFileSync(MANIFEST_FILE, 'utf8'));
+      j.theme_color = j.background_color = MANIFEST_COLORS[m[1]];
+      res.type('application/manifest+json').send(JSON.stringify(j));
+    } catch (e) { res.sendFile(MANIFEST_FILE); }
   });
 
   // HTMLページは、<script> にこのリクエストのnonceを付けてから返す(CSPで実行を許すため)。
