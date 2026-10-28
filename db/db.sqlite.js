@@ -455,6 +455,7 @@ async function initDB() {
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
     posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],
+    group_messages: [['replied_to_id', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],

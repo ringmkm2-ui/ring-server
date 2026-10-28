@@ -115,7 +115,9 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .ctx.show{pointer-events:auto;transform:scale(1) translateY(0);opacity:1}
 .ctxbtn{background:none;border:none;padding:14px 18px;width:100%;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
 .ctxbtn:hover{background:rgba(255,255,255,.5)}
-.c-react{color:#f59e0b}.c-edit{color:#007aff}.c-pin{color:#8b5cf6}.c-del{color:#ff3b30}
+.c-react{color:#f59e0b}.c-edit{color:#007aff}.c-pin{color:#8b5cf6}.c-del{color:#ff3b30}.c-reply{color:#0a84ff}.c-copy{color:#0f172a}
+html.dark-mode .c-copy{color:#e2e8f0}
+.bub .reply-quote{max-width:240px}
 .cdiv{height:1px;background:rgba(0,0,0,.05);margin:0 12px}
 .rpicker{position:absolute;display:flex;gap:6px;padding:10px 14px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.9);border-radius:999px;box-shadow:0 8px 32px rgba(0,0,0,.1);z-index:260;opacity:0;pointer-events:none;transition:all .25s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1));transform:scale(.8) translateY(10px)}
 .rpicker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
@@ -245,7 +247,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.290 beta</div>
+  <div class="version-badge">Bro Chat v1.28.291 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -290,6 +292,15 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 
   <div class="ibc">
     <div class="ibar" id="ibar">
+      <div id="replyPreview" class="reply-preview" style="display:none;opacity:0;transition:opacity .2s">
+        <div class="rp-body">
+          <div class="rp-label"><span data-i18n="replying_to">リプライ中:</span> <span id="replyWho"></span></div>
+          <div id="replyText" class="rp-text"></div>
+        </div>
+        <button type="button" class="rp-close" id="replyCancelBtn" aria-label="キャンセル">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
       <div class="imrow">
         <button class="pbtn glass-interactive" id="pbtn" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -313,6 +324,10 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   <div class="mov" id="mov"></div>
   <div class="ctx" id="ctx">
     <button class="ctxbtn c-react" id="reactBtn" data-i18n="reaction">リアクション</button>
+    <div class="cdiv"></div>
+    <button class="ctxbtn c-reply" id="replyBtn" data-i18n="reply">リプライ</button>
+    <div class="cdiv"></div>
+    <button class="ctxbtn c-copy" id="copyBtn" data-i18n="copy">コピー</button>
     <div class="cdiv"></div>
     <button class="ctxbtn c-edit" id="editBtn" data-i18n="edit">編集する</button>
     <div class="cdiv"></div>
@@ -784,6 +799,7 @@ async function handleMediaGroup(f,t){
     if (data && data.ok && data.message) {
       msgDiv.dataset.msgId = data.message.id;
       msgDiv.classList.remove('uploading');
+      applyEarlyReads(msgDiv, data.message.id);
       const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit'); // サーバーに届いたので緑
     } else {
       console.error('メディア送信に失敗しました:', data);
@@ -839,6 +855,7 @@ document.getElementById('tform').onsubmit=async e=>{
       if(data&&data.ok){
         const el=document.querySelector(`[data-msg-id="${targetMsgId}"] .msg-text`);
         if(el)el.textContent=txt;
+        refreshGQuotes(targetMsgId);
         const editedLabel=document.querySelector(`[data-msg-id="${targetMsgId}"] .edited-label`);
         if(!editedLabel){
           const meta=document.querySelector(`[data-msg-id="${targetMsgId}"] .mmeta .time`);
@@ -855,6 +872,7 @@ document.getElementById('tform').onsubmit=async e=>{
   // 新規送信: 楽観的更新で即座に表示し、サーバー応答で正式なmsgIdに差し替える
   const tempId='temp-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
   const msgDiv=createMsg(txt,null,false,null,tempId,null,true);
+  const replyTo=gReplyTo; if(replyTo){ cancelGReply(); attachGQuote(msgDiv,replyTo); }
 
   try{
     let sendBody;
@@ -862,6 +880,7 @@ document.getElementById('tform').onsubmit=async e=>{
       const groupKey = await ensureGroupKey();
       const encryptedContent = await groupE2E.encryptGroupText(txt, groupKey);
       sendBody = { content: encryptedContent, encrypted: true, keyVersion: cachedGroupKeyVersion };
+      if(replyTo) sendBody.repliedToId=replyTo;
     } catch (keyErr) {
       console.error('グループ鍵の取得/暗号化に失敗しました。平文で送信せず中断します:', keyErr);
       msgDiv.remove();
@@ -877,11 +896,12 @@ document.getElementById('tform').onsubmit=async e=>{
     if(data&&data.staleKey){
       invalidateGroupKey();
       const k2=await ensureGroupKey();
-      data=await api('/api/groups/'+groupId+'/messages/send',{method:'POST',body:JSON.stringify({ content: await groupE2E.encryptGroupText(txt,k2), encrypted:true, keyVersion: cachedGroupKeyVersion })});
+      data=await api('/api/groups/'+groupId+'/messages/send',{method:'POST',body:JSON.stringify({ content: await groupE2E.encryptGroupText(txt,k2), encrypted:true, keyVersion: cachedGroupKeyVersion, repliedToId: replyTo || undefined })});
     }
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
       const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit'); // サーバーに届いたので緑
+      applyEarlyReads(msgDiv,data.message.id);
     }else{
       console.error('送信に失敗しました:',data);
       markSendFailed(msgDiv,txt,data&&data.error);
@@ -1203,6 +1223,81 @@ function hideMenu(){
 
 document.getElementById('mov').onclick=hideMenu;
 
+// ---------- リプライ(返信)とコピー ----------
+// 個人チャットと同じく、どのメッセージへの返信かをサーバーに持たせ、吹き出しの上に引用を出す。
+// 引用の中身は暗号文を持たず、画面に出ている元のメッセージ(復号済み)から作る
+let gReplyTo=null;
+const gT=(k,f)=>(window.i18n?i18n.t(k,f):f);
+function gMsgSummary(md){
+  if(!md)return null;
+  const own=md.classList.contains('out');
+  const who=own?gT('you','あなた'):((md.querySelector('.sname')||{}).textContent||'');
+  const tx=md.querySelector('.msg-text');
+  let text=tx?tx.textContent:'';
+  if(!text){
+    if(md.querySelector('.bub img'))text=gT('photo_label','[画像]');
+    else if(md.querySelector('.bub video'))text=gT('video_label','[動画]');
+    else if(md.querySelector('.fname'))text=md.querySelector('.fname').textContent;
+  }
+  return{who,text:(text||'').slice(0,100)};
+}
+function fillGQuote(q){
+  const md=document.querySelector('#cs [data-msg-id="'+CSS.escape(q.dataset.replyTo)+'"]');
+  const sm=gMsgSummary(md);
+  q.textContent='';
+  if(sm&&(sm.who||sm.text)){
+    const b=document.createElement('b');b.textContent=sm.who;const sp=document.createElement('span');sp.textContent=sm.text;
+    q.append(b,sp);q.dataset.filled='1';
+  }else{ q.textContent=gT('reply_original_unavailable','元のメッセージ'); q.dataset.filled=''; }
+}
+function attachGQuote(msgDiv,replyTo){
+  const bub=msgDiv&&msgDiv.querySelector('.bub');
+  if(!bub||bub.querySelector('.reply-quote'))return;
+  const q=document.createElement('div');q.className='reply-quote';q.dataset.replyTo=replyTo;
+  fillGQuote(q);
+  q.addEventListener('click',e=>{
+    e.stopPropagation();
+    const t=document.querySelector('#cs [data-msg-id="'+CSS.escape(replyTo)+'"]');
+    if(!t)return;
+    t.scrollIntoView({behavior:'smooth',block:'center'});
+    t.classList.remove('reply-jump-flash');void t.offsetWidth;t.classList.add('reply-jump-flash');
+  });
+  bub.insertBefore(q,bub.firstChild);
+}
+// 元のメッセージが後から描かれた・編集された・取り消された時に、引用を書き直す
+function refreshGQuotes(onlyId){
+  document.querySelectorAll('#cs .reply-quote[data-reply-to]').forEach(q=>{
+    if(onlyId?q.dataset.replyTo===String(onlyId):!q.dataset.filled)fillGQuote(q);
+  });
+}
+function startGReply(md){
+  const id=md&&md.dataset.msgId;
+  if(!id||String(id).startsWith('temp-'))return; // 送信中はまだIDが無い
+  gReplyTo=id;
+  const sm=gMsgSummary(md)||{who:'',text:''};
+  document.getElementById('replyWho').textContent=sm.who;
+  document.getElementById('replyText').textContent=sm.text;
+  const pv=document.getElementById('replyPreview');
+  pv.style.display='flex';requestAnimationFrame(()=>{pv.style.opacity='1';});
+  document.getElementById('mi').focus();
+}
+function cancelGReply(){
+  gReplyTo=null;
+  const pv=document.getElementById('replyPreview');
+  pv.style.opacity='0';setTimeout(()=>{if(!gReplyTo)pv.style.display='none';},200);
+}
+document.getElementById('replyCancelBtn').addEventListener('click',cancelGReply);
+document.getElementById('replyBtn').onclick=()=>{const md=activeMsg;hideMenu();startGReply(md);};
+document.getElementById('copyBtn').onclick=async ()=>{
+  const sm=gMsgSummary(activeMsg);hideMenu();
+  const text=sm&&sm.text;if(!text)return;
+  try{
+    if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(text);
+    else{const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0;pointer-events:none';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();}
+    if(window.LiquidGlass)window.LiquidGlass.haptic('success');
+  }catch(e){console.error('copy error:',e);}
+};
+
 document.getElementById('reactBtn').onclick=()=>{
   const ctx=document.getElementById('ctx');const rect=ctx.getBoundingClientRect();
   rp.style.left=`${Math.max(10,Math.min(rect.left,innerWidth-340))}px`;
@@ -1269,6 +1364,7 @@ document.getElementById('delBtn').onclick=()=>{
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
     // サーバーからの知らせで先に置き換わっていることがある(以前はここで例外になっていた)
     if(target.parentNode) target.parentNode.replaceChild(notice,target);
+    refreshGQuotes(targetMsgId); if(gReplyTo===String(targetMsgId))cancelGReply();
     if(isEditing&&editTargetMsgId===targetMsgId){
       isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
       document.getElementById('mi').value='';
@@ -1681,6 +1777,7 @@ async function renderHistoryMsgInner(msg){
   if(gHasMsg(msg.id))return null; // 復号を待つ間にほかの経路(WS)で描かれていた
   const incoming=msg.sender_id!==myUserId;
   const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
+  if(msg.replied_to_id)attachGQuote(msgDiv,msg.replied_to_id);
   fillDeferredMedia(msgDiv,media);
   if(Array.isArray(msg.reactions)&&msg.reactions.length)renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);
   if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
@@ -1724,7 +1821,7 @@ async function loadOlderGroup(){
     // 描いた分(今は一番下にある)を、元の一番上の前へ移す
     made.forEach(el=>{if(anchor&&anchor.parentNode===cs)cs.insertBefore(el,anchor);});
     noteOldest(msgs);
-    applyHistoryReaders();
+    applyHistoryReaders();refreshGQuotes();
     cs.scrollTop=cs.scrollHeight-prevH+prevTop;
   }catch(e){console.error('older messages error:',e);}
   finally{gLoadingOld=false;}
@@ -1790,7 +1887,7 @@ async function loadGroupMessages(pre){
   historyP.catch(() => {});
   loadGroupInfo().then(() => loadGroupMessages(historyP)).then(() => {
     markSeenSoon();
-    applyHistoryReaders();
+    applyHistoryReaders();refreshGQuotes();
     checkGroupKeyHealth();
     connectGroupWS();
   }).catch(err => console.error('初期化エラー:', err));
@@ -1802,6 +1899,15 @@ async function loadGroupMessages(pre){
 let groupWs=null;
 // メッセージIDごとの既読者リスト(WebSocketで通知が来るたびに追加していく)
 const msgReaders={};
+const gEarlyReads={};
+// 仮のIDの吹き出しに正式なIDが付いた時、先に届いていた既読を反映する
+function applyEarlyReads(msgDiv,id){
+  const ids=gEarlyReads[id];if(!ids)return;delete gEarlyReads[id];
+  const rd=msgDiv.querySelector('.rdrow');if(!rd)return;
+  msgReaders[id]=msgReaders[id]||[];
+  ids.forEach(uid=>{const r=gi.members.find(m=>m.id===uid);if(r&&!msgReaders[id].some(m=>m.id===uid))msgReaders[id].push(r);});
+  renderRD(rd,msgReaders[id],msgDiv.querySelector('.time')?.textContent||'');
+}
 const historyReaderIds={}; // 履歴で受け取った「誰が読んだか」(メッセージID→ユーザーID[])
 // メンバー一覧と履歴の両方がそろってから、自分が送ったメッセージに既読アイコンを付ける
 function applyHistoryReaders(){
@@ -1843,7 +1949,9 @@ function connectGroupWS(){
           const cs=document.getElementById('cs');
           if(cs.querySelector(`[data-msg-id="${msg.id}"]`)||cs.querySelector('[data-msg-id^="temp-"]'))return;
           const own=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
-          fillDeferredMedia(createMsg(own.text,own.media,false,null,msg.id,msg.createdAt,true),own.media);
+          const od=createMsg(own.text,own.media,false,null,msg.id,msg.createdAt,true);
+          if(msg.repliedToId)attachGQuote(od,msg.repliedToId);
+          fillDeferredMedia(od,own.media);
           return;
         }
         if(groupTypers.has(msg.senderId))gtSet(msg.senderId,false);
@@ -1853,7 +1961,9 @@ function connectGroupWS(){
         let text,media;
         try{ ({text,media}=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion)); }finally{ gRendering.delete(msg.id); }
         if(gHasMsg(msg.id))return;
-        fillDeferredMedia(createMsg(text,media,true,member,msg.id,msg.createdAt,true),media);
+        const nd=createMsg(text,media,true,member,msg.id,msg.createdAt,true);
+        if(msg.repliedToId)attachGQuote(nd,msg.repliedToId);
+        fillDeferredMedia(nd,media);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)
         if(document.hidden){
@@ -1864,6 +1974,7 @@ function connectGroupWS(){
         if(el){
           const{text:editedText}=await parseMsgContent(data.content, data.encrypted, data.keyVersion);
           setLinkedText(el,editedText);
+          refreshGQuotes(data.messageId);
         }
         const editedLabel=document.querySelector(`[data-msg-id="${data.messageId}"] .edited-label`);
         if(!editedLabel){
@@ -1873,6 +1984,8 @@ function connectGroupWS(){
       }else if(data.type==='group_message_read'&&data.groupId===groupId){
         // 自分が送ったメッセージが読まれた場合、既読アバターを反映する
         const msgDiv=document.querySelector(`[data-msg-id="${data.messageId}"]`);
+        // 送信の返事より先に既読が届いた(まだ仮のID)。覚えておいて、IDが決まった時に付ける
+        if(!msgDiv&&data.messageId){ (gEarlyReads[data.messageId]=gEarlyReads[data.messageId]||[]).push(data.readerUserId); }
         if(msgDiv&&!msgDiv.classList.contains('inc')){
           const rd=msgDiv.querySelector('.rdrow');
           const reader=gi.members.find(m=>m.id===data.readerUserId);
@@ -1908,6 +2021,8 @@ function connectGroupWS(){
           notice.className='cancel-notice';
           notice.textContent='メッセージが取り消されました';
           msgDiv.parentNode.replaceChild(notice,msgDiv);
+          refreshGQuotes(data.messageId);
+          if(gReplyTo===String(data.messageId))cancelGReply();
         }
       }else if(data.type==='added_to_group'){
         // 自分が新しいグループに追加された通知(トーク一覧側で表示更新が必要になるため、

@@ -387,7 +387,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.290 beta</div>
+  <div class="version-badge">Bro Chat v1.28.291 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1583,6 +1583,9 @@ async function sendRealMessage(content) {
       // 吹き出しが1フレーム消え、出現アニメーションももう一度走ってチカチカしていた。
       // 同じ要素をそのまま使い回して、中身だけ正式なものに書き換える。
       const displayMsg = { ...data.message, content: content };
+      // 相手が速いと、送信の返事より先に既読の知らせが届く。その時に取っておいた既読をここで付ける
+      if (!displayMsg.readAt && earlyReads.has(displayMsg.id)) displayMsg.readAt = earlyReads.get(displayMsg.id);
+      earlyReads.delete(displayMsg.id);
       adoptTempMessage(tempId, displayMsg);
       addRealMessage(displayMsg);
       renderMessage(displayMsg);
@@ -2093,6 +2096,13 @@ function renderMessageImpl(msg) {
 
 // 統合ポーリング: 新規メッセージ・既読・編集・削除・リアクション・ピン留めを1回のAPI呼び出しでまとめてチェック
 // WebSocketが主軸、これは補助的なフォールバック（間隔を長めにして負荷軽減）
+// 送信の返事より先に届いた既読(メッセージID→既読の時刻)。少しだけ覚えておく
+const earlyReads = new Map();
+function rememberEarlyRead(id, at) {
+  if (earlyReads.size > 200) earlyReads.clear();
+  earlyReads.set(String(id), at || new Date().toISOString());
+}
+
 async function syncMessages() {
   try {
     // 裏で同期しているだけ(画面が隠れている)なら既読にしない。以前は再接続のたびに、見ていないのに既読が付いていた
@@ -2330,6 +2340,9 @@ function connectRealWS() {
           // 自分の送信メッセージが既読になった
           msg.readAt = new Date().toISOString();
           renderMessage(msg);
+        } else if (!msg && data.msgUuid) {
+          // まだ送信の返事が来ていない(仮のIDのまま)。以前はここで捨てていて、既読が付かなかった
+          rememberEarlyRead(data.msgUuid, new Date().toISOString());
         }
       } else if (data.type === 'read_receipt_bulk') {
         // 相手がトーク画面を開いて、まとめて複数メッセージが既読になった通知
@@ -2339,7 +2352,7 @@ function connectRealWS() {
             if (msg && msg.senderId === myUserId) {
               msg.readAt = data.readAt;
               renderMessage(msg);
-            }
+            } else if (!msg) rememberEarlyRead(msgId, data.readAt);
           });
         }
       } else if (data.type === 'call_offer') {
