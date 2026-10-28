@@ -314,12 +314,19 @@ function announceOffline(userId) {
 async function presenceContacts(userId) {
   const hit = contactCache.get(userId);
   if (hit && Date.now() - hit.ts < 30000) return hit.ids;
+  // トークしたことのある人に加えて、友だちにも知らせる。以前はトーク履歴だけで、
+  // 友だちになったばかりでまだ話していない相手には、ずっと「オフライン」のままに見えていた
   const rows = await db.all(
     `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
      FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
     [userId, userId, userId]
   );
-  const ids = rows.map(r => r.other_id);
+  const friends = await db.all(
+    `SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as other_id
+     FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'`,
+    [userId, userId, userId]
+  );
+  const ids = [...new Set(rows.concat(friends).map(r => r.other_id))];
   if (contactCache.size > 2000) contactCache.clear();
   contactCache.set(userId, { ts: Date.now(), ids });
   return ids;
@@ -1201,4 +1208,6 @@ function disconnectBanned(userId, until) {
   }
 }
 
-module.exports = { initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, listFeedLives, rejectPendingCall, disconnectBanned };
+function forgetPresenceContacts(userId) { contactCache.delete(userId); }
+
+module.exports = { forgetPresenceContacts, initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, listFeedLives, rejectPendingCall, disconnectBanned };
