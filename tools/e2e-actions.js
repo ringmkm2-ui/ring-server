@@ -130,6 +130,27 @@ async function step(name, fn) {
     await A.p.waitForFunction(() => { const e = document.getElementById('gTyping'); return e && e.offsetParent && !e.classList.contains('gt-hide') && /ボブ/.test(e.innerText); }, null, { timeout: 8000 });
     await Bb.p.fill('#mi', '');
   });
+  await step('グループ: 返信(引用つき)が全員に届く・リロード後も残る・引用タップで元へ', async () => {
+    await sg(Bb, 'g origin msg'); await seen(A, 'g origin msg'); await seen(C, 'g origin msg'); await sleep(800);
+    await openMenu(A, 'g origin msg'); await A.p.click('#replyBtn');
+    const pv = await A.p.evaluate(() => document.getElementById('replyPreview').innerText);
+    if (!/ボブ/.test(pv) || !/g origin msg/.test(pv)) throw new Error('プレビュー: ' + pv.replace(/\s+/g, ' '));
+    await sg(A, 'g reply to bob');
+    const q = P => P.p.waitForFunction(() => { const m = [...document.querySelectorAll('.msg-text')].find(e => e.textContent.includes('g reply to bob'))?.closest('[data-msg-id]'); const qq = m && m.querySelector('.reply-quote'); return qq && /g origin msg/.test(qq.textContent) ? qq.textContent : false; }, null, { timeout: 15000 });
+    await q(A); await q(Bb); await q(C);
+    await sleep(400); const hidden = await A.p.evaluate(() => getComputedStyle(document.getElementById('replyPreview')).display === 'none');
+    if (!hidden) throw new Error('送信後もプレビューが残っている');
+    await C.p.reload(); await C.p.waitForSelector('#mi'); await q(C);
+    await C.p.evaluate(() => [...document.querySelectorAll('.msg-text')].find(e => e.textContent.includes('g reply to bob')).closest('[data-msg-id]').querySelector('.reply-quote').click());
+    await C.p.waitForFunction(() => !!document.querySelector('.reply-jump-flash'), null, { timeout: 3000 });
+    await C.p.screenshot({ path: OUT + '/group_reply_C.png' });
+  });
+  await step('グループ: コピー', async () => {
+    await A.ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: B });
+    await openMenu(A, 'g origin msg'); await A.p.click('#copyBtn'); await sleep(300);
+    const t = await A.p.evaluate(() => navigator.clipboard.readText());
+    return t === 'g origin msg' ? 'ok' : (() => { throw new Error('clipboard=' + t); })();
+  });
   await step('グループ: 編集がリアルタイムで他の人に反映', async () => {
     await sg(A, 'g before'); await seen(Bb, 'g before'); await seen(C, 'g before');
     await openMenu(A, 'g before'); await A.p.click('#editBtn'); await A.p.fill('#mi', 'g after'); await A.p.press('#mi', 'Enter');

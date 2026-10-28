@@ -549,8 +549,9 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   const { groupId } = req.params;
   // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
-  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion } = req.body;
+  const { content, mediaType, mediaData, mediaUrl, mediaPublicId, encryptedMetadata, chunkCount, encrypted, keyVersion, repliedToId } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
+  if (repliedToId !== undefined && repliedToId !== null && (typeof repliedToId !== 'string' || repliedToId.length > 64)) return res.status(400).json({ error: 'repliedToId が不正です' });
   // 個人チャットと同じ基準(本文の形と長さ、メディアの種類、mediaUrlはCloudinaryのみ)
   const badInput = validateMessageInput(req.body);
   if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
@@ -582,10 +583,17 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   if (encrypted && !mediaUrl && Number.isInteger(keyVersion) && keyVersion < group.key_version) {
     return res.status(409).json({ error: 'グループの鍵が新しくなりました', staleKey: true, keyVersion: group.key_version });
   }
+  // 返信先は同じグループの、消されていないメッセージだけ(ほかのグループのIDを指して中身を探られないように)
+  let replyTo = null;
+  if (repliedToId) {
+    const r = await db.get('SELECT id FROM group_messages WHERE id = ? AND group_id = ? AND deleted_at IS NULL', [repliedToId, groupId]);
+    if (!r) return res.status(400).json({ error: '返信先のメッセージが見つかりません' });
+    replyTo = r.id;
+  }
   const msgId = uuidv4();
   await db.run(
-    'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= group.key_version) ? keyVersion : group.key_version]
+    'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version, replied_to_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= group.key_version) ? keyVersion : group.key_version, replyTo]
   );
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ?', [msgId]);
@@ -613,6 +621,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
         msgType: msg.msg_type,
         encrypted: !!msg.encrypted,
         keyVersion: msg.key_version,
+        repliedToId: msg.replied_to_id || null,
         createdAt: msg.created_at,
       }
     });

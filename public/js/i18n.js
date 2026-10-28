@@ -603,6 +603,8 @@
     if (!str || getLang() === "ja" || !JP.test(str)) return null;
     const k = str.trim();
     if (AUTO_EN[k] !== undefined) return str.replace(k, AUTO_EN[k]);
+    // 区切りの「・」だけが日本語の文(「最後のメッセージ ・ 3 members」など)
+    if (k.indexOf("・") >= 0 && !JP.test(k.replace(/・/g, ""))) return str.replace(/・/g, "·");
     let m;
     if ((m = /^(\d+)人$/.exec(k))) return m[1] + (m[1] === "1" ? " person" : " people");
     if ((m = /^(発信|着信)\s+([\d:]+)$/.exec(k))) return (m[1] === "発信" ? "Outgoing call " : "Incoming call ") + m[2];

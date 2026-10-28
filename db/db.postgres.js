@@ -195,6 +195,13 @@ async function initDB() {
     console.log('[db] encrypted migration skip:', e.message);
   }
 
+  // グループの返信(どのメッセージへの返信か)。消された時に困らないよう外部キーは付けない
+  try {
+    await pool.query('ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS replied_to_id TEXT');
+  } catch (e) {
+    console.log('[db] group replied_to_id migration skip:', e.message);
+  }
+
   // マイグレーション: 既存のmessagesテーブルにreplied_to_idカラムがなければ追加（リプライ機能）
   try {
     await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS replied_to_id TEXT REFERENCES messages(id)');
