@@ -207,6 +207,16 @@ router.get('/search', searchLimiter, auth, async (req, res) => {
   }
 });
 
+// 友だちの関係が変わったことを、両方の開いている画面に知らせる(以前は相手が画面を切り替えるまで気づかなかった)
+function notifyFriendChange(a, b, kind) {
+  try {
+    const ws = require('../ws/wsServer');
+    if (ws.forgetPresenceContacts) { ws.forgetPresenceContacts(a); ws.forgetPresenceContacts(b); }
+    ws.broadcastToUser(a, { type: 'friends_changed', kind });
+    ws.broadcastToUser(b, { type: 'friends_changed', kind });
+  } catch (_) {}
+}
+
 // 友達リクエスト送信
 router.post('/request', auth, async (req, res) => {
   try {
@@ -232,6 +242,7 @@ router.post('/request', auth, async (req, res) => {
         const full = await db.get('SELECT requested_by FROM friendships WHERE id = ?', [existing.id]);
         if (full && full.requested_by !== req.userId) {
           await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [new Date().toISOString(), existing.id]);
+          notifyFriendChange(req.userId, targetUser.id, 'accepted');
           return res.json({ ok: true, friendshipId: existing.id, accepted: true });
         }
       }
@@ -240,6 +251,7 @@ router.post('/request', auth, async (req, res) => {
 
     const friendshipId = uuidv4();
     await db.run('INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by) VALUES (?, ?, ?, ?, ?)', [friendshipId, userA, userB, 'pending', req.userId]);
+    notifyFriendChange(req.userId, targetUser.id, 'request');
     res.json({ ok: true, friendshipId });
   } catch (e) {
     sendServerError(res, e);
@@ -265,6 +277,7 @@ router.post('/accept', auth, async (req, res) => {
 
     const now = new Date().toISOString();
     await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [now, friendshipId]);
+    notifyFriendChange(friendship.user_a_id, friendship.user_b_id, 'accepted');
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);
@@ -289,6 +302,7 @@ async function dropFriendship(req, res, allowed) {
     if (f.user_a_id !== req.userId && f.user_b_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
     if (!allowed(f, req.userId)) return res.status(400).json({ error: 'この状態では実行できません' });
     await db.run('DELETE FROM friendships WHERE id = ?', [friendshipId]);
+    notifyFriendChange(f.user_a_id, f.user_b_id, 'removed');
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);

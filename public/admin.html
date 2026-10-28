@@ -62,7 +62,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .phone-container::before{display:n
 .partner-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;background-size:cover;background-position:center}
 .name{font-weight:700;font-size:15px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 html.dark-mode .name{color:#f1f5f9}
-.status{font-size:12px;font-weight:600;color:#059669}
+.status{font-size:12px;font-weight:600;color:#059669;white-space:nowrap;flex-shrink:0}
 /* phone-btn: 発信ボタン。liquidGlass.cssの.glass-clearに背景/ぼかし/縁は任せ、
    ここでは形状(円形・サイズ)のみ定義する。 */
 /* phone-btn: ヘッダー内の通話ボタン。親の.app-header-barが既に
@@ -387,7 +387,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.289 beta</div>
+  <div class="version-badge">Bro Chat v1.28.290 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -567,6 +567,12 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
           </button>
           <button class="call-control-btn glass-interactive" id="muteBtn2" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Mute">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button class="call-control-btn glass-interactive" id="toggleVideoBtn" type="button" data-no-auto-haptic="1" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Camera" aria-label="カメラ">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </button>
+          <button class="call-control-btn glass-interactive" id="flipCamBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Flip camera" aria-label="カメラ切替">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
           <button class="call-control-btn glass-interactive" id="callNoteOpenBtn" type="button" style="display:none;width:56px;height:56px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer" title="Note">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
@@ -2544,8 +2550,9 @@ async function toDisplayMsg(msg) {
     const decrypted = await decryptMessageContent(msg.content, msg.senderId);
     if (decrypted !== null) displayContent = decrypted;
     else displayContent = '(復号化に失敗しました)';
-  } else if (msg.encrypted && msg.senderId === myUserId) {
+  } else if (msg.encrypted && msg.senderId === myUserId && !msg.deletedAt) {
     // 自分が送った暗号化メッセージはローカルキャッシュから復元
+    // (取り消したものは中身が空なので開かない。以前は空の暗号文を開こうとしてエラーを出していた)
     const cached = getOwnPlaintext(msg.id);
     const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
     displayContent = own !== null ? own : '(このデバイスでは表示できません)';
@@ -3691,6 +3698,8 @@ function cleanupCall() {
   isVideoCall = false;
   isVideoEnabled = true;
   currentFacingMode = 'user';
+  // ミュート/カメラOFFのまま切ると、次の通話でボタンだけ「オフ」の見た目が残っていた
+  ['muteBtn2', 'toggleVideoBtn'].forEach(id => { const b = document.getElementById(id); if (b) { b.classList.remove('glass-btn-off'); b.classList.add('glass-clear'); } });
   pendingRemoteIce = [];
   const audioEl = document.getElementById('remoteAudio');
   audioEl.srcObject = null;

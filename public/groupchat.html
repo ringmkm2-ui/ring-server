@@ -245,7 +245,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.289 beta</div>
+  <div class="version-badge">Bro Chat v1.28.290 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1267,7 +1267,8 @@ document.getElementById('delBtn').onclick=()=>{
     const notice=document.createElement('div');
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
-    target.parentNode.replaceChild(notice,target);
+    // サーバーからの知らせで先に置き換わっていることがある(以前はここで例外になっていた)
+    if(target.parentNode) target.parentNode.replaceChild(notice,target);
     if(isEditing&&editTargetMsgId===targetMsgId){
       isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
       document.getElementById('mi').value='';
@@ -1651,7 +1652,7 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
         return{text, media:null};
       }catch(e){
         console.error('テキスト復号エラー:', e);
-        return{text:'(復号に失敗しました)', media:null};
+        return{text:'(復号に失敗しました)', media:null, failed:true};
       }
     }
   }
@@ -1745,10 +1746,13 @@ async function loadGroupMessages(pre){
     const pinned=await api('/api/groups/'+groupId+'/pinned');
     if(Array.isArray(pinned)&&pinned.length>0){
       const latest=pinned[0];
-      const{text}=await parseMsgContent(latest.content, latest.encrypted, latest.key_version);
-      document.getElementById('pinText').textContent=text||'メディア';
-      document.getElementById('pinBanner').classList.add('show');
-      document.getElementById('pinBanner').dataset.msgId=latest.id;
+      const{text,failed}=await parseMsgContent(latest.content, latest.encrypted, latest.key_version);
+      // 参加する前のメッセージなど、読めないピンは出さない(「(復号に失敗しました)」のバナーが出ていた)
+      if(!failed){
+        document.getElementById('pinText').textContent=text||'メディア';
+        document.getElementById('pinBanner').classList.add('show');
+        document.getElementById('pinBanner').dataset.msgId=latest.id;
+      }
     }
   }catch(err){console.error('load messages error:',err);}
 }
@@ -1886,10 +1890,14 @@ function connectGroupWS(){
         if(md)renderReacts(md.querySelector('.mwrap'),data.reactions);
       }else if(data.type==='group_message_pinned'&&data.groupId===groupId){
         if(data.pinned){
-          const el=document.querySelector(`[data-msg-id="${data.messageId}"] .msg-text,[data-msg-id="${data.messageId}"] .fname`);
+          const md=document.querySelector(`[data-msg-id="${data.messageId}"]`);
+          const el=md&&md.querySelector('.msg-text,.fname');
+          if(!md||(el&&/^\(復号に失敗しました\)$/.test(el.textContent))){ /* 画面に無い・読めないピンは出さない */ }
+          else{
           document.getElementById('pinText').textContent=el?el.textContent:'メディア';
           document.getElementById('pinBanner').classList.add('show');
           document.getElementById('pinBanner').dataset.msgId=data.messageId;
+          }
         }else if(document.getElementById('pinBanner').dataset.msgId===data.messageId){
           document.getElementById('pinBanner').classList.remove('show');
         }

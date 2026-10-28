@@ -607,7 +607,7 @@ window.ensureGroupCrypto = (function () {
       <nav class="tb26" id="tabSegment" aria-label="タブ">
         <div class="tb26-lens" id="slider"></div>
         <button class="tb26-item active" id="btnTalk" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c-5 0-9 3.4-9 7.6 0 2.4 1.3 4.5 3.3 5.9-.2 1.3-.9 2.6-1.9 3.5 2 0 3.7-.7 5-1.8.8.2 1.7.3 2.6.3 5 0 9-3.4 9-7.6S17 3.5 12 3.5Z"/></svg><span data-i18n="talk">トーク</span><span class="tb-badge" id="talkTabBadge" hidden></span></button>
-        <button class="tb26-item" id="btnHome" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 2.8 11a1 1 0 0 0 .65 1.76H5V20a1 1 0 0 0 1 1h4v-5.5h4V21h4a1 1 0 0 0 1-1v-7.24h1.55A1 1 0 0 0 21.2 11Z"/></svg><span data-i18n="home">ホーム</span></button>
+        <button class="tb26-item" id="btnHome" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 2.8 11a1 1 0 0 0 .65 1.76H5V20a1 1 0 0 0 1 1h4v-5.5h4V21h4a1 1 0 0 0 1-1v-7.24h1.55A1 1 0 0 0 21.2 11Z"/></svg><span data-i18n="home">ホーム</span><span class="tb-badge" id="homeTabBadge" hidden></span></button>
         <button class="tb26-item" id="btnPosts" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M6 3.5h12A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5Zm1.8 4.2v2.2h8.4V7.7Zm0 4.5v1.7h8.4v-1.7Zm0 3.6v1.7h5.2v-1.7Z"/></svg><span data-i18n="post">投稿</span></button>
       </nav>
     </header>
@@ -778,7 +778,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.289 beta</div>
+  <div class="version-badge">Bro Chat v1.28.290 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1273,172 +1273,6 @@ function lgQueueGlassRebuild(el){
   });
 }
 
-// ============================================================================
-// bindNavSwitcher: Codepen準拠のドラッグ可能タブインジケーター
-// ============================================================================
-function bindTalkNavSwitcher(){
-  const nav=document.getElementById('tabSegment');
-  const indicator=document.getElementById('slider');
-  const glow=document.getElementById('navGlow');
-  const items=[
-    {el:document.getElementById('btnTalk'), page:pageTalk, onSelect:()=>loadTalks(true)},
-    {el:document.getElementById('btnHome'), page:pageHome, onSelect:()=>{loadPendingRequests(true);if(window.acctRefresh)window.acctRefresh();}},
-    {el:document.getElementById('btnPosts'), page:pagePosts, onSelect:loadPosts},
-  ];
-  if(!nav||!indicator||!glow||!items.length) return;
-
-  const DRAG_THRESHOLD=6, OVERSHOOT=22;
-  let active=0, targetIndex=0, pointerId=null, pressX=0, pressY=0;
-  let dragMode=false, pressWidth=0, finishTimer=null;
-
-  function navRect(){ return nav.getBoundingClientRect(); }
-  function toLocalX(clientX){
-    const nr=navRect();
-    const sx=nr.width>0?nav.clientWidth/nr.width:1;
-    return (clientX-nr.left)*sx;
-  }
-  function itemMetrics(i){
-    const nr=navRect(), ir=items[i].el.getBoundingClientRect();
-    const sx=nr.width>0?nav.clientWidth/nr.width:1;
-    const left=(ir.left-nr.left)*sx, width=ir.width*sx;
-    return {left,width,center:left+width/2};
-  }
-  function nearestIndex(localX){
-    let best=0,bestD=Infinity;
-    for(let i=0;i<items.length;i++){
-      const d=Math.abs(localX-itemMetrics(i).center);
-      if(d<bestD){bestD=d;best=i;}
-    }
-    return best;
-  }
-  function setActive(i){
-    const prev = active;
-    active=i;
-    // 移動方向に応じて左右どちらから入ってくるかを決める
-    const dirClass = i > prev ? 'lg-page-enter-right' : (i < prev ? 'lg-page-enter-left' : 'lg-page-enter');
-    items.forEach((it,idx)=>{
-      it.el.classList.toggle('active',idx===i);
-      const wasHidden = it.page.style.display==='none';
-      it.page.style.display=idx===i?'block':'none';
-      if(idx===i && wasHidden){
-        it.page.classList.remove('lg-page-enter','lg-page-enter-right','lg-page-enter-left');
-        void it.page.offsetWidth; // reflow強制でアニメーション再生を保証
-        it.page.classList.add(dirClass);
-      }
-    });
-  }
-  function setIndicator(left,width,animate){
-    if(!animate){
-      const old=indicator.style.transition;
-      indicator.style.transition='none';
-      indicator.style.left=`${left}px`;
-      indicator.style.width=`${width}px`;
-      indicator.offsetWidth;
-      indicator.style.transition=old;
-      return;
-    }
-    indicator.style.left=`${left}px`;
-    indicator.style.width=`${width}px`;
-  }
-  function snapToIndex(i,animate){
-    const m=itemMetrics(i);
-    setIndicator(m.left,m.width,animate);
-  }
-  function setGlow(clientX,clientY,alpha){
-    const nr=navRect();
-    const lx=toLocalX(clientX);
-    nav.style.setProperty('--gx',`${lx}px`);
-    nav.style.setProperty('--gy',`${clientY-nr.top}px`);
-    nav.style.setProperty('--ga',String(alpha));
-  }
-  function beginInteraction(clientX,clientY){
-    clearTimeout(finishTimer);
-    indicator.classList.add('interacting');
-    setGlow(clientX,clientY,0.24);
-    lgEnableGlass(indicator,()=>Object.assign({},LG_SWITCHER_CONFIG,{balancedSpecular:true}));
-    lgQueueGlassRebuild(indicator);
-  }
-  function endInteraction(){
-    clearTimeout(finishTimer);
-    finishTimer=setTimeout(()=>{
-      indicator.classList.remove('interacting');
-      nav.classList.remove('dragging');
-      nav.style.setProperty('--ga','0');
-      lgRemoveGlass(indicator);
-    },500);
-  }
-  function dragMove(clientX){
-    const localX=toLocalX(clientX);
-    const w=pressWidth||itemMetrics(active).width;
-    let left=localX-w/2;
-    left=lgClamp(left,-OVERSHOOT,nav.clientWidth-w+OVERSHOOT);
-    indicator.style.left=`${left}px`;
-    indicator.style.width=`${w}px`;
-    targetIndex=nearestIndex(localX);
-    // NOTE: フィルター(displacement/specular map)は幅に依存するが、ドラッグ中は
-    // 幅が変わらない(pressWidthのまま)ので毎フレーム再生成する必要は無い。
-    // これを呼ぶとcanvasのピクセルループが毎フレーム走ってドラッグがカクつく。
-  }
-  function clearPointerHandlers(){
-    window.removeEventListener('pointermove',onPointerMove);
-    window.removeEventListener('pointerup',onPointerUp);
-    window.removeEventListener('pointercancel',onPointerCancel);
-  }
-  function finishSelection(){
-    nav.classList.remove('dragging');
-    const changed=targetIndex!==active;
-    setActive(targetIndex);
-    snapToIndex(targetIndex,true);
-    lgQueueGlassRebuild(indicator);
-    setTimeout(()=>lgQueueGlassRebuild(indicator),120);
-    endInteraction();
-    if(changed && items[targetIndex].onSelect) items[targetIndex].onSelect();
-  }
-  function onPointerMove(e){
-    if(e.pointerId!==pointerId) return;
-    const dx=Math.abs(e.clientX-pressX), dy=Math.abs(e.clientY-pressY);
-    if(!dragMode&&(dx>DRAG_THRESHOLD||dy>DRAG_THRESHOLD)){ dragMode=true; nav.classList.add('dragging'); }
-    if(dragMode){ setGlow(e.clientX,e.clientY,0.18); dragMove(e.clientX); }
-    else{ setGlow(e.clientX,e.clientY,0.22); }
-  }
-  function onPointerUp(e){
-    if(e.pointerId!==pointerId) return;
-    clearPointerHandlers();
-    finishSelection();
-    pointerId=null; dragMode=false;
-  }
-  function onPointerCancel(e){
-    if(e.pointerId!==pointerId) return;
-    clearPointerHandlers();
-    nav.classList.remove('dragging');
-    snapToIndex(active,true);
-    endInteraction();
-    pointerId=null; dragMode=false;
-  }
-  function armPointer(idx,e){
-    if(pointerId!==null) return;
-    pointerId=e.pointerId; dragMode=false; targetIndex=idx;
-    pressX=e.clientX; pressY=e.clientY;
-    pressWidth=itemMetrics(idx).width;
-    beginInteraction(e.clientX,e.clientY);
-    window.addEventListener('pointermove',onPointerMove);
-    window.addEventListener('pointerup',onPointerUp);
-    window.addEventListener('pointercancel',onPointerCancel);
-  }
-
-  items.forEach((it,idx)=>{
-    it.el.style.touchAction='none';
-    it.el.addEventListener('pointerdown',e=>{
-      if(!e.isPrimary||e.button!==0) return;
-      e.preventDefault();
-      armPointer(idx,e);
-    });
-  });
-
-  snapToIndex(active,false);
-  window.addEventListener('resize',()=>snapToIndex(active,false));
-}
-
 // ===== PC版: 画面が広い時は左にトーク一覧、右にチャットの2列 =====
 document.addEventListener('DOMContentLoaded', () => {
   if (!window.LiquidGlass || !LiquidGlass.flyAvatarTo) return;
@@ -1838,21 +1672,26 @@ async function loadProfile(){
     document.getElementById('dispName').textContent = name;
     document.getElementById('inName').value = name;
     document.getElementById('myIdCode').textContent = 'ID: ' + idCode;
-    const av=localStorage.getItem('myAvatar')||data.profilePic||'';
-    const dav=document.getElementById('dispAv');
-    if(av){dav.style.background='';dav.style.backgroundImage=`url(${av})`;}
-    else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+    // サーバーの値を正にする(以前は端末に残った古い画像が優先され、別の端末で変えても戻らなかった)
+    const fromServer=data&&('profilePic' in data);
+    const av=(fromServer?data.profilePic:localStorage.getItem('myAvatar'))||'';
+    try{ if(fromServer){ if(av) localStorage.setItem('myAvatar',av); else localStorage.removeItem('myAvatar'); } }catch(_){}
+    window.myProfilePic=av||null;
+    paintMyAv(document.getElementById('dispAv'),av,name);
   } catch(e) {
     const name=localStorage.getItem('myName')||'マイネーム';
     const idCode=localStorage.getItem('ring_userIdCode')||'';
     document.getElementById('dispName').textContent=name;
     document.getElementById('inName').value=name;
     document.getElementById('myIdCode').textContent = idCode ? 'ID: ' + idCode : 'ID: 取得中...';
-    const av=localStorage.getItem('myAvatar')||'';
-    const dav=document.getElementById('dispAv');
-    if(av){dav.style.background='';dav.style.backgroundImage=`url(${av})`;}
-    else{dav.style.backgroundImage='';dav.style.background='#cbd5e1';}
+    paintMyAv(document.getElementById('dispAv'),localStorage.getItem('myAvatar')||'',name);
   }
+}
+// 画像が無い時は灰色の丸だけになっていた。ほかの場所と同じく頭文字を出す
+function paintMyAv(dav,av,name){
+  if(!dav)return;
+  if(av){dav.style.background='';dav.style.backgroundImage=`url(${JSON.stringify(String(av))})`;dav.style.backgroundSize='cover';dav.style.backgroundPosition='center';dav.textContent='';}
+  else{dav.style.backgroundImage='';dav.style.background='#94a3b8';dav.style.color='#fff';dav.style.display='flex';dav.style.alignItems='center';dav.style.justifyContent='center';dav.style.fontWeight='800';dav.style.fontSize='24px';dav.textContent=(name||'?').charAt(0);}
 }
 loadProfile();
 
@@ -3323,8 +3162,7 @@ document.getElementById('saveSettings').onclick=async ()=>{
     croppedUrl=canvas.toDataURL();
     newAvatarUrl=croppedUrl;
     localStorage.setItem('myAvatar',croppedUrl);
-    const dav=document.getElementById('dispAv');
-    dav.style.backgroundImage=`url(${croppedUrl})`;
+    paintMyAv(document.getElementById('dispAv'),croppedUrl,'');
   }
 
   if(name){
@@ -3338,7 +3176,7 @@ document.getElementById('saveSettings').onclick=async ()=>{
       const uploaded=await window.uploadIcon(newAvatarUrl);
       newAvatarUrl=uploaded;
       localStorage.setItem('myAvatar',uploaded);
-      document.getElementById('dispAv').style.backgroundImage=`url(${JSON.stringify(uploaded)})`;
+      paintMyAv(document.getElementById('dispAv'),uploaded,'');window.myProfilePic=uploaded;
     }catch(e){
       console.error('アイコンのアップロードに失敗:',e);
       alert('アイコンをアップロードできませんでした。もう一度試してください');
@@ -3495,6 +3333,8 @@ document.getElementById('ngCreate').onclick = async () => {
 async function loadPendingRequests(animate = false) {
   try {
     const pending = await api('/api/friends/pending');
+    // 届いている申請の数をホームのタブに出す(トーク画面にいると申請に気づけなかった)
+    { const n = Array.isArray(pending) ? pending.filter(p => !p.isSentByMe).length : 0; const hb = document.getElementById('homeTabBadge'); if (hb) { hb.hidden = n <= 0; hb.textContent = n > 99 ? '99+' : String(n); } }
     const card = document.getElementById('pendingRequestsCard');
     const list = document.getElementById('pendingList');
 
@@ -3679,6 +3519,8 @@ function connectTalkWs() {
     // 入力中の合図・既読の知らせは一覧に関係ない(以前は誰かが文字を打つたびに一覧をAPI3本で取り直していた)
     if (/typing|_read$|^gcall_|reaction$/.test(d.type)) return;
     if (d.type === 'member_keys_ready' && window.__e2eBackgroundWork) { window.__e2eBackgroundWork(); return; }
+    // 友だち申請が届いた/承認された: どのタブにいても申請の数(ホームのバッジ)を更新する
+    if (d.type === 'friends_changed') { loadPendingRequests(); if (typeof loadFriends === 'function') try { loadFriends(); } catch (_) {} }
     // グループ名・アバター変更を即座に画面に反映する(APIを叩かなくても名前だけ先に差し替える)
     if (d.type === 'group_updated' && d.groupId && d.name) {
       const nameEls = document.querySelectorAll(`[data-group-id="${d.groupId}"] .tname`);
@@ -4571,7 +4413,7 @@ async function watchToggleSub(p, btn, subsEl) {
 
 function watchCommentForm(p, clist, ctitle) {
   const form = document.createElement('div'); form.className = 'yt-cform';
-  const av = document.createElement('div'); av.className = 'yt-ch-av'; setAvatarBackground(av, window.myProfilePic || null, 'Me'[0]);
+  const av = document.createElement('div'); av.className = 'yt-ch-av'; setAvatarBackground(av, window.myProfilePic || localStorage.getItem('myAvatar') || null, (localStorage.getItem('myName') || '?')[0]);
   const input = document.createElement('input'); input.type = 'text'; input.placeholder = i18n.t('add_comment_ph');
   const send = document.createElement('button'); send.textContent = i18n.t('comment_send');
   const submit = async () => {
