@@ -80,6 +80,19 @@ router.post('/delete', verifyToken, mediaUploadLimiter, asyncHandler(async (req,
   if (!ownDm && !ownGroupMsg) {
     return res.status(403).json({ error: 'このメディアを削除する権限がありません' });
   }
+  // 相手のメッセージに入っている publicId を自分のメッセージにも書いて送れば、上の照合は通ってしまい、
+  // 相手の画像・動画を消せた。他の人のメッセージにも同じ publicId があれば消させない
+  const othersDm = await db.get(
+    "SELECT id FROM messages WHERE sender_id <> ? AND content LIKE ? ESCAPE '!'",
+    [req.user.userId, likePattern]
+  );
+  const othersGroup = othersDm ? null : await db.get(
+    "SELECT id FROM group_messages WHERE sender_id <> ? AND content LIKE ? ESCAPE '!'",
+    [req.user.userId, likePattern]
+  );
+  if (othersDm || othersGroup) {
+    return res.status(403).json({ error: 'このメディアを削除する権限がありません' });
+  }
 
   try {
     const timestamp = Math.floor(Date.now() / 1000);

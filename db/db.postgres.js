@@ -184,6 +184,14 @@ async function initDB() {
         last_sent_ms BIGINT DEFAULT 0
       )
     `);
+    // コードの外れ回数(アカウントごと24時間)。メモリだと再起動で消えて総当たりの上限が効かなくなるのでDBに置く
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS auth_misses (
+        key TEXT PRIMARY KEY,
+        n INTEGER NOT NULL DEFAULT 0,
+        since_ms BIGINT NOT NULL
+      )
+    `);
   } catch (e) {
     console.log('[db] email verify / totp migration skip:', e.message);
   }

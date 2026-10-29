@@ -9,7 +9,7 @@ const { sendServerError } = require('../utils/errorResponse');
 // 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane } = require('../utils/moderation');
-const { blockState, bumpBlockVersion } = require('../utils/relations');
+const { blockState, bumpBlockVersion, isAcquainted } = require('../utils/relations');
 
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
@@ -178,8 +178,13 @@ router.put('/key-backup', auth, async (req, res) => {
 });
 
 // 特定ユーザーの公開鍵を取得（メッセージ暗号化のため）
+// 友だち・同じグループ/コミュニティ・自分だけ(/prekeys/identity と同じ)。以前は誰の鍵でも取れ、
+// 検索で出るIDから「誰がいつ端末を増やしたか」まで覗けた
 router.get('/publickey/:userId', auth, async (req, res) => {
   try {
+    if (typeof req.params.userId !== 'string' || !(await isAcquainted(req.userId || (req.user && req.user.userId), req.params.userId))) {
+      return res.status(404).json({ error: 'user not found' });
+    }
     const user = await db.get('SELECT id, public_key FROM users WHERE id = ?', [req.params.userId]);
     if (!user) return res.status(404).json({ error: 'user not found' });
     const publicKeys = (await deviceKeys.activeKeysMany([user])).get(user.id) || [];

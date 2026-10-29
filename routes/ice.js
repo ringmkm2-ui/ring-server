@@ -30,7 +30,14 @@ const STUN_ONLY = [
   { urls: 'stun:stun.chat.bilibili.com:3478' },
 ];
 
-router.get('/', verifyToken, asyncHandler(async (req, res) => {
+// 中継(TURN)の認証情報は、通話・ライブを始める時にだけ要る。1人1時間60回まで
+// (取り放題だと、アカウントを作るだけでこちらの中継サーバーを汎用の中継として使われる)
+const iceLimiter = require('express-rate-limit')({
+  windowMs: 60 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: '通話の準備が多すぎます。しばらくしてからお試しください' },
+});
+router.get('/', iceLimiter, verifyToken, asyncHandler(async (req, res) => {
   // ?skip=cloudflare : クライアント側でTURNが実際には使えなかった(中継候補が取れない)時に次を試す
   const skip = String(req.query.skip || '').split(',');
   // 1) 固定認証のTURN(カード不要の無料サービス)

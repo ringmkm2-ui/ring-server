@@ -74,7 +74,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
     }
     // 参加前のメッセージは一覧にも出さない(履歴と同じ)
     const lrows = await db.all(
-      `SELECT x.group_id, x.content, x.created_at, x.encrypted, x.key_version
+      `SELECT x.group_id, x.content, x.created_at, x.encrypted, x.key_version, x.msg_type
          FROM group_messages x
          JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ? AND gm.left_at IS NULL
         WHERE x.group_id IN (${ph}) AND x.deleted_at IS NULL AND (gm.joined_at IS NULL OR x.created_at >= gm.joined_at)
@@ -111,7 +111,7 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       keyVersion: g.key_version,
       avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
-      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version } : null,
+      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version, msgType: lastMsg.msg_type || 'text' } : null,
       unreadCount,
     });
   }
@@ -434,6 +434,19 @@ router.post('/:groupId/rotate-key', rotateLimiter, verifyToken, asyncHandler(asy
   }
   const mine = encryptedKeysForMembers.find(e => e && e.userId === req.user.userId && typeof e.encryptedGroupKey === 'string');
   if (!mine) return res.status(400).json({ error: '自分宛の鍵が含まれていません' });
+  // オーナー以外が作り直す時は、鍵を受け取れる(身元鍵を登録済みの)メンバー全員分を必須にする。
+  // 以前は自分の分だけで版を進められ、他のメンバー全員が新しいメッセージを読めなくなる嫌がらせができた(コミュニティは対策済み)
+  if (group.owner_id !== req.user.userId) {
+    const need = await db.all(
+      `SELECT m.user_id FROM group_members m JOIN identity_keys k ON k.user_id = m.user_id
+        WHERE m.group_id = ? AND m.left_at IS NULL`,
+      [groupId]
+    );
+    const given = new Set(encryptedKeysForMembers.filter(isEncKeyEntry).map(e => e.userId));
+    if (need.some(n => !given.has(n.user_id))) {
+      return res.status(400).json({ error: 'メンバー全員分の鍵が必要です' });
+    }
+  }
 
   const newVersion = group.key_version + 1;
   // 版の更新は「期待した版のときだけ」。先に取った人が勝つ
@@ -530,7 +543,7 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
   const wantVer = parseInt(req.query.version, 10);
   const row = Number.isInteger(wantVer)
     ? await db.get(
-        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=? LIMIT 1`,
+        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=? ORDER BY created_at DESC LIMIT 1`,
         [req.params.groupId, req.user.userId, wantVer]
       )
     : await db.get(
@@ -882,7 +895,7 @@ router.get('/:groupId/pinned', verifyToken, asyncHandler(async (req, res) => {
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id
      WHERE gm.group_id = ? AND gm.pinned_at IS NOT NULL AND gm.deleted_at IS NULL
-     ORDER BY gm.pinned_at DESC`,
+     ORDER BY gm.pinned_at DESC LIMIT 100`,
     [req.params.groupId]
   );
   res.json(rows);

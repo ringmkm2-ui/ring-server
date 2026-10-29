@@ -111,6 +111,12 @@ async function initDB() {
       last_sent_ms INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS auth_misses (
+      key TEXT PRIMARY KEY,
+      n INTEGER NOT NULL DEFAULT 0,
+      since_ms INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS user_sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,

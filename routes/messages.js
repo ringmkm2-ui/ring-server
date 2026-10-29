@@ -37,7 +37,9 @@ router.get('/presence/:userId', auth, async (req, res) => {
 // 暗号文のテキストは cipher に入れて返し、端末が自分の鍵で開いて一覧に本文を出す(LINEのように)。
 // メディアは content が {mediaUrl|media, mediaType} のJSONなので、暗号化フラグより先に中身を見る
 // (以前は暗号化フラグを先に見ていたため、画像も「暗号化されたメッセージ」になっていた)。
-function toPreview(content, encrypted) {
+// msgType: お知らせ(__notice__)はサーバーが msg_type='notice' で作るものだけ。以前は普通のメッセージに
+// {"__notice__":{...}} と書いて送るだけで、相手の一覧に「OOがFワードを言ったためBanしました。」を出せた
+function toPreview(content, encrypted, msgType) {
   if (!content) return { kind: 'empty', text: '' };
   let parsed = null;
   if (content[0] === '{') { try { parsed = JSON.parse(content); } catch (e) {} }
@@ -52,7 +54,7 @@ function toPreview(content, encrypted) {
       const call = { status: String(c.status || '').slice(0, 20), video: !!c.video, duration: Math.max(0, Math.min(86400, Number(c.duration) || 0)) };
       return { kind: 'call', text: '通話', call };
     }
-    if (parsed.__notice__ && parsed.__notice__.kind === 'ban') {
+    if (msgType === 'notice' && parsed.__notice__ && parsed.__notice__.kind === 'ban') {
       const name = String(parsed.__notice__.name || 'ユーザー').slice(0, 40);
       return { kind: 'ban', name, text: `${name}がFワードを言ったためBanしました。` };
     }
@@ -327,7 +329,7 @@ router.get('/talks', auth, async (req, res) => {
 
     // 1) 相手ごとの最新メッセージ(自分自身へのメッセージは除外)
     const latest = await db.all(`
-      SELECT m.sender_id, m.recipient_id, m.content, m.encrypted, m.created_at, m.deleted_at
+      SELECT m.sender_id, m.recipient_id, m.content, m.encrypted, m.created_at, m.deleted_at, m.msg_type
       FROM messages m
       WHERE m.id IN (
         SELECT (
@@ -389,7 +391,7 @@ router.get('/talks', auth, async (req, res) => {
         profilePic: user.profile_pic,
         ...(() => {
           if (row.deleted_at) return { lastMessage: '（送信取り消し済み）', lastKind: 'unsent' };
-          const pv = toPreview(row.content, row.encrypted);
+          const pv = toPreview(row.content, row.encrypted, row.msg_type);
           const o = { lastMessage: pv.text, lastKind: pv.kind };
           if (pv.cipher) o.lastCipher = pv.cipher;
           if (pv.call) o.lastCall = pv.call;

@@ -387,7 +387,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.291 beta</div>
+  <div class="version-badge">Bro Chat v1.28.292 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -686,7 +686,10 @@ const urlCallId = params.get('callId');
 const urlAction = params.get('action');
 const urlIsVideoParam = params.get('isVideo') === '1'; // isVideoCall変数は後方で宣言されるため、ここでは一時変数に保持
 if (urlCallId) {
-  pendingBgCallAction = { callId: urlCallId, action: urlAction === 'answer' ? null : urlAction };
+  // fromUrl: アドレスの ?action=accept は誰でも作れる(チャットにリンクを貼れば踏ませられる)。
+  // リンクを先に開かせてから同じ callId で発信すると、タップ無しで自動応答してマイク/カメラが相手に流れた。
+  // URLから来た応答は「ページを開く前から鳴っていた着信」(サーバーが再配送した offer)で、発信者も一致する時だけ実行する
+  pendingBgCallAction = { callId: urlCallId, action: urlAction === 'answer' ? null : urlAction, fromUrl: true, callerId: params.get('callerId') || '' };
 }
 
 async function api(path, opts = {}) {
@@ -3833,10 +3836,12 @@ function onCallOffer(data) {
   // 以前はここで action が null のとき declineIncomingCall() に落ちていて、
   // 通知から開いた着信が勝手に拒否されていた。
   if (pendingBgCallAction && pendingBgCallAction.callId === data.callId) {
-    const action = pendingBgCallAction.action;
+    const pb = pendingBgCallAction;
     pendingBgCallAction = null;
-    if (action === 'accept') { acceptIncomingCall(); return; }
-    if (action === 'decline') { declineIncomingCall(); return; }
+    const trusted = !pb.fromUrl || (data.redelivered === true && pb.callerId && data.fromUserId === pb.callerId);
+    if (trusted && pb.action === 'accept') { acceptIncomingCall(); return; }
+    if (trusted && pb.action === 'decline') { declineIncomingCall(); return; }
+    // 条件に合わなければ、普通の着信として画面にボタンを出す(勝手には出ない)
   }
 
   showCallOverlay();

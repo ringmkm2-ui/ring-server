@@ -13,7 +13,7 @@ const https = require('https');
 
 const KEY_ID = (process.env.CLOUDFLARE_TURN_KEY_ID || '').trim();
 const API_TOKEN = (process.env.CLOUDFLARE_TURN_API_TOKEN || '').trim();
-const TTL_SECONDS = 86400;
+const TTL_SECONDS = 6 * 3600; // 通話の最長(6時間)に合わせる。以前は24時間有効で、取った認証情報を長く使い回せた
 
 function isCloudflareConfigured() {
   return !!(KEY_ID && API_TOKEN);

@@ -9,6 +9,7 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
+const { areFriends, isBlockedEither } = require('../utils/relations');
 
 const router = express.Router();
 const MAX_BYTES = 610 * 1024 * 1024; // 端末側の上限(600MB)+暗号化の分
@@ -21,7 +22,15 @@ async function isStaff(userId) {
 async function canUseScope(userId, scope) {
   if (typeof scope !== 'string' || scope.length > 200) return false;
   const dm = /^brochat\/dm\/([A-Za-z0-9_-]+)$/.exec(scope);
-  if (dm) return dm[1].split('_').includes(userId);
+  // 以前は自分のIDが入っていれば通り、相手のいない "brochat/dm/<自分>" で幾らでも置けた(公式ドライブを埋められる)。
+  // 2人分のIDで、もう片方が今の友だち(ブロック無し)の時だけにする
+  if (dm) {
+    const ids = dm[1].split('_');
+    if (ids.length !== 2 || !ids.includes(userId)) return false;
+    const peer = ids[0] === userId ? ids[1] : ids[0];
+    if (!peer || peer === userId) return false;
+    return (await areFriends(userId, peer)) && !(await isBlockedEither(userId, peer));
+  }
   const gr = /^brochat\/groups\/([A-Za-z0-9-]+)$/.exec(scope);
   if (gr) return !!(await db.get('SELECT 1 AS ok FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [gr[1], userId]));
   // 投稿(タイムライン)の画像・動画。自分の分だけ
@@ -95,6 +104,13 @@ const driveUploadLimiter = rateLimit({
   ...require('../utils/rateLimits').perUser,
   message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
 });
+// 1人あたりの1日の上限。公式アカウントのドライブ(15GB)を1人で埋められないように
+const DAILY_BYTES = Number(process.env.DRIVE_DAILY_BYTES_PER_USER) || 2 * 1024 * 1024 * 1024;
+async function usedToday(userId) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  const r = await db.get('SELECT COALESCE(SUM(size), 0) AS total FROM drive_files WHERE owner_id = ? AND created_at > ?', [userId, since]);
+  return Number((r && r.total) || 0);
+}
 router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req, res) => {
   if (!(await gd.isConnected())) return res.status(503).json({ error: 'drive not connected' });
   const scope = String(req.get('x-scope') || '');
@@ -102,6 +118,9 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   const size = Number(req.get('content-length'));
   if (!Number.isFinite(size) || size <= 0) return res.status(411).json({ error: 'Content-Lengthが必要です' });
   if (size > MAX_BYTES) return res.status(413).json({ error: 'ファイルが大きすぎます' });
+  if (!(await isStaff(req.userId)) && (await usedToday(req.userId)) + size > DAILY_BYTES) {
+    return res.status(429).json({ error: '今日アップロードできる量を超えました。明日またお試しください' });
+  }
   // 投稿は暗号化しないので、ブラウザがそのまま再生できるよう本当の種類で置く。トークは暗号文なので中身不明のまま
   const post = isPostScope(scope);
   let mime = 'application/octet-stream';

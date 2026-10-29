@@ -9,14 +9,24 @@
 const MAX_CONTENT_LENGTH = 64 * 1024;          // 暗号文の本文(Base64)の上限
 const MAX_MEDIA_DATA_LENGTH = 35 * 1024 * 1024; // Base64直送りメディアの上限(約25MB相当)
 const MAX_MEDIA_URL_LENGTH = 500;
+const MAX_METADATA_LENGTH = 16 * 1024; // 暗号化メディアの付帯情報(ファイル名・分割長など)。1GBでも数KB
 const ALLOWED_MEDIA_TYPES = ['image', 'video', 'audio', 'file'];
 
 // メディアの置き場所はCloudinaryか、このサーバー経由のGoogleドライブ(/m/d/<id>)だけ。
 // 他所のURLは相手の端末に取りに行かせない。
 const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
+// Cloudinaryは自分たちのクラウドだけ。以前は res.cloudinary.com なら誰のアカウントでも通り、
+// 他人のクラウドに置いた画像で開いた時刻を数えられた
+const CLOUD_NAMES = new Set(['a6rxinoz', ...String(process.env.CLOUDINARY_CLOUD_NAME || '').split(',').map(x => x.trim()).filter(Boolean)]);
+function isOwnCloudinaryUrl(value, charset = /^[A-Za-z0-9_\-./,:%]+$/) {
+  if (typeof value !== 'string') return false;
+  const m = /^https:\/\/res\.cloudinary\.com\/([A-Za-z0-9_-]+)\/(.+)$/.exec(value);
+  if (!m || !CLOUD_NAMES.has(m[1]) || !charset.test(m[2]) || m[2].includes('..')) return false;
+  return true;
+}
 function isValidMessageMediaUrl(value) {
   if (typeof value !== 'string' || !value || value.length > MAX_MEDIA_URL_LENGTH) return false;
-  if (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_\-./,:%]+$/.test(value)) return true;
+  if (isOwnCloudinaryUrl(value)) return true;
   const m = /^https:\/\/([A-Za-z0-9.-]+(?::\d+)?)\/m\/d\/[A-Za-z0-9_-]{10,100}$/.exec(value);
   return !!(m && (SELF_HOSTS.has(m[1]) || process.env.NODE_ENV !== 'production' && /^localhost(:\d+)?$/.test(m[1])));
 }
@@ -45,6 +55,20 @@ function validateMessageInput(body, opts = {}) {
   if (mediaPublicId != null && (typeof mediaPublicId !== 'string' || mediaPublicId.length > 300)) {
     return 'メディアの指定が不正です';
   }
+  // 暗号化メディアの付帯情報。以前は大きさを見ておらず、1通2MBの文字列を詰めて
+  // DBを埋めたり、履歴の読み込み(100件)でサーバーのメモリを使い切らせたりできた
+  const { encryptedMetadata, chunkCount } = body || {};
+  if (encryptedMetadata != null) {
+    if (!allowMedia) return 'この操作ではメディアを変更できません';
+    if (typeof encryptedMetadata !== 'object' || Array.isArray(encryptedMetadata)) return 'メディアの情報が不正です';
+    const keys = Object.keys(encryptedMetadata);
+    if (keys.some(k => k !== 'encrypted' && k !== 'nonce')) return 'メディアの情報が不正です';
+    if (typeof encryptedMetadata.encrypted !== 'string' || encryptedMetadata.encrypted.length > MAX_METADATA_LENGTH) return 'メディアの情報が不正です';
+    if (typeof encryptedMetadata.nonce !== 'string' || encryptedMetadata.nonce.length > 64) return 'メディアの情報が不正です';
+  }
+  if (chunkCount != null && !(Number.isInteger(chunkCount) && chunkCount >= 0 && chunkCount <= 1000)) {
+    return 'メディアの情報が不正です';
+  }
   if (mediaData != null) {
     if (!allowMedia) return 'この操作ではメディアを変更できません';
     // 画像・動画は今は全部Cloudinaryへ暗号化して送る。本文にBase64を直接入れる古い形式は
@@ -60,5 +84,6 @@ module.exports = {
   MAX_MEDIA_DATA_LENGTH,
   ALLOWED_MEDIA_TYPES,
   isValidMessageMediaUrl,
+  isOwnCloudinaryUrl,
   validateMessageInput,
 };

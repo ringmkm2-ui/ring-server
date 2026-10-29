@@ -26,7 +26,7 @@ function isValidMediaUrl(value) {
   // 以前は Base64 の data: URI (最大約40MB)も受け付けていて、数件投稿するだけで
   // タイムラインを開いた人ごとにサーバーのメモリを使い切れた
   if (value.length > 500) return false;
-  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/[A-Za-z0-9_\-./%]+$/.test(value)) return true;
+  if (require('../utils/messageContent').isOwnCloudinaryUrl(value, /^[A-Za-z0-9_\-./%]+$/)) return true;
   // 100MBを超える動画はGoogleドライブ(このサーバーの /m/p/<id>)に置く
   return !!driveIdOf(value);
 }
@@ -311,7 +311,7 @@ router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
     `SELECT * FROM post_comments WHERE post_id = ? AND deleted_at IS NULL
        AND EXISTS (SELECT 1 FROM posts p WHERE p.id = post_comments.post_id AND p.deleted_at IS NULL)
        AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
-     ORDER BY created_at ASC`,
+     ORDER BY created_at ASC LIMIT 500`,
     [req.params.postId, req.user.userId, req.user.userId]
   );
   if (rows.length === 0) return res.json([]);

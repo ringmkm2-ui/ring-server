@@ -12,7 +12,7 @@ describe('大きすぎるデータ', () => {
     const a = await S.user('A');
     const big = 'data:image/png;base64,' + 'A'.repeat(1000);
     assert.equal((await a.call('POST', '/api/posts', { text: 'x', mediaUrl: big, mediaType: 'image' })).status, 400);
-    const ok = await a.call('POST', '/api/posts', { text: 'x', mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/brochat/posts/a.jpg', mediaType: 'image' });
+    const ok = await a.call('POST', '/api/posts', { text: 'x', mediaUrl: 'https://res.cloudinary.com/a6rxinoz/image/upload/v1/brochat/posts/a.jpg', mediaType: 'image' });
     assert.equal(ok.status, 200);
   });
 

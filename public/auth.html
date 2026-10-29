@@ -448,6 +448,8 @@
 
     // --- 共通: セッション保存 / 画面切替 ---
     let pendingVerifyEmail = null;
+    // メール認証はパスワードも一緒に送る(他人が同じメールで登録し直してパスワードを差し替える乗っ取りを防ぐため、サーバーが照合する)
+    let pendingVerifyPassword = null;
     let pendingTwoFaToken = null;
     // メールで新規登録が通った(確認コード待ちを含む)。最初のログインで、トーク一覧が暗号鍵の設定を案内する
     let pendingNewAccount = false;
@@ -471,6 +473,7 @@
 
     function backToLogin() {
       pendingVerifyEmail = null;
+      pendingVerifyPassword = null;
       pendingTwoFaToken = null;
       pendingResetEmail = null;
       document.querySelector('.auth-mode-switch').style.display = '';
@@ -503,10 +506,15 @@
         const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: pendingVerifyEmail, code })
+          body: JSON.stringify({ username: pendingVerifyEmail, code, password: pendingVerifyPassword || '' })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '確認に失敗しました');
+        if (!res.ok) {
+          // パスワードが合わない(別の人が同じメールで登録し直した等)時は、最初からやり直してもらう
+          if (data.needsPassword) { backToLogin(); }
+          throw new Error(data.error || '確認に失敗しました');
+        }
+        pendingVerifyPassword = null;
         if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
         storeSession(data);
         if (pendingNewAccount) localStorage.setItem('bc_new_account', '1');
@@ -682,6 +690,7 @@
 
         const data = await response.json();
 
+        if (data && data.needsVerification) pendingVerifyPassword = password;
         if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || 'ログインに失敗しました');
@@ -723,6 +732,7 @@
         const data = await response.json();
 
         if (response.ok) pendingNewAccount = true;
+        if (data && data.needsVerification) pendingVerifyPassword = password;
         if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || '登録に失敗しました');

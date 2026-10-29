@@ -28,7 +28,7 @@ const MAX_COMMUNITY_TEXT = 2000;
 function isValidCommunityMediaUrl(value) {
   if (!value) return true;
   if (typeof value !== 'string' || value.length > 500) return false;
-  return /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value);
+  return require('../utils/messageContent').isOwnCloudinaryUrl(value, /^[a-zA-Z0-9_\-./,]+$/);
 }
 
 // 招待コードの総当たり対策: 参加の試行はユーザー単位で15分に20回まで
@@ -454,7 +454,13 @@ router.post('/:id/distribute-keys', verifyToken, asyncHandler(async (req, res) =
 }));
 
 // 鍵の作り直し。誰かが抜けた後や、誰も今の鍵を読めなくなった時にメンバーの端末が呼ぶ
-router.post('/:id/rotate-key', verifyToken, asyncHandler(async (req, res) => {
+// 作り直しは1時間5回まで(グループと同じ。以前はコミュニティだけ無制限で、版を進め続けられた)
+const communityRotateLimiter = require('express-rate-limit')({
+  windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: '鍵の作り直しが多すぎます。しばらくしてから試してください' },
+});
+router.post('/:id/rotate-key', communityRotateLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { expectedVersion, encryptedKeysForMembers } = req.body || {};
   const c = await db.get('SELECT key_version FROM communities WHERE id = ?', [req.params.id]);
   if (!c) return res.status(404).json({ error: 'コミュニティが見つかりません' });
