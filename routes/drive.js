@@ -9,7 +9,7 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
-const { areFriends, isBlockedEither } = require('../utils/relations');
+const { canUploadTo } = require('../utils/uploadScope');
 
 const router = express.Router();
 const MAX_BYTES = 610 * 1024 * 1024; // 端末側の上限(600MB)+暗号化の分
@@ -18,25 +18,11 @@ async function isStaff(userId) {
   try { return (await adminUserIds('STAFF_USERS', require('../utils/adminNotify').DEFAULT_STAFF)).includes(userId); } catch (e) { return false; }
 }
 
-// 置き場所(端末が付ける folder 名)を、本人が当事者の会話に限る
+// 置き場所(端末が付ける folder 名)を、本人が当事者の会話に限る(Cloudinaryの署名と同じ基準。utils/uploadScope.js)
+// ドライブはファイルIDの下位フォルダを付けないので、ここでは付いていない形だけを通す
 async function canUseScope(userId, scope) {
-  if (typeof scope !== 'string' || scope.length > 200) return false;
-  const dm = /^brochat\/dm\/([A-Za-z0-9_-]+)$/.exec(scope);
-  // 以前は自分のIDが入っていれば通り、相手のいない "brochat/dm/<自分>" で幾らでも置けた(公式ドライブを埋められる)。
-  // 2人分のIDで、もう片方が今の友だち(ブロック無し)の時だけにする
-  if (dm) {
-    const ids = dm[1].split('_');
-    if (ids.length !== 2 || !ids.includes(userId)) return false;
-    const peer = ids[0] === userId ? ids[1] : ids[0];
-    if (!peer || peer === userId) return false;
-    return (await areFriends(userId, peer)) && !(await isBlockedEither(userId, peer));
-  }
-  const gr = /^brochat\/groups\/([A-Za-z0-9-]+)$/.exec(scope);
-  if (gr) return !!(await db.get('SELECT 1 AS ok FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [gr[1], userId]));
-  // 投稿(タイムライン)の画像・動画。自分の分だけ
-  const po = /^brochat\/posts\/([A-Za-z0-9_-]+)$/.exec(scope);
-  if (po) return po[1] === userId;
-  return false;
+  if (typeof scope !== 'string' || !/^brochat\/(dm\/[A-Za-z0-9_-]+|groups\/[A-Za-z0-9-]+|posts\/[A-Za-z0-9_-]+)$/.test(scope)) return false;
+  return canUploadTo(userId, scope);
 }
 const isPostScope = scope => /^brochat\/posts\//.test(scope || '');
 // 読む時は、抜けたメンバーでも当時のメッセージを見られるように left_at は問わない

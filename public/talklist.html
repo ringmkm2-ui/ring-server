@@ -565,9 +565,11 @@ window.ensureGroupCrypto = (function () {
 </script>
 <script src="/js/libsodium-wrappers.min.js"></script>
 <script src="/js/signalkeymanager.js"></script>
+<script src="/js/safetyNumber.js"></script>
 <script src="/js/groupE2E.js"></script>
 <script src="/js/communityE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
+<script src="/js/cloudinarySign.js"></script>
 <script defer src="/js/reportAttach.js"></script>
 <script src="/js/mediaSave.js"></script>
 <script src="/js/iconUpload.js"></script>
@@ -778,7 +780,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.292 beta</div>
+  <div class="version-badge">Bro Chat v1.28.293 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -3559,18 +3561,57 @@ setInterval(() => {
 // 登録した直後(auth.html が印を付ける)は待たずに出す。鍵ができるのを待つ処理は init の中にある
 window.addEventListener('load', () => setTimeout(() => { if (window.bcKeyBackup) window.bcKeyBackup.init(); }, localStorage.getItem('bc_new_account') === '1' ? 800 : 2500));
 
-function logout() {
+// ログアウトの時、この端末に暗号鍵を残すか。以前は必ず残していて、共用の端末だと次に使う人が
+// 前の人の秘密鍵と、自分が送った文の控え(own_plaintext_)を読めた。
+// 預けたバックアップで全部戻せるなら黙って消す。戻せないなら本人に選んでもらう
+function askKeepKeys() {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px';
+    const box = document.createElement('div');
+    box.style.cssText = 'width:100%;max-width:420px;background:var(--card-bg,#fff);color:var(--text,#111);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
+    const h = document.createElement('div'); h.style.cssText = 'font-size:17px;font-weight:700';
+    h.textContent = t2('logout_keys_title', 'この端末の暗号鍵');
+    const m = document.createElement('div'); m.style.cssText = 'font-size:14px;line-height:1.6;opacity:.8';
+    m.textContent = t2('logout_keys_body', '鍵のバックアップが無いので、消すとこれまでのメッセージがこの端末では読めなくなります。自分だけが使う端末なら残してください。家族や学校のPCなど、ほかの人も使う端末なら消してください。');
+    const mk = (label, bg, fg, v) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'padding:13px;border-radius:14px;border:0;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;background:' + bg + ';color:' + fg; b.onclick = () => { ov.remove(); resolve(v); }; return b; };
+    box.append(h, m,
+      mk(t2('logout_keep_keys', '残してログアウト'), '#007aff', '#fff', 'keep'),
+      mk(t2('logout_wipe_keys', '消してログアウト'), 'rgba(239,68,68,.12)', '#ef4444', 'wipe'),
+      mk(t2('cancel', 'やめる'), 'transparent', 'inherit', 'cancel'));
+    ov.appendChild(box);
+    ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); resolve('cancel'); } });
+    document.body.appendChild(ov);
+  });
+}
+
+async function logout() {
+  let wipe = false;
+  try {
+    const kb = window.bcKeyBackup && window.bcKeyBackup._internal;
+    if (kb && typeof kb.backupCoversLocal === 'function' && await kb.backupCoversLocal()) wipe = true;
+  } catch (e) {}
+  if (!wipe) {
+    const choice = await askKeepKeys();
+    if (choice === 'cancel') return;
+    wipe = choice === 'wipe';
+  }
   // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める
   try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fcmToken: localStorage.getItem('fcm_token') || undefined }) }).catch(() => {}); } catch (e) {}
-  // E2Eの秘密鍵と自分の送信控えは消さない。消すと再ログイン時に新しい鍵が作られ、
-  // それまでのメッセージが全部復号不能になる(鍵はユーザーID単位なので別アカウントとは混ざらない)
-  const keep = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/.test(k)) keep[k] = localStorage.getItem(k);
+  if (wipe) {
+    localStorage.clear();
+    // 通知の復号用にService Worker向けへ写した鍵も消す
+    try { indexedDB.deleteDatabase('brochat-e2e'); } catch (e) {}
+  } else {
+    // 残す: 鍵はユーザーID単位なので別アカウントとは混ざらない
+    const keep = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|community_key_|e2e_registered_|bc_sn_v1)/.test(k)) keep[k] = localStorage.getItem(k);
+    }
+    localStorage.clear();
+    for (const k in keep) localStorage.setItem(k, keep[k]);
   }
-  localStorage.clear();
-  for (const k in keep) localStorage.setItem(k, keep[k]);
   window.location.href = '/auth.html';
 }
 
@@ -3726,7 +3767,7 @@ document.getElementById('postMediaRemoveBtn').onclick = () => {
   document.getElementById('postVideoLoading').style.display = 'none';
 };
 
-// Cloudinaryへのチャンクアップロード(署名なしプリセット)。
+// Cloudinaryへのチャンクアップロード(サーバーの署名付き)。
 // 単発XHRだと大きい動画でiOSのネットワーク断/プラン上限に当たった時に
 // 「Network error」としか出ず原因が見えない。チャンク化すると
 // 途中失敗のリトライができ、上限超過時もCloudinaryのJSONエラーが読める。
@@ -3736,6 +3777,8 @@ async function uploadToCloudinaryChunked(file, resourceType, folder, onProgress)
   const uploadId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/[^a-zA-Z0-9]/g, '');
   const total = file.size;
   let start = 0, last = null;
+  // 全チャンクで同じ署名を使う(js/cloudinarySign.js。取れない時だけ署名なしプリセット)
+  const auth = window.bcCloudinarySign ? await window.bcCloudinarySign.get(folder) : null;
   while (start < total) {
     const end = Math.min(start + CHUNK, total);
     const blob = file.slice(start, end);
@@ -3745,7 +3788,8 @@ async function uploadToCloudinaryChunked(file, resourceType, folder, onProgress)
         last = await new Promise((resolve, reject) => {
           const fd = new FormData();
           fd.append('file', blob, file.name || 'upload');
-          fd.append('upload_preset', 'brochat_upload');
+          if (auth) { fd.append('api_key', auth.apiKey); fd.append('timestamp', String(auth.timestamp)); fd.append('signature', auth.signature); }
+          else fd.append('upload_preset', 'brochat_upload');
           fd.append('folder', folder);
           const xhr = new XMLHttpRequest();
           xhr.upload.addEventListener('progress', (ev) => {

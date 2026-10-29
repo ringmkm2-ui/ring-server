@@ -27,8 +27,17 @@ function baseUrl(req) {
 async function uploadToCloudinary(buf, mime) {
   const form = new FormData();
   form.append('file', new Blob([buf], { type: mime }), 'icon');
-  form.append('upload_preset', UPLOAD_PRESET);
   form.append('folder', 'brochat/icons');
+  // 秘密鍵があれば署名付きで送る(署名なしプリセットは誰でも使えるので、将来は止める)
+  if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const sig = require('crypto').createHash('sha256').update(`folder=brochat/icons&timestamp=${timestamp}` + process.env.CLOUDINARY_API_SECRET).digest('hex');
+    form.append('api_key', process.env.CLOUDINARY_API_KEY);
+    form.append('timestamp', String(timestamp));
+    form.append('signature', sig);
+  } else {
+    form.append('upload_preset', UPLOAD_PRESET);
+  }
   const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
     method: 'POST', body: form, signal: AbortSignal.timeout(12000),
   });

@@ -82,6 +82,27 @@
     return { added, verified: !!(vset && keys.every(k => vset.has(k))), hold: !!st.hold };
   }
 
+  // 受け取った暗号文(メッセージ・グループ鍵)を作った端末の鍵が、その人の鍵として知っているものか。
+  // サーバーは「相手の公開鍵」も「誰から届いたか」も自由に書けるので、サーバーが自分で作った鍵で
+  // 暗号化して相手になりすますと、以前は何の警告も無く本物として表示・採用していた。
+  // 戻り値: { ok:true } 知っている鍵 / { ok:true, added:true } 初めて見る鍵(記録して「鍵が変わりました」を出す)
+  //        { ok:false, added:true } 確認済みの相手なのに知らない鍵(なりすましの疑い。使わない)
+  function checkSender(me, peer, pub) {
+    if (!me || !peer || !pub || typeof pub !== 'string') return { ok: true };
+    const st = get(me, peer);
+    if (st && (st.known || []).includes(pub)) return { ok: true };
+    const wasVerified = !!(st && Array.isArray(st.verified));
+    observe(me, peer, [...((st && st.known) || []), pub]);
+    // 記録が無い相手(初めて)は覚えるだけ(TOFU)。記録があるのに知らない鍵なら知らせる
+    return { ok: !wasVerified, added: !!st };
+  }
+  // 確認済みの相手で、まだ確認していない(増えた)鍵。確認済みの相手には、この鍵へは送らない
+  function unconfirmedKeys(me, peer) {
+    const st = get(me, peer);
+    if (!st || !st.hold || !st.alert) return [];
+    return uniqSorted(st.alert.added || []);
+  }
+
   function status(me, peer, peerKeys) {
     const st = get(me, peer);
     if (!st) return { verified: false, hold: false, alert: null };
@@ -283,5 +304,5 @@ html.dark-mode .sn-btn.pri,body.dark-mode .sn-btn.pri{background:#0284c7;color:#
     render();
   }
 
-  g.SafetyNumber = { compute, groups, observe, status, setVerified, acknowledge, holdError, openSheet, QR_PREFIX, SVG_SHIELD, SVG_SHIELD_OK, SVG_WARN };
+  g.SafetyNumber = { compute, groups, observe, checkSender, unconfirmedKeys, status, setVerified, acknowledge, holdError, openSheet, QR_PREFIX, SVG_SHIELD, SVG_SHIELD_OK, SVG_WARN };
 })(window);

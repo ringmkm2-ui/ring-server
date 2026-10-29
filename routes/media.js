@@ -30,6 +30,27 @@ function generateCloudinarySig(params) {
   return crypto.createHash('sha256').update(sorted + CLOUDINARY_API_SECRET).digest('hex');
 }
 
+// --- Cloudinary へのアップロード許可(署名) ---
+// 以前は端末から「署名なしプリセット(brochat_upload)」で直接アップロードしていた。プリセット名とクラウド名が
+// 公開ソースに載っているので、ログインしていない世界中の誰でも好きなフォルダに好きなファイルを置けた
+// (容量を使い切って全員の画像を止める・こちらのアカウントでマルウェアを配る、が可能)。
+// 今は、置き場所がその人の会話・グループ・投稿かを確かめてから、サーバーが1件ずつ署名を出す。
+// Cloudinaryの管理画面で brochat_upload を無効(Signed)にすれば、署名の無いアップロードは通らなくなる。
+const { canUploadTo } = require('../utils/uploadScope');
+const signLimiter = require('express-rate-limit')({
+  windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
+});
+router.post('/sign', signLimiter, verifyToken, asyncHandler(async (req, res) => {
+  if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return res.status(503).json({ error: 'not configured' });
+  const folder = req.body && req.body.folder;
+  if (!(await canUploadTo(req.user.userId, folder))) return res.status(403).json({ error: 'この場所には置けません' });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = generateCloudinarySig({ folder, timestamp });
+  res.json({ cloudName: CLOUDINARY_CLOUD_NAME || 'a6rxinoz', apiKey: CLOUDINARY_API_KEY, timestamp, folder, signature, signatureAlgorithm: 'sha256' });
+}));
+
 // --- Cloudinary からメディアを削除 ---
 router.post('/delete', verifyToken, mediaUploadLimiter, asyncHandler(async (req, res) => {
   const { publicId } = req.body || {};

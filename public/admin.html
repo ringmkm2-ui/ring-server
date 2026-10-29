@@ -363,6 +363,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
 <script defer src="/js/deepgramVoice.js"></script>
+<script src="/js/cloudinarySign.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script defer src="/js/fileCard.js"></script>
 <script src="/js/nacl.min.js"></script>
@@ -387,7 +388,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.292 beta</div>
+  <div class="version-badge">Bro Chat v1.28.293 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1026,17 +1027,32 @@ function uniqB64(list) {
   return list.filter(k => k && !seen.has(k) && seen.add(k));
 }
 
+// 届いたメッセージを作った端末の鍵が、相手の鍵として知っているものかを確かめる(safetyNumber.js の checkSender)。
+// 初めて見る鍵なら「鍵が変わりました」を出す。確認済みの相手なのに知らない鍵なら、本文の前に警告を付ける
+const UNVERIFIED_SENDER_MARK = '[確認できない端末から届きました] ';
+function senderVerdict(peerId, senderPub, text) {
+  if (!window.SafetyNumber || !senderPub || !peerId) return text;
+  let r;
+  try { r = SafetyNumber.checkSender(myUserId, peerId, senderPub); } catch (e) { return text; }
+  if (r.added && typeof refreshSnUi === 'function') { try { setTimeout(refreshSnUi, 0); } catch (e) {} }
+  if (!r.ok) return ((window.i18n && i18n.t('sn_unverified_sender', UNVERIFIED_SENDER_MARK)) || UNVERIFIED_SENDER_MARK) + text;
+  return text;
+}
+
 // メッセージ内容を復号化
 // senderId が自分なら「自分が送ったメッセージ」なので、相手の公開鍵で開く
 async function decryptMessage(encryptedString, senderId) {
   await getOrCreateMyKeyPair();
+  const iAmSender = String(senderId) === String(myUserId);
+  const peerId = iAmSender ? otherId : senderId;
   if (window.E2EMulti && E2EMulti.isMulti(encryptedString)) {
     const out = E2EMulti.open(encryptedString, ringForMulti());
     if (!out) console.warn('復号化に失敗しました(e3: この端末あての分がありません)');
-    return out ? nacl.util.encodeUTF8(out) : null;
+    if (!out) return null;
+    const text = nacl.util.encodeUTF8(out);
+    if (!iAmSender) { const p = E2EMulti.parse(encryptedString); return senderVerdict(peerId, p && p.senderPub, text); }
+    return text;
   }
-  const iAmSender = String(senderId) === String(myUserId);
-  const peerId = iAmSender ? otherId : senderId;
   const parsed = parseCipher(encryptedString);
 
   let full, nonce, box;
@@ -1068,8 +1084,15 @@ async function decryptMessage(encryptedString, senderId) {
         let opened = null;
         try { opened = nacl.box.open(box, nonce, peerKey, mine.secretKey); } catch (e) {}
         if (opened) {
+          const text = nacl.util.encodeUTF8(opened);
+          if (!iAmSender) {
+            const v = senderVerdict(peerId, peerB64, text);
+            // 確認できない鍵は、次回から自動で試す候補に入れない
+            if (v === text) rememberPeerKey(peerId, peerB64);
+            return v;
+          }
           rememberPeerKey(peerId, peerB64);
-          return nacl.util.encodeUTF8(opened);
+          return text;
         }
       }
     }
@@ -2071,6 +2094,15 @@ function renderMessageImpl(msg) {
     meta.innerHTML = `<span class="time">${t}</span><div class="check-marks"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:-5px"><polyline points="1 6 4 9 11 1" class="check-1${/^(temp|call)-/.test(String(msg.id)) ? '' : ' lit'}"/></svg><svg width="12" height="11" viewBox="0 0 12 11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4 9 11 1" class="check-2${msg.readAt ? ' lit' : ''}"/></svg></div>`;
   } else {
     meta.innerHTML = `<span class="time">${t}</span>`;
+  }
+  // 暗号化されていない文字のメッセージ(通話の記録以外)は、時刻の横に「暗号化なし」と出す。
+  // サーバーは暗号化しない本文を相手の名前で差し込めるので、本物と見分けられるようにする
+  if (!isMine && !msg.encrypted && !mediaSrc && typeof msg.content === 'string' && msg.content && msg.content.indexOf('__call__') === -1 && !/^temp-/.test(String(msg.id))) {
+    const lab = document.createElement('span');
+    lab.className = 'plain-label';
+    lab.textContent = (window.i18n && i18n.t('not_encrypted', '暗号化なし')) || '暗号化なし';
+    lab.style.cssText = 'font-size:10px;opacity:.6;margin-right:6px';
+    meta.insertBefore(lab, meta.firstChild);
   }
   bubble.appendChild(meta);
   wrap.appendChild(bubble);
