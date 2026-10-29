@@ -135,6 +135,14 @@ async function initDB() {
 
     CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT);
 
+    -- 消えるメッセージ(会話ごとのタイマー)。conv_key は 'dm:<小さいID>:<大きいID>' または 'g:<groupId>'
+    CREATE TABLE IF NOT EXISTS conversation_ttl (
+      conv_key TEXT PRIMARY KEY,
+      ttl_seconds INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS drive_files (
       file_id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL,
@@ -461,7 +469,8 @@ async function initDB() {
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
     posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],
-    group_messages: [['replied_to_id', 'TEXT']],
+    group_messages: [['replied_to_id', 'TEXT'], ['expires_at', 'TEXT']],
+    messages: [['expires_at', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
@@ -472,6 +481,10 @@ async function initDB() {
     const have = new Set(info.length ? info[0].values.map(r => r[1]) : []);
     for (const [col, type] of cols) if (!have.has(col)) db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
   }
+
+  // 期限つきの行だけを見る部分索引(掃除用)。列は上の addCols で足したあとに作る
+  db.run('CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(expires_at) WHERE expires_at IS NOT NULL');
+  db.run('CREATE INDEX IF NOT EXISTS idx_group_messages_expires ON group_messages(expires_at) WHERE expires_at IS NOT NULL');
 
   persist();
   console.log('[db] initialized (' + DB_FILE + ')');

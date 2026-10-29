@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <script src="/js/themeBoot.js"></script>
+<script src="/js/appLock.js"></script>
 <script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
@@ -415,6 +416,18 @@ html.dark-mode.dark-black .tl-skel i{background:rgba(255,255,255,.06)}
 .set-row[hidden]{display:none}
 .set-row:has(+ .set-row[hidden]:last-child){border-bottom:none}
 .set-btn:active{background:rgba(120,120,128,.12)}
+.set-row.sr-d{padding-top:10px;padding-bottom:10px;align-items:center}
+.sr-t{display:block;font-size:15px;line-height:1.35}
+.sr-s{display:block;font-size:12px;color:#8e8e93;line-height:1.5;margin-top:2px;font-weight:400}
+.sr-s .sr-warn{display:block;color:#8e8e93;opacity:.85;margin-top:2px}
+.set-row.sr-danger{color:#ef4444}
+.set-row[hidden].sr-d{display:none}
+.al-opt{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;margin-bottom:8px;border:0;border-radius:14px;background:rgba(120,120,128,.14);color:inherit;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;text-align:left}
+.al-opt:active{filter:brightness(.88)}
+.al-err{font-size:13px;color:#ef4444;margin:6px 2px 0;min-height:18px}
+.al-hint{font-size:13px;line-height:1.6;opacity:.75;margin:4px 2px 12px}
+.al-pin{width:100%;padding:12px 16px;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:20px;letter-spacing:6px;text-align:center;font-weight:600;background:#fff;color:#0f172a;font-family:inherit}
+html.dark-mode .al-pin{background:#1a1f29;color:#f1f5f9;border-color:rgba(255,255,255,.12)}
 .set-val{color:#8e8e93;font-size:14px;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .set-row select{border:none;background:transparent;color:#8e8e93;font-size:14px;text-align:right}
 .ios-switch{appearance:none;-webkit-appearance:none;width:51px;height:31px;border-radius:999px;background:rgba(120,120,128,.3);position:relative;transition:background .25s ease;flex:none;margin:0}
@@ -744,6 +757,7 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script src="/js/userSettings.js"></script>
+<script src="/js/privacyScreen.js"></script>
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/shareTarget.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
@@ -944,7 +958,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.298 beta</div>
+  <div class="version-badge">Bro Chat v1.29.0 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1099,6 +1113,26 @@ window.ensureGroupCrypto = (function () {
       <label class="set-row"><span data-i18n="sec_login_alert">新しい端末のログインをメールで知らせる</span><input type="checkbox" class="ios-switch" id="setLoginAlert"></label>
       <button type="button" class="set-row set-btn" id="setSessions"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><rect x="17" y="9" width="5" height="11" rx="1.5"/><path d="M6 18h6"/></svg><span data-i18n="sec_sessions">ログイン中の端末</span></span><span class="set-val" id="setSessionsVal"></span></button>
       <button type="button" class="set-row set-btn" id="setSecurity"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9-4.8-.7-8-4.5-8-9V6l8-3z"/><polyline points="9 12 11 14 15 10"/></svg><span data-i18n="twofa_row">2段階認証</span></span><span class="set-val" id="setSecVal"></span></button>
+    </div>
+    <div class="set-section-title" data-k="sx_dev">この端末の保護</div>
+    <div class="set-group">
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="applock_t">アプリロック</span><span class="sr-s" data-k="applock_d">開くたびにPINを聞きます。この端末の中だけで使います。</span></span><input type="checkbox" class="ios-switch" id="setAppLock" role="switch"></label>
+      <button type="button" class="set-row set-btn" id="setAppLockChange" hidden><span data-k="applock_change">PINを変更</span></button>
+      <button type="button" class="set-row set-btn" id="setAppLockDelay" hidden><span data-k="applock_delay">ロックまでの時間</span><span class="set-val" id="setAppLockDelayVal"></span></button>
+      <button type="button" class="set-row set-btn sr-danger" id="setAppLockOff" hidden><span data-k="applock_off">オフにする(PIN確認)</span></button>
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setPrivacyScreen_t">画面を隠す</span><span class="sr-s"><span data-k="setPrivacyScreen_d">アプリ切替やバックグラウンドで、画面の中身を見せません。</span></span></span><input type="checkbox" class="ios-switch" id="setPrivacyScreen" role="switch"></label>
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setBlockShots_t">スクショ・画面録画を禁止</span><span class="sr-s"><span data-k="setBlockShots_d">この端末でのスクリーンショットと画面録画を止めます。</span><span class="sr-warn" id="setBlockShotsNote" data-k="blockshots_note" hidden>対応した新しいアプリ版が必要です</span></span></span><input type="checkbox" class="ios-switch" id="setBlockShots" role="switch"></label>
+    </div>
+    <div class="set-section-title" data-k="sx_notif">通知とリンク</div>
+    <div class="set-group">
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setHideNotifBody_t">通知の本文を隠す</span><span class="sr-s"><span data-k="setHideNotifBody_d">通知には「新しいメッセージ」とだけ出します。</span></span></span><input type="checkbox" class="ios-switch" id="setHideNotifBody" role="switch"></label>
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setLinkPreview_t">リンクのプレビュー</span><span class="sr-s"><span data-k="setLinkPreview_d">送ったリンクのタイトルと画像を出します。</span><span class="sr-warn" data-k="linkpreview_note">オンにすると、送ったリンクのURLを取得のためサーバーが開きます。E2Eの内容そのものは見えません</span></span></span><input type="checkbox" class="ios-switch" id="setLinkPreview" role="switch"></label>
+    </div>
+    <div class="set-section-title" data-k="sx_msg">メッセージ</div>
+    <div class="set-group">
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setSaveDrafts_t">下書きを保存</span><span class="sr-s"><span data-k="setSaveDrafts_d">送信前の文字を、閉じても残します。</span></span></span><input type="checkbox" class="ios-switch" id="setSaveDrafts" role="switch"></label>
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setAutoResend_t">送信失敗を自動で再送</span><span class="sr-s"><span data-k="setAutoResend_d">電波が戻ったら、送れなかったメッセージを自動で送り直します。</span></span></span><input type="checkbox" class="ios-switch" id="setAutoResend" role="switch"></label>
+      <div class="set-row sr-d"><span style="display:flex;align-items:flex-start;gap:10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M9 2.5h6"/></svg><span><span class="sr-t" data-k="disappear_t">消えるメッセージ</span><span class="sr-s" data-k="disappear_d">トークごとに、そのトークのメニューから設定します。ここにスイッチはありません。</span></span></span></div>
     </div>
     <div class="set-section-title" data-i18n="storage">ストレージ</div>
     <div class="set-group">
@@ -2627,6 +2661,7 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('setMyId').textContent = localStorage.getItem('ring_userIdCode') || (document.getElementById('myIdCode') || {}).textContent || '';
   refreshSecRow();
   applyServerSettingsToUI();
+  if (typeof refreshAppLockRows === 'function') { refreshAppLockRows(); refreshSecureNote(); }
   if (window.bcSettings) bcSettings.refresh().then(applyServerSettingsToUI).catch(() => {});
   settingsMov.classList.add('open');
   history.pushState({ settings: 1 }, '');
@@ -2931,12 +2966,20 @@ const SERVER_SWITCHES = {
   setHideIp: 'hideIpInCalls',
   setCallCode: 'showCallCode',
   setLoginAlert: 'loginAlertEmail',
+  setPrivacyScreen: 'privacyScreen',
+  setBlockShots: 'blockScreenshots',
+  setHideNotifBody: 'hideNotificationBody',
+  setLinkPreview: 'linkPreview',
+  setSaveDrafts: 'saveDrafts',
+  setAutoResend: 'autoResend',
 };
+// サーバー側の初期値(まだ値が無い時の見た目)
+const SERVER_SWITCH_DEFAULTS = { saveDrafts: true, autoResend: true };
 function applyServerSettingsToUI() {
   if (!window.bcSettings) return;
   for (const [id, key] of Object.entries(SERVER_SWITCHES)) {
     const el = document.getElementById(id);
-    if (el) el.checked = !!bcSettings.get(key);
+    if (el) { const v = bcSettings.get(key); el.checked = v === undefined ? !!SERVER_SWITCH_DEFAULTS[key] : !!v; }
   }
   const sel = document.getElementById('setAllowCalls');
   if (sel) sel.value = bcSettings.get('allowCallsFrom') || 'friends';
@@ -2956,6 +2999,153 @@ for (const [id, key] of Object.entries(SERVER_SWITCHES)) {
     try { await bcSettings.update({ allowCallsFrom: e.target.value }); }
     catch (err) { e.target.value = prev; alert(t2('settings_save_failed', '設定を保存できませんでした')); }
   });
+}
+
+// --- 端末の保護(アプリロック / 画面を隠す / スクショ禁止) ---
+// 画面の文字は data-k の鍵で i18n に通す(無ければ書いてある日本語のまま)
+document.querySelectorAll('[data-k]').forEach(n => { n.textContent = t2(n.getAttribute('data-k'), n.textContent); });
+const AL_DELAYS = [[0, 'すぐ', 'applock_d0'], [60, '1分', 'applock_d60'], [300, '5分', 'applock_d300'], [900, '15分', 'applock_d900']];
+function alDelayLabel(sec) { const d = AL_DELAYS.find(x => x[0] === sec) || AL_DELAYS[0]; return t2(d[2], d[1]); }
+function alErrText(e) { return e && e.code === 'locked_out' ? t2('applock_locked_out', '失敗が続いたため、しばらく試せません') : ((e && e.message) || t2('settings_save_failed', '設定を保存できませんでした')); }
+function fixSwitchLabels() {
+  // lgControls は行の最初の span 全体(説明文まで)を読み上げ名にしてしまうので、タイトルだけに直す
+  document.querySelectorAll('.set-row.sr-d').forEach(row => {
+    const t = row.querySelector('.sr-t'), sw = row.querySelector('.lg-sw');
+    if (t && sw) sw.setAttribute('aria-label', t.textContent.trim());
+  });
+}
+function refreshAppLockRows() {
+  fixSwitchLabels();
+  const L = window.BroAppLock;
+  const on = !!(L && L.isEnabled());
+  const sw = document.getElementById('setAppLock');
+  if (sw) { sw.checked = on; sw.disabled = !L; }
+  for (const id of ['setAppLockChange', 'setAppLockDelay', 'setAppLockOff']) { const r = document.getElementById(id); if (r) r.hidden = !on; }
+  const v = document.getElementById('setAppLockDelayVal');
+  if (v && L && on) v.textContent = alDelayLabel(L.getAutoLockSec());
+}
+function refreshSecureNote() {
+  const note = document.getElementById('setBlockShotsNote');
+  if (!note) return;
+  const P = window.BroPrivacyScreen;
+  const native = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall);
+  if (!native) { note.hidden = false; return; }
+  if (P && P.secureSupported() === true) { note.hidden = true; return; }
+  note.hidden = false;
+  if (P && P.probeSecure) P.probeSecure().then(ok => { note.hidden = !!ok; });
+}
+function alPinField(label, autofill) {
+  const wrap = secNode('div', null, 'margin-bottom:10px');
+  wrap.appendChild(secNode('div', label, 'font-size:13px;opacity:.7;margin:0 2px 4px'));
+  const i = document.createElement('input');
+  i.type = 'password'; i.className = 'al-pin';
+  i.setAttribute('inputmode', 'numeric'); i.setAttribute('pattern', '[0-9]*');
+  i.setAttribute('autocomplete', 'off'); i.setAttribute('autocapitalize', 'off');
+  i.maxLength = 8; i.setAttribute('aria-label', label);
+  i.addEventListener('input', () => { i.value = i.value.replace(/\D/g, '').slice(0, 8); });
+  wrap.appendChild(i);
+  wrap._input = i;
+  return wrap;
+}
+function alErrBox() { const e = secNode('div', '', 'min-height:18px'); e.className = 'al-err'; e.setAttribute('role', 'alert'); return e; }
+function alOpen(titleKey, titleFb) {
+  const h = document.getElementById('secTitle');
+  if (h) { h.removeAttribute('data-i18n'); h.textContent = t2(titleKey, titleFb); }
+  secBody.textContent = '';
+  secMov.classList.add('open');
+}
+function alClose() { secMov.classList.remove('open'); refreshAppLockRows(); }
+function alDelayPicker(cur, onPick) {
+  const box = secNode('div');
+  AL_DELAYS.forEach(([sec, fb, key]) => {
+    const b = secNode('button', null);
+    b.type = 'button'; b.className = 'al-opt';
+    b.appendChild(secNode('span', t2(key, fb)));
+    if (sec === cur) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const s = document.createElementNS(ns, 'svg'); s.setAttribute('width', '18'); s.setAttribute('height', '18'); s.setAttribute('viewBox', '0 0 24 24');
+      s.setAttribute('fill', 'none'); s.setAttribute('stroke', '#34c759'); s.setAttribute('stroke-width', '2.5'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true');
+      const p = document.createElementNS(ns, 'path'); p.setAttribute('d', 'M5 13l4 4L19 7'); s.appendChild(p);
+      b.appendChild(s); b.setAttribute('aria-current', 'true');
+    }
+    b.onclick = () => onPick(sec);
+    box.appendChild(b);
+  });
+  return box;
+}
+function openAppLockSetup() {
+  alOpen('applock_title', 'アプリロック');
+  secBody.appendChild(secNode('p', t2('applock_setup_intro', '4〜8桁の数字を決めてください。PINはこの端末にだけ置かれ、忘れると復元できません(ログアウトすれば解除できます)。'), 'font-size:14px;line-height:1.6;margin:0 2px 12px;opacity:.8'));
+  const a = alPinField(t2('applock_pin', 'PIN(4〜8桁)'));
+  const b = alPinField(t2('applock_pin_again', 'もう一度入力'));
+  const err = alErrBox();
+  let delay = 0;
+  const pick = secNode('div', null, 'margin-top:6px');
+  const drawPick = () => { pick.textContent = ''; pick.appendChild(secNode('div', t2('applock_delay', 'ロックまでの時間'), 'font-size:13px;opacity:.7;margin:6px 2px 6px')); pick.appendChild(alDelayPicker(delay, s => { delay = s; drawPick(); })); };
+  drawPick();
+  secBody.append(a, b, err, pick);
+  secBody.appendChild(secButton(t2('applock_start', 'ロックをオンにする'), 'savebtn', async () => {
+    err.textContent = '';
+    const p1 = a._input.value, p2 = b._input.value;
+    if (!/^\d{4,8}$/.test(p1)) { err.textContent = t2('applock_err_format', 'PINは4〜8桁の数字にしてください'); a._input.focus(); return; }
+    if (p1 !== p2) { err.textContent = t2('applock_err_mismatch', '2回の入力が合っていません'); b._input.focus(); return; }
+    try { await BroAppLock.setup(p1, delay); alClose(); } catch (e) { err.textContent = alErrText(e); }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', alClose));
+  setTimeout(() => a._input.focus(), 60);
+}
+function openAppLockChange() {
+  alOpen('applock_change', 'PINを変更');
+  const o = alPinField(t2('applock_pin_now', '今のPIN'));
+  const n = alPinField(t2('applock_pin_new', '新しいPIN(4〜8桁)'));
+  const n2 = alPinField(t2('applock_pin_again', 'もう一度入力'));
+  const err = alErrBox();
+  secBody.append(o, n, n2, err);
+  secBody.appendChild(secButton(t2('applock_change_btn', '変更する'), 'savebtn', async () => {
+    err.textContent = '';
+    if (!/^\d{4,8}$/.test(n._input.value)) { err.textContent = t2('applock_err_format', 'PINは4〜8桁の数字にしてください'); return; }
+    if (n._input.value !== n2._input.value) { err.textContent = t2('applock_err_mismatch', '2回の入力が合っていません'); return; }
+    try { await BroAppLock.change(o._input.value, n._input.value); alClose(); }
+    catch (e) { err.textContent = alErrText(e); if (e && e.code === 'wrong_pin') { o._input.value = ''; o._input.focus(); } }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', alClose));
+  setTimeout(() => o._input.focus(), 60);
+}
+function openAppLockOff() {
+  alOpen('applock_off', 'アプリロックをオフにする');
+  secBody.appendChild(secNode('p', t2('applock_off_intro', 'オフにするには、今のPINを入力してください。'), 'font-size:14px;line-height:1.6;margin:0 2px 12px;opacity:.8'));
+  const o = alPinField(t2('applock_pin_now', '今のPIN'));
+  const err = alErrBox();
+  secBody.append(o, err);
+  secBody.appendChild(secButton(t2('applock_off_btn', 'オフにする'), 'savebtn', async () => {
+    err.textContent = '';
+    try { await BroAppLock.disable(o._input.value); alClose(); }
+    catch (e) { err.textContent = alErrText(e); if (e && e.code === 'wrong_pin') { o._input.value = ''; o._input.focus(); } }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', alClose));
+  setTimeout(() => o._input.focus(), 60);
+}
+function openAppLockDelay() {
+  alOpen('applock_delay', 'ロックまでの時間');
+  secBody.appendChild(secNode('p', t2('applock_delay_intro', 'アプリを離れてから、どれくらいでロックするかを決めます。「すぐ」は2秒以上離れたらロックします。'), 'font-size:14px;line-height:1.6;margin:0 2px 12px;opacity:.8'));
+  secBody.appendChild(alDelayPicker(BroAppLock.getAutoLockSec(), s => { BroAppLock.setAutoLockSec(s); alClose(); }));
+  secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', alClose));
+}
+{
+  const sw = document.getElementById('setAppLock');
+  if (sw) sw.addEventListener('change', e => {
+    // 設定/解除が終わるまで見た目は元のままにしておく(やめたら戻る)
+    const want = e.target.checked;
+    e.target.checked = !want;
+    if (!window.BroAppLock) return;
+    if (want) openAppLockSetup(); else openAppLockOff();
+  });
+  document.getElementById('setAppLockChange')?.addEventListener('click', openAppLockChange);
+  document.getElementById('setAppLockDelay')?.addEventListener('click', openAppLockDelay);
+  document.getElementById('setAppLockOff')?.addEventListener('click', openAppLockOff);
+  if (window.BroAppLock) BroAppLock.onChange(refreshAppLockRows);
+  refreshAppLockRows();
+  refreshSecureNote();
 }
 
 // --- ログイン中の端末(設定 > アカウントのセキュリティ) ---
@@ -3971,6 +4161,7 @@ async function logout() {
     localStorage.clear();
     for (const k in keep) localStorage.setItem(k, keep[k]);
   }
+  try { if (window.BroAppLock) BroAppLock.reset(); } catch (e) {}
   window.location.href = '/auth.html';
 }
 

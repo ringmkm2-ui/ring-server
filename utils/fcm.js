@@ -149,6 +149,28 @@ async function sendCallCancelled(recipientId, callId) {
 /**
  * メッセージ通知を送信
  */
+// extra.containsMessage: true のとき、受信者の「通知に本文を出さない」設定を見て、
+// 有効なら本文・暗号文・公開鍵を落として汎用の文言にする(送信者名は残す)。
+// 組み立ては buildMessageData に分けてある(設定ごとの出力をテストで確かめるため)。
+function buildMessageData(senderName, content, chatType, extra = {}, hide = false) {
+  if (hide) ({ content, extra } = require('./notifyPrivacy').privatizeFcmArgs(content, extra));
+  // メッセージ本文を短縮
+  let body = content || '';
+  if (body.length > 100) body = body.substring(0, 100) + '...';
+  if (body.startsWith('data:')) body = '画像を送信しました';
+  return {
+    type: 'message',
+    sender_name: senderName || '不明',
+    content: body,
+    chat_type: chatType || 'dm',
+    sender_id: String(extra.senderId || ''),
+    chat_id: String(extra.chatId || ''),
+    cipher: String(extra.cipher || ''),
+    sender_pub: String(extra.senderPub || ''),
+    sender_avatar: String(extra.senderPic || ''),
+  };
+}
+
 async function sendMessageNotification(recipientId, senderName, content, chatType, extra = {}) {
   if (!initialized) { initFirebase(); }
   if (!initialized) return;
@@ -156,23 +178,9 @@ async function sendMessageNotification(recipientId, senderName, content, chatTyp
   const tokens = await getTokens(recipientId);
   if (tokens.length === 0) return;
 
-  // メッセージ本文を短縮
-  let body = content || '';
-  if (body.length > 100) body = body.substring(0, 100) + '...';
-  if (body.startsWith('data:')) body = '画像を送信しました';
-
+  const hide = extra.containsMessage ? await require('./notifyPrivacy').shouldHideBody(recipientId) : false;
   const message = {
-    data: {
-      type: 'message',
-      sender_name: senderName || '不明',
-      content: body,
-      chat_type: chatType || 'dm',
-      sender_id: String(extra.senderId || ''),
-      chat_id: String(extra.chatId || ''),
-      cipher: String(extra.cipher || ''),
-      sender_pub: String(extra.senderPub || ''),
-      sender_avatar: String(extra.senderPic || ''),
-    },
+    data: buildMessageData(senderName, content, chatType, extra, hide),
     // data専用メッセージにする。notification を付けるとアプリが裏にいる時にOSが勝手に表示し、
     // 「そのトークを開いている時は出さない」「タップでそのトークを開く」がネイティブ側で出来なかった
     android: { priority: 'high', ttl: 24 * 3600 * 1000 },
@@ -207,4 +215,4 @@ async function sendToTokens(tokens, messageTemplate, userId) {
 // 起動時に初期化
 initFirebase();
 
-module.exports = { initFirebase, saveToken, removeToken, getTokens, sendCallNotification, sendCallCancelled, sendMessageNotification };
+module.exports = { buildMessageData, initFirebase, saveToken, removeToken, getTokens, sendCallNotification, sendCallCancelled, sendMessageNotification };

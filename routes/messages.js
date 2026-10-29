@@ -6,6 +6,7 @@ const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
+const disappearing = require('../utils/disappearing');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
 // 上限なしだと50MB JSONで1リクエストでDB/メモリを食いつぶせる。
@@ -53,6 +54,11 @@ function toPreview(content, encrypted, msgType) {
       const c = parsed.__call__ || {};
       const call = { status: String(c.status || '').slice(0, 20), video: !!c.video, duration: Math.max(0, Math.min(86400, Number(c.duration) || 0)) };
       return { kind: 'call', text: '通話', call };
+    }
+    if (msgType === 'notice' && parsed.__notice__ && parsed.__notice__.kind === 'ttl') {
+      // 消えるメッセージの設定変更。文言はサーバーが作った text をそのまま一覧に出す
+      const text = String(parsed.__notice__.text || '').slice(0, 120);
+      return { kind: 'ttl', text };
     }
     if (msgType === 'notice' && parsed.__notice__ && parsed.__notice__.kind === 'ban') {
       const name = String(parsed.__notice__.name || 'ユーザー').slice(0, 40);
@@ -126,8 +132,9 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     if (repliedToId) {
       const replied = await db.get(
         `SELECT id FROM messages
-          WHERE id = ? AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`,
-        [repliedToId, req.userId, recipientId, recipientId, req.userId]
+          WHERE id = ? AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+            AND ${disappearing.notExpiredSql()}`,
+        [repliedToId, req.userId, recipientId, recipientId, req.userId, disappearing.nowParam()]
       );
       if (!replied) return res.status(404).json({ error: 'replied message not found' });
     }
@@ -152,9 +159,11 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
     }
 
+    // 消えるメッセージ: この会話にタイマーがあれば、送った時刻から数えた期限を押す(無ければ NULL = 消えない)
+    const expiresAt = await disappearing.expiresAtFor(disappearing.dmKey(req.userId, recipientId));
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id, hidden_for_recipient) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null, hiddenForRecipient]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id, hidden_for_recipient, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null, hiddenForRecipient, expiresAt]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -172,6 +181,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         encrypted: !!msg.encrypted,
         repliedToId: msg.replied_to_id || null,
         createdAt: msg.created_at,
+        expiresAt: expiresAt,
       }
     };
     if (!hiddenForRecipient) broadcastToUser(recipientId, payload);
@@ -191,7 +201,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         // FCMの上限4KBに収まる文字メッセージだけ。
         const cipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 3000) ? content : '';
         require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm',
-          { senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '', senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic) })
+          { containsMessage: true, senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '', senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic) })
           .catch(err => console.error('[fcm] new_message failed:', err.message));
       }).catch(() => {});
     }
@@ -210,7 +220,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         // 本文は暗号文のまま。受け取った端末のService Workerの中でだけ復号して表示する
         cipher: wpCipher,
         senderPub,
-      }).catch(err => console.error('[push] new_message send failed:', err.message));
+      }, { containsMessage: true }).catch(err => console.error('[push] new_message send failed:', err.message));
     }
 
     res.json({ ok: true, message: payload.message });
@@ -234,8 +244,9 @@ router.get('/history/:userId', auth, async (req, res) => {
     let sql = `
       SELECT * FROM messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
+        AND ${disappearing.notExpiredSql()}
     `;
-    const params = [req.userId, otherId, otherId, req.userId];
+    const params = [req.userId, otherId, otherId, req.userId, disappearing.nowParam()];
 
     if (before) {
       sql += ' AND created_at < ?';
@@ -258,8 +269,8 @@ router.get('/history/:userId', auth, async (req, res) => {
     // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
     // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
     const newlyRead = !markRead ? [] : await db.all(
-      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
-      [otherId, req.userId]
+      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND " + disappearing.notExpiredSql(),
+      [otherId, req.userId, disappearing.nowParam()]
     );
     if (markRead) await db.run(
       "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
@@ -308,6 +319,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         editedAt: m.edited_at,
         deletedAt: m.deleted_at,
         pinnedAt: m.pinned_at,
+        expiresAt: m.expires_at || null,
         reactions: reactions.map(r => ({ emoji: r.emoji, count: Number(r.cnt) })),
       });
     }
@@ -334,8 +346,9 @@ router.get('/talks', auth, async (req, res) => {
       WHERE m.id IN (
         SELECT (
           SELECT x.id FROM messages x
-          WHERE (x.sender_id = p.other_id AND x.recipient_id = ? AND COALESCE(x.hidden_for_recipient, false) = false)
-             OR (x.sender_id = ? AND x.recipient_id = p.other_id)
+          WHERE ((x.sender_id = p.other_id AND x.recipient_id = ? AND COALESCE(x.hidden_for_recipient, false) = false)
+             OR (x.sender_id = ? AND x.recipient_id = p.other_id))
+             AND ${disappearing.notExpiredSql('x')}
           ORDER BY x.created_at DESC, x.id DESC LIMIT 1
         )
         FROM (
@@ -344,12 +357,12 @@ router.get('/talks', auth, async (req, res) => {
           WHERE (sender_id = ? OR (recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false)) AND sender_id != recipient_id
         ) p
       )
-    `, [me, me, me, me, me]);
+    `, [me, me, disappearing.nowParam(), me, me, me]);
 
     // 2) 相手ごとの未読数
     const unreadRows = await db.all(
-      'SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false GROUP BY sender_id',
-      [me]
+      `SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND ${disappearing.notExpiredSql()} GROUP BY sender_id`,
+      [me, disappearing.nowParam()]
     );
     const unreadBy = new Map(unreadRows.map(r => [r.sender_id, Number(r.cnt)]));
 
@@ -637,9 +650,9 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     const rows = await db.all(`
       SELECT * FROM messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
-      AND pinned_at IS NOT NULL AND deleted_at IS NULL
+      AND pinned_at IS NOT NULL AND deleted_at IS NULL AND ${disappearing.notExpiredSql()}
       ORDER BY pinned_at DESC
-    `, [req.userId, otherId, otherId, req.userId]);
+    `, [req.userId, otherId, otherId, req.userId, disappearing.nowParam()]);
 
     res.json(rows.map(m => ({
       id: m.id,
@@ -651,6 +664,62 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     })));
   } catch (e) {
     console.error('Error fetching pinned messages:', e.message);
+    sendServerError(res, e);
+  }
+});
+
+// --- 消えるメッセージ(1対1) ---
+// 友だち同士なら、どちらでもこの会話のタイマーを見たり変えたりできる。
+// GET /api/messages/ttl/:otherUserId  -> { ttlSeconds }
+// PUT /api/messages/ttl/:otherUserId  body: { ttlSeconds: 0 | 3600 | 86400 | 604800 }
+//   -> { ok, ttlSeconds }。変えた時は会話にお知らせを残し、両者へ WS 'conversation_ttl' を流す
+async function requireDmPartner(req, res) {
+  const otherId = req.params.otherUserId;
+  if (!otherId || typeof otherId !== 'string' || otherId.length > 64 || otherId === req.userId) {
+    res.status(400).json({ error: '相手の指定が正しくありません' });
+    return null;
+  }
+  const { areFriends } = require('../utils/relations');
+  if (!(await areFriends(req.userId, otherId))) {
+    res.status(403).json({ error: 'このユーザーとは友達ではありません' });
+    return null;
+  }
+  return otherId;
+}
+
+router.get('/ttl/:otherUserId', auth, async (req, res) => {
+  try {
+    const otherId = await requireDmPartner(req, res);
+    if (!otherId) return;
+    res.json({ ttlSeconds: await disappearing.getTtl(disappearing.dmKey(req.userId, otherId)) });
+  } catch (e) {
+    console.error('Error getting ttl:', e.message);
+    sendServerError(res, e);
+  }
+});
+
+router.put('/ttl/:otherUserId', auth, async (req, res) => {
+  try {
+    const otherId = await requireDmPartner(req, res);
+    if (!otherId) return;
+    const ttl = req.body && req.body.ttlSeconds;
+    if (!disappearing.isAllowedTtl(ttl)) return res.status(400).json({ error: '指定できない時間です' });
+    const key = disappearing.dmKey(req.userId, otherId);
+    const before = await disappearing.getTtl(key);
+    if (before === ttl) return res.json({ ok: true, ttlSeconds: ttl, changed: false });
+    await disappearing.setTtl(key, ttl, req.userId);
+
+    // 相手にブロックされている時は、相手の画面にお知らせもイベントも出さない(ブロックを悟らせない)
+    const { blockState } = require('../utils/relations');
+    const byThem = (await blockState(req.userId, otherId)).byThem;
+    await disappearing.postTtlNotice({ actorId: req.userId, peerId: otherId, ttlSeconds: ttl, hiddenForPeer: byThem });
+    const { broadcastToUser } = require('../ws/wsServer');
+    const ev = (peerId) => ({ type: 'conversation_ttl', scope: 'dm', conversationKey: key, peerId, ttlSeconds: ttl, changedBy: req.userId });
+    broadcastToUser(req.userId, ev(otherId));
+    if (!byThem) broadcastToUser(otherId, ev(req.userId));
+    res.json({ ok: true, ttlSeconds: ttl, changed: true });
+  } catch (e) {
+    console.error('Error setting ttl:', e.message);
     sendServerError(res, e);
   }
 });

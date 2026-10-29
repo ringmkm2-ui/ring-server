@@ -271,6 +271,7 @@ async function main() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/claude-feed', require('./routes/claudeFeed'));
   app.use('/api/settings', settingsRouter);
+  app.use('/api/link-preview', require('./routes/linkPreview'));
   app.use('/api/moderation', require('./routes/moderation'));
   app.use('/api/staff', require('./routes/staff'));
   app.use('/api/live', require('./routes/live'));
@@ -309,6 +310,8 @@ async function main() {
   const server = http.createServer(app);
   initWebSocketServer(server);
   startKeepAlive();
+  // 消えるメッセージ: 期限切れの行を定期的に消す(重ならない・落ちない作りは utils/disappearing.js)
+  require('./utils/disappearing').startSweeper();
 
   // 既存ユーザーのBase64アイコンを、画像のURLに置き換える(裏で1回ずつ。失敗した分は次回起動時に再挑戦)
   setTimeout(async () => {

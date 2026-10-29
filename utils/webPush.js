@@ -48,6 +48,8 @@ function isAllowedPushEndpoint(endpoint) {
  */
 // options: { ttl, urgency } を渡せる。
 // 通話着信は TTL:30(30秒で破棄)、テキスト通知はデフォルト TTL:86400(1日)。
+// options.containsMessage: true のとき、本文(preview/cipher)を含む通知。受信者が
+// 「通知に本文を出さない」を有効にしていれば、送信者名だけを残して本文系を落とす。
 async function sendPushToUser(userId, payload, options = {}) {
   if (!PUSH_ENABLED) return 0;
   let subs = await db.all('SELECT * FROM push_subscriptions WHERE user_id = ?', [userId]);
@@ -60,6 +62,10 @@ async function sendPushToUser(userId, payload, options = {}) {
   if (options.skipApple) subs = subs.filter(sb => !String(sb.endpoint).includes('push.apple.com'));
   if (subs.length === 0) return 0;
 
+  if (options.containsMessage) {
+    const np = require('./notifyPrivacy');
+    if (await np.shouldHideBody(userId)) payload = np.privatizeWebPayload(payload);
+  }
   const payloadStr = JSON.stringify(payload);
   let successCount = 0;
 
