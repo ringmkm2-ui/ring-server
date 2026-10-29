@@ -6,7 +6,7 @@
   if (window.bcForceLogout) return;
 
   // E2Eの鍵と自分の送信控えは残す(消すと再ログイン後にそれまでのメッセージが読めなくなる)
-  var KEEP = /^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|e2e_registered_)/;
+  var KEEP = /^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|community_key_|e2e_registered_|bc_sn_v1)/;
   var going = false;
 
   // 端末に残っている「自分のID」が、今ログインしているトークンの持ち主と違ったら直す。

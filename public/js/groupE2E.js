@@ -145,10 +145,26 @@
       if (!keys.length) return null;
       // 安全番号の記録だけ更新する(個人トークを開いた時に「鍵が変わりました」が出る)。
       // グループは配るのを止めると全員が読めなくなるので、ここでは止めない
-      if (window.SafetyNumber && targetUserId !== window.myUserId) { try { SafetyNumber.observe(window.myUserId, targetUserId, keys); } catch (e) {} }
-      const sealed = E2EMulti.seal(new Uint8Array(groupKeyBytes), kp.secretKey, nacl.util.encodeBase64(kp.publicKey), keys);
+      let sendKeys = keys;
+      if (window.SafetyNumber && targetUserId !== window.myUserId) {
+        try {
+          SafetyNumber.observe(window.myUserId, targetUserId, keys);
+          // 確認済みの相手に知らない端末が増えた時は、その端末にはグループ鍵を渡さない(確認し直すまで)。
+          // 確認済みの端末には今まで通り届くので、グループ全体が読めなくなることは無い
+          const hold = new Set(SafetyNumber.unconfirmedKeys(window.myUserId, targetUserId));
+          if (hold.size) sendKeys = keys.filter(k => !hold.has(k));
+        } catch (e) {}
+      }
+      if (!sendKeys.length) {
+        // 古い方式(X3DH)に落とすと止めた意味が無いので、この人には今は配らない
+        const err = new Error('確認待ちの端末にはグループ鍵を配りません');
+        err.code = 'NO_BUNDLE';
+        throw err;
+      }
+      const sealed = E2EMulti.seal(new Uint8Array(groupKeyBytes), kp.secretKey, nacl.util.encodeBase64(kp.publicKey), sendKeys);
       return sealed ? JSON.stringify({ e3: sealed, fromUserId: window.myUserId }) : null;
     } catch (e) {
+      if (e && e.code === 'NO_BUNDLE') throw e;
       console.warn('[groupE2E] device seal failed, fallback to X3DH:', e && e.message);
       return null;
     }
@@ -225,8 +241,23 @@
     // 端末ごとの形は個人チャットの鍵で開く(X3DHの身元鍵は要らない。ここで作ると登録を上書きしてしまう)
     if (payload.e3) {
       if (typeof window.getOrCreateMyKeyPair === 'function') await window.getOrCreateMyKeyPair();
-      const k = window.E2EMulti ? E2EMulti.open(payload.e3, myDeviceRing()) : null;
+      const ring = myDeviceRing();
+      const k = window.E2EMulti ? E2EMulti.open(payload.e3, ring) : null;
       if (!k || k.length !== 32) throw new Error('グループ鍵の復号に失敗しました(この端末あての分がありません)');
+      // 誰が配った鍵か。サーバーは自分で作った鍵を「メンバーが配った」ことにして全員に配れば、
+      // グループの会話を全部読めた。配った端末の鍵が、そのメンバーの鍵として知っているものかを確かめる
+      const p = E2EMulti.parse(payload.e3);
+      const fromSelf = p && ring.some(r => r.pk === p.senderPub);
+      if (!fromSelf && window.SafetyNumber) {
+        const from = typeof payload.fromUserId === 'string' ? payload.fromUserId : '';
+        if (!from || from === window.myUserId) throw new Error('グループ鍵の配り手が確認できません');
+        const v = SafetyNumber.checkSender(window.myUserId, from, p.senderPub);
+        if (!v.ok) {
+          const err = new Error('確認済みのメンバーの、知らない端末から配られた鍵です。安全番号を確認してください');
+          err.code = 'UNVERIFIED_DISTRIBUTOR';
+          throw err;
+        }
+      }
       return k;
     }
     const sodium = await (async () => { await window.sodium.ready; return window.sodium; })();

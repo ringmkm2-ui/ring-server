@@ -276,8 +276,8 @@ class CloudinaryE2EUploader {
     });
   }
 
-  async uploadToCloudinary(blob, path, onProgress, signal) {
-    if (await this.driveEnabled()) {
+  async uploadToCloudinary(blob, path, onProgress, signal, _unsigned) {
+    if (!_unsigned && await this.driveEnabled()) {
       try {
         return await this.uploadToDrive(blob, String(path).split('/').slice(0, -1).join('/'), onProgress, signal);
       } catch (e) {
@@ -288,7 +288,10 @@ class CloudinaryE2EUploader {
     }
     const formData = new FormData();
     formData.append('file', blob);
-    formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET);
+    // サーバーの署名付きで送る(取れない時だけ署名なしプリセット)。js/cloudinarySign.js
+    const signed = window.bcCloudinarySign
+      ? await window.bcCloudinarySign.apply(formData, path, { unsigned: !!_unsigned })
+      : (formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET), false);
     formData.append('folder', path);
     // NOTE: 暗号化済みバイナリ(application/octet-stream)はCloudinary側で
     // 画像/動画として中身を解析できないため、resource_type:'auto'だと
@@ -308,6 +311,12 @@ class CloudinaryE2EUploader {
 
       xhr.addEventListener('load', () => {
         if (xhr.status < 200 || xhr.status >= 300) {
+          // 署名が通らなかった時(設定の食い違い)は、プリセットが生きている間だけ署名なしでやり直す
+          if (signed && xhr.status === 401 && !_unsigned) {
+            console.warn('[cloudinaryUpload] signed upload rejected, retrying unsigned');
+            resolve(this.uploadToCloudinary(blob, path, onProgress, signal, true));
+            return;
+          }
           let detail = '';
           try { detail = JSON.parse(xhr.responseText)?.error?.message || ''; } catch {}
           console.error('[cloudinaryUpload] status', xhr.status, 'response:', xhr.responseText);
