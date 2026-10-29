@@ -267,6 +267,32 @@
       display: block;
     }
 
+    /* ===== 動き: 画面の出現・フォーム切替・エラーの揺れ・成功の弾み(transform/opacityだけ) ===== */
+    @keyframes authRise { from { opacity: 0; transform: translate3d(0, 26px, 0) scale(.96); } to { opacity: 1; transform: none; } }
+    @keyframes authSection { from { opacity: 0; transform: translate3d(0, 14px, 0); } to { opacity: 1; transform: none; } }
+    @keyframes authField { from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.98); } to { opacity: 1; transform: none; } }
+    @keyframes authShake { 0%,100% { transform: none; } 15% { transform: translate3d(-8px,0,0); } 32% { transform: translate3d(7px,0,0); } 48% { transform: translate3d(-5px,0,0); } 64% { transform: translate3d(3px,0,0); } 80% { transform: translate3d(-1px,0,0); } }
+    @keyframes authPop { 0% { opacity: 0; transform: scale(.88); } 55% { opacity: 1; transform: scale(1.04); } 100% { transform: none; } }
+    .container { animation: authRise .62s cubic-bezier(.2,.9,.22,1) both; }
+    .form-section.active { animation: authSection .32s ease-out both; }
+    .form-section.active .form-group,
+    .form-section.active .btn,
+    .form-section.active .toggle-form { animation: authField .5s cubic-bezier(.2,.9,.22,1) both; }
+    .form-section.active > form > :nth-child(1), .form-section.active > :nth-child(1) { animation-delay: .04s; }
+    .form-section.active > form > :nth-child(2), .form-section.active > :nth-child(2) { animation-delay: .09s; }
+    .form-section.active > form > :nth-child(3), .form-section.active > :nth-child(3) { animation-delay: .14s; }
+    .form-section.active > form > :nth-child(4), .form-section.active > :nth-child(4) { animation-delay: .19s; }
+    .form-section.active > form > :nth-child(5), .form-section.active > :nth-child(5) { animation-delay: .24s; }
+    .form-section.active > form > :nth-child(6), .form-section.active > :nth-child(6) { animation-delay: .29s; }
+    .form-section.active > form > :nth-child(n+7), .form-section.active > :nth-child(n+7) { animation-delay: .33s; }
+    .error-message.shake { animation: authShake .5s cubic-bezier(.36,.07,.19,.97) both; }
+    .success-message.pop { animation: authPop .45s cubic-bezier(.2,.9,.22,1) both; }
+    .mode-btn { transition: border-color .3s, color .3s, background-color .3s, transform .28s cubic-bezier(.34,1.56,.64,1); }
+    .mode-btn:active { transform: scale(.96); }
+    .btn:active { filter: brightness(.94); }
+    html.reduce-motion .container, html.reduce-motion .form-section.active, html.reduce-motion .form-section.active * { animation: none !important; }
+    @media (prefers-reduced-motion: reduce) { .container, .form-section.active, .form-section.active * { animation: none !important; } }
+
     @media (max-width: 480px) {
       .container {
         padding: 30px 20px;
@@ -661,6 +687,7 @@
       const errorEl = document.getElementById('errorMsg');
       errorEl.textContent = message;
       errorEl.style.display = 'block';
+      errorEl.classList.remove('shake'); void errorEl.offsetWidth; errorEl.classList.add('shake');   // 連続でエラーが出ても毎回揺らす
       setTimeout(() => {
         errorEl.style.display = 'none';
       }, 5000);
@@ -670,6 +697,7 @@
       const successEl = document.getElementById('successMsg');
       BroDots.set(successEl, message);
       successEl.style.display = 'block';
+      successEl.classList.remove('pop'); void successEl.offsetWidth; successEl.classList.add('pop');
     }
 
     function clearMessages() {

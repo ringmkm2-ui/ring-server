@@ -56,7 +56,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
 .pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pin-cls{font-size:14px;color:#64748b;cursor:pointer}
-.cs{flex:1;padding:8px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.cs{flex:1;padding:8px 16px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:10px}
 .msg{display:flex;width:100%;align-items:flex-end;gap:8px}
 .msg.out{justify-content:flex-end}
 .msg.inc{justify-content:flex-start}
@@ -80,8 +80,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .dlbtn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
 .mmeta{align-self:flex-end;margin-top:4px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
 .chk1{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
-.chk1.lit{stroke:#059669;animation:chkPop .35s cubic-bezier(.34,1.56,.64,1)}
-@keyframes chkPop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+.chk1.lit{stroke:#059669}
+/* 履歴の再描画で鳴らさないため、アニメは .pop が付いた時(送信が届いた瞬間)だけ */
+.chk1.lit.pop{animation:gcChk .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+@keyframes gcChk{0%{transform:scale(.4)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
 .chk1{transform-origin:center;transform-box:fill-box}
 .rdrow{display:flex;align-items:center;gap:2px;margin-top:3px}
 .rav{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;cursor:pointer;border:1px solid rgba(255,255,255,.8);flex-shrink:0;background-size:cover;background-position:center;transition:transform .15s ease}
@@ -203,6 +205,97 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 .up-ov button{position:relative;width:52px;height:52px;border-radius:50%;border:0;background:rgba(15,23,42,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .up-ov button:active{transform:scale(.94)}
 .up-ov .ring{position:absolute;inset:0;transform:rotate(-90deg)}
+/* ================= モーション(transform/opacityのみ。backdrop-filter等は増やさない) ================= */
+/* 新着メッセージ: 個人チャット(admin.html)と同じスライド+スプリング。クラスはJSが約0.7秒後に外す */
+@keyframes gcSlideR{from{opacity:0;transform:translateX(28px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes gcSlideL{from{opacity:0;transform:translateX(-28px) scale(.92)}to{opacity:1;transform:none}}
+.msg.msg-slide-right{transform-origin:100% 100%;animation:gcSlideR .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.msg.msg-slide-left{transform-origin:0 100%;animation:gcSlideL .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 発言者が切り替わった時だけ、アイコンがポンと着地して名前がふわっと出る */
+@keyframes gcAvLand{from{opacity:0;transform:translateY(10px) scale(.2) rotate(-18deg)}to{opacity:1;transform:none}}
+@keyframes gcNameIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.msg.gc-newsender .sav{animation:gcAvLand .46s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .06s backwards}
+.msg.gc-newsender .sname{animation:gcNameIn .36s ease-out .16s backwards}
+/* 開いた直後(初回表示)だけ、画面内の履歴を上から順に立ち上げる */
+.cs.gc-boot{opacity:0}
+@keyframes gcHist{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+.gc-hist-in{animation:gcHist .46s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) calc(var(--gi,0)*30ms) backwards}
+/* 送信ボタンの紙飛行機が飛び立つ */
+@keyframes gcLaunch{0%{transform:translate(0,0) rotate(0) scale(1);opacity:1}55%{transform:translate(10px,-14px) rotate(18deg) scale(1.15);opacity:.4}100%{transform:translate(0,0) rotate(0) scale(1);opacity:1}}
+#sbtn.gc-launch svg{animation:gcLaunch .42s cubic-bezier(.4,0,.2,1) both}
+/* リアクションのチップ: 新しく付いた時はポップ、人数が変わった時は跳ねる */
+@keyframes gcRPop{0%{transform:scale(0)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+@keyframes gcRBump{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}
+.rbadge.gc-rpop{animation:gcRPop .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.rbadge.gc-rbump{animation:gcRBump .3s ease-out}
+/* 既読アイコンが新しく増えた時だけ、横からポンと入る */
+@keyframes gcRavIn{from{opacity:0;transform:translateX(-8px) scale(0)}to{opacity:1;transform:none}}
+.rav.gc-rin{animation:gcRavIn .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 長押しメニュー・リアクションピッカー: ボタンが順にポップ(hoverのscaleを潰さないよう backwards) */
+@keyframes gcCtxIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.ctx.show .ctxbtn{animation:gcCtxIn .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.ctx.show .ctxbtn:nth-child(1){animation-delay:.04s}.ctx.show .ctxbtn:nth-child(3){animation-delay:.08s}.ctx.show .ctxbtn:nth-child(5){animation-delay:.12s}
+.ctx.show .ctxbtn:nth-child(7){animation-delay:.16s}.ctx.show .ctxbtn:nth-child(9){animation-delay:.2s}.ctx.show .ctxbtn:nth-child(11){animation-delay:.24s}
+@keyframes gcRpIn{from{opacity:0;transform:scale(0) translateY(6px)}to{opacity:1;transform:none}}
+.rpicker.show .rpbtn{animation:gcRpIn .34s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.rpicker.show .rpbtn:nth-child(2){animation-delay:.025s}.rpicker.show .rpbtn:nth-child(3){animation-delay:.05s}.rpicker.show .rpbtn:nth-child(4){animation-delay:.075s}
+.rpicker.show .rpbtn:nth-child(5){animation-delay:.1s}.rpicker.show .rpbtn:nth-child(6){animation-delay:.125s}.rpicker.show .rpbtn:nth-child(7){animation-delay:.15s}.rpicker.show .rpbtn:nth-child(8){animation-delay:.175s}
+/* 返信の引用から元メッセージへ飛んだ時、既存の背景フラッシュに加えて吹き出しがぷるっと跳ねる */
+@keyframes gcJump{0%{transform:scale(1)}30%{transform:scale(1.05)}60%{transform:scale(.99)}100%{transform:scale(1)}}
+.reply-jump-flash .mwrap{animation:gcJump .6s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+/* 取り消し/お知らせ */
+@keyframes gcDelOut{to{opacity:0;transform:scale(.8)}}
+.msg.gc-del-out{animation:gcDelOut .22s cubic-bezier(.4,0,1,1) forwards}
+.msg.out.gc-del-out{transform-origin:100% 50%}.msg.inc.gc-del-out{transform-origin:0 50%}
+@keyframes gcNoticeIn{from{opacity:0;transform:scale(.9) translateY(6px)}to{opacity:1;transform:none}}
+.gc-notice-in{animation:gcNoticeIn .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 後から復号される画像/動画: ふわっとズームが収まりながら現れる(blurは重いので使わない) */
+@keyframes gcMediaIn{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:none}}
+.bub.mbub img.gc-media-in,.bub.mbub video.gc-media-in{animation:gcMediaIn .5s cubic-bezier(.22,1,.36,1) backwards}
+/* ヘッダー(グループ名・人数・アイコン)が変わった時 */
+@keyframes gcHPop{from{opacity:.25;transform:translateY(6px) scale(.94)}to{opacity:1;transform:none}}
+.gc-hpop{transform-origin:0 50%;animation:gcHPop .45s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.gav.gc-hpop{transform-origin:50% 50%;animation:gcAvLand .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+/* ピン留めバナーはバネで降りてくる */
+.pin-banner{transform:translateY(-14px) scale(.96);transition:opacity .25s ease,transform .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.pin-banner.show{transform:none}
+/* 添付メニューの項目・＋ボタン・返信プレビュー */
+@keyframes gcMoptIn{from{opacity:0;transform:translateX(-14px) scale(.85)}to{opacity:1;transform:none}}
+.ibar.open .mopt{animation:gcMoptIn .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.ibar.open .mopt:nth-child(2){animation-delay:.05s}.ibar.open .mopt:nth-child(3){animation-delay:.1s}.ibar.open .mopt:nth-child(4){animation-delay:.15s}
+.pbtn{transition:transform .45s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+@keyframes gcRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+#replyPreview{animation:gcRise .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.up-ov{animation:gcFade .2s ease}
+@keyframes gcFade{from{opacity:0}to{opacity:1}}
+@keyframes gcPopIn{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.up-ov button{animation:gcPopIn .38s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .05s backwards}
+/* シート: 下からオーバーシュート付きで上がる。行き過ぎた分で下に隙間が出ないよう、
+   下に32pxはみ出させて(margin負)その分paddingで中身の位置は据え置く */
+.sheet{margin-bottom:-32px;padding-bottom:52px;transition:transform .26s cubic-bezier(.4,0,1,1)}
+.sheet-ov.show .sheet{transition:transform .52s cubic-bezier(.22,1.18,.36,1)}
+.sheet-ov.show .sheet>*:not(#memList):not(#readList){animation:gcRise .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.sheet-ov.show .sheet>*:nth-child(1){animation-delay:.14s}.sheet-ov.show .sheet>*:nth-child(2){animation-delay:.18s}.sheet-ov.show .sheet>*:nth-child(3){animation-delay:.22s}
+.sheet-ov.show .sheet>*:nth-child(4){animation-delay:.26s}.sheet-ov.show .sheet>*:nth-child(5){animation-delay:.3s}.sheet-ov.show .sheet>*:nth-child(n+6){animation-delay:.34s}
+.sheet-ov.show .litem{animation:gcRise .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.sheet-ov.show .litem:nth-child(1){animation-delay:.16s}.sheet-ov.show .litem:nth-child(2){animation-delay:.2s}.sheet-ov.show .litem:nth-child(3){animation-delay:.24s}
+.sheet-ov.show .litem:nth-child(4){animation-delay:.28s}.sheet-ov.show .litem:nth-child(5){animation-delay:.32s}.sheet-ov.show .litem:nth-child(n+6){animation-delay:.36s}
+/* 確認ダイアログ: 背景はフェード、箱はバネで膨らむ */
+.conf-box{transform:scale(.82) translateY(18px);opacity:0;transition:transform .22s cubic-bezier(.4,0,1,1),opacity .18s ease}
+.conf-ov.show .conf-box{transform:none;opacity:1;transition:transform .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)),opacity .2s ease}
+/* 入力中: 下からせり上がり、吹き出しがぽんと出る */
+#gTyping.gt-hide{transform:translateY(10px) scale(.55)}
+@keyframes gcBubIn{from{transform:scale(.5);opacity:0}to{transform:none;opacity:1}}
+#gTyping:not(.gt-hide) .gt-bub{transform-origin:0 100%;animation:gcBubIn .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .05s backwards}
+/* 省アニメ/OSの「動きを減らす」: 全部止めて最終状態だけにする(待機中に透明のまま残さない) */
+html.reduce-motion .msg.msg-slide-right,html.reduce-motion .msg.msg-slide-left,html.reduce-motion .msg.gc-newsender .sav,html.reduce-motion .msg.gc-newsender .sname,html.reduce-motion .gc-hist-in,html.reduce-motion #sbtn.gc-launch svg,html.reduce-motion .rbadge.gc-rpop,html.reduce-motion .rbadge.gc-rbump,html.reduce-motion .rav.gc-rin,html.reduce-motion .ctx.show .ctxbtn,html.reduce-motion .rpicker.show .rpbtn,html.reduce-motion .reply-jump-flash .mwrap,html.reduce-motion .msg.gc-del-out,html.reduce-motion .gc-notice-in,html.reduce-motion .bub.mbub img.gc-media-in,html.reduce-motion .bub.mbub video.gc-media-in,html.reduce-motion .gc-hpop,html.reduce-motion .ibar.open .mopt,html.reduce-motion #replyPreview,html.reduce-motion .up-ov,html.reduce-motion .up-ov button,html.reduce-motion .sheet-ov.show .sheet>*,html.reduce-motion .sheet-ov.show .litem,html.reduce-motion #gTyping .gt-bub,html.reduce-motion .chk1.lit.pop{animation:none!important}
+html.reduce-motion .cs.gc-boot{opacity:1}
+html.reduce-motion .msg.gc-del-out{opacity:0}
+@media (prefers-reduced-motion:reduce){
+.msg.msg-slide-right,.msg.msg-slide-left,.msg.gc-newsender .sav,.msg.gc-newsender .sname,.gc-hist-in,#sbtn.gc-launch svg,.rbadge.gc-rpop,.rbadge.gc-rbump,.rav.gc-rin,.ctx.show .ctxbtn,.rpicker.show .rpbtn,.reply-jump-flash .mwrap,.msg.gc-del-out,.gc-notice-in,.bub.mbub img.gc-media-in,.bub.mbub video.gc-media-in,.gc-hpop,.ibar.open .mopt,#replyPreview,.up-ov,.up-ov button,.sheet-ov.show .sheet>*,.sheet-ov.show .litem,#gTyping .gt-bub,.chk1.lit.pop{animation:none!important}
+.cs.gc-boot{opacity:1}
+.msg.gc-del-out{opacity:0}
+}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
@@ -244,7 +337,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.296 beta</div>
+  <div class="version-badge">Bro Chat v1.28.297 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -285,7 +378,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       <button type="button" id="keyBtnRekey" style="border:0;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:700;background:rgba(0,0,0,.08);color:#111"></button>
     </div>
   </div>
-  <div class="cs" id="cs"></div>
+  <div class="cs gc-boot" id="cs"></div>
 
   <div class="ibc">
     <div class="ibar" id="ibar">
@@ -406,6 +499,44 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 
 <script>
 const REACTIONS=['❤️','😂','👍','😮','😢','🔥','👏','🎉'];
+// ---- モーション用の共通ヘルパー ----
+// gcQuiet: 履歴の描画中など「新しく起きたこと」ではない更新で、ポップ等を鳴らさないための印
+let gcQuiet=false;
+const gcReduce=()=>document.documentElement.classList.contains('reduce-motion')||!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+// 一時クラスを付けて、終わった頃に外す(外さないと次の再描画やクラス操作で再生し直されうる)
+function gcTemp(el,cls,ms){if(!el)return;el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),ms||700);}
+// 新着メッセージの入場。履歴の一括描画では呼ばない(isRealtimeの時だけ)
+function gcEnterMsg(msgDiv,isInc,member){
+  if(gcReduce())return;
+  gcTemp(msgDiv,isInc?'msg-slide-left':'msg-slide-right',800);
+  if(isInc&&member&&member.id){
+    const prev=msgDiv.previousElementSibling;
+    if(!prev||prev.dataset.sid!==member.id)gcTemp(msgDiv,'gc-newsender',800);
+  }
+}
+function gcNoticeIn(el){if(el&&!gcReduce())gcTemp(el,'gc-notice-in',700);}
+function gcSendLaunch(){const b=document.getElementById('sbtn');if(b&&!gcReduce())gcTemp(b,'gc-launch',460);}
+// 後から復号される画像/動画が出た時のズームイン。灰色の下地は動きが終わるまで残す
+function gcMediaIn(el,done){
+  if(!el)return;
+  if(!gcReduce())gcTemp(el,'gc-media-in',600);
+  if(done)setTimeout(done,gcReduce()?0:480);
+}
+// 初回表示: 読み込み中は#csを透明にしておき、できたら画面内の最後の14件を上から順に立ち上げる
+let gcBootDone=false;
+function gcReveal(){
+  if(gcBootDone)return;gcBootDone=true;
+  const cs=document.getElementById('cs');if(!cs)return;
+  if(gcReduce()){cs.classList.remove('gc-boot');return;}
+  const top=cs.getBoundingClientRect().top;
+  const kids=[...cs.children].filter(e=>e.id!=='gTyping');
+  const vis=[];
+  for(let i=kids.length-1;i>=0&&vis.length<14;i--){if(kids[i].getBoundingClientRect().bottom<top)break;vis.unshift(kids[i]);}
+  vis.forEach((el,i)=>{el.style.setProperty('--gi',i);el.classList.add('gc-hist-in');});
+  cs.classList.remove('gc-boot');
+  setTimeout(()=>vis.forEach(el=>{el.classList.remove('gc-hist-in');el.style.removeProperty('--gi');}),1300);
+}
+setTimeout(gcReveal,10000); // 通信が詰まっても透明のまま残さない保険
 const COLORS=['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
 
 function nameColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))&0xffffffff;return COLORS[Math.abs(h)%COLORS.length]}
@@ -603,7 +734,18 @@ let cropX=0,cropY=0,cropS=1,cropDrag=false,cropSX=0,cropSY=0;
 const pp=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+let gcHdrPrev=null;
+function gcHdrPulse(){
+  if(gcReduce()){gcHdrPrev=null;return;}
+  const cur={n:gi.name,c:gi.members.length,a:gi.avatarImg||''};
+  const p=gcHdrPrev;gcHdrPrev=cur;
+  if(!p)return;
+  if(p.n!==cur.n)gcTemp(document.getElementById('gnameEl'),'gc-hpop',550);
+  if(p.c!==cur.c)gcTemp(document.getElementById('mcntEl'),'gc-hpop',550);
+  if(p.a!==cur.a)gcTemp(document.getElementById('gavEl'),'gc-hpop',600);
+}
 function refreshHdr(){
+  gcHdrPulse();
   document.getElementById('gnameEl').textContent=gi.name;
   const cnt=gi.members.length;
   BroDots.set(document.getElementById('mcntEl'),cnt>0?`メンバー ${cnt}人`:'読み込み中...');
@@ -659,6 +801,7 @@ function renderReacts(wrap,reactions){
   const list=Array.isArray(reactions)?reactions.filter(r=>r&&r.emoji&&Array.isArray(r.userIds)&&r.userIds.length):[];
   if(!list.length){if(bar)bar.remove();return;}
   if(!bar){bar=document.createElement('div');bar.className='rbar';wrap.appendChild(bar);}
+  const prevR=bar.__p||{},nextR={}; // 前回の絵文字→人数。増えた/変わった物だけ動かす
   bar.textContent='';
   list.forEach(r=>{
     const b=document.createElement('button');
@@ -667,8 +810,14 @@ function renderReacts(wrap,reactions){
     b.dataset.e=r.emoji;b.dataset.c=r.userIds.length;
     b.textContent=r.emoji+' '+r.userIds.length;
     b.onclick=ev=>{ev.stopPropagation();sendReact(wrap,r.emoji);};
+    nextR[r.emoji]=r.userIds.length;
+    if(!gcQuiet&&!gcReduce()){
+      if(!(r.emoji in prevR))b.classList.add('gc-rpop');
+      else if(prevR[r.emoji]!==r.userIds.length)b.classList.add('gc-rbump');
+    }
     bar.appendChild(b);
   });
+  bar.__p=nextR;
 }
 const reactBusy=new Set();
 async function sendReact(wrap,emoji){
@@ -791,7 +940,7 @@ async function handleMediaGroup(f,t){
       msgDiv.dataset.msgId = data.message.id;
       msgDiv.classList.remove('uploading');
       applyEarlyReads(msgDiv, data.message.id);
-      const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit'); // サーバーに届いたので緑
+      const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit','pop'); // サーバーに届いたので緑(この瞬間だけポップ)
     } else {
       console.error('メディア送信に失敗しました:', data);
       msgDiv.remove();
@@ -814,6 +963,7 @@ document.getElementById('tform').onsubmit=async e=>{
   const profane=!!(window.BCProfanity&&window.BCProfanity.containsBannedWord(txt));
   if(profane)txt=window.BCProfanity.censor(txt);
   if(window.LiquidGlass) window.LiquidGlass.haptic('light');
+  if(!isEditing) gcSendLaunch();
 
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
@@ -891,7 +1041,7 @@ document.getElementById('tform').onsubmit=async e=>{
     }
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
-      const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit'); // サーバーに届いたので緑
+      const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit','pop'); // サーバーに届いたので緑(この瞬間だけポップ)
       applyEarlyReads(msgDiv,data.message.id);
     }else{
       console.error('送信に失敗しました:',data);
@@ -1063,6 +1213,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   const isInc=!!incoming;
   msgDiv.classList.add('msg',isInc?'inc':'out');
   if(msgId) msgDiv.dataset.msgId=msgId;
+  if(isInc&&member&&member.id) msgDiv.dataset.sid=member.id; // 発言者が変わった所を見分ける(アイコン着地演出用)
 
   const wrap=document.createElement('div');wrap.classList.add('mwrap');
 
@@ -1122,8 +1273,9 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   // 履歴の一括読み込みではなく、自分の送信直後・リアルタイム受信の時だけ
   // ガラスが凝縮するように出現させる(大量の履歴に一斉適用すると
   // 視覚的にうるさく描画負荷にもなるため)
-  if(isRealtime&&window.LiquidGlass){
-    window.LiquidGlass.materializeIn(msgDiv,true);
+  // 入場はadmin.htmlと同じスライド+スプリング(materializeInと二重に動かさない)
+  if(isRealtime){
+    gcEnterMsg(msgDiv,isInc,member);
   }
 
   // 長押しイベント: 自分のメッセージのみ編集/取り消し
@@ -1166,10 +1318,12 @@ async function flushReadReceipts(){
 }
 
 function renderRD(rdDiv,readers,t){
+  const prevN=rdDiv.__rn||0; // 前回までに出していた人数。それより後ろの人だけ入場させる
   rdDiv.innerHTML='';
   const MAX=5;const shown=readers.slice(0,MAX);const extra=readers.length-MAX;
-  shown.forEach(m=>{
-    const av=document.createElement('div');av.className='rav';av.style.background=m.color||'#64748b';
+  rdDiv.__rn=shown.length;
+  shown.forEach((m,idx)=>{
+    const av=document.createElement('div');av.className='rav'+((!gcQuiet&&idx>=prevN&&!gcReduce())?' gc-rin':'');av.style.background=m.color||'#64748b';
     if(m.avatarImg)setAvBg(av,m.avatarImg);else av.textContent=m.initials||m.name?.charAt(0)||'?';
     av.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(av);
   });
@@ -1251,7 +1405,7 @@ function attachGQuote(msgDiv,replyTo){
     const t=document.querySelector('#cs [data-msg-id="'+CSS.escape(replyTo)+'"]');
     if(!t)return;
     t.scrollIntoView({behavior:'smooth',block:'center'});
-    t.classList.remove('reply-jump-flash');void t.offsetWidth;t.classList.add('reply-jump-flash');
+    gcTemp(t,'reply-jump-flash',1300);
   });
   bub.insertBefore(q,bub.firstChild);
 }
@@ -1354,7 +1508,7 @@ document.getElementById('delBtn').onclick=()=>{
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
     // サーバーからの知らせで先に置き換わっていることがある(以前はここで例外になっていた)
-    if(target.parentNode) target.parentNode.replaceChild(notice,target);
+    if(target.parentNode){ target.parentNode.replaceChild(notice,target); gcNoticeIn(notice); }
     refreshGQuotes(targetMsgId); if(gReplyTo===String(targetMsgId))cancelGReply();
     if(isEditing&&editTargetMsgId===targetMsgId){
       isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
@@ -1659,7 +1813,13 @@ function fillDeferredMedia(div, media){
   if(!div||!media||!media.deferred)return;
   const el=div.querySelector('img, video');
   if(el){el.style.minHeight='160px';el.style.minWidth='160px';el.style.background='rgba(148,163,184,.25)';}
-  media.deferred.then(u=>{ if(el){ if(el.tagName==='VIDEO'){ prepVideoEl(el,u); } else { el.src=u;el.style.minHeight='';el.style.minWidth='';el.style.background=''; } } })
+  media.deferred.then(u=>{ if(el){ if(el.tagName==='VIDEO'){ prepVideoEl(el,u); gcMediaIn(el); } else {
+      // 読み込めた瞬間にズームイン。灰色の下地は動きの間だけ残す(失敗時もサイズ指定は必ず戻す)
+      const clear=()=>{el.style.minHeight='';el.style.minWidth='';el.style.background='';};
+      el.addEventListener('load',()=>{el.style.minHeight='';el.style.minWidth='';gcMediaIn(el,clear);},{once:true});
+      el.addEventListener('error',clear,{once:true});
+      el.src=u;
+  } } })
     .catch(()=>{
       if(!el)return;
       const p=document.createElement('div');
@@ -1756,7 +1916,7 @@ async function renderHistoryMsgInner(msg){
   const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
   if(msg.replied_to_id)attachGQuote(msgDiv,msg.replied_to_id);
   fillDeferredMedia(msgDiv,media);
-  if(Array.isArray(msg.reactions)&&msg.reactions.length)renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);
+  if(Array.isArray(msg.reactions)&&msg.reactions.length)gcQuiet=true;try{renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);}finally{gcQuiet=false;} // 履歴ではポップさせない
   if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
   if(msg.edited_at){
     const meta=msgDiv.querySelector('.mmeta .time');
@@ -1816,6 +1976,7 @@ async function loadGroupMessages(pre){
         await renderHistoryMsg(msg);
       }
     }
+    if(pre)gcReveal(); // 初回だけ、履歴を描き終えたところで立ち上げ演出
     // ピン留め中のメッセージがあればバナーを表示
     const pinned=await api('/api/groups/'+groupId+'/pinned');
     if(Array.isArray(pinned)&&pinned.length>0){
@@ -1828,7 +1989,7 @@ async function loadGroupMessages(pre){
         document.getElementById('pinBanner').dataset.msgId=latest.id;
       }
     }
-  }catch(err){console.error('load messages error:',err);}
+  }catch(err){console.error('load messages error:',err);gcReveal();}
 }
 
 
@@ -1888,6 +2049,9 @@ function applyEarlyReads(msgDiv,id){
 const historyReaderIds={}; // 履歴で受け取った「誰が読んだか」(メッセージID→ユーザーID[])
 // メンバー一覧と履歴の両方がそろってから、自分が送ったメッセージに既読アイコンを付ける
 function applyHistoryReaders(){
+  gcQuiet=true;try{applyHistoryReadersInner();}finally{gcQuiet=false;}
+}
+function applyHistoryReadersInner(){
   Object.keys(historyReaderIds).forEach(mid=>{
     const msgDiv=document.querySelector(`[data-msg-id="${mid}"]`);
     if(!msgDiv||msgDiv.classList.contains('inc'))return;
@@ -1920,7 +2084,7 @@ function connectGroupWS(){
       if(data.type==='group_message'&&data.groupId===groupId){
         markSeenSoon();
         const msg=data.message;
-        if(msg.msgType==='notice'){createNotice(msg.id,msg.content);return;}
+        if(msg.msgType==='notice'){gcNoticeIn(createNotice(msg.id,msg.content));return;}
         if(msg.senderId===myUserId){
           // この端末から送った分は表示済み。自分のほかの端末(スマホ等)から送った分だけ出す
           const cs=document.getElementById('cs');
@@ -1993,13 +2157,19 @@ function connectGroupWS(){
         }
       }else if(data.type==='group_message_deleted'&&data.groupId===groupId){
         const msgDiv=document.querySelector(`[data-msg-id="${data.messageId}"]`);
-        if(msgDiv){
-          const notice=document.createElement('div');
-          notice.className='cancel-notice';
-          notice.textContent='メッセージが取り消されました';
-          msgDiv.parentNode.replaceChild(notice,msgDiv);
-          refreshGQuotes(data.messageId);
-          if(gReplyTo===String(data.messageId))cancelGReply();
+        if(msgDiv&&!msgDiv.classList.contains('gc-del-out')){
+          // 吹き出しが縮んで消えてから「取り消されました」に置き換える
+          const swap=()=>{
+            if(!msgDiv.parentNode)return;
+            const notice=document.createElement('div');
+            notice.className='cancel-notice';
+            notice.textContent='メッセージが取り消されました';
+            msgDiv.parentNode.replaceChild(notice,msgDiv);
+            gcNoticeIn(notice);
+            refreshGQuotes(data.messageId);
+            if(gReplyTo===String(data.messageId))cancelGReply();
+          };
+          if(gcReduce())swap();else{msgDiv.classList.add('gc-del-out');setTimeout(swap,230);}
         }
       }else if(data.type==='added_to_group'){
         // 自分が新しいグループに追加された通知(トーク一覧側で表示更新が必要になるため、
