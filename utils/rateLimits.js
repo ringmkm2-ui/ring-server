@@ -106,8 +106,19 @@ const searchLimiter = rateLimit({
   message: { error: '検索が多すぎます。しばらくしてからお試しください。' },
 });
 
+// リンクのプレビュー: サーバーが外のURLを取りに行く重い処理なので、1人1分に30回まで。
+const linkPreviewLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リンクのプレビューが多すぎます。しばらくしてからお試しください。' },
+});
+
 module.exports = {
   perUser,
+  linkPreviewLimiter,
   loginLimiter,
   registerLimiter,
   apiLimiter,

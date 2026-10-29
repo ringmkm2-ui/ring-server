@@ -203,6 +203,26 @@ async function initDB() {
     console.log('[db] encrypted migration skip:', e.message);
   }
 
+  // 消えるメッセージ(会話ごとのタイマー)。expires_at を過ぎた行は履歴・未読から外れ、定期掃除で消える。
+  // conversation_ttl の conv_key は、1対1なら 'dm:<小さいID>:<大きいID>'、グループなら 'g:<groupId>'
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_ttl (
+        conv_key TEXT PRIMARY KEY,
+        ttl_seconds INTEGER NOT NULL DEFAULT 0,
+        updated_by TEXT,
+        updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP');
+    await pool.query('ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP');
+    // 掃除は「期限があるものだけ」を見ればよいので部分索引にする(大半の行は NULL)
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(expires_at) WHERE expires_at IS NOT NULL');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_group_messages_expires ON group_messages(expires_at) WHERE expires_at IS NOT NULL');
+  } catch (e) {
+    console.log('[db] disappearing messages migration skip:', e.message);
+  }
+
   // グループの返信(どのメッセージへの返信か)。消された時に困らないよう外部キーは付けない
   try {
     await pool.query('ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS replied_to_id TEXT');

@@ -19,6 +19,14 @@ const DEFAULTS = Object.freeze({
   showCallCode: true,           // 通話の確認コード(中間者がいないかを声で突き合わせる4桁)
   // --- セキュリティ ---
   loginAlertEmail: true,        // 新しい端末でログインされたらメールで知らせる
+  privacyScreen: false,         // アプリ切り替え画面・バックグラウンドで中身を隠す
+  blockScreenshots: false,      // スクリーンショット・画面録画を止める(端末側が対応している範囲で)
+  // --- 通知 ---
+  hideNotificationBody: false,  // ロック画面の通知に本文を出さず「新しいメッセージ」とだけ出す(送信者名は残す)
+  // --- 便利機能 ---
+  linkPreview: false,           // リンクのプレビュー(オプトイン。サーバーがURL先を取りに行くため既定はオフ)
+  saveDrafts: true,             // 書きかけの文を端末に残す
+  autoResend: true,             // 送信に失敗したメッセージを、回線が戻ったら自動で送り直す
 });
 
 const BOOL_KEYS = Object.keys(DEFAULTS).filter(k => typeof DEFAULTS[k] === 'boolean' && k !== 'sendReadReceipts');

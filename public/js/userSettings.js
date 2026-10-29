@@ -12,6 +12,12 @@
     hideIpInCalls: false,
     showCallCode: true,
     loginAlertEmail: true,
+    privacyScreen: false,
+    blockScreenshots: false,
+    hideNotificationBody: false,
+    linkPreview: false,
+    saveDrafts: true,
+    autoResend: true,
   };
   var state = {};
   for (var k in DEFAULTS) state[k] = DEFAULTS[k];
