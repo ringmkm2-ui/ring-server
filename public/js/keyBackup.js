@@ -553,7 +553,7 @@
         else if (pass.length < MIN_PASS) { msg.textContent = T('kb_err_short', 'パスフレーズは8文字以上にしてください'); return; }
         if (isSetup && pass !== p2.value) { msg.textContent = T('kb_err_match', '2つのパスフレーズが一致しません'); return; }
         busy = true; btn.disabled = true; btn.style.opacity = '.6';
-        btn.textContent = T('kb_working', '処理中…');
+        if (window.BroDots) BroDots.set(btn, T('kb_working', '処理中…')); else btn.textContent = T('kb_working', '処理中…');
         try {
           if (isSetup) { await upload(pass, null, !weakReason(pass)); close('saved'); return; }
           await restore(pass, byCode);

@@ -130,7 +130,7 @@
 
   // まだ復号中の画像は「読み込み中」を出し、届いたら差し替える
   function waitLoad(s, el, isCur) {
-    const m = document.createElement('div'); m.className = 'bgal-msg'; m.textContent = '読み込み中...';
+    const m = document.createElement('div'); m.className = 'bgal-msg'; if (window.BroDots) BroDots.set(m, '読み込み中...', { wow: true }); else m.textContent = '読み込み中...';
     s.appendChild(m);
     let n = 0;
     const iv = setInterval(() => {

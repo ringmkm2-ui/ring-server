@@ -356,6 +356,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
 <script src="/js/session.js"></script>
 <script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
+<script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/profanity.js"></script>
@@ -370,7 +371,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.294 beta</div>
+  <div class="version-badge">Bro Chat v1.28.295 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -472,7 +473,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
     <div class="call-card" id="callCard">
       <div class="call-av" id="callAv"></div>
       <div class="call-name" id="callName">ユーザー名</div>
-      <div class="call-status" id="callStatus" data-i18n="calling">呼び出し中...</div>
+      <div class="call-status" id="callStatus" data-i18n="calling" data-bd="wow">呼び出し中...</div>
       <div id="callSas" hidden style="margin-top:6px;font-size:13px;letter-spacing:.14em;opacity:.85"></div>
     </div>
 
@@ -1508,10 +1509,11 @@ async function loadLazyMedia(placeholder) {
       mediaSrc = URL.createObjectURL(blob);
     } catch (e) {
       console.error('[lazyLoadMedia] decrypt error:', e);
+      BroDots.unskeleton(placeholder);
       placeholder.textContent = e && e.message === 'timeout' ? '読み込めませんでした(タップでもう一度)' : '(メディアの復号に失敗しました)';
       // タップでやり直せるように
       placeholder.style.cursor = 'pointer';
-      placeholder.onclick = () => { placeholder.onclick = null; placeholder.textContent = '読み込み中...'; loadLazyMedia(placeholder); };
+      placeholder.onclick = () => { placeholder.onclick = null; BroDots.set(placeholder, '読み込み中...', { wow: true }); BroDots.skeleton(placeholder); loadLazyMedia(placeholder); };
       return;
     }
   }
@@ -1996,7 +1998,8 @@ function renderMessageImpl(msg) {
     const mediaPlaceholder = document.createElement('div');
     mediaPlaceholder.className = 'media-placeholder';
     mediaPlaceholder.style.cssText = 'background:#f0f0f0;width:200px;height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;';
-    mediaPlaceholder.textContent = mediaType === 'image' ? '画像読み込み中...' : mediaType === 'audio' ? '留守番電話 読み込み中...' : mediaType === 'file' ? 'ファイル 読み込み中...' : '動画読み込み中...';
+    BroDots.set(mediaPlaceholder, mediaType === 'image' ? '画像読み込み中...' : mediaType === 'audio' ? '留守番電話 読み込み中...' : mediaType === 'file' ? 'ファイル 読み込み中...' : '動画読み込み中...', { wow: true });
+    BroDots.skeleton(mediaPlaceholder);
     if (mediaType === 'file') { mediaPlaceholder.style.width = '210px'; mediaPlaceholder.style.height = '54px'; }
     if (mediaType === 'audio') { mediaPlaceholder.style.width = '240px'; mediaPlaceholder.style.height = '54px'; }
     mediaPlaceholder.dataset.mediaSrc = mediaSrc;
@@ -3381,7 +3384,7 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 function setCallStatus(text) {
-  document.getElementById('callStatus').textContent = text;
+  BroDots.set(document.getElementById('callStatus'), text, { wow: true });
 }
 
 function showCallOverlay() {
