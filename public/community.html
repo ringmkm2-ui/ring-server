@@ -453,9 +453,16 @@ function copyInvite() {
   });
 }
 
-// ポーリングで新着を取得(5秒ごと)
+// ポーリングで新着を取得(5秒ごと)。
+// 裏に回っている間は止める。画面を見ていない端末が5秒おきにDBを引き続けると、
+// 無料枠のコンピュート時間と転送量を一日中食う(2026-10-28にDBが停止した原因の一つ)。
+// 戻ってきた時は待たずに1回取りに行くので、見え方は変わらない
 let tick = 0, keyBusy = false;
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentChannelId) loadMessages();
+});
 setInterval(async () => {
+  if (document.hidden) return;
   tick++;
   // 鍵がまだ無い人は取り直す。鍵を持っている人は、新しく入った人に配る(開いた時だけだと、入った人が長く待たされる)
   if (!keyBusy && window.communityE2E && communityData && (tick % 3 === 0 || (communityData.community.encrypted && !communityKey))) {

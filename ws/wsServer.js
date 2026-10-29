@@ -453,6 +453,8 @@ function initWebSocketServer(server) {
 
   wss.on('connection', (ws, req) => {
     let userId = null;
+    // 「今アプリが使われている」印。後回しでいい定期処理の判断に使う(utils/activity.js)
+    require('../utils/activity').note();
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
     // Call Assist: track('mic'|'remote')ごとに有効なDeepgramセッションIDを保持する。

@@ -23,6 +23,10 @@ async function getTtl(convKey) {
 }
 
 async function setTtl(convKey, ttlSeconds, userId) {
+  // 掃除を動かすかどうかの判断に使う数(下の ttlActive)。オンにした時はその場で増やし、
+  // オフにした時は数え直す(他の会話がまだ使っているかもしれないため)
+  if (ttlSeconds > 0) ttlActive++;
+  else setImmediate(() => { refreshTtlActive().catch(() => {}); });
   await db.run(
     `INSERT INTO conversation_ttl (conv_key, ttl_seconds, updated_by, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT(conv_key) DO UPDATE SET ttl_seconds = excluded.ttl_seconds, updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP`,
@@ -172,12 +176,38 @@ async function sweepExpired(notify) {
   return total;
 }
 
-// 起動時に1度だけ呼ぶ。EXPIRY_SWEEP_MS で間隔を変えられる(既定60秒、最短1秒)
+// 起動時に1度だけ呼ぶ。EXPIRY_SWEEP_MS で間隔を変えられる(既定5分、最短1秒)
+//
+// 以前は60秒おきに無条件でクエリを投げていた。これだとDB(Neon)が一生眠れず、誰も使っていない
+// 深夜もコンピュート時間を食い続け、無料枠(1か月100 CU時間)を半月で使い切ってDBが停止した。
+// 掃除が遅れても、期限切れの行は notExpiredSql で履歴・未読・一覧から既に外れているので、
+// 画面上の見え方は変わらない。だから以下の時はクエリを投げない:
+//   - 消えるメッセージを使っている会話が1つも無い(ttlActive = 0)
+//   - 直近 IDLE_MS の間、APIもWebSocketも来ていない(= 誰も使っていない)
+const activity = require('./activity');
+const IDLE_MS = 15 * 60 * 1000;
 let timer = null;
+let ttlActive = 0; // ttl_seconds > 0 の会話の数(起動時に1度数え、setTtlで増減)
+
+async function refreshTtlActive() {
+  try {
+    const r = await db.get('SELECT COUNT(*) AS n FROM conversation_ttl WHERE ttl_seconds > 0');
+    ttlActive = Number((r && r.n) || 0);
+  } catch (e) {
+    ttlActive = 1; // 数えられない時は「ある」として扱う(消し忘れるよりマシ)
+  }
+  return ttlActive;
+}
+
 function startSweeper() {
   if (timer) return;
-  const ms = Math.max(1000, parseInt(process.env.EXPIRY_SWEEP_MS, 10) || 60 * 1000);
-  timer = setInterval(() => { sweepExpired().catch(e => console.error('[disappearing] sweep error:', e && e.message)); }, ms);
+  const ms = Math.max(1000, parseInt(process.env.EXPIRY_SWEEP_MS, 10) || 5 * 60 * 1000);
+  refreshTtlActive().then(n => console.log(`[disappearing] 掃除は${ms / 1000}秒おき(消えるメッセージの会話: ${n}件)`)).catch(() => {});
+  timer = setInterval(() => {
+    if (ttlActive <= 0) return;
+    if (!activity.activeWithin(IDLE_MS)) return; // 誰も使っていない間はDBを眠らせる
+    sweepExpired().catch(e => console.error('[disappearing] sweep error:', e && e.message));
+  }, ms);
   timer.unref();
 }
 

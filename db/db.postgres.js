@@ -12,10 +12,12 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
+  // 使っていない接続は早めに閉じる。Neonは「接続が無い状態が続く」と自動で眠って課金が止まるので、
+  // 繋ぎっぱなしだと誰も使っていない時間もコンピュート時間を食う(無料枠は1か月100 CU時間)
+  idleTimeoutMillis: 10000,
   max: 20,
   statement_timeout: 30000,
-  keepAlive: true, // アイドル中の接続がDB側/中継で静かに切られるのを防ぐ
+  // keepAliveは付けない。すぐ閉じる前提なので要らず、付けるとDBを起こし続ける側に働く
 });
 // 待機中の接続がDBの再起動やネットワーク断で壊れた時に 'error' が出る。受け皿が無いとプロセスごと落ちる。
 // 壊れた接続はpgが捨てて次から作り直すので、ログだけ残す

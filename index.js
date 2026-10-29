@@ -10,6 +10,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const db = require('./db/db');
+const activity = require('./utils/activity');
 const { router: authRouter } = require('./routes/auth');
 const prekeysRouter = require('./routes/prekeys');
 const mediaRouter = require('./routes/media');
@@ -187,6 +188,11 @@ async function main() {
 
   // API全体への高頻度リクエストを制限(スクリプトによる連打・スクレイピング対策)
   app.use('/api', apiLimiter);
+
+  // 「今アプリが使われている」印(utils/activity.js)。後回しでいい定期処理は、この印を見て
+  // 誰も使っていない間は動かない。DBを眠らせてNeonのコンピュート時間を節約するため。
+  // keepAliveの /health はここを通らないので、自分へのpingでは「使われている」ことにならない
+  app.use('/api', (req, res, next) => { activity.note(); next(); });
 
   app.get('/health', (req, res) => res.json({ ok: true, service: 'ring-server', time: new Date().toISOString() }));
 

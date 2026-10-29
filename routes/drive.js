@@ -127,12 +127,29 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
 }));
 
+// ファイルIDごとの置き場所を少しの間だけ覚える。
+// 動画は Range で何十回も取りに来る(シークするたびに増える)ので、そのたびにDBを引くと
+// 1本見られるだけで数十クエリになる。置き場所は後から変わらないので覚えてよい。
+// 消した時は忘れる(removeOwned)。
+const scopeCache = new Map(); // file_id -> { scope, exp }
+const SCOPE_TTL_MS = 10 * 60 * 1000;
+const SCOPE_CACHE_MAX = 500;
+async function scopeOf(id) {
+  const hit = scopeCache.get(id);
+  if (hit && hit.exp > Date.now()) return hit.scope;
+  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
+  const scope = row ? row.scope : null;
+  if (scopeCache.size >= SCOPE_CACHE_MAX) scopeCache.clear();
+  scopeCache.set(id, { scope, exp: Date.now() + SCOPE_TTL_MS });
+  return scope;
+}
+
 // GET /m/d/:id (index.js から付ける。/api の回数制限に掛けないため)
 async function serveFile(req, res) {
   const id = String(req.params.id || '');
   if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return res.status(404).end();
-  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
-  if (!row || !(await canReadScope(req.userId, row.scope))) return res.status(404).end();
+  const scope = await scopeOf(id);
+  if (!scope || !(await canReadScope(req.userId, scope))) return res.status(404).end();
   let r;
   try { r = await gd.openDownload(id); } catch (e) { return res.status(503).end(); }
   if (!r.ok || !r.body) return res.status(r.status === 404 ? 404 : 502).end();
@@ -151,8 +168,8 @@ async function serveFile(req, res) {
 async function servePublic(req, res) {
   const id = String(req.params.id || '');
   if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return res.status(404).end();
-  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
-  if (!row || !isPostScope(row.scope)) return res.status(404).end();
+  const scope = await scopeOf(id);
+  if (!scope || !isPostScope(scope)) return res.status(404).end();
   const range = typeof req.headers.range === 'string' && /^bytes=\d*-\d*$/.test(req.headers.range) ? req.headers.range : null;
   let r;
   try { r = await gd.openDownload(id, range); } catch (e) { return res.status(503).end(); }
@@ -172,6 +189,7 @@ async function removeOwned(userId, publicId) {
   const id = String(publicId || '').replace(/^gd_/, '');
   const row = await db.get('SELECT owner_id FROM drive_files WHERE file_id = ?', [id]);
   if (!row || row.owner_id !== userId) return false;
+  scopeCache.delete(id);
   await gd.remove(id);
   await db.run('DELETE FROM drive_files WHERE file_id = ?', [id]);
   return true;
