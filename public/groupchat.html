@@ -179,11 +179,6 @@ html.dark-mode .c-copy{color:#e2e8f0}
 .crop-reset-btn{width:100%;margin-top:8px;padding:9px;border-radius:12px;font-size:13px;font-weight:700;color:#0f172a;cursor:pointer;border:none}
 .inv-row{display:flex;gap:8px;margin-top:10px}
 .inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
-.mm-ov{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
-.mm-ov.show{opacity:1;pointer-events:auto}
-.mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
-.mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
-.mm-cls{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
 /* グループの「入力中」。打っている人のアイコンを1つの丸の中に小さく並べる */
 #gTyping{display:flex;align-items:flex-end;gap:8px;width:100%;margin:2px 0 6px;transform-origin:left bottom;transition:transform .38s cubic-bezier(.34,1.56,.64,1),opacity .25s ease}
 #gTyping.gt-hide{transform:scale(.55);opacity:0}
@@ -248,7 +243,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.293 beta</div>
+  <div class="version-badge">Bro Chat v1.28.294 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -406,12 +401,6 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
     </div>
   </div>
 
-  <div class="mm-ov" id="mmOv">
-    <div class="mm-inner" id="mmIn"></div>
-    <button class="mm-cls glass-clear glass-interactive" id="mmCls" type="button">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
 </div>
 
 <script>
@@ -1140,7 +1129,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   attachPress(msgDiv,wrap,bub,!isInc);
 
   if(mediaEl&&media){
-    mediaEl.addEventListener('click',()=>openMM(mediaEl,media.mediaType));
+    mediaEl.addEventListener('click',()=>openMM(mediaEl));
   }
 
   ['imgI','vidI','fileI'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -1653,24 +1642,10 @@ document.getElementById('gSaveBtn').onclick=async()=>{
   gImgSrc='';
 };
 
-// メディアモーダル
-let sc=1,px=0,py=0,dr=false,sx=0,sy=0,tm='',ip=0,is=1;
-function openMM(el,type){
-  const clone=el.cloneNode(true);if(type==='video'){clone.controls=true;clone.autoplay=true;}
-  sc=1;px=0;py=0;clone.style.transformOrigin='center';
-  const inner=document.getElementById('mmIn');inner.innerHTML='';inner.appendChild(clone);
-  document.getElementById('mmOv').classList.add('show');
+// 画像/動画の拡大表示は js/mediaGallery.js(左右スワイプで前後のメディアへ)
+function openMM(el){
+  BroGallery.open(el,{selector:'.bub.mbub img, .bub.mbub video'});
 }
-function updMM(){const e=document.getElementById('mmIn').firstElementChild;if(e)e.style.transform=`translate(${px}px,${py}px) scale(${sc})`;}
-const gd=(a,b)=>Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
-document.getElementById('mmOv').addEventListener('wheel',e=>{e.preventDefault();const o=sc;sc=e.deltaY<0?Math.min(sc+.15,5):Math.max(sc-.15,.7);if(sc!==o){px*=sc/o;py*=sc/o;}updMM();},{passive:false});
-document.getElementById('mmOv').addEventListener('mousedown',e=>{if(e.target.closest('#mmCls')||!document.getElementById('mmIn').firstElementChild)return;dr=true;tm='pan';sx=e.clientX-(px/sc);sy=e.clientY-(py/sc);});
-document.getElementById('mmOv').addEventListener('touchstart',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(t.length===2){tm='zoom';ip=gd(t[0],t[1]);is=sc;}else if(t.length===1){tm='pan';dr=true;sx=t[0].clientX-(px/sc);sy=t[0].clientY-(py/sc);}},{passive:true});
-window.addEventListener('mousemove',e=>{if(!dr||tm!=='pan')return;px=(e.clientX-sx)*sc;py=(e.clientY-sy)*sc;updMM();});
-window.addEventListener('touchmove',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(tm==='zoom'&&t.length===2){e.preventDefault();const o=sc;sc=Math.max(.7,Math.min(is*(gd(t[0],t[1])/ip),5));if(sc!==o){px*=sc/o;py*=sc/o;}updMM();}else if(tm==='pan'&&dr&&t.length===1){e.preventDefault();px=(t[0].clientX-sx)*sc;py=(t[0].clientY-sy)*sc;updMM();}},{passive:false});
-window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener('touchend',()=>{dr=false;tm='';});
-document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
-document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
 // サーバーのcontentカラムは以下のいずれかの形式:
 // 1. 平文テキスト(暗号化前の古いメッセージ、または鍵未配布時の互換)
@@ -2077,6 +2052,8 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
   });
 });
 </script>
+<script src="/js/mediaSave.js"></script>
+<script src="/js/mediaGallery.js"></script>
 <script src="/js/keepBottom.js"></script>
 <script src="/js/viewportFix.js"></script>
 </body>
