@@ -669,6 +669,12 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
   let where = 'gm.group_id = ? AND gm.deleted_at IS NULL';
   if (mem && mem.joined_at) { where += ' AND gm.created_at >= ?'; params.push(mem.joined_at); }
   if (before) { where += ' AND gm.created_at < ?'; params.push(before); }
+  // since: 画面に戻った時などの取りこぼし確認用。この時刻より後に届いた分だけ返す。
+  // 以前は毎回最新100件を丸ごとDBから取っていて、Neonの転送量(無料枠は月5GB)を使い切った。
+  // 端末は、出ている分は描き直さない作りなので、新着だけで足りる(編集・取り消し・リアクションはWSで届く)。
+  // 端末が10分に1回は since 無しで取り直す。
+  const since = typeof req.query.since === 'string' && req.query.since.length < 40 && !isNaN(Date.parse(req.query.since)) ? req.query.since : null;
+  if (since && !before) { where += ' AND gm.created_at > ?'; params.push(since); }
   const messages = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id
