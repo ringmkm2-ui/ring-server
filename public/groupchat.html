@@ -337,7 +337,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.297 beta</div>
+  <div class="version-badge">Bro Chat v1.28.298 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -1354,8 +1354,14 @@ function showMenu(msgDiv,wrap,bub,x,y,own){
   document.getElementById('editBtn').style.display=own&&hasText?'flex':'none';
   document.getElementById('delBtn').style.display=own?'flex':'none';
   const ctx=document.getElementById('ctx');
-  ctx.style.left=`${Math.max(10,Math.min(x-95,innerWidth-210))}px`;
-  ctx.style.top=`${Math.max(10,Math.min(y-70,innerHeight-240))}px`;
+  // メニューの実際の高さで画面内に収める(高さ240px固定で計算していて、項目が多いと下の「送信取り消し」が画面外に切れていた)
+  const mh=ctx.offsetHeight||330,mw=ctx.offsetWidth||200;
+  const vh=(window.visualViewport?visualViewport.height:innerHeight);
+  let top=y-70;
+  if(top+mh>vh-16)top=y-mh-12;            // 下に入らなければ指の上に出す
+  top=Math.max(10,Math.min(top,vh-mh-16));
+  ctx.style.left=`${Math.max(10,Math.min(x-mw/2,innerWidth-mw-10))}px`;
+  ctx.style.top=`${top}px`;
   document.getElementById('mov').classList.add('show');
   ctx.classList.add('show');
 }
