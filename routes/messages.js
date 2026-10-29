@@ -240,6 +240,16 @@ router.get('/history/:userId', auth, async (req, res) => {
       params.push(before);
     }
 
+    // since: 画面を戻した時などの「取りこぼし確認」用。この時刻より後に、新しく来た/編集・削除・ピン留め・
+    // 既読・リアクション追加があったメッセージだけ返す。以前は毎回、最新50件の本文を丸ごとDBから取っていて、
+    // 画面を出し入れするたびにNeonの転送量(無料枠は月5GB)を食い、上限に達してサービスが止まった。
+    // (リアクションや固定の「取り消し」は時刻が残らないので拾えない。端末側が10分に1回は since 無しで全件取り直す)
+    const since = typeof req.query.since === 'string' && req.query.since.length < 40 && !isNaN(Date.parse(req.query.since)) ? req.query.since : null;
+    if (since && !before) {
+      sql += ' AND (created_at > ? OR edited_at > ? OR deleted_at > ? OR pinned_at > ? OR read_at > ? OR id IN (SELECT message_id FROM message_reactions WHERE created_at > ?))';
+      params.push(since, since, since, since, since, since);
+    }
+
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);
 

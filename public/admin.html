@@ -387,7 +387,7 @@ html.dark-mode #blockedBar,html.dark-mode .up-chip{color:#cbd5e1}
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.291 beta</div>
+  <div class="version-badge">Bro Chat v1.28.292 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -2103,10 +2103,30 @@ function rememberEarlyRead(id, at) {
   earlyReads.set(String(id), at || new Date().toISOString());
 }
 
+// 取りこぼし確認は、前回以降に変わった分だけ取る(サーバーの転送量を節約するため)。
+// 最初の1回と、10分に1回は全件取り直す(リアクションの取り消しなど、時刻に残らない変化を拾うため)
+let lastFullSyncAt = 0;
+function syncCursor() {
+  let max = 0;
+  for (const m of realMessages) {
+    if (!m || !m.id || String(m.id).startsWith('temp-')) continue;
+    for (const k of ['createdAt', 'editedAt', 'deletedAt', 'readAt', 'pinnedAt']) {
+      const t = m[k] ? Date.parse(m[k]) : NaN;
+      if (t > max) max = t;
+    }
+  }
+  // 端末とサーバーの時計のずれ・同時刻の変更を取りこぼさないよう、少し前から取る
+  return max ? new Date(max - 10000).toISOString() : null;
+}
 async function syncMessages() {
   try {
     // 裏で同期しているだけ(画面が隠れている)なら既読にしない。以前は再接続のたびに、見ていないのに既読が付いていた
-    const data = await api('/api/messages/history/' + otherId + (document.hidden ? '?markRead=0' : ''));
+    const params = [];
+    if (document.hidden) params.push('markRead=0');
+    const cursor = (Date.now() - lastFullSyncAt < 10 * 60 * 1000) ? syncCursor() : null;
+    if (cursor) params.push('since=' + encodeURIComponent(cursor));
+    const data = await api('/api/messages/history/' + otherId + (params.length ? '?' + params.join('&') : ''));
+    if (Array.isArray(data) && !cursor) lastFullSyncAt = Date.now();
     if (!Array.isArray(data)) return;
 
     for (const msg of data) {
