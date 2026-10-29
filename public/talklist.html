@@ -781,7 +781,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.295 beta</div>
+  <div class="version-badge">Bro Chat v1.28.296 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -2375,7 +2375,7 @@ const secMov = document.getElementById('secMov');
 const secBody = document.getElementById('secBody');
 function secNode(tag, text, css) {
   const el = document.createElement(tag);
-  if (text != null) el.textContent = text;
+  if (text != null) { if (window.BroDots) BroDots.set(el, text); else el.textContent = text; }
   if (css) el.style.cssText = css;
   return el;
 }

@@ -413,7 +413,7 @@
   function el(tag, css, text) {
     var e = document.createElement(tag);
     if (css) e.style.cssText = css;
-    if (text != null) e.textContent = text;
+    if (text != null) { if (window.BroDots) BroDots.set(e, text); else e.textContent = text; }
     return e;
   }
 

@@ -584,7 +584,7 @@
 
     scope.querySelectorAll("[data-i18n]").forEach((el) => {
       const key = el.getAttribute("data-i18n");
-      if (window.BroDots) window.BroDots.set(el, t(key), { wow: el.getAttribute("data-bd") === "wow" });
+      if (window.BroDots) window.BroDots.set(el, t(key), { wow: el.getAttribute("data-bd") !== "plain" });
       else el.textContent = t(key);
     });
     scope.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {

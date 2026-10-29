@@ -200,6 +200,7 @@ html.dark-mode .sn-btn.pri,body.dark-mode .sn-btn.pri{background:#0284c7;color:#
     const back = document.createElement('div');
     back.className = 'sn-back';
     back.innerHTML = '<div class="sn-sheet" role="dialog" aria-modal="true"><h3>' + esc(t('sn_title', '暗号化の確認')) + '</h3><p class="sn-sub">' + esc(t('sn_loading', '読み込み中…')) + '</p></div>';
+    if (window.BroDots) { var snSub = back.querySelector('.sn-sub'); if (snSub) BroDots.set(snSub, snSub.textContent); }
     document.body.appendChild(back);
     const sheet = back.firstChild;
     let stream = null, raf = 0, closed = false;
