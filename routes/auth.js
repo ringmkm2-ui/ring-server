@@ -282,18 +282,30 @@ router.post('/register', registerLimiter, async (req, res) => {
 });
 
 // --- メール認証コードの確認 ---
-// body: { username, code }  成功したらそのままログイン状態(トークン発行)にする
+// body: { username, code, password }  成功したらそのままログイン状態(トークン発行)にする
+// password も必須: 認証前のアカウントは登録し直しで上書きできるため、他人が同じメールで
+// 自分のパスワードに書き換えた後に本人がコードを入れると、他人のパスワードのまま認証が通り乗っ取られていた。
+// 認証を通すのは「今のパスワードを知っている人」+「メールを受け取れる人」が同じ場合だけにする
 router.post('/verify-email', loginLimiter, async (req, res) => {
   try {
-    const { username, code } = req.body;
-    if (!username || !code) return res.status(400).json({ error: 'メールアドレスとコードを入力してください' });
+    const { username, code, password } = req.body || {};
+    if (typeof username !== 'string' || typeof code !== 'string') return res.status(400).json({ error: 'メールアドレスとコードを入力してください' });
+    if (typeof password !== 'string' || !password) return res.status(400).json({ error: 'パスワードを入力してください', needsPassword: true });
     const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     const row = await db.get('SELECT * FROM email_codes WHERE username = ?', [username]);
     const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
     if (!user || !row) return invalid();
+    // ここもパスワードの当てずっぽうに使えるので、ログインと同じアカウント単位のロックを共有する
+    if (Number(user.locked_until || 0) > Date.now()) {
+      return res.status(429).json({ error: 'ログインの失敗が続いたため、一時的にロックしています。15分ほど待ってからもう一度試してください' });
+    }
+    if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+      await recordLoginFailure(user.id);
+      return res.status(401).json({ error: 'パスワードが違います。もう一度登録し直してください', needsPassword: true });
+    }
     // 認証コードの当てずっぽうが続いたら、そのアカウントの認証を24時間止める
     // (以前はパスワード再設定の失敗回数を見ていて、無関係な再設定の失敗で認証が止まり、再設定コードまで消えていた)
-    if (resetMissCount('verify:' + username) >= RESET_MISS_MAX_PER_DAY) {
+    if ((await resetMissCount('verify:' + username)) >= RESET_MISS_MAX_PER_DAY) {
       await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
       return res.status(429).json({ error: '失敗が続いたため、このアカウントの認証を24時間止めました' });
     }
@@ -305,7 +317,7 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
       await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE username = ?', [username]);
-      resetMiss('verify:' + username);
+      await resetMiss('verify:' + username);
       return invalid();
     }
     await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
@@ -430,7 +442,8 @@ router.post('/forgot-password', loginLimiter, async (req, res) => {
     }
     if (isMailConfigured()) {
       const user = await db.get('SELECT id FROM users WHERE username = ?', [username]);
-      if (user) {
+      // 外れが上限に達したアカウントには新しいコードを作らない(メールの連打も止まる)
+      if (user && (await resetMissCount('reset:' + username)) < RESET_MISS_MAX_PER_DAY) {
         const now = Date.now();
         const row = await db.get('SELECT last_sent_ms FROM password_resets WHERE username = ?', [username]);
         if (!row || now - Number(row.last_sent_ms || 0) >= EMAIL_CODE_COOLDOWN_MS) {
@@ -461,18 +474,24 @@ router.post('/forgot-password', loginLimiter, async (req, res) => {
 // body: { username, code, newPassword, totpCode? }  2段階認証が有効なアカウントは totpCode も必要
 // パスワード再設定コードの外れ回数(アカウントごと、24時間)。IPを変えながら
 // 「1分ごとに新しいコード→5回ずつ当てずっぽう」を繰り返されると、IP単位の制限では止まらなかった
-const resetMisses = new Map(); // username -> { n, since }
 const RESET_MISS_MAX_PER_DAY = 15;
-function resetMissCount(username) {
-  const r = resetMisses.get(username);
-  if (!r || Date.now() - r.since > 24 * 3600 * 1000) return 0;
-  return r.n;
+const MISS_WINDOW_MS = 24 * 3600 * 1000;
+// 以前はメモリのMapで数えていたが、(1)再設定の側では数えるだけで判定しておらず上限が効いていなかった
+// (2)Renderの再起動で消える。DBに置いて、再設定・メール認証の両方で判定する
+async function resetMissCount(key) {
+  const r = await db.get('SELECT n, since_ms FROM auth_misses WHERE key = ?', [key]);
+  if (!r || Date.now() - Number(r.since_ms) > MISS_WINDOW_MS) return 0;
+  return Number(r.n);
 }
-function resetMiss(username) {
-  const r = resetMisses.get(username);
-  if (!r || Date.now() - r.since > 24 * 3600 * 1000) resetMisses.set(username, { n: 1, since: Date.now() });
-  else r.n++;
-  if (resetMisses.size > 10000) resetMisses.clear();
+async function resetMiss(key) {
+  const now = Date.now();
+  const r = await db.get('SELECT n, since_ms FROM auth_misses WHERE key = ?', [key]);
+  if (!r || now - Number(r.since_ms) > MISS_WINDOW_MS) {
+    await db.run(`INSERT INTO auth_misses (key, n, since_ms) VALUES (?, 1, ?)
+      ON CONFLICT(key) DO UPDATE SET n = 1, since_ms = excluded.since_ms`, [key, now]);
+  } else {
+    await db.run('UPDATE auth_misses SET n = n + 1 WHERE key = ?', [key]);
+  }
 }
 
 router.post('/reset-password', loginLimiter, async (req, res) => {
@@ -485,6 +504,11 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     const pwErr = validatePassword(newPassword, username);
     if (pwErr) return res.status(400).json({ error: pwErr });
 
+    // 「1分ごとに新しいコード→5回ずつ当てずっぽう」をIPを変えながら続けられないよう、アカウント単位で24時間止める
+    if ((await resetMissCount('reset:' + username)) >= RESET_MISS_MAX_PER_DAY) {
+      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+      return res.status(429).json({ error: '失敗が続いたため、このアカウントの再設定を24時間止めました' });
+    }
     const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     const row = await db.get('SELECT * FROM password_resets WHERE username = ?', [username]);
     if (!user || !row) return invalid();
@@ -496,7 +520,7 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
       await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE username = ?', [username]);
-      resetMiss(username);
+      await resetMiss('reset:' + username);
       return invalid();
     }
     // メールを押さえられただけで2段階認証を迂回されないよう、2FAが有効なら認証アプリのコードも必須にする

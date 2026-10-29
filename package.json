@@ -1,6 +1,6 @@
 {
   "name": "ring-server",
-  "version": "1.28.291",
+  "version": "1.28.292",
   "description": "Ring chat app backend - WebSocket relay + auth + prekey store + TTL storage",
   "main": "index.js",
   "type": "commonjs",
@@ -29,6 +29,7 @@
     "ws": "^8.18.0"
   },
   "overrides": {
-    "proxy-addr": "^2.0.8"
+    "proxy-addr": "^2.0.8",
+    "body-parser": "^1.20.9"
   }
 }

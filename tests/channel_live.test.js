@@ -8,8 +8,8 @@ after(() => S && S.stop());
 
 test('チャンネル情報: 登録者・動画数・総再生回数・登録日・自己紹介が返り、ブロック相手は404', async () => {
   const a = await S.user('Chan A'); const b = await S.user('Chan B'); const c = await S.user('Chan C');
-  const v = (await a.call('POST', '/api/posts', { text: 'vid', mediaUrl: 'https://res.cloudinary.com/demo/video/upload/v1/x/vid1', mediaType: 'video', durationSec: 30 })).data.post;
-  await a.call('POST', '/api/posts', { text: 'pic', mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/x/img1.jpg', mediaType: 'image' });
+  const v = (await a.call('POST', '/api/posts', { text: 'vid', mediaUrl: 'https://res.cloudinary.com/a6rxinoz/video/upload/v1/x/vid1', mediaType: 'video', durationSec: 30 })).data.post;
+  await a.call('POST', '/api/posts', { text: 'pic', mediaUrl: 'https://res.cloudinary.com/a6rxinoz/image/upload/v1/x/img1.jpg', mediaType: 'image' });
   await a.call('POST', '/api/posts', { text: 'plain' });
   await b.call('POST', `/api/posts/${v.id}/view`);
   await c.call('POST', `/api/posts/${v.id}/view`);

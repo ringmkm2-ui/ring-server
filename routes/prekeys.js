@@ -132,6 +132,8 @@ router.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {
   });
 }));
 
+const OTK_PER_PAIR_PER_HOUR = 10;
+const otkPairs = new Map(); // 'from>to' -> { n, since }
 // --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
 router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   const targetId = req.params.userId;
@@ -163,7 +165,16 @@ router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   // 来ると同じワンタイム鍵が2人以上に配布されてしまうレースコンディションが
   // あった(X3DHの前方秘匿性を損なう)。UPDATE...RETURNINGで原子的に「未使用の
   // 鍵を1つ確保して即座にusedへ更新」を1クエリで行い、これを防ぐ。
-  const otk = await db.get(
+  // 使い捨て鍵は、同じ相手からは1時間に10個まで。超えたら使い捨て鍵なしのバンドルを返す(X3DHはそれでも成立する)。
+  // 以前は友だちや同じコミュニティの人が叩き続けるだけで、相手の500個を2分で使い切れた
+  const pairKey = req.user.userId + '>' + targetId;
+  const now = Date.now();
+  let pc = otkPairs.get(pairKey);
+  if (!pc || now - pc.since > 3600 * 1000) { pc = { n: 0, since: now }; otkPairs.set(pairKey, pc); }
+  if (otkPairs.size > 20000) { for (const [k, v] of otkPairs) if (now - v.since > 3600 * 1000) otkPairs.delete(k); }
+  const allowOtk = targetId === req.user.userId || pc.n < OTK_PER_PAIR_PER_HOUR;
+  if (allowOtk) pc.n++;
+  const otk = !allowOtk ? null : await db.get(
     `UPDATE one_time_prekeys SET used = 1
      WHERE id = (SELECT id FROM one_time_prekeys WHERE user_id = ? AND used = 0 LIMIT 1)
      RETURNING *`,

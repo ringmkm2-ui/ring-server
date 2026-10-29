@@ -33,6 +33,41 @@ setInterval(() => {
   for (const [id, c] of activeCalls) if (now - c.ts > ACTIVE_CALL_MAX_MS) activeCalls.delete(id);
 }, 10 * 60 * 1000).unref();
 const CALL_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
+
+// 通知の連打よけ。グループ通話・ライブを「始める→やめる」を繰り返すと、そのたびに全員の端末へ
+// プッシュ/FCMが飛び、1秒に何回でも鳴らせた。画面上の表示(WS)はそのまま、端末を鳴らすのは間隔を空ける
+const notifyLast = new Map(); // key -> 最後に鳴らした時刻
+function notifyAllowed(key, ms) {
+  const now = Date.now();
+  const t = notifyLast.get(key);
+  if (t && now - t < ms) return false;
+  notifyLast.set(key, now);
+  if (notifyLast.size > 20000) { for (const [k, v] of notifyLast) if (now - v > 3600 * 1000) notifyLast.delete(k); }
+  return true;
+}
+// 1対1の発信は、同じ相手へ1分に6回まで(発信→すぐ切る→発信…で相手の端末を鳴らし続けられた)
+const offerLog = new Map(); // 'from>to' -> [時刻...]
+function offerAllowed(from, to) {
+  const key = from + '>' + to;
+  const now = Date.now();
+  const arr = (offerLog.get(key) || []).filter(t => now - t < 60 * 1000);
+  if (arr.length >= 6) { offerLog.set(key, arr); return false; }
+  arr.push(now);
+  offerLog.set(key, arr);
+  if (offerLog.size > 20000) { for (const [k, v] of offerLog) if (!v.length || now - v[v.length - 1] > 60 * 1000) offerLog.delete(k); }
+  return true;
+}
+// 1人が覚えさせられる通話の数。発信→応答を繰り返すと6時間消えない記録が際限なく増えた
+const MAX_ACTIVE_CALLS_PER_USER = 10;
+function rememberCall(callId, a, b) {
+  const mine = [];
+  for (const [id, c] of activeCalls) if (c.a === a) mine.push([id, c.ts]);
+  if (mine.length >= MAX_ACTIVE_CALLS_PER_USER) {
+    mine.sort((x, y) => x[1] - y[1]);
+    for (const [id] of mine.slice(0, mine.length - MAX_ACTIVE_CALLS_PER_USER + 1)) activeCalls.delete(id);
+  }
+  activeCalls.set(callId, { a, b, ts: Date.now() });
+}
 function callPeerOf(callId, userId) {
   const c = typeof callId === 'string' ? activeCalls.get(callId) : null;
   if (!c) return null;
@@ -42,6 +77,11 @@ function callPeerOf(callId, userId) {
 }
 function isCallParticipant(callId, userId) {
   return !!callPeerOf(callId, userId);
+}
+// 相手が出た後の通話の当事者か(字幕は呼び出し中には使わせない。以前は出てもらえない発信でも字幕を起動できた)
+function isCallAnswered(callId, userId) {
+  const c = typeof callId === 'string' ? activeCalls.get(callId) : null;
+  return !!(c && c.answered && (c.a === userId || c.b === userId));
 }
 
 function clearPendingCall(callId) {
@@ -295,6 +335,7 @@ const PRESENCE_OFFLINE_GRACE_MS = 4000;
 const presenceSent = new Map();    // userId -> true(相手に「オンライン」と伝えてある)
 const offlineTimers = new Map();   // userId -> timer
 const contactCache = new Map();    // userId -> { ts, ids }
+const presenceShown = new Set();   // 実際に「オンライン」を相手へ送った人
 function announceOnline(userId) {
   const t = offlineTimers.get(userId);
   if (t) { clearTimeout(t); offlineTimers.delete(userId); }
@@ -314,13 +355,9 @@ function announceOffline(userId) {
 async function presenceContacts(userId) {
   const hit = contactCache.get(userId);
   if (hit && Date.now() - hit.ts < 30000) return hit.ids;
-  // トークしたことのある人に加えて、友だちにも知らせる。以前はトーク履歴だけで、
-  // 友だちになったばかりでまだ話していない相手には、ずっと「オフライン」のままに見えていた
-  const rows = await db.all(
-    `SELECT DISTINCT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id
-     FROM messages WHERE (sender_id = ? OR recipient_id = ?) AND sender_id != recipient_id`,
-    [userId, userId, userId]
-  );
+  // 知らせるのは今の友だちだけ。以前は「トークしたことのある人」も入れていて、友だちを解除した後も
+  // 元友だちにオンライン/オフラインが届き続けていた(問い合わせ側の presence_query は既に友だち限定)
+  const rows = [];
   const friends = await db.all(
     `SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as other_id
      FROM friendships WHERE (user_a_id = ? OR user_b_id = ?) AND status = 'accepted'`,
@@ -337,6 +374,10 @@ async function broadcastPresence(userId, online) {
     // 「オンライン状態を見せない」設定の人は、相手の画面に常にオフラインとして映る
     const st = await getSettings(userId);
     if (!st.showOnlineStatus && online) return;
+    // 「オンラインを見せない」人は、オフラインも送らない(送るとオンラインだったことが分かる)。
+    // ただし、見せていた間に「オンライン」を伝えた相手には、オフラインを1回だけ送って表示を戻す
+    if (!online && !presenceShown.has(userId)) return;
+    if (online) presenceShown.add(userId); else presenceShown.delete(userId);
     const rows = (await presenceContacts(userId)).map(other_id => ({ other_id }));
     // ブロックしている/されている相手には、オンラインになったことを知らせない
     const blocks = await db.all('SELECT blocker_id, blocked_id FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', [userId, userId]);
@@ -417,6 +458,7 @@ function initWebSocketServer(server) {
     // Call Assist: track('mic'|'remote')ごとに有効なDeepgramセッションIDを保持する。
     // 自分のマイク音声と相手の受信音声(remoteAudio)を別々に文字起こしするため。
     let callAssistSessions = { mic: null, remote: null };
+    let callAssistCallIds = { mic: null, remote: null }; // 字幕を始めた通話。終わった通話の字幕は音声を流しても止める
     // 入力中表示・オンライン問い合わせのたびにDBを引かないよう、関係の確認結果を1分だけ覚える
     const relationCache = new Map(); // targetId -> { ok, ts }
     const fakeCalls = new Map(); // ブロックされた相手への「呼び出し中」だけの通話 callId -> timer
@@ -494,7 +536,14 @@ function initWebSocketServer(server) {
           const track = trackByte === 0x02 ? 'remote' : 'mic';
           const sessionId = callAssistSessions[track];
           if (sessionId) {
-            callAssist.sendAudioChunk(sessionId, audioData);
+            // 通話が終わった(タイムアウト・拒否・相手の終了)後も音声を流し続けて課金を増やせないよう、毎回確かめる
+            if (!isCallAnswered(callAssistCallIds[track], userId)) {
+              callAssist.stopSession(sessionId);
+              callAssistSessions[track] = null;
+              callAssistCallIds[track] = null;
+            } else {
+              callAssist.sendAudioChunk(sessionId, audioData);
+            }
           }
         }
         return;
@@ -714,7 +763,11 @@ function initWebSocketServer(server) {
             return;
           }
         }
-        activeCalls.set(data.callId, { a: userId, b: data.recipientId, ts: Date.now() });
+        if (!offerAllowed(userId, data.recipientId)) {
+          ws.send(JSON.stringify({ type: 'call_unavailable', callId: data.callId, reason: 'unreachable' }));
+          return;
+        }
+        rememberCall(data.callId, userId, data.recipientId);
         const delivered = broadcastToUser(data.recipientId, {
           type: 'call_offer',
           callId: data.callId,
@@ -814,6 +867,7 @@ function initWebSocketServer(server) {
         const ac = typeof data.callId === 'string' ? activeCalls.get(data.callId) : null;
         if (!ac || ac.b !== userId) return;
         const answerTo = ac.a;
+        ac.answered = true;
         clearPendingCall(data.callId);
         cancelRinging(userId, data.callId); // 応答した本人の他端末(APK等)の着信音を止める
         broadcastToUser(answerTo, {
@@ -931,6 +985,7 @@ function initWebSocketServer(server) {
           }
         });
         if (isNew) {
+          const ring = notifyAllowed('gcall:' + groupId, 60 * 1000);
           try {
             const group = await db.get('SELECT name FROM groups WHERE id = ?', [groupId]);
             const caller = await db.get('SELECT display_name FROM users WHERE id = ?', [userId]);
@@ -940,6 +995,7 @@ function initWebSocketServer(server) {
             members.forEach(m => {
               if (m.user_id === userId) return;
               broadcastToUser(m.user_id, { type: 'gcall_started', groupId, groupName, byUserId: userId, byName: callerName, video: room.video });
+              if (!ring) return;
               require('../utils/fcm').sendMessageNotification(
                 m.user_id, `${callerName} (${groupName})`, 'グループ通話が始まりました', 'group', { senderId: userId, chatId: groupId }
               ).catch(err => console.error('[fcm] group call failed:', err.message));
@@ -1004,10 +1060,12 @@ function initWebSocketServer(server) {
           if (cur) { const nr = liveRooms.get(gid); nr.viewers.forEach(w => { liveSend(w, liveMetaMsg(gid, nr)); }); liveViewersBroadcast(gid); }
           // 配信者がつなぎ直した時は、見ている人へ送り直す
           if (cur) cur.viewers.forEach((w, vid) => liveSend(ws, { type: 'live_viewer', groupId: gid, userId: vid }));
+          const ringLive = !cur && notifyAllowed('live:' + gid, 5 * 60 * 1000);
           if (!cur && gid.startsWith('u:')) {
             try {
               (await liveFriends(userId)).forEach(id => {
                 broadcastToUser(id, { type: 'live_started', groupId: gid, hostId: userId, hostName, feed: true, title: liveRooms.get(gid).title || '' });
+                if (!ringLive) return;
                 require('../utils/fcm').sendMessageNotification(id, hostName, liveRooms.get(gid).title || 'ライブ配信を始めました', 'system', { senderId: userId, chatId: '' }).catch(() => {});
               });
             } catch (e) { console.error('[live] notify failed:', e.message); }
@@ -1019,6 +1077,7 @@ function initWebSocketServer(server) {
               members.forEach(m => {
                 if (m.user_id === userId) return;
                 broadcastToUser(m.user_id, { type: 'live_started', groupId: gid, groupName, hostId: userId, hostName, title: liveRooms.get(gid).title || '' });
+                if (!ringLive) return;
                 require('../utils/fcm').sendMessageNotification(
                   m.user_id, `${hostName} (${groupName})`, 'ライブ配信を始めました', 'group', { senderId: userId, chatId: gid }
                 ).catch(() => {});
@@ -1129,7 +1188,7 @@ function initWebSocketServer(server) {
         }
         // 字幕(Deepgram、従量課金)は、実際に参加している通話の間だけ使える。
         // 以前は通話と無関係にいつでも開始でき、音声を流し続けて課金を膨らませられた。
-        if (!isCallParticipant(data.callId, userId)) {
+        if (!isCallAnswered(data.callId, userId)) {
           ws.send(JSON.stringify({ type: 'call_assist_error', error: '通話中のみ利用できます', track: data.track }));
           return;
         }
@@ -1140,7 +1199,9 @@ function initWebSocketServer(server) {
         const lang = typeof data.language === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(data.language) ? data.language : 'ja';
         const sessionId = `${userId}:${data.callId}:${track}:${Date.now()}`;
         callAssistSessions[track] = sessionId;
+        callAssistCallIds[track] = data.callId;
         callAssist.startSession(sessionId, {
+          owner: userId,
           language: lang,
           onTranscript: (text, isFinal) => {
             if (ws.readyState === ws.OPEN) {

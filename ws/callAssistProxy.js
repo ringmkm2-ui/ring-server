@@ -25,12 +25,23 @@ function isDeepgramConfigured() {
 // key: クライアント接続を識別するための任意のID(通話ID等)
 const activeSessions = new Map();
 const MAX_SESSION_MS = 2 * 60 * 60 * 1000;
+// 1人が同時に持てる字幕セッション(自分の声+相手の声で2本)。以前は端末を8台つなげば16本開けた
+const MAX_SESSIONS_PER_USER = 2;
+// 音声は実時間ぶん(16kHz・16bit = 32KB/秒)より速くは流させない。速く送れば実時間より速く課金されるため
+const AUDIO_BYTES_PER_SEC = 32000;
+const AUDIO_BURST_BYTES = 128 * 1024;
+const sessionMeta = new Map(); // sessionId -> { owner, tokens, last }
+function sessionsOf(owner) {
+  let n = 0;
+  for (const [id, m] of sessionMeta) if (m.owner === owner && activeSessions.has(id)) n++;
+  return n;
+}
 
 /**
  * クライアントの音声ストリーミングセッションを開始する。
  * onTranscript(text, isFinal) が呼ばれるたびに文字起こし結果を通知する。
  */
-function startSession(sessionId, { language = 'ja', onTranscript, onError, onClose } = {}) {
+function startSession(sessionId, { language = 'ja', onTranscript, onError, onClose, owner } = {}) {
   if (!isDeepgramConfigured()) {
     if (onError) onError(new Error('DEEPGRAM_API_KEY が未設定です'));
     return null;
@@ -38,6 +49,12 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
   if (activeSessions.has(sessionId)) {
     stopSession(sessionId);
   }
+  owner = owner || String(sessionId).split(':')[0];
+  if (sessionsOf(owner) >= MAX_SESSIONS_PER_USER) {
+    if (onError) onError(new Error('字幕は同時に2つまでです'));
+    return null;
+  }
+  sessionMeta.set(sessionId, { owner, tokens: AUDIO_BURST_BYTES, last: Date.now() });
 
   const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=${encodeURIComponent(language)}&encoding=linear16&sample_rate=16000&interim_results=true`;
   const dgWs = new WebSocket(dgUrl, {
@@ -69,7 +86,7 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
   dgWs.on('close', () => {
     console.log(`[callAssist] Deepgramセッション終了: ${sessionId}`);
     // 同じIDで作り直された新しいセッションを、古い方のcloseで消さない
-    if (activeSessions.get(sessionId) === dgWs) activeSessions.delete(sessionId);
+    if (activeSessions.get(sessionId) === dgWs) { activeSessions.delete(sessionId); sessionMeta.delete(sessionId); }
     if (onClose) onClose();
   });
 
@@ -87,9 +104,15 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
  */
 function sendAudioChunk(sessionId, audioBuffer) {
   const dgWs = activeSessions.get(sessionId);
-  if (dgWs && dgWs.readyState === WebSocket.OPEN) {
-    dgWs.send(audioBuffer);
-  }
+  const meta = sessionMeta.get(sessionId);
+  if (!dgWs || dgWs.readyState !== WebSocket.OPEN || !meta) return false;
+  const now = Date.now();
+  meta.tokens = Math.min(AUDIO_BURST_BYTES, meta.tokens + (now - meta.last) * AUDIO_BYTES_PER_SEC / 1000);
+  meta.last = now;
+  if (audioBuffer.length > meta.tokens) return false; // 実時間より速い分は捨てる
+  meta.tokens -= audioBuffer.length;
+  dgWs.send(audioBuffer);
+  return true;
 }
 
 function stopSession(sessionId) {
@@ -98,6 +121,7 @@ function stopSession(sessionId) {
     try { dgWs.close(); } catch (e) {}
     activeSessions.delete(sessionId);
   }
+  sessionMeta.delete(sessionId);
 }
 
 module.exports = { startSession, sendAudioChunk, stopSession, isDeepgramConfigured };
