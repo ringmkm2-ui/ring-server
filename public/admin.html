@@ -492,7 +492,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.28.297 beta</div>
+  <div class="version-badge">Bro Chat v1.28.298 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1554,7 +1554,10 @@ document.getElementById('chatForm').onsubmit = async e => {
         .then(data => {
           if (profane) window.BCProfanity.reportAfterSend({ where: 'dm', peerId: otherId });
           if (data.message) {
-            const displayMsg = { ...data.message, id: data.message.id || msgId, content: txt };
+            // 編集APIの返事には createdAt/readAt/reactions などが入っていない。そのまま描くと
+            // 時刻が NaN:NaN になり、既読チェックやリアクションも消えるので、手元の元メッセージに重ねる
+            const prev = realMessages.find(m => m.id === msgId) || {};
+            const displayMsg = { ...prev, ...data.message, id: data.message.id || msgId, content: txt, createdAt: prev.createdAt || data.message.createdAt };
             addRealMessage(displayMsg);
             renderMessage(displayMsg);
           }
