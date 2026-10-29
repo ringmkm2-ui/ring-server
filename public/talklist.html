@@ -186,7 +186,7 @@ html.dark-mode{--yt-fg:#f1f1f1;--yt-fg2:#aaa;--yt-surf:rgba(255,255,255,.05);--y
 /* フィード: モバイルは1列の大カード、PCはグリッド */
 #postsList{display:grid;grid-template-columns:1fr;gap:18px;margin-top:14px}
 @media(min-width:620px){#postsList{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px 16px}}
-.yt-card{cursor:pointer;animation:ytIn .3s ease both}
+.yt-card{cursor:pointer}
 @keyframes ytIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .yt-thumb{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;display:block}
 .yt-thumb img,.yt-thumb video{width:100%;height:100%;object-fit:cover;display:block}
@@ -206,9 +206,11 @@ html.dark-mode{--yt-fg:#f1f1f1;--yt-fg2:#aaa;--yt-surf:rgba(255,255,255,.05);--y
 .yt-menu{background:none;border:none;color:var(--yt-fg2);padding:2px;cursor:pointer;align-self:flex-start;margin-top:-2px}
 .yt-menu svg{width:20px;height:20px}
 /* ============ 視聴ページ ============ */
-.yt-watch{position:fixed;inset:0;z-index:10100;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none;animation:ytWatchIn .22s ease}
+.yt-watch{position:fixed;inset:0;z-index:10100;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none;animation:ytWatchIn var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out) backwards}
 html.dark-mode .yt-watch{--yt-watch-bg:#0f0f0f}
-@keyframes ytWatchIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* 視聴/チャンネルページ: 下からスプリングで上がる。消える時は .closing(下へ沈む) */
+@keyframes ytWatchIn{from{opacity:0;transform:translateY(36px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes ytWatchOut{to{opacity:0;transform:translateY(28px) scale(.99)}}
 .yt-watch.open{display:block}
 .yt-player{position:sticky;top:0;z-index:5;width:100%;background:#000;aspect-ratio:16/9;max-height:56vh}
 .yt-player video,.yt-player img{width:100%;height:100%;object-fit:contain;background:#000;display:block}
@@ -277,7 +279,7 @@ html.dark-mode .yt-live-tag{color:#ff5a76}
 /* チャンネルページ */
 .yt-chan{--yt-cbar-h:calc(env(safe-area-inset-top,0px) + 52px);position:fixed;inset:0;z-index:10050;background:var(--yt-watch-bg,#fff);overflow-y:auto;overscroll-behavior:contain;display:none}
 html.dark-mode .yt-chan{--yt-watch-bg:#0f0f0f}
-.yt-chan.open{display:block;animation:ytWatchIn .22s ease}
+.yt-chan.open{display:block;animation:ytWatchIn var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out) backwards}
 .yt-cbar{position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:6px;height:var(--yt-cbar-h);box-sizing:border-box;padding:env(safe-area-inset-top,0px) 8px 0;background:var(--yt-watch-bg,#fff)}
 .yt-cbar button{width:40px;height:40px;border-radius:50%;border:none;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--yt-fg);flex-shrink:0}
 .yt-cbar button svg{width:22px;height:22px}
@@ -351,16 +353,23 @@ html.dark-mode .myn{color:#f1f5f9}
 .sibtn{background:none;border:none;padding:0;cursor:pointer;outline:none;transition:transform .2s ease}
 .sibtn:hover{transform:rotate(30deg)}
 .siico{width:36px;height:36px;display:block;border-radius:9px;box-shadow:0 3px 8px rgba(0,0,0,.15)}
-.mov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10000;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .3s ease}
-.mov.open{opacity:1;pointer-events:auto}
-.mc{width:100%;max-width:500px;max-height:90vh;overflow-y:auto;background:rgba(255,255,255,.9);border-radius:32px 32px 0 0;padding:24px;box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.15);transform:translateY(100%);transition:transform .3s cubic-bezier(.25,1,.5,1)}
-.mov.open .mc{transform:translateY(0)}
+.mov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10000;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .18s ease}
+.mov.open{opacity:1;pointer-events:auto;transition:opacity .3s ease}
+.mc{width:100%;max-width:500px;max-height:90vh;overflow-y:auto;background:rgba(255,255,255,.9);border-radius:32px 32px 0 0;padding:24px;box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.15),0 80px 0 0 var(--mc-fill);--mc-fill:rgba(255,255,255,.9);transform:translateY(100%);
+  /* 閉じる時は素早く(0.22秒)、開く時だけスプリングで少し行き過ぎて止まる。行き過ぎで下に隙間が出ないよう、同色の影を下に敷く */
+  transition:transform .22s cubic-bezier(.4,0,1,1)}
+.mov.open .mc{transform:translateY(0);transition:transform var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out)}
+html.dark-mode .mc{--mc-fill:#1c212b}
+html.dark-mode.dark-black .mc{--mc-fill:#0d0e11}
 /* 設定は独立したページ(右からスライドイン、iOSの設定Appのようなグループ表示) */
 #settingsMov{align-items:stretch;justify-content:stretch;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;opacity:1;
-  transform:translateX(100%);transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out)}
-#settingsMov.open{transform:none}
+  transform:translateX(100%);transition:transform var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out)}
+/* 戻る(pop)は素早く、開く(push)はなめらかに */
+#settingsMov.open{transform:none;transition:transform var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out)}
 #settingsMov .mc{max-width:none;max-height:none;height:100%;border-radius:0;transform:none;background:#f2f2f7;
-  padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:none}
+  padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:-14px 0 40px rgba(0,0,0,.16)}
+/* 閉じた位置では縁の影が画面端にはみ出して見えるので、閉じ終わってから消す */
+#settingsMov:not(.open) .mc{box-shadow:none;transition:box-shadow 0s linear .4s}
 @media (min-width:900px){#settingsMov .mc{max-width:720px;margin:0 auto}}
 html.dark-mode #settingsMov .mc{background:#000}
 .set-page-head{position:sticky;top:calc(-12px - env(safe-area-inset-top,0px));z-index:30;display:flex;align-items:center;gap:8px;margin:-12px -16px 8px;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 10px;
@@ -536,6 +545,160 @@ html.dark-mode .cancelbtn{color:#e2e8f0}
 html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{background:#e8ecf3}
 .glass-plus-btn::before{width:40%;height:2px}
 .glass-plus-btn::after{width:2px;height:40%}
+/* =====================================================================
+   モーション強化
+   ・動かすのは transform / opacity だけ(例外: 検索欄のリングは疑似要素のopacity/transform)
+   ・出現系は animation-fill-mode:backwards。終わった後は通常のスタイルがそのまま最終状態になるので、
+     アニメを飛ばしても(省アニメ)見た目が壊れない
+   ・イージングは spring.js/liquidGlass.css の --spring-* (linear()) を使い、アプリ全体の動きと揃える
+   ===================================================================== */
+/* --- トーク一覧/グループ/友達リクエストの行 --- */
+@keyframes tlRowIn{from{opacity:0;transform:translateY(16px) scale(.97)}}
+@keyframes tlRowInR{from{opacity:0;transform:translateX(34px) scale(.98)}}
+@keyframes tlFade{from{opacity:0}}
+.tl-in{animation:tlRowIn var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards;animation-delay:var(--d,0ms)}
+.tl-in-r{animation:tlRowInR var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards;animation-delay:var(--d,0ms)}
+.tl-fade{animation:tlFade .3s ease-out backwards}
+.tl-leaving{pointer-events:none}
+/* 行を押した時、ほんの少し沈んでスプリングで戻る(色の変化は liquidGlass.css の :active に任せる) */
+#talkList > .ti,#groupList > .ti,#communityList > .ti{transition:background-color .18s ease,opacity .18s ease,transform .45s var(--spring-snappy,ease-out)}
+#talkList > .ti:active,#groupList > .ti:active,#communityList > .ti:active{transform:scale(.982);transition-duration:.18s,.18s,.12s}
+/* 未読バッジ(タブ): 増えた時にポンと跳ねる */
+@keyframes tbBadgePop{from{transform:scale(0)}}
+.tb-badge.tb-pop{animation:tbBadgePop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+/* タブを選んだ時、アイコンが沈んでから跳ねる */
+@keyframes tbIconPop{from{transform:scale(.7) translateY(2px)}}
+.tb26-item svg.tb-ipop{animation:tbIconPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+/* タブの中身: 移動方向から、スプリングでスッと入る */
+@keyframes tlPgR{from{opacity:0;transform:translateX(34px)}}
+@keyframes tlPgL{from{opacity:0;transform:translateX(-34px)}}
+@keyframes tlPgU{from{opacity:0;transform:translateY(12px) scale(.985)}}
+#pageTalk.lg-page-enter-right,#pageHome.lg-page-enter-right,#pagePosts.lg-page-enter-right{animation:tlPgR var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards}
+#pageTalk.lg-page-enter-left,#pageHome.lg-page-enter-left,#pagePosts.lg-page-enter-left{animation:tlPgL var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards}
+#pageTalk.lg-page-enter,#pageHome.lg-page-enter,#pagePosts.lg-page-enter{animation:tlPgU var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards}
+/* --- 検索欄: フォーカスでリングがスプリングで広がる(疑似要素のtransform/opacityのみ) --- */
+.search-row{position:relative}
+#talkSearchInput{height:40px;transition:transform .5s var(--spring-snappy,ease-out)}
+.search-row::before{content:"";position:absolute;left:0;right:50px;top:0;height:40px;border-radius:999px;border:2px solid var(--accent,#3b82f6);opacity:0;transform:scale(.96);transform-origin:left center;pointer-events:none;transition:opacity .2s ease,transform .5s var(--spring-bouncy,ease-out)}
+.search-row:focus-within::before{opacity:.55;transform:scale(1)}
+.yt-search{position:relative}
+.yt-search::after{content:"";position:absolute;inset:-1px;border-radius:inherit;border:2px solid var(--accent,#3b82f6);opacity:0;transform:scale(.97);pointer-events:none;transition:opacity .2s ease,transform .5s var(--spring-bouncy,ease-out)}
+.yt-search:focus-within::after{opacity:.55;transform:scale(1)}
+.yt-search > svg:first-child{transition:transform .5s var(--spring-bouncy,ease-out)}
+.yt-search:focus-within > svg:first-child{transform:scale(1.18) rotate(-8deg)}
+#feedCreateBtn svg{transition:transform .5s var(--spring-bouncy,ease-out)}
+#feedCreateBtn.on svg{transform:rotate(135deg)}
+/* フィルターchip */
+.yt-chip{transition:background-color .2s ease,color .2s ease,transform .45s var(--spring-snappy,ease-out)}
+.yt-chip:active{transform:scale(.93);transition-duration:.2s,.2s,.1s}
+@keyframes tlChipPop{from{transform:scale(.88)}}
+.chip-pop{animation:tlChipPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+/* 作成パネルが開く */
+@keyframes tlPanelIn{from{opacity:0;transform:translateY(-10px) scale(.98)}}
+.yt-compose.tl-open{animation:tlPanelIn var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out) backwards}
+/* --- 投稿フィード --- */
+@keyframes ytCardIn{from{opacity:0;transform:translateY(20px) scale(.985)}}
+.yt-enter{animation:ytCardIn var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards;animation-delay:var(--d,0ms)}
+@keyframes tlSwap{from{opacity:0;transform:translateY(8px)}}
+.tl-swap{animation:tlSwap .26s ease-out backwards}
+/* カードの押し/ホバー: サムネが沈む・画像がゆっくり寄る・再生ボタンが跳ねて出る */
+.yt-thumb{transition:transform .45s var(--spring-snappy,ease-out)}
+.yt-card:active .yt-thumb{transform:scale(.985);transition-duration:.12s}
+.yt-thumb img{transition:transform .7s var(--spring-smooth,ease-out)}
+@media (hover:hover){.yt-card:hover .yt-thumb img{transform:scale(1.04)}}
+.yt-play span{transform:scale(.7);transition:transform .5s var(--spring-bouncy,ease-out)}
+.yt-card:hover .yt-play span{transform:scale(1)}
+/* ライブバッジ: 点から輪が広がる(ライブ中のカードだけ・数個) */
+.yt-badge-live i{position:relative}
+.yt-badge-live i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#fff;opacity:0;animation:ytRing 1.4s ease-out infinite}
+@keyframes ytRing{from{transform:scale(1);opacity:.7}to{transform:scale(3.4);opacity:0}}
+.yt-live-av{position:relative}
+.yt-live-av::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:2px solid #ff0033;opacity:0;pointer-events:none;animation:ytAvRing 1.8s ease-out infinite}
+@keyframes ytAvRing{from{transform:scale(1);opacity:.7}to{transform:scale(1.35);opacity:0}}
+@media (prefers-reduced-motion:reduce){.yt-badge-live i::after,.yt-live-av::after{animation:none}}
+/* いいねボタン: アイコンが跳ね、SVGの粒がはじける。粒がボタンの外に出ても切れないよう、横スクロール枠に余白を足す(見た目の位置は変えない) */
+.yt-actions{margin:3px -14px -10px;padding:10px 14px}
+.yt-act{position:relative}
+.yt-act svg.lk-pop{animation:lkPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+@keyframes lkPop{from{transform:scale(.55) rotate(-16deg)}}
+.yt-act svg.lk-down{animation:lkDown var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out)}
+@keyframes lkDown{from{transform:scale(.78)}}
+.lk-tick{display:inline-block;animation:lkTick var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out) backwards}
+@keyframes lkTick{from{opacity:0;transform:translateY(9px)}}
+.lk-burst{position:absolute;left:.5px;top:50%;width:48px;height:48px;margin-top:-24px;pointer-events:none;overflow:visible}
+.lk-burst .p{transform-box:fill-box;transform-origin:center;opacity:0;animation:lkP .55s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes lkP{from{opacity:1;transform:rotate(var(--a)) translateY(-6px) scale(1)}to{opacity:0;transform:rotate(var(--a)) translateY(-21px) scale(.25)}}
+.lk-burst .r{transform-box:fill-box;transform-origin:center;opacity:0;animation:lkR .5s ease-out forwards}
+@keyframes lkR{from{opacity:.6;transform:scale(.3)}to{opacity:0;transform:scale(1.6)}}
+.yt-subbtn.sub-pop{animation:tlChipPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+/* 通知トースト: 以前は中央寄せのtransformをアニメが上書きして一瞬横にずれていたので、translateXを含めて動かす */
+@keyframes ytToastIn{from{opacity:0;transform:translateX(-50%) translateY(16px) scale(.94)}}
+@keyframes ytToastOut{to{opacity:0;transform:translateX(-50%) translateY(10px) scale(.96)}}
+.yt-toast{animation:ytToastIn var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out) backwards}
+.yt-toast.out{animation:ytToastOut .2s ease-in forwards}
+/* 視聴ページを閉じる時 */
+.yt-watch.closing{animation:ytWatchOut .2s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
+/* 3点メニューのシート */
+@keyframes tlSheetUp{from{transform:translateY(100%)}}
+@keyframes tlSheetDown{to{transform:translateY(100%)}}
+@keyframes tlDimIn{from{opacity:0}}
+@keyframes tlDimOut{to{opacity:0}}
+.tl-sheet-ov{animation:tlDimIn .25s ease-out backwards}
+.tl-sheet-ov > .tl-sheet{animation:tlSheetUp var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out) backwards;box-shadow:0 80px 0 0 var(--yt-watch-bg,#fff)}
+.tl-sheet-ov.out{animation:tlDimOut .18s ease-in forwards}
+.tl-sheet-ov.out > .tl-sheet{animation:tlSheetDown .2s cubic-bezier(.4,0,1,1) forwards}
+/* --- シート/モーダルの中身: 少しずつずれて下から上がる(開いた時に1回) --- */
+@keyframes tlItemUp{from{opacity:0;transform:translateY(14px)}}
+.mov:not(#settingsMov).open .mc > *,.tl-sheet-stagger > *{animation:tlItemUp var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards;animation-delay:130ms}
+.mov:not(#settingsMov).open .mc > :nth-child(1),.tl-sheet-stagger > :nth-child(1){animation-delay:70ms}
+.mov:not(#settingsMov).open .mc > :nth-child(2),.tl-sheet-stagger > :nth-child(2){animation-delay:100ms}
+.mov:not(#settingsMov).open .mc > :nth-child(3),.tl-sheet-stagger > :nth-child(3){animation-delay:130ms}
+.mov:not(#settingsMov).open .mc > :nth-child(4),.tl-sheet-stagger > :nth-child(4){animation-delay:160ms}
+.mov:not(#settingsMov).open .mc > :nth-child(5),.tl-sheet-stagger > :nth-child(5){animation-delay:190ms}
+.mov:not(#settingsMov).open .mc > :nth-child(n+6),.tl-sheet-stagger > :nth-child(n+6){animation-delay:220ms}
+/* --- 設定ページ: 開くと各ブロックが順に立ち上がる --- */
+#settingsMov.open .mc > .set-section-title,#settingsMov.open .mc > .sg,#settingsMov.open .mc > .set-group,#settingsMov.open .mc > .savebtn{animation:tlItemUp var(--spring-smooth-dur,.5s) var(--spring-smooth,ease-out) backwards;animation-delay:320ms}
+#settingsMov.open .mc > :nth-child(2){animation-delay:90ms!important}
+#settingsMov.open .mc > :nth-child(3){animation-delay:120ms!important}
+#settingsMov.open .mc > :nth-child(4){animation-delay:150ms!important}
+#settingsMov.open .mc > :nth-child(5){animation-delay:180ms!important}
+#settingsMov.open .mc > :nth-child(6){animation-delay:210ms!important}
+#settingsMov.open .mc > :nth-child(7){animation-delay:240ms!important}
+#settingsMov.open .mc > :nth-child(8){animation-delay:270ms!important}
+/* 外観の選択: 選んだアイコンが跳ねる */
+@keyframes thmPop{from{transform:scale(.7)}}
+.thm-seg button[aria-checked="true"] svg{animation:thmPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+/* --- ホーム --- */
+@keyframes avLand{from{opacity:.4;transform:scale(1.28)}}
+.myav.av-land{animation:avLand var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
+.acr{transition:background-color .18s ease}
+.acr:active{background:rgba(120,120,128,.1)}
+.acr .ac-chev{transition:transform .45s var(--spring-snappy,ease-out)}
+.acr:active .ac-chev{transform:translateX(4px)}
+/* 承認/送信済みのチェック */
+@keyframes tlCheck{from{transform:scale(0) rotate(-30deg)}}
+.tl-check{display:inline-block;vertical-align:-3px;margin-right:4px;animation:tlCheck var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out) backwards}
+/* --- PWAインストール案内: 上からスプリングで降りてくる(display:none→flex になった時に再生) --- */
+@keyframes pwaIn{from{opacity:0;transform:translateY(-22px) scale(.97)}}
+@keyframes pwaOut{to{opacity:0;transform:translateY(-14px) scale(.97)}}
+.pwa-banner{animation:pwaIn var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out) backwards}
+.pwa-banner.out{animation:pwaOut .2s ease-in forwards}
+/* 省アニメ: 遅延(animation-delay)は globalTheme の一括無効化に含まれないので、ここで確実に止める。
+   animation を外せば、各要素は通常のスタイル(=最終状態)のまま表示される */
+html.reduce-motion .tl-in,html.reduce-motion .tl-in-r,html.reduce-motion .tl-fade,html.reduce-motion .yt-enter,html.reduce-motion .tl-swap,
+html.reduce-motion .tb-badge.tb-pop,html.reduce-motion .tb26-item svg.tb-ipop,html.reduce-motion .chip-pop,html.reduce-motion .yt-compose.tl-open,
+html.reduce-motion .lk-tick,html.reduce-motion .lk-burst,html.reduce-motion .yt-act svg.lk-pop,html.reduce-motion .yt-act svg.lk-down,
+html.reduce-motion .yt-subbtn.sub-pop,html.reduce-motion .yt-toast,html.reduce-motion .tl-sheet-ov,html.reduce-motion .tl-sheet-ov > .tl-sheet,
+html.reduce-motion .mov .mc > *,html.reduce-motion .tl-sheet-stagger > *,html.reduce-motion .thm-seg button svg,html.reduce-motion .myav.av-land,
+html.reduce-motion .tl-check,html.reduce-motion .pwa-banner,html.reduce-motion #pageTalk,html.reduce-motion #pageHome,html.reduce-motion #pagePosts,
+html.reduce-motion .yt-watch,html.reduce-motion .yt-chan{animation:none!important}
+html.reduce-motion .yt-toast.out,html.reduce-motion .tl-sheet-ov.out,html.reduce-motion .yt-watch.closing,html.reduce-motion .pwa-banner.out{animation:none!important;opacity:0}
+@media (prefers-reduced-motion:reduce){
+  .tl-in,.tl-in-r,.tl-fade,.yt-enter,.tl-swap,.tb-badge.tb-pop,.tb26-item svg.tb-ipop,.chip-pop,.yt-compose.tl-open,.lk-tick,.lk-burst,.yt-act svg.lk-pop,.yt-act svg.lk-down,
+  .yt-subbtn.sub-pop,.yt-toast,.tl-sheet-ov,.tl-sheet-ov > .tl-sheet,.mov .mc > *,.tl-sheet-stagger > *,.thm-seg button svg,.myav.av-land,.tl-check,.pwa-banner,
+  #pageTalk,#pageHome,#pagePosts,.yt-watch,.yt-chan{animation:none!important}
+  .yt-toast.out,.tl-sheet-ov.out,.yt-watch.closing,.pwa-banner.out{animation:none!important;opacity:0}
+}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
@@ -781,7 +944,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.296 beta</div>
+  <div class="version-badge">Bro Chat v1.28.297 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1061,6 +1224,149 @@ window.ensureGroupCrypto = (function () {
 </div>
 
 <script>
+// ===== TLM: モーション共通部品 =====
+// 一覧の差分更新(キー付き)+並び替えのFLIP+入退場。ポーリングや再描画で「変わっていない行」には一切触らないので、
+// アニメは新しく来た/動いた/消えた行だけに出る。動かすのは transform / opacity のみ(Web Animations API。毎フレームのJSは無い)
+window.TLM = (function () {
+  const root = document.documentElement;
+  const rm = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  // 省アニメ(html.reduce-motion / OSの設定)の時は、Web Animations も含めて一切動かさない(CSS側の無効化はJSアニメに効かないため)
+  const ok = () => !root.classList.contains('reduce-motion') && !(rm && rm.matches);
+  const cssv = n => getComputedStyle(root).getPropertyValue(n).trim();
+  const ms = (n, fb) => { const v = parseFloat(cssv(n)); return v > 0 ? v : fb; };
+  function anim(el, kf, o) {
+    if (!ok() || !el || !el.animate) return null;
+    try { return el.animate(kf, o); }
+    catch (e) { try { return el.animate(kf, Object.assign({}, o, { easing: 'cubic-bezier(.2,.9,.22,1)' })); } catch (_) { return null; } }
+  }
+  const spring = (name, fb) => ({ easing: cssv('--spring-' + name) || fb, duration: ms('--spring-' + name + '-dur', 500) });
+
+  // 範囲外の行は動かさない(画面の外を動かしても見えない+電池)
+  const visible = (top, h) => top + h > -40 && top < innerHeight + 40;
+
+  // mutate() の前後で子要素の位置を比べ、動いた分だけ元の位置から滑らせる(FLIP)
+  function flip(list, mutate) {
+    if (!ok()) { mutate(); return; }
+    const before = new Map();
+    for (const k of list.children) before.set(k, k.getBoundingClientRect().top);
+    mutate();
+    const sp = spring('smooth', 'cubic-bezier(.2,.9,.22,1)');
+    let n = 0;
+    for (const k of list.children) {
+      if (!before.has(k) || k.classList.contains('tl-leaving')) continue;
+      const r = k.getBoundingClientRect(), dy = before.get(k) - r.top;
+      if (Math.abs(dy) < 1 || !(visible(r.top, r.height) || visible(before.get(k), r.height))) continue;
+      if (++n > 16) break;
+      if (k.__lift && dy > 0) {
+        // 新着で上に上がってきた行: 少し浮いたまま上がり、スプリングで収まる
+        anim(k, [{ transform: 'translateY(' + dy + 'px) scale(1.025)' }, { transform: 'none' }], { duration: sp.duration + 120, easing: sp.easing });
+      } else {
+        anim(k, [{ transform: 'translateY(' + dy + 'px)' }, { transform: 'none' }], { duration: sp.duration, easing: sp.easing });
+      }
+    }
+    for (const k of list.children) delete k.__lift;
+  }
+
+  function leave(list, el) {
+    el.classList.add('tl-leaving');
+    const a = anim(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(36px) scale(.97)' }], { duration: 220, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    const done = () => { if (el.parentNode) flip(list, () => el.remove()); };
+    if (a) { a.onfinish = done; a.oncancel = done; } else el.remove();
+  }
+
+  // list: 親要素 / specs: [{ key, fp, build(oldEl) }] / o: { enter: 'up'|'right'|false, stagger: bool, baseDelay: ms }
+  // 同じ key で fp が同じ行はそのまま使う。fp が違えば作り直して置き換える(アニメ無し)。新しい key だけ入場する。
+  function sync(list, specs, o) {
+    o = o || {};
+    const first = !list.__synced;
+    const cur = new Map(), junk = [];
+    for (const ch of list.children) {
+      if (ch.classList.contains('tl-leaving')) continue;
+      if (ch.dataset.k) cur.set(ch.dataset.k, ch); else junk.push(ch);
+    }
+    const want = [], replaced = [], entering = [];
+    let structural = junk.length > 0;
+    const keys = new Set();
+    specs.forEach(s => {
+      keys.add(s.key);
+      const old = cur.get(s.key);
+      if (old && old.__fp === s.fp) { want.push(old); return; }
+      const n = s.build(old || null);
+      n.dataset.k = s.key; n.__fp = s.fp;
+      if (old) {
+        replaced.push(old);
+        if (old.classList.contains('pc-selected')) n.classList.add('pc-selected');
+        if (n.__lift) structural = true;
+      } else { entering.push(n); structural = true; }
+      want.push(n);
+    });
+    const gone = [];
+    cur.forEach((el, k) => { if (!keys.has(k)) { gone.push(el); structural = true; } });
+    // 並び順が変わったか
+    if (!structural) {
+      let i = 0;
+      for (const ch of list.children) { if (ch.classList.contains('tl-leaving')) continue; if (ch !== want[i++]) { structural = true; break; } }
+    }
+    if (!structural && !replaced.length) { list.__synced = true; return; }
+
+    // 入場の見せ方: 最初の描画(骨組み→実データ)は順番に、それ以降の新着は1つずつ
+    const mode = o.enter;
+    if (mode && ok()) {
+      entering.forEach((n, i) => {
+        if (first && !o.stagger) return;                     // キャッシュからの即表示は動かさない
+        n.classList.add(mode === 'right' ? 'tl-in-r' : 'tl-in');
+        if (first && o.stagger) n.style.setProperty('--d', Math.min((o.baseDelay || 0) + i * 34, 380) + 'ms');
+        n.addEventListener('animationend', function f(e) { if (e.target !== n) return; n.removeEventListener('animationend', f); n.classList.remove('tl-in', 'tl-in-r'); n.style.removeProperty('--d'); });
+      });
+    }
+    const mutate = () => {
+      junk.forEach(x => x.remove());
+      replaced.forEach(x => x.remove());
+      let c = list.firstElementChild;
+      while (c && c.classList.contains('tl-leaving')) c = c.nextElementSibling;
+      for (const el of want) {
+        if (el === c) { c = c.nextElementSibling; while (c && c.classList.contains('tl-leaving')) c = c.nextElementSibling; }
+        else list.insertBefore(el, c);
+      }
+    };
+    // 最初の描画は位置の比較が要らない
+    if (first) { mutate(); gone.forEach(x => x.remove()); }
+    else {
+      flip(list, mutate);
+      gone.forEach(x => leave(list, x));
+    }
+    list.__synced = true;
+  }
+
+  // 行を押した時などに1回だけ再生したい CSS アニメ(クラスを付け直す)
+  function replay(el, cls) {
+    if (!el || !ok()) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    el.addEventListener('animationend', function f(e) { if (e.target !== el) return; el.classList.remove(cls); el.removeEventListener('animationend', f); });
+  }
+
+  // いいねの粒(インラインSVG。絵文字は使わない)
+  function likeBurst(btn) {
+    if (!ok() || !btn) return;
+    const NS = 'http://www.w3.org/2000/svg', cols = ['#ff3b5c', '#ffb020', '#3b82f6', '#22c55e'];
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'lk-burst'); svg.setAttribute('viewBox', '-24 -24 48 48'); svg.setAttribute('aria-hidden', 'true');
+    const ring = document.createElementNS(NS, 'circle');
+    ring.setAttribute('class', 'r'); ring.setAttribute('r', '11'); ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#3b82f6'); ring.setAttribute('stroke-width', '2');
+    svg.appendChild(ring);
+    for (let i = 0; i < 8; i++) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('class', 'p'); c.setAttribute('r', i % 2 ? '1.6' : '2.2'); c.setAttribute('fill', cols[i % cols.length]);
+      c.style.setProperty('--a', (i * 45 + 12) + 'deg');
+      svg.appendChild(c);
+    }
+    btn.appendChild(svg);
+    setTimeout(() => svg.remove(), 700);
+  }
+  return { ok, anim, spring, flip, sync, replay, likeBurst };
+})();
+</script>
+<script>
 // タブ切り替え
 const slider=document.getElementById('slider');
 const pageTalk=document.getElementById('pageTalk');
@@ -1336,6 +1642,11 @@ function tbShowPage(idx) {
       it.page.classList.add(dirClass);
     }
   });
+  // 選んだタブのアイコンが跳ねる(最初の表示や同じタブの再タップでは出さない)
+  if (idx !== prevIdx) {
+    const ic = items[idx].el.querySelector('svg');
+    if (ic) TLM.replay(ic, 'tb-ipop');
+  }
   tbIndex = idx;
 }
 function tbOpen(idx) {
@@ -1458,6 +1769,8 @@ const TBL = (function () {
     // バーそのもの(ガラスの見た目ごと)
     const cl = nav.cloneNode(true);
     cl.removeAttribute('id'); cl.setAttribute('aria-hidden', 'true');
+    // 跳ねている最中に複製すると、複製の側でもう一度跳ねてしまうので外す
+    cl.querySelectorAll('.tb-ipop,.tb-pop').forEach(n => n.classList.remove('tb-ipop', 'tb-pop'));
     cl.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
     const cLens = cl.querySelector('.tb26-lens'); if (cLens) cLens.remove();
     const cFx = cl.querySelector('.lg-fx'); if (cFx) cFx.remove();
@@ -1693,6 +2006,10 @@ async function loadProfile(){
 // 画像が無い時は灰色の丸だけになっていた。ほかの場所と同じく頭文字を出す
 function paintMyAv(dav,av,name){
   if(!dav)return;
+  // 起動直後の初回描画は静かに。その後に画像が変わった時(プロフィール変更・別端末の変更)だけ着地アニメ
+  const pk=String(av||'');
+  if(dav.__pk!==undefined&&dav.__pk!==pk&&pk)TLM.replay(dav,'av-land');
+  dav.__pk=pk;
   if(av){dav.style.background='';dav.style.backgroundImage=`url(${JSON.stringify(String(av))})`;dav.style.backgroundSize='cover';dav.style.backgroundPosition='center';dav.textContent='';}
   else{dav.style.backgroundImage='';dav.style.background='#94a3b8';dav.style.color='#fff';dav.style.display='flex';dav.style.alignItems='center';dav.style.justifyContent='center';dav.style.fontWeight='800';dav.style.fontSize='24px';dav.textContent=(name||'?').charAt(0);}
 }
@@ -1751,7 +2068,7 @@ async function loadTalks(animate = false) {
     // グループをリストに統合せず、別セクションで表示する
     // (グループは下のgroupListカードに表示)
     if (groupsData && Array.isArray(groupsData.groups)) {
-      renderGroups(groupsData.groups);
+      renderGroups(groupsData.groups, animate && !window.__talksRenderedFromCache);
     }
 
     // 最終メッセージ時刻で降順ソート（メッセージが無いものは末尾）
@@ -1771,6 +2088,7 @@ async function loadTalks(animate = false) {
     // キャッシュから描画済みなら出現アニメーションを二重にかけない
     renderTalkList(merged, animate && !window.__talksRenderedFromCache);
     window.__talksRenderedFromCache = false;
+    window.__talkBadgeSeen = true; // 最初の取得が終わるまでは、バッジの数が動いても跳ねさせない
   } catch(e) {
     console.error('loadTalks:', e);
     // ローディングのまま固まらないよう、取得に失敗したら再試行できる表示にする
@@ -1800,141 +2118,155 @@ const _unread = { dm: 0, group: 0 };
 function updateTalkBadge() {
   const n = _unread.dm + _unread.group;
   const b = document.getElementById('talkTabBadge');
-  if (b) { b.hidden = n <= 0; b.textContent = n > 99 ? '99+' : String(n); }
+  if (b) {
+    const was = b.hidden ? 0 : (parseInt(b.textContent, 10) || 0);
+    b.hidden = n <= 0; b.textContent = n > 99 ? '99+' : String(n);
+    if (n > was && was >= 0 && window.__talkBadgeSeen) TLM.replay(b, 'tb-pop'); // 増えた時だけ跳ねる(起動直後の初回表示は静かに)
+  }
   try { if (navigator.setAppBadge) (n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch (e) {}
 }
 function renderTalkList(merged, animate) {
   _unread.dm = (merged || []).reduce((s, t) => s + (t.kind !== 'group' && t.unreadCount > 0 ? t.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('talkList');
-  {
-    // 4秒ごとの自動更新は「変化があった時だけ」DOMを再構築する。
-    // タブ切り替え等の明示的な操作(animate=true)は毎回きちんと
-    // アニメーション付きで再描画したいので、差分チェックは自動更新時のみ行う。
-    const mergedFingerprint = JSON.stringify(merged);
-    if (!animate && mergedFingerprint === window.__lastTalkListFingerprint) {
-      return; // 前回と同じ内容なので描画をスキップ
-    }
-    window.__lastTalkListFingerprint = mergedFingerprint;
+  // 4秒ごとの自動更新は「変化があった時だけ」DOMを触る。
+  // タブ切り替え等の明示的な操作(animate=true)は差分チェックを飛ばして必ず突き合わせるが、
+  // 突き合わせは「変わっていない行には何もしない」ので、再訪や再描画でアニメが再生されることは無い。
+  const mergedFingerprint = JSON.stringify(merged);
+  if (!animate && mergedFingerprint === window.__lastTalkListFingerprint) {
+    return; // 前回と同じ内容なので描画をスキップ
+  }
+  window.__lastTalkListFingerprint = mergedFingerprint;
 
-    if (merged.length === 0) {
-      list.textContent = '';
+  if (merged.length === 0) {
+    TLM.sync(list, [{ key: '__empty', fp: 'e', build: () => {
       const empty = document.createElement('div');
+      empty.className = 'tl-fade';
       empty.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:24px';
       empty.innerHTML = 'トークリストが空です<br>友達を追加してメッセージしよう！'; // 固定文言のみ、ユーザー入力なし
-      list.appendChild(empty);
-      return;
+      return empty;
+    } }]);
+    return;
+  }
+
+  // セキュリティ上の理由でDOM構築方式を使う(innerHTML文字列組み立てにしない)。
+  // 以前は `onclick="openChat('${userId}','${escHtml(displayName)}')"` のように
+  // ユーザーが自由に設定できる表示名・グループ名をHTML文字列へ直接埋め込んでいた。
+  // escHtml はシングルクォートをエスケープしておらず、しかも仮にエスケープしても
+  // ブラウザはHTML属性値のエンティティを先にデコードしてからonclickの中身をJSとして
+  // 解釈するため、シングルクォート1文字を名前に含めるだけでJS文字列リテラルを
+  // 脱出でき、任意のJavaScriptを実行できてしまっていた(保存型XSS→
+  // localStorageのJWT/暗号鍵窃取→アカウント乗っ取りが可能な重大な脆弱性)。
+  // addEventListenerとtextContentを使うDOM構築方式は、ユーザー文字列が
+  // 一切HTML/JSソースとして再解釈されないため、この種の攻撃が構造的に成立しない。
+  const prevTalkState = window.__prevTalkState || new Map();
+  const nextTalkState = new Map();
+  const specs = merged.map(t => {
+    if (t.kind !== 'group') nextTalkState.set(t.userId, { unread: t.unreadCount || 0, lastTime: t.lastTime || null });
+    return {
+      key: (t.kind === 'group' ? 'g:' + t.groupId : 'u:' + t.userId),
+      fp: JSON.stringify(t),
+      build: old => buildTalkRow(t, prevTalkState.get(t.userId), !!old),
+    };
+  });
+  // キャッシュから出した時(animate=false)は動かさない。キャッシュが無い最初の1回だけ、上から順に入場する
+  TLM.sync(list, specs, { enter: 'up', stagger: !!animate });
+  window.__prevTalkState = nextTalkState;
+}
+
+// 行を1本作る。作り直すのは「新しい行」か「中身が変わった行」だけ(変わっていない行は作り直さない)
+function buildTalkRow(t, prev, replacing) {
+  const item = document.createElement('div');
+  item.className = 'ti';
+  if (t.userId) item.dataset.userId = t.userId;
+  // 一度光った後にクラスが残ると、並び替えで要素を動かした時に光が再生されてしまうので、終わったら外す
+  const once = (el, cls) => { el.classList.add(cls); el.addEventListener('animationend', function f(e) { if (e.target !== el) return; el.removeEventListener('animationend', f); el.classList.remove(cls); }); };
+
+  const av = document.createElement('div');
+  const time = t.lastTime ? formatTime(t.lastTime) : '';
+
+  if (t.kind === 'group') {
+    av.className = 'tav group-default-av';
+    setAvatarBackground(av, t.avatarImg, (t.displayName || '?')[0]);
+
+    const body = document.createElement('div');
+    body.className = 'tbody';
+    const row = document.createElement('div');
+    row.className = 'ttr';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'tname';
+    nameEl.textContent = t.displayName;
+    const timeEl = document.createElement('div');
+    timeEl.className = 'ttime';
+    timeEl.textContent = time;
+    row.appendChild(nameEl);
+    row.appendChild(timeEl);
+    const msgEl = document.createElement('div');
+    msgEl.className = 'tmsg';
+    msgEl.textContent = `${t.lastMessage || ''} ・ ${t.memberCount}人`;
+    body.appendChild(row);
+    body.appendChild(msgEl);
+
+    item.appendChild(av);
+    item.appendChild(body);
+    item.addEventListener('click', () => {
+      // アバターをヘッダー位置へ飛ばしてから遷移する(Shared Element Transition)
+      if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+        window.LiquidGlass.flyAvatarTo(av, () => openGroupChat(t.groupId, t.displayName));
+      } else {
+        openGroupChat(t.groupId, t.displayName);
+      }
+    });
+  } else {
+    av.className = 'tav';
+    setAvatarBackground(av, t.profilePic, (t.displayName || '?')[0]);
+
+    const body = document.createElement('div');
+    body.className = 'tbody';
+    const row = document.createElement('div');
+    row.className = 'ttr';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'tname';
+    nameEl.textContent = t.displayName;
+    const timeEl = document.createElement('div');
+    timeEl.className = 'ttime';
+    timeEl.textContent = time;
+    row.appendChild(nameEl);
+    row.appendChild(timeEl);
+    const msgEl = document.createElement('div');
+    msgEl.className = 'tmsg';
+    msgEl.textContent = dmPreview(t);
+    body.appendChild(row);
+    body.appendChild(msgEl);
+
+    item.appendChild(av);
+    item.appendChild(body);
+
+    if (t.unreadCount > 0) {
+      const badge = document.createElement('div');
+      // 行ごとにbackdrop-filterを掛けると未読が多い時に重いので単色にする
+      badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
+      badge.textContent = String(t.unreadCount);
+      if (prev && t.unreadCount > (prev.unread || 0)) once(badge, 'bc-badge-pop');
+      item.appendChild(badge);
+    }
+    // 新着でこの行の最終メッセージ時刻が進んだら、一番上へ浮かび上がりつつ軽く光らせる
+    if (prev && t.lastTime && prev.lastTime !== t.lastTime) {
+      once(item, 'bc-row-flash');
+      if (replacing) item.__lift = true;
     }
 
-    // セキュリティ上の理由でDOM構築方式を使う(innerHTML文字列組み立てにしない)。
-    // 以前は `onclick="openChat('${userId}','${escHtml(displayName)}')"` のように
-    // ユーザーが自由に設定できる表示名・グループ名をHTML文字列へ直接埋め込んでいた。
-    // escHtml はシングルクォートをエスケープしておらず、しかも仮にエスケープしても
-    // ブラウザはHTML属性値のエンティティを先にデコードしてからonclickの中身をJSとして
-    // 解釈するため、シングルクォート1文字を名前に含めるだけでJS文字列リテラルを
-    // 脱出でき、任意のJavaScriptを実行できてしまっていた(保存型XSS→
-    // localStorageのJWT/暗号鍵窃取→アカウント乗っ取りが可能な重大な脆弱性)。
-    // addEventListenerとtextContentを使うDOM構築方式は、ユーザー文字列が
-    // 一切HTML/JSソースとして再解釈されないため、この種の攻撃が構造的に成立しない。
-    list.textContent = '';
-    const prevTalkState = window.__prevTalkState || new Map();
-    const nextTalkState = new Map();
-    // 初回描画(キャッシュ含む)では光らせない
-    if (!window.__prevTalkState) prevTalkState.clear();
-    merged.forEach((t, idx) => {
-      const item = document.createElement('div');
-      item.className = animate ? 'ti glass-materialize-light' : 'ti';
-      if (t.userId) item.dataset.userId = t.userId;
-      if (animate) item.style.animationDelay = Math.min(idx * 30, 300) + 'ms';
-
-      const av = document.createElement('div');
-      const time = t.lastTime ? formatTime(t.lastTime) : '';
-
-      if (t.kind === 'group') {
-        av.className = 'tav group-default-av';
-        setAvatarBackground(av, t.avatarImg, (t.displayName || '?')[0]);
-
-        const body = document.createElement('div');
-        body.className = 'tbody';
-        const row = document.createElement('div');
-        row.className = 'ttr';
-        const nameEl = document.createElement('div');
-        nameEl.className = 'tname';
-        nameEl.textContent = t.displayName;
-        const timeEl = document.createElement('div');
-        timeEl.className = 'ttime';
-        timeEl.textContent = time;
-        row.appendChild(nameEl);
-        row.appendChild(timeEl);
-        const msgEl = document.createElement('div');
-        msgEl.className = 'tmsg';
-        msgEl.textContent = `${t.lastMessage || ''} ・ ${t.memberCount}人`;
-        body.appendChild(row);
-        body.appendChild(msgEl);
-
-        item.appendChild(av);
-        item.appendChild(body);
-        item.addEventListener('click', () => {
-          // アバターをヘッダー位置へ飛ばしてから遷移する(Shared Element Transition)
-          if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
-            window.LiquidGlass.flyAvatarTo(av, () => openGroupChat(t.groupId, t.displayName));
-          } else {
-            openGroupChat(t.groupId, t.displayName);
-          }
-        });
+    // クリックされたアバターをチャット画面のヘッダーアバター位置へ
+    // 実際に飛ばしてから遷移する(FLIP方式のShared Element Transition)。
+    item.addEventListener('click', () => {
+      if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
+        window.LiquidGlass.flyAvatarTo(av, () => openChat(t.userId, t.displayName));
       } else {
-        av.className = 'tav';
-        setAvatarBackground(av, t.profilePic, (t.displayName || '?')[0]);
-
-        const body = document.createElement('div');
-        body.className = 'tbody';
-        const row = document.createElement('div');
-        row.className = 'ttr';
-        const nameEl = document.createElement('div');
-        nameEl.className = 'tname';
-        nameEl.textContent = t.displayName;
-        const timeEl = document.createElement('div');
-        timeEl.className = 'ttime';
-        timeEl.textContent = time;
-        row.appendChild(nameEl);
-        row.appendChild(timeEl);
-        const msgEl = document.createElement('div');
-        msgEl.className = 'tmsg';
-        msgEl.textContent = dmPreview(t);
-        body.appendChild(row);
-        body.appendChild(msgEl);
-
-        item.appendChild(av);
-        item.appendChild(body);
-
-        const prev = prevTalkState.get(t.userId);
-        if (t.unreadCount > 0) {
-          const badge = document.createElement('div');
-          // 行ごとにbackdrop-filterを掛けると未読が多い時に重いので単色にする
-          badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
-          badge.textContent = String(t.unreadCount);
-          if (prev && t.unreadCount > (prev.unread || 0)) badge.classList.add('bc-badge-pop');
-          item.appendChild(badge);
-        }
-        // 新着でこの行の最終メッセージ時刻が進んだら軽く光らせる
-        if (prev && t.lastTime && prev.lastTime !== t.lastTime) item.classList.add('bc-row-flash');
-        nextTalkState.set(t.userId, { unread: t.unreadCount || 0, lastTime: t.lastTime || null });
-
-        // クリックされたアバターをチャット画面のヘッダーアバター位置へ
-        // 実際に飛ばしてから遷移する(FLIP方式のShared Element Transition)。
-        item.addEventListener('click', () => {
-          if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
-            window.LiquidGlass.flyAvatarTo(av, () => openChat(t.userId, t.displayName));
-          } else {
-            openChat(t.userId, t.displayName);
-          }
-        });
+        openChat(t.userId, t.displayName);
       }
-
-      list.appendChild(item);
     });
-    window.__prevTalkState = nextTalkState;
   }
+  return item;
 }
 
 // アバター画像を安全に背景として設定する共通ヘルパー。
@@ -1960,7 +2292,7 @@ function openGroupChat(groupId, name) {
   openChatPage(`/groupchat.html?groupId=${encodeURIComponent(groupId)}&name=${encodeURIComponent(name)}`);
 }
 
-function renderGroups(groups) {
+function renderGroups(groups, enter) {
   _unread.group = (groups || []).reduce((s, g) => s + (g.unreadCount > 0 ? g.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('groupList');
@@ -1968,12 +2300,17 @@ function renderGroups(groups) {
   const fp = JSON.stringify(groups || []);
   if (fp === window.__lastGroupsFingerprint && list.childElementCount) return;
   window.__lastGroupsFingerprint = fp;
-  if (!Array.isArray(groups) || groups.length === 0) {
-    list.textContent = '';
-    return;
-  }
-  list.textContent = '';
-  groups.forEach(g => {
+  // 変わったグループの行だけ作り直す。新しく入ったグループだけ入場し、並びが変わった行は滑って動く
+  const prevU = window.__grpUnread || null;
+  const nextU = {};
+  (Array.isArray(groups) ? groups : []).forEach(g => { nextU[g.groupId || g.id] = g.unreadCount || 0; });
+  window.__grpUnread = nextU;
+  TLM.sync(list, (Array.isArray(groups) ? groups : []).map(g => ({
+    key: 'g:' + (g.groupId || g.id), fp: JSON.stringify(g), build: () => buildGroupRow(g, prevU),
+  })), { enter: 'up', stagger: !!enter, baseDelay: 140 });
+}
+function buildGroupRow(g, prevU) {
+  {
     const item = document.createElement('div');
     item.className = 'ti';
     item.dataset.groupId = g.groupId || g.id;
@@ -2015,6 +2352,8 @@ function renderGroups(groups) {
       const badge = document.createElement('div');
       badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:999px;min-width:20px;height:20px;padding:0 5px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;box-sizing:border-box';
       badge.textContent = g.unreadCount > 99 ? '99+' : String(g.unreadCount);
+      // 未読が増えた時だけポンと跳ねる(終わったらクラスを外す)
+      if (prevU && g.unreadCount > (prevU[g.groupId || g.id] || 0)) { badge.classList.add('bc-badge-pop'); badge.addEventListener('animationend', () => badge.classList.remove('bc-badge-pop'), { once: true }); }
       item.appendChild(badge);
     }
     item.addEventListener('click', () => {
@@ -2024,8 +2363,8 @@ function renderGroups(groups) {
         openGroupChat(g.groupId || g.id, g.name);
       }
     });
-    list.appendChild(item);
-  });
+    return item;
+  }
 }
 
 // グループ一覧の最新メッセージ用: JSON形式(メディア/暗号文)をプレビュー文字にする
@@ -2125,15 +2464,18 @@ function openAddFriend() {
     position:fixed;top:0;left:0;width:100%;height:100%;
     background:rgba(15,23,42,0);z-index:20000;
     display:flex;align-items:flex-end;justify-content:center;
-    transition:background 0.3s ease;
+    transition:background 0.28s ease;
   `;
 
   const sheet = document.createElement('div');
+  sheet.className = 'tl-sheet-stagger';
+  // 開く時はスプリングで少し行き過ぎて止まる。行き過ぎで下に隙間が出ないよう、同色の影を下に敷く
   sheet.style.cssText = `
     width:100%;max-width:500px;background:#fff;
     border-radius:28px 28px 0 0;padding:24px;box-sizing:border-box;
     transform:translateY(100%);
-    transition:transform 0.38s cubic-bezier(0.25,1,0.5,1);
+    transition:transform var(--spring-snappy-dur,.35s) var(--spring-snappy,ease-out);
+    box-shadow:0 80px 0 0 #fff;
     max-height:85vh;overflow-y:auto;
   `;
   sheet.innerHTML = `
@@ -2175,10 +2517,13 @@ function closeAddFriend() {
   if (!mov) return;
   const sheet = mov.querySelector('div:last-child') || mov.children[0];
 
+  // 閉じる時は素早く(0.22秒)沈めて、背景も一緒に消す
+  mov.style.transition = 'background 0.2s ease';
   mov.style.background = 'rgba(15,23,42,0)';
-  if (sheet) sheet.style.transform = 'translateY(100%)';
+  mov.style.pointerEvents = 'none';
+  if (sheet) { sheet.style.transition = 'transform 0.22s cubic-bezier(.4,0,1,1)'; sheet.style.transform = 'translateY(100%)'; }
 
-  setTimeout(() => mov.remove(), 380);
+  setTimeout(() => mov.remove(), 240);
 }
 
 async function searchFriend() {
@@ -2247,7 +2592,7 @@ async function sendFriendRequest(targetId, btn) {
   try {
     const data = await api('/api/friends/request', { method:'POST', body: JSON.stringify({ targetUserIdCode: targetId }) });
     if (data.ok) {
-      btn.textContent = '送信済み';
+      btn.textContent = ''; btn.appendChild(tlCheckSvg()); btn.appendChild(document.createTextNode('送信済み'));
       btn.style.background = '#10b981';
     } else {
       btn.textContent = data.error || 'エラー';
@@ -3338,13 +3683,18 @@ async function loadPendingRequests(animate = false) {
   try {
     const pending = await api('/api/friends/pending');
     // 届いている申請の数をホームのタブに出す(トーク画面にいると申請に気づけなかった)
-    { const n = Array.isArray(pending) ? pending.filter(p => !p.isSentByMe).length : 0; const hb = document.getElementById('homeTabBadge'); if (hb) { hb.hidden = n <= 0; hb.textContent = n > 99 ? '99+' : String(n); } }
+    { const n = Array.isArray(pending) ? pending.filter(p => !p.isSentByMe).length : 0; const hb = document.getElementById('homeTabBadge'); if (hb) { const was = hb.hidden ? 0 : (parseInt(hb.textContent, 10) || 0); hb.hidden = n <= 0; hb.textContent = n > 99 ? '99+' : String(n); if (n > was && window.__homeBadgeSeen) TLM.replay(hb, 'tb-pop'); window.__homeBadgeSeen = true; } }
     const card = document.getElementById('pendingRequestsCard');
     const list = document.getElementById('pendingList');
 
     if (!Array.isArray(pending) || pending.length === 0) {
-      card.style.display = 'none';
       window.__lastPendingFingerprint = '[]';
+      if (card.style.display !== 'none') {
+        // 最後の1件が片付いたら、カードごとふわっと消える(消えた後に別の申請が来ていたら消さない)
+        const fin = () => { if (window.__lastPendingFingerprint === '[]') { card.style.display = 'none'; list.textContent = ''; } };
+        const a = TLM.anim(card, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
+        if (a) { a.onfinish = fin; a.oncancel = fin; } else fin();
+      }
       return;
     }
 
@@ -3357,59 +3707,66 @@ async function loadPendingRequests(animate = false) {
     window.__lastPendingFingerprint = pendingFingerprint;
 
     card.style.display = 'block';
-    list.textContent = '';
-    pending.forEach((p, idx) => {
-      const row = document.createElement('div');
-      row.className = animate ? 'glass-materialize-light' : '';
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
-      if (animate) row.style.animationDelay = Math.min(idx * 40, 240) + 'ms';
-
-      const av = document.createElement('div');
-      av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
-      av.textContent = (p.displayName || '?')[0];
-
-      const info = document.createElement('div');
-      info.style.flex = '1';
-      const nameEl = document.createElement('div');
-      nameEl.style.cssText = 'font-weight:700;color:#0f172a;font-size:15px';
-      nameEl.textContent = p.displayName;
-      const statusEl = document.createElement('div');
-      statusEl.style.cssText = 'font-size:12px;color:#64748b';
-      statusEl.textContent = p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み';
-      info.appendChild(nameEl);
-      info.appendChild(statusEl);
-
-      row.appendChild(av);
-      row.appendChild(info);
-
-      // 拒否(受け取った側)/ 取り消し(送った側)
-      const dropBtn = document.createElement('button');
-      dropBtn.className = 'glass-clear glass-interactive';
-      dropBtn.style.cssText = 'padding:8px 14px;color:#64748b;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
-      dropBtn.textContent = p.isSentByMe ? '取り消し' : '拒否';
-      dropBtn.addEventListener('click', async () => {
-        dropBtn.disabled = true;
-        try {
-          const d = await api(p.isSentByMe ? '/api/friends/cancel' : '/api/friends/reject', { method: 'POST', body: JSON.stringify({ friendshipId: p.friendshipId }) });
-          if (d && d.ok) loadPendingRequests(true); else dropBtn.disabled = false;
-        } catch (e) { dropBtn.disabled = false; }
-      });
-      row.appendChild(dropBtn);
-
-      if (!p.isSentByMe) {
-        const btn = document.createElement('button');
-        btn.className = 'glass-clear glass-interactive';
-        btn.style.cssText = 'padding:8px 16px;color:#0f172a;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
-        btn.textContent = '承認';
-        btn.addEventListener('click', () => acceptFriendRequest(p.friendshipId, btn));
-        row.appendChild(btn);
-      }
-
-      list.appendChild(row);
-    });
+    // 変わった申請だけ作り直す。新しい申請は右からスライドイン、片付いた申請は右へ抜けて、下の行が詰める
+    TLM.sync(list, pending.map(p => ({ key: 'f:' + p.friendshipId, fp: JSON.stringify(p), build: () => buildPendingRow(p) })), { enter: 'right' });
   } catch (e) {
     console.error('loadPendingRequests error:', e);
   }
+}
+
+function tlCheckSvg() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = document.createElementNS(NS, 'svg');
+  sv.setAttribute('class', 'tl-check'); sv.setAttribute('width', '14'); sv.setAttribute('height', '14'); sv.setAttribute('viewBox', '0 0 24 24');
+  sv.setAttribute('fill', 'none'); sv.setAttribute('stroke', 'currentColor'); sv.setAttribute('stroke-width', '3'); sv.setAttribute('stroke-linecap', 'round'); sv.setAttribute('stroke-linejoin', 'round'); sv.setAttribute('aria-hidden', 'true');
+  const pl = document.createElementNS(NS, 'polyline'); pl.setAttribute('points', '5 12.5 10 17.5 19 7'); sv.appendChild(pl);
+  return sv;
+}
+function buildPendingRow(p) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;background:#f8fafc;border-radius:14px;margin-bottom:8px;';
+
+  const av = document.createElement('div');
+  av.style.cssText = 'width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.25);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.08)';
+  av.textContent = (p.displayName || '?')[0];
+
+  const info = document.createElement('div');
+  info.style.flex = '1';
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = 'font-weight:700;color:#0f172a;font-size:15px';
+  nameEl.textContent = p.displayName;
+  const statusEl = document.createElement('div');
+  statusEl.style.cssText = 'font-size:12px;color:#64748b';
+  statusEl.textContent = p.isSentByMe ? '送信済み' : 'リクエスト受け取り済み';
+  info.appendChild(nameEl);
+  info.appendChild(statusEl);
+
+  row.appendChild(av);
+  row.appendChild(info);
+
+  // 拒否(受け取った側)/ 取り消し(送った側)
+  const dropBtn = document.createElement('button');
+  dropBtn.className = 'glass-clear glass-interactive';
+  dropBtn.style.cssText = 'padding:8px 14px;color:#64748b;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
+  dropBtn.textContent = p.isSentByMe ? '取り消し' : '拒否';
+  dropBtn.addEventListener('click', async () => {
+    dropBtn.disabled = true;
+    try {
+      const d = await api(p.isSentByMe ? '/api/friends/cancel' : '/api/friends/reject', { method: 'POST', body: JSON.stringify({ friendshipId: p.friendshipId }) });
+      if (d && d.ok) loadPendingRequests(true); else dropBtn.disabled = false;
+    } catch (e) { dropBtn.disabled = false; }
+  });
+  row.appendChild(dropBtn);
+
+  if (!p.isSentByMe) {
+    const btn = document.createElement('button');
+    btn.className = 'glass-clear glass-interactive';
+    btn.style.cssText = 'padding:8px 16px;color:#0f172a;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;';
+    btn.textContent = '承認';
+    btn.addEventListener('click', () => acceptFriendRequest(p.friendshipId, btn));
+    row.appendChild(btn);
+  }
+  return row;
 }
 
 async function acceptFriendRequest(friendshipId, btn) {
@@ -3418,9 +3775,10 @@ async function acceptFriendRequest(friendshipId, btn) {
   try {
     const data = await api('/api/friends/accept', { method: 'POST', body: JSON.stringify({ friendshipId }) });
     if (data.ok) {
-      btn.textContent = '承認済み';
+      // チェックがポンと出てから、行が右へ抜ける(すぐ消すと承認できた手応えが無い)
+      btn.textContent = ''; btn.appendChild(tlCheckSvg()); btn.appendChild(document.createTextNode('承認済み'));
       btn.style.background = '#6b7280';
-      loadPendingRequests(true);
+      setTimeout(() => loadPendingRequests(true), TLM.ok() ? 480 : 0);
       loadTalks(true);
     } else {
       btn.textContent = 'エラー';
@@ -4023,7 +4381,7 @@ async function loadPosts() {
       if (Array.isArray(c) && c.length) { postsAll = c; shown = true; }
     } catch (_) {}
     postsOldestTimestamp = postsAll.length ? postsAll[postsAll.length - 1].createdAt : null;
-    if (shown) renderFeed(); else renderFeedSkeleton();
+    if (shown) renderFeed(window.__feedEver ? 'swap' : 'quiet'); else renderFeedSkeleton();
   } else if (postsAll.length) { shown = true; }
   try {
     const posts = await api(feedEndpoint(null));
@@ -4061,7 +4419,17 @@ function feedFiltered() {
   if (feedQuery) arr = arr.filter(p => (postTitle(p) + ' ' + (p.text || '') + ' ' + (p.authorName || '')).toLowerCase().includes(feedQuery));
   return arr;
 }
-function renderFeed() {
+// 一度でも出した投稿のID。入場アニメは「初めて出る投稿」だけに付け、描画し直し・絞り込み・再訪では再生しない
+const feedSeen = new Set();
+function enterCard(c, id, st) {
+  if (feedSeen.has(id)) return;
+  feedSeen.add(id);
+  if (!st || st.quiet || st.n >= 8 || !TLM.ok()) return; // 画面に入る先頭の数枚だけ(それより下は見えないので動かさない)
+  c.classList.add('yt-enter'); c.style.setProperty('--d', (st.n++ * 45) + 'ms');
+  c.addEventListener('animationend', e => { if (e.target !== c) return; c.classList.remove('yt-enter'); c.style.removeProperty('--d'); });
+}
+// mode: 'quiet' = 端末に残してあった内容の即表示(動かさない) / 'swap' = 絞り込み・検索で入れ替え(一覧全体がさっと切り替わる) / 省略 = 新しい投稿だけ入場
+function renderFeed(mode) {
   const list = document.getElementById('postsList');
   if (!list) return;
   const arr = feedFiltered();
@@ -4070,12 +4438,16 @@ function renderFeed() {
   lastRenderSig = feedSig(postsAll);
   if (!arr.length && !lives.length) {
     list.appendChild(feedEmpty(feedKind === 'live' ? i18n.t('no_live_now') : i18n.t('no_posts_yet')));
+    if (mode === 'swap') TLM.replay(list, 'tl-swap');
     return;
   }
   const frag = document.createDocumentFragment();
-  arr.forEach((p) => frag.appendChild(renderPostCard(p)));
+  const st = { n: 0, quiet: mode === 'quiet' || mode === 'swap' };
+  arr.forEach((p) => { const c = renderPostCard(p); enterCard(c, p.id, st); frag.appendChild(c); });
   list.appendChild(frag);
   if (window.ytSyncLive) window.ytSyncLive(true);
+  window.__feedEver = true;
+  if (mode === 'swap') TLM.replay(list, 'tl-swap');
 }
 
 // 下まで見たら、もっと前の投稿を読む
@@ -4097,7 +4469,7 @@ async function loadOlderPosts() {
       fresh.forEach(p => {
         if (feedKind === 'video' && p.mediaType !== 'video') return;
         if (feedKind === 'image' && p.mediaType !== 'image') return;
-        frag.appendChild(renderPostCard(p));
+        const c = renderPostCard(p); enterCard(c, p.id, null); frag.appendChild(c);
       });
       list.appendChild(frag);
     } else {
@@ -4132,7 +4504,7 @@ function ensurePostsSentinel() {
     search.addEventListener('input', () => {
       feedQuery = search.value.trim().toLowerCase();
       clearTimeout(deb);
-      deb = setTimeout(renderFeed, 140);
+      deb = setTimeout(() => renderFeed('swap'), 140);
     });
   }
   const chips = document.getElementById('feedChips');
@@ -4141,11 +4513,12 @@ function ensurePostsSentinel() {
       const btn = e.target.closest('.yt-chip');
       if (!btn) return;
       chips.querySelectorAll('.yt-chip').forEach(c => c.classList.toggle('on', c === btn));
+      TLM.replay(btn, 'chip-pop');
       const f = btn.dataset.filter;
       if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
       if (f === 'all') { feedScope = 'all'; feedKind = 'all'; loadPosts(); }
       else if (f === 'subscribed') { feedScope = 'subscribed'; feedKind = 'all'; loadPosts(); }
-      else { feedKind = f; renderFeed(); }
+      else { feedKind = f; renderFeed('swap'); }
     });
   }
   const createBtn = document.getElementById('feedCreateBtn');
@@ -4154,7 +4527,8 @@ function ensurePostsSentinel() {
     createBtn.addEventListener('click', () => {
       const open = composer.style.display !== 'none';
       composer.style.display = open ? 'none' : 'block';
-      if (!open) { composer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); const ta = document.getElementById('postTextInput'); if (ta) setTimeout(() => ta.focus(), 120); }
+      createBtn.classList.toggle('on', !open);
+      if (!open) { TLM.replay(composer, 'tl-open'); composer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); const ta = document.getElementById('postTextInput'); if (ta) setTimeout(() => ta.focus(), 120); }
     });
   }
 })();
@@ -4260,8 +4634,15 @@ function closeWatch() {
   if (!w) return;
   const v = w.querySelector('.yt-player video'); if (v) { try { v.pause(); } catch (_) {} }
   if (watchPlayer) { try { watchPlayer.destroy(); } catch (_) {} watchPlayer = null; }
-  w.classList.remove('open'); w.setAttribute('aria-hidden', 'true'); w.innerHTML = '';
   document.body.style.overflow = '';
+  w.setAttribute('aria-hidden', 'true');
+  // 再生と通信は上で止めた。見た目だけ0.2秒かけて下へ沈めてから片付ける(その間に開き直されたら中断)
+  const fin = () => { if (w.dataset.closing !== '1') return; delete w.dataset.closing; w.classList.remove('open', 'closing'); w.innerHTML = ''; };
+  if (TLM.ok() && w.classList.contains('open') && w.dataset.closing !== '1') {
+    w.dataset.closing = '1'; w.classList.add('closing');
+    w.addEventListener('animationend', function f(e) { if (e.target !== w) return; w.removeEventListener('animationend', f); fin(); });
+    setTimeout(fin, 320); // animationendが来ない場合の保険
+  } else { w.dataset.closing = '1'; fin(); }
 }
 window.addEventListener('popstate', () => {
   const w = document.getElementById('ytWatch');
@@ -4280,7 +4661,9 @@ function mkAct(svg, label) {
 async function openWatch(p) {
   const w = document.getElementById('ytWatch');
   if (!w) return;
-  const first = !w.classList.contains('open');
+  // 沈んでいる最中(.closing)に開き直された時は、戻る操作で履歴は既に1つ戻っているので、積み直す(first扱い)
+  const first = !w.classList.contains('open') || w.dataset.closing === '1';
+  if (w.dataset.closing === '1') { delete w.dataset.closing; w.classList.remove('closing'); }
   if (window.LiquidGlass) window.LiquidGlass.haptic('selection');
   if (watchPlayer) { try { watchPlayer.destroy(); } catch (_) {} watchPlayer = null; }
   const prevV = w.querySelector('.yt-player video'); if (prevV) { try { prevV.pause(); } catch (_) {} }
@@ -4435,6 +4818,11 @@ async function watchToggleLike(p, btn, countEl) {
       p.likeCount = Math.max(0, (p.likeCount || 0) + (data.liked ? 1 : -1));
       btn.classList.toggle('on', data.liked);
       countEl.textContent = fmtNum(p.likeCount);
+      // いいね: アイコンが跳ねてSVGの粒がはじける / 外す時は小さく沈む。数字は下から入れ替わる
+      const ic = btn.querySelector('svg');
+      if (ic) { ic.classList.remove('lk-pop', 'lk-down'); TLM.replay(ic, data.liked ? 'lk-pop' : 'lk-down'); }
+      if (data.liked) TLM.likeBurst(btn);
+      TLM.replay(countEl, 'lk-tick');
       syncPostInCache(p, { likedByMe: p.likedByMe, likeCount: p.likeCount });
     }
   } catch (e) { console.error('watchToggleLike error:', e); }
@@ -4450,6 +4838,7 @@ async function watchToggleSub(p, btn, subsEl) {
       p.subscriberCount = data.subscriberCount;
       btn.classList.toggle('on', data.subscribed);
       btn.textContent = i18n.t(data.subscribed ? 'subscribed' : 'subscribe');
+      TLM.replay(btn, 'sub-pop');
       subsEl.textContent = fmtSubs(data.subscriberCount);
       syncPostInCache(p, { subscribedByMe: data.subscribed, subscriberCount: data.subscriberCount });
     } else if (data.error) { alert(data.error); }
@@ -4540,9 +4929,10 @@ function downloadPost(p) {
 
 function ytToast(msg) {
   const t = document.createElement('div');
-  t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10300;background:rgba(15,15,15,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.3);animation:ytIn .2s ease';
+  t.className = 'yt-toast';
+  t.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10300;background:rgba(15,15,15,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.3)';
   t.textContent = msg; document.body.appendChild(t);
-  setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 320); }, 1800);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 230); }, 1800);
 }
 
 async function deletePost(postId, card) {
@@ -4561,20 +4951,24 @@ async function deletePost(postId, card) {
 // カードの3点メニュー: 共有 /(自分の投稿なら)削除
 function openPostMenu(p) {
   const ov = document.createElement('div');
+  ov.className = 'tl-sheet-ov';
   ov.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.35);display:flex;align-items:flex-end';
   const sheet = document.createElement('div');
-  sheet.style.cssText = 'width:100%;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding:8px 0 max(8px,env(safe-area-inset-bottom));animation:ytWatchIn .2s ease';
+  sheet.className = 'tl-sheet';
+  // 閉じる時は下へ素早く沈めて、背景も一緒に消してから外す
+  const closeMenu = () => { if (ov.classList.contains('out')) return; ov.classList.add('out'); setTimeout(() => ov.remove(), TLM.ok() ? 210 : 0); };
+  sheet.style.cssText = 'width:100%;background:var(--yt-watch-bg,#fff);border-radius:20px 20px 0 0;padding:8px 0 max(8px,env(safe-area-inset-bottom))';
   if (document.documentElement.classList.contains('dark-mode')) sheet.style.background = document.documentElement.classList.contains('dark-black') ? '#0d0d0f' : '#212121';
   const add = (label, danger, fn) => {
     const b = document.createElement('button');
     b.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;padding:15px 22px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#ef4444' : 'var(--yt-fg)');
-    b.textContent = label; b.addEventListener('click', () => { ov.remove(); fn(); }); sheet.appendChild(b);
+    b.textContent = label; b.addEventListener('click', () => { closeMenu(); fn(); }); sheet.appendChild(b);
   };
   add(i18n.t('share'), false, () => sharePost(p));
   if (p.mediaUrl) add(i18n.t('download'), false, () => downloadPost(p));
   if (p.authorId === myUserId) add(i18n.getLang && i18n.getLang() === 'ja' ? '削除' : 'Delete', true, () => deletePost(p.id));
   ov.appendChild(sheet);
-  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.addEventListener('click', e => { if (e.target === ov) closeMenu(); });
   document.body.appendChild(ov);
 }
 
@@ -5142,9 +5536,8 @@ function openPostMenu(p) {
     const fp = JSON.stringify(communities || []);
     if (fp === lastCommunityFp) return;
     lastCommunityFp = fp;
-    list.textContent = '';
-    if (!Array.isArray(communities) || communities.length === 0) return;
-    communities.forEach(c => {
+    // 変わったコミュニティだけ作り直し、新しく入った分だけ入場する
+    TLM.sync(list, (Array.isArray(communities) ? communities : []).map(c => ({ key: 'c:' + c.id, fp: JSON.stringify(c), build: () => {
         const item = document.createElement('div');
         item.className = 'ti';
 
@@ -5191,8 +5584,8 @@ function openPostMenu(p) {
         item.addEventListener('click', () => {
           location.href = '/community.html?id=' + encodeURIComponent(c.id);
         });
-        list.appendChild(item);
-    });
+        return item;
+    } })), { enter: 'up' });
   }
 
   window.loadCommunities = async function() {
@@ -5346,10 +5739,13 @@ function openPostMenu(p) {
     return fill(T('live_since_hour', '{n}時間前に開始'), { n: Math.floor(m / 60) });
   }
 
+  const liveSeen = new Set();
   function buildLiveCard(l) {
     const card = document.createElement('div');
     card.className = 'yt-card';
     card.dataset.liveKey = l.key;
+    // 初めて出るライブだけ入場(視聴者数の更新でカードを作り直しても再生しない)
+    if (!liveSeen.has(l.key)) { liveSeen.add(l.key); if (TLM.ok()) { card.classList.add('yt-enter'); card.addEventListener('animationend', e => { if (e.target === card) card.classList.remove('yt-enter'); }); } }
     const thumb = document.createElement('div'); thumb.className = 'yt-thumb yt-live-thumb';
     const lav = document.createElement('div'); lav.className = 'yt-live-av';
     setAvatarBackground(lav, l.hostPic, (l.hostName || '?')[0]);
@@ -5529,7 +5925,8 @@ function openPostMenu(p) {
   function gridOf(arr) {
     const g = document.createElement('div'); g.className = 'yt-grid';
     const frag = document.createDocumentFragment();
-    arr.forEach(p => frag.appendChild(renderPostCard(p, { compact: true })));
+    const st = { n: 0 };
+    arr.forEach(p => { const c = renderPostCard(p, { compact: true }); enterCard(c, 'c:' + p.id, st); frag.appendChild(c); });
     g.appendChild(frag);
     return g;
   }
@@ -5915,7 +6312,9 @@ function openPostMenu(p) {
 
   dismissBtn.addEventListener('click',function(e){
     e.stopPropagation();
-    banner.style.display='none';
+    // 上へ少し戻りながら消える(0.2秒)
+    banner.classList.add('out');
+    setTimeout(function(){banner.style.display='none';banner.classList.remove('out');},(window.TLM&&TLM.ok())?210:0);
     try{localStorage.setItem('pwa_banner_dismissed',String(Date.now()));}catch(_){}
   });
 

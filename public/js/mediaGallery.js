@@ -24,7 +24,7 @@
   let sc = 1, tx = 0, ty = 0;                 // 今のスライドの拡大率と位置
   let mode = null, busy = false;
   let t0 = null, lastTap = null, tapTimer = null, lastTouchAt = 0, pinch = null, drag = null;
-  let pushed = false, prevOverflow = '';
+  let pushed = false, prevOverflow = '', hiddenEls = [];   // 開閉アニメ中に隠している元の画像
 
   function css() {
     if (document.getElementById('bro-gal-css')) return;
@@ -364,6 +364,38 @@
     } catch (e) { console.error('[gallery] download', e); }
   }
 
+  // ---- 開閉アニメ(押した画像からそのまま大きくなり、閉じる時はその場所へ戻る) ----
+  const reduced = () => document.documentElement.classList.contains('reduce-motion') ||
+    (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function rectOf(el) {                       // 画面内に見えている元画像の位置。見えなければ null
+    if (!el || !el.isConnected) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8 || r.bottom <= 0 || r.top >= H || r.right <= 0 || r.left >= W) return null;
+    return r;
+  }
+  // r の位置・大きさの見た目になる transform(スライドの画像は画面中央に全面で置いてある)
+  function flipFrom(r) {
+    const d = shown();
+    if (!d.w || !d.h) return null;
+    const k = Math.max(r.width / d.w, r.height / d.h);
+    return 'translate3d(' + (r.left + r.width / 2 - W / 2) + 'px,' + (r.top + r.height / 2 - H / 2) + 'px,0) scale(' + k + ')';
+  }
+  function flipIn(r) {
+    const e = curEl();
+    if (!e || e.tagName !== 'IMG') return;
+    const from = flipFrom(r);
+    if (!from) return;
+    e.style.transition = 'none';
+    e.style.transform = from;
+    void e.offsetWidth;                       // 開始位置を確定させてから動かす
+    e.style.transition = 'transform .4s cubic-bezier(.2,.9,.22,1)';
+    e.style.transform = 'translate3d(0,0,0) scale(1)';
+    setTimeout(() => { if (e.isConnected) e.style.transition = 'none'; }, 430);
+  }
+
+  function hide(e) { e.style.visibility = 'hidden'; hiddenEls.push(e); }
+  function unhide() { hiddenEls.forEach(e => { e.style.visibility = ''; }); hiddenEls = []; }
+
   // ---- 開閉 ----
   function openGallery(el, opts) {
     if (!el || open) return;
@@ -378,6 +410,9 @@
     document.body.style.overflow = 'hidden';
     busy = false; mode = null; open = true;
     render();
+    unhide();
+    const r0 = !reduced() && !isVideo(el) && loaded(el) ? rectOf(el) : null;
+    if (r0) { flipIn(r0); hide(el); }
     requestAnimationFrame(() => { ov.style.transition = ''; ov.style.opacity = ''; ov.classList.add('on'); });
     try { history.pushState({ bgal: 1 }, ''); pushed = true; } catch (e) { pushed = false; }
   }
@@ -386,14 +421,30 @@
     if (!open) return;
     open = false;
     if (pushed) { pushed = false; try { if (history.state && history.state.bgal) history.back(); } catch (e) {} }
-    ov.style.transition = 'opacity .2s ease';
-    ov.style.opacity = '0'; ov.classList.remove('on');
     document.body.style.overflow = prevOverflow;
+    // 今見ている画像の元の場所が画面内に見えていれば、そこへ縮みながら戻る(縦スワイプで閉じた時は普通に消える)
+    const cur = items[idx];
+    const r = !fromDrag && !reduced() && cur && !isVideo(cur) ? rectOf(cur) : null;
+    const img = r ? curEl() : null;
+    const to = img && img.tagName === 'IMG' ? flipFrom(r) : null;
+    let ms = 220;
+    if (to) {
+      ms = 320;
+      hide(cur);
+      img.style.transition = 'transform .32s cubic-bezier(.3,.7,.2,1)';
+      img.style.transform = to;
+      track.style.transition = 'none'; track.style.transform = 'translate3d(0,0,0)';
+      ov.style.transition = 'opacity .32s ease .06s';
+    } else {
+      ov.style.transition = 'opacity .2s ease';
+    }
+    ov.style.opacity = '0'; ov.classList.remove('on');
     setTimeout(() => {
       if (open) return;
+      unhide();
       Object.keys(slides).forEach(k => { const v = slides[k].querySelector('video'); if (v) { try { v.pause(); } catch (e) {} } });
       slides = {}; track.innerHTML = ''; ov.remove(); items = [];
-    }, 220);
+    }, ms);
   }
 
   // 端末の戻るボタン: ビューアが開いていたら閉じるだけ(トークからは出ない)
