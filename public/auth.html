@@ -668,7 +668,7 @@
 
     function showSuccess(message) {
       const successEl = document.getElementById('successMsg');
-      successEl.textContent = message;
+      BroDots.set(successEl, message);
       successEl.style.display = 'block';
     }
 

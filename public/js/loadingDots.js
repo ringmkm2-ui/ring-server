@@ -1,7 +1,7 @@
 // loadingDots.js
 // 「読み込み中...」「呼び出し中...」のような待ち表示の末尾の「...」を動かす。
-//   通常  : .  →  ..  →  ...  を繰り返す(文字はそのまま。ボタンや小さい表示向け)
-//   wow   : 3つの点がバネのように跳ねて光り、文字全体を光の帯が流れる(通話や画像の読み込みなど目立つ所)
+//   標準(wow): . → .. → ... と増えながら、点がバネのように跳ねて光り、文字全体を光の帯が流れる
+//   {wow:false} / data-bd="plain": 点が増えるだけの地味な版
 // どちらも textContent は元の「中...」のまま(点は . の文字3つ)なので、既存の処理は影響を受けない。
 // 使い方:
 //   BroDots.set(el, '読み込み中...')            // 通常
@@ -28,8 +28,8 @@
       '@keyframes bd-3{0%,63%{opacity:0}71%,100%{opacity:1}}' +
       // ---- wow: 点が順番に跳ねる(行き過ぎて戻るバネ)+ 光る ----
       '.bd-wow>i{animation:bd-hop 1.15s cubic-bezier(.3,0,.2,1) infinite;transform-origin:50% 80%;will-change:transform}' +
-      '.bd-wow>i:nth-child(2){animation-delay:.14s}' +
-      '.bd-wow>i:nth-child(3){animation-delay:.28s}' +
+      '.bd-wow>i:nth-child(2){animation:bd-hop 1.15s cubic-bezier(.3,0,.2,1) .14s infinite,bd-2 1.2s linear infinite}' +
+      '.bd-wow>i:nth-child(3){animation:bd-hop 1.15s cubic-bezier(.3,0,.2,1) .28s infinite,bd-3 1.2s linear infinite}' +
       '@keyframes bd-hop{' +
         '0%{transform:translateY(0) scale(1);text-shadow:0 0 0 transparent}' +
         '16%{transform:translateY(-.52em) scale(1.5,1.5);text-shadow:0 0 .5em currentColor}' +
@@ -68,7 +68,7 @@
     const m = TAIL.exec(text);
     if (!m || !BODY.test(m[1])) { el.textContent = text; return; }
     css();
-    const wow = !!(opts && opts.wow);
+    const wow = !(opts && opts.wow === false);   // 全部wow版が標準。地味にしたい時だけ {wow:false}
     el.textContent = '';
     const wrap = document.createElement('span');
     wrap.className = 'bd-t' + (wow ? ' bd-shine' : '');
@@ -81,7 +81,7 @@
   function scan(root) {
     (root || document).querySelectorAll('[data-bd]').forEach(el => {
       if (el.firstElementChild) return;
-      set(el, el.textContent, { wow: el.getAttribute('data-bd') === 'wow' });
+      set(el, el.textContent, { wow: el.getAttribute('data-bd') !== 'plain' });
     });
   }
 

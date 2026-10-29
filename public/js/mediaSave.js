@@ -11,7 +11,7 @@
     const d = document.createElement('div');
     d.setAttribute('role', 'status'); d.setAttribute('data-bro-toast', '1');
     d.style.cssText = 'position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:80vw;padding:10px 16px;border-radius:14px;background:rgba(15,23,42,.92);color:#fff;font-size:14px;z-index:30000;text-align:center';
-    d.textContent = msg;
+    if (window.BroDots) BroDots.set(d, msg); else d.textContent = msg;
     document.body.appendChild(d);
     setTimeout(() => d.remove(), 2800);
   }

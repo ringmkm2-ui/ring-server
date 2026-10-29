@@ -26,7 +26,7 @@
   <p class="legal-date">運営だけが見られるページ</p>
   <p>トークで送る画像・動画(端末で暗号化済み)を、公式アカウントのGoogleドライブに置きます。つながっていない間は今まで通りCloudinaryに置きます。</p>
   <div class="box">
-    <div class="row"><span>今の保存先</span><b id="where">確認中...</b></div>
+    <div class="row"><span>今の保存先</span><b id="where" data-bd>確認中...</b></div>
     <div class="row"><span>ドライブの容量</span><span id="quota">-</span></div>
     <div class="bar"><i id="qbar"></i></div>
   </div>
@@ -34,6 +34,7 @@
   <div class="err" id="err"></div>
   <p style="font-size:13px;color:var(--sub);margin-top:16px">ボタンを押すとGoogleのログイン画面が開きます。必ず <b>brochatofficialglobal</b> のアカウントで許可してください。このアプリが作ったファイル以外は見えない権限(drive.file)だけを使います。</p>
 </main>
+<script src="/js/loadingDots.js"></script>
 <script>
 (function () {
   var token = localStorage.getItem('ring_token') || '';
