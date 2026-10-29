@@ -575,6 +575,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/iconUpload.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/keyBackup.js"></script>
+<script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -659,7 +660,7 @@ window.ensureGroupCrypto = (function () {
               <div class="myav" id="dispAv"></div>
               <div>
                 <div class="myn" id="dispName">マイネーム</div>
-                <div id="myIdCode" style="font-size:12px;color:#64748b;margin-top:2px;">ID: 読み込み中...</div>
+                <div id="myIdCode" data-bd style="font-size:12px;color:#64748b;margin-top:2px;">ID: 読み込み中...</div>
               </div>
             </div>
             <button class="sibtn glass-interactive" id="openSettings" type="button">
@@ -752,7 +753,7 @@ window.ensureGroupCrypto = (function () {
             <img id="postMediaPreviewImg" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:14px;" alt="">
             <div id="postVideoContainer" style="display:none;position:relative;width:100%;">
               <video id="postMediaPreviewVideo" style="width:100%;max-height:220px;object-fit:cover;border-radius:14px;background:#000;" controls playsinline preload="metadata"></video>
-              <div id="postVideoLoading" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">読み込み中...</div>
+              <div id="postVideoLoading" data-bd="wow" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">読み込み中...</div>
               <div id="postVideoTime" style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;">0:00</div>
             </div>
             <button type="button" id="postMediaRemoveBtn" class="glass-clear glass-interactive" style="position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;">
@@ -780,7 +781,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.28.294 beta</div>
+  <div class="version-badge">Bro Chat v1.28.295 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1031,7 +1032,7 @@ window.ensureGroupCrypto = (function () {
     <div class="sg"><label data-i18n="group_name">グループ名</label><input type="text" id="ngName" placeholder="グループ名を入力" data-i18n-placeholder="group_name_placeholder"></div>
     <div class="sg" style="max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;padding:8px;">
       <label data-i18n="member_select">メンバー選択</label>
-      <div id="ngMemberList" style="margin-top:8px;font-size:12px;color:#999;">読み込み中...</div>
+      <div id="ngMemberList" data-bd style="margin-top:8px;font-size:12px;color:#999;">読み込み中...</div>
     </div>
     <button class="savebtn btn-glass glass-clear glass-interactive" id="ngCreate" type="button" data-i18n="create_btn">作成する</button>
     <button class="cancelbtn btn-glass glass-clear glass-interactive" id="ngCancel" type="button" data-i18n="cancel">キャンセル</button>
@@ -1685,7 +1686,7 @@ async function loadProfile(){
     const idCode=localStorage.getItem('ring_userIdCode')||'';
     document.getElementById('dispName').textContent=name;
     document.getElementById('inName').value=name;
-    document.getElementById('myIdCode').textContent = idCode ? 'ID: ' + idCode : 'ID: 取得中...';
+    BroDots.set(document.getElementById('myIdCode'), idCode ? 'ID: ' + idCode : 'ID: 取得中...');
     paintMyAv(document.getElementById('dispAv'),localStorage.getItem('myAvatar')||'',name);
   }
 }
@@ -2187,7 +2188,7 @@ async function searchFriend() {
   result.textContent = '';
   const searching = document.createElement('div');
   searching.style.cssText = 'text-align:center;color:#94a3b8;font-size:14px;padding:8px';
-  searching.textContent = '検索中...';
+  BroDots.set(searching, '検索中...');
   result.appendChild(searching);
   try {
     const data = await api('/api/friends/search?q=' + encodeURIComponent(q));
@@ -2242,7 +2243,7 @@ async function searchFriend() {
 
 async function sendFriendRequest(targetId, btn) {
   btn.disabled = true;
-  btn.textContent = '送信中...';
+  BroDots.set(btn, '送信中...');
   try {
     const data = await api('/api/friends/request', { method:'POST', body: JSON.stringify({ targetUserIdCode: targetId }) });
     if (data.ok) {
@@ -2878,7 +2879,7 @@ document.getElementById('setUserReport').addEventListener('click', () => openRep
 const blockMov = document.getElementById('blockMov');
 async function loadBlocks() {
   const box = document.getElementById('blockList');
-  box.textContent = t2('loading', '読み込み中...');
+  BroDots.set(box, t2('loading', '読み込み中...'));
   try {
     const res = await fetch('/api/friends/blocks', { headers: { 'Authorization': 'Bearer ' + token } });
     const list = await res.json();
@@ -3293,7 +3294,7 @@ document.getElementById('ngCreate').onclick = async () => {
 
   const createBtn = document.getElementById('ngCreate');
   createBtn.disabled = true;
-  createBtn.textContent = '作成中...';
+  BroDots.set(createBtn, '作成中...');
 
   try {
     const memberIds = Array.from(selectedGroupMembers);
@@ -3413,7 +3414,7 @@ async function loadPendingRequests(animate = false) {
 
 async function acceptFriendRequest(friendshipId, btn) {
   btn.disabled = true;
-  btn.textContent = '承認中...';
+  BroDots.set(btn, '承認中...');
   try {
     const data = await api('/api/friends/accept', { method: 'POST', body: JSON.stringify({ friendshipId }) });
     if (data.ok) {
@@ -3836,7 +3837,7 @@ document.getElementById('postSubmitBtn').onclick = async () => {
 
   const submitBtn = document.getElementById('postSubmitBtn');
   submitBtn.disabled = true;
-  submitBtn.textContent = '投稿中...';
+  BroDots.set(submitBtn, '投稿中...');
 
   try {
     const body = { text: text || null };

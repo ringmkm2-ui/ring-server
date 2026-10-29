@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/themeBoot.js"></script>
+  <script src="/js/loadingDots.js"></script>
   <script src="/js/i18n.js"></script>
   <style>
     * {
@@ -890,7 +891,7 @@
       if (!btn) return () => {};
       const label = btn.textContent;
       btn.disabled = true;
-      btn.textContent = tr('busy', '処理中…');
+      BroDots.set(btn, tr('busy', '処理中…'));
       const hint = tr('slow_server', 'サーバーが混み合っているか、起動中です。1分ほどかかることがあります');
       let hinted = false;
       const timer = setTimeout(() => { hinted = true; showSuccess(hint); }, 6000);

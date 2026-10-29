@@ -64,6 +64,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <script src="/js/groupE2E.js"></script>
 <script src="/js/communityE2E.js"></script>
 <script src="/js/keyBackup.js"></script>
+<script defer src="/js/loadingDots.js"></script>
 <script defer src="/js/i18n.js"></script>
 <script src="/js/actions.js"></script>
 <script src="/js/session.js"></script>
@@ -75,7 +76,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
   <div class="header-info">
-    <div class="header-name" id="communityName">読み込み中...</div>
+    <div class="header-name" id="communityName" data-bd>読み込み中...</div>
     <div class="header-sub" id="channelName" data-call="toggleMobileChannels"></div>
   </div>
   <button class="back-btn glass-clear glass-interactive" id="membersBtn" title="メンバー">

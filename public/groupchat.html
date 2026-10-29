@@ -216,6 +216,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script src="/js/session.js"></script>
 <script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
+<script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
@@ -243,7 +244,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.294 beta</div>
+  <div class="version-badge">Bro Chat v1.28.295 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -605,7 +606,7 @@ const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#1
 function refreshHdr(){
   document.getElementById('gnameEl').textContent=gi.name;
   const cnt=gi.members.length;
-  document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
+  BroDots.set(document.getElementById('mcntEl'),cnt>0?`メンバー ${cnt}人`:'読み込み中...');
   const av=document.getElementById('gavEl');
   if(gi.avatarImg){
     av.style.background=''; // 先に消す(後で消すと入れた画像まで消えていた)
@@ -1089,7 +1090,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
     bub.classList.add('mbub');
     const ph=document.createElement('div');
     ph.style.cssText='width:210px;height:54px;border-radius:8px;background:rgba(148,163,184,.25);display:flex;align-items:center;justify-content:center;color:#999;font-size:12px';
-    ph.textContent='ファイル 読み込み中...';
+    BroDots.set(ph,'ファイル 読み込み中...',{wow:true});
     bub.appendChild(ph);
     const go=()=>{ if(window.BroFile) BroFile.render(ph,media.fileOpts); else setTimeout(go,100); };
     setTimeout(go,0);

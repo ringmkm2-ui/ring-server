@@ -69,7 +69,7 @@
     } catch (e) {
       ph.textContent = '(ファイルを開けませんでした。タップでもう一度)';
       ph.style.cursor = 'pointer';
-      ph.onclick = () => { ph.onclick = null; ph.textContent = '読み込み中...'; render(ph, opts); };
+      ph.onclick = () => { ph.onclick = null; if (window.BroDots) BroDots.set(ph, '読み込み中...', { wow: true }); else ph.textContent = '読み込み中...'; render(ph, opts); };
       return;
     }
 
@@ -100,7 +100,7 @@
     const run = async () => {
       if (busy) return;
       busy = true;
-      sub.textContent = 'ダウンロード中...';
+      if (window.BroDots) BroDots.set(sub, 'ダウンロード中...'); else sub.textContent = 'ダウンロード中...';
       try {
         const blob = opts.localFile || await Promise.race([
           up.downloadAndDecryptMedia(opts.url, opts.encryptedMetadata, sharedKey),
