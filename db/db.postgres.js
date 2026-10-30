@@ -8,9 +8,29 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+// 同じ箱に置いたPostgresはSSLを使わない。
+// 以前は接続URLに 'localhost' という文字が入っているかだけを見ていたため、
+// 127.0.0.1 や ::1、UNIXソケットで書くと「The server does not support SSL connections」で
+// 起動できなかった。DBを自分のサーバーに同居させる時(Oracle/VPS)に必ず踏む。
+// 外のDB(Neon等)は今まで通りSSLで繋ぐ。明示的に切りたい時は ?sslmode=disable を付ける。
+function localConnection(url) {
+  if (!url) return false;
+  if (/[?&]sslmode=disable(&|$)/.test(url)) return true;
+  // host=/var/run/postgresql のようなUNIXソケット指定(エンコード済みも見る)
+  if (/[?&]host=(%2[Ff]|\/)/.test(url)) return true;
+  let host;
+  try {
+    host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  } catch (e) {
+    return /localhost|127\.0\.0\.1/.test(url);
+  }
+  if (!host) return true; // ホスト無し = ソケット接続
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+  ssl: localConnection(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
   // 使っていない接続は早めに閉じる。Neonは「接続が無い状態が続く」と自動で眠って課金が止まるので、
   // 繋ぎっぱなしだと誰も使っていない時間もコンピュート時間を食う(無料枠は1か月100 CU時間)
@@ -469,4 +489,4 @@ async function all(sql, params = []) {
   return res.rows;
 }
 
-module.exports = { initDB, run, get, all };
+module.exports = { initDB, run, get, all, localConnection };
