@@ -77,3 +77,34 @@ test('同じコミュニティの人(友だちでなくても)とは鍵のやり
   const d = (await o.call('GET', `/api/communities/${c.id}`)).data;
   assert.equal(d.community.encrypted, true);
 });
+
+// 5秒ごとの確認で本文を返さない近道。これが無いと、コミュニティを開いたままの端末1台で
+// 1日1〜2GBのDB転送になり、Neonの無料枠(1か月5GB)を使い切ってDBが止まる(2026-10-28に実際に起きた)
+test('印(v)が同じなら本文を返さない。発言があれば印が変わって本文が返る', async () => {
+  const o = await S.user('VOwner');
+  const c = (await o.call('POST', '/api/communities', { name: 'V', encryptedKeyForSelf: KEY })).data.community;
+  const ch = (await o.call('GET', `/api/communities/${c.id}`)).data.channels[0].id;
+  const url = `/api/communities/${c.id}/channels/${ch}/messages`;
+
+  const first = await o.call('GET', url);
+  assert.equal(first.status, 200);
+  assert.ok(typeof first.data.v === 'string' && first.data.v.length, '印が返っていない');
+
+  // 同じ印で聞くと本文は返らない(ここが転送量の節約点)
+  const again = await o.call('GET', `${url}?v=${encodeURIComponent(first.data.v)}`);
+  assert.equal(again.data.unchanged, true);
+  assert.equal(again.data.messages, undefined);
+  assert.equal(again.data.v, first.data.v);
+
+  // 発言すると印が変わり、本文が返る
+  assert.equal((await o.call('POST', url, { content: 'yo' })).status, 200);
+  const after = await o.call('GET', `${url}?v=${encodeURIComponent(first.data.v)}`);
+  assert.ok(!after.data.unchanged, '新しい発言があるのに本文が返っていない');
+  assert.ok(after.data.messages.some(x => x.content === 'yo'));
+  assert.notEqual(after.data.v, first.data.v);
+
+  // 当てずっぽうの印では本文が返る(近道で中身が隠れたままにならない)
+  const bogus = await o.call('GET', `${url}?v=nonsense`);
+  assert.ok(!bogus.data.unchanged);
+  assert.ok(bogus.data.messages.length >= 1);
+});

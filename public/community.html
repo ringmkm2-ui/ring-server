@@ -277,9 +277,14 @@ async function selectChannel(channelId, name) {
 
 async function loadMessages() {
   if (!currentChannelId) return;
-  const data = await api(`/api/communities/${communityId}/channels/${currentChannelId}/messages`);
+  // 前回の印(v)を付けて聞く。何も変わっていなければサーバーは本文を返さず印だけ返すので、
+  // 5秒ごとの確認がほぼ無料になる(以前は毎回50件を本文ごと受け取っていた)
+  const q = msgVersion ? '?v=' + encodeURIComponent(msgVersion) : '';
+  const data = await api(`/api/communities/${communityId}/channels/${currentChannelId}/messages` + q);
   const container = document.getElementById('messages');
+  if (data && data.unchanged) return;
   if (!data.ok || !data.messages) return;
+  msgVersion = data.v || '';
 
   // 5秒ごとの自動更新で、変わっていなければ作り直さない(以前は毎回作り直して一番下へ飛び、過去ログを読めなかった)
   const fp = currentChannelId + '|' + data.messages.map(m => m.id + ':' + (m.edited_at || '')).join(',');
@@ -343,6 +348,7 @@ async function loadMessages() {
 }
 
 let lastMessagesFp = '';
+let msgVersion = ''; // サーバーが返す「この時点の中身」の印。変わっていなければ本文を受け取らない
 
 async function editMessage(m, current) {
   const next = prompt('メッセージを編集', current || '');
@@ -360,6 +366,7 @@ async function editMessage(m, current) {
   const d = await api(`/api/communities/${communityId}/messages/${m.id}/edit`, { method: 'POST', body: JSON.stringify(body) });
   if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
   lastMessagesFp = '';
+  msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
   await loadMessages();
   if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
 }
@@ -369,6 +376,7 @@ async function deleteMessage(m) {
   const d = await api(`/api/communities/${communityId}/messages/${m.id}/delete`, { method: 'POST', body: '{}' });
   if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
   lastMessagesFp = '';
+  msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
   await loadMessages();
 }
 
@@ -424,6 +432,7 @@ async function sendMessage() {
   });
   if (data.ok && data.message) {
     lastMessagesFp = '';
+    msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
     await loadMessages();
   }
   if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
