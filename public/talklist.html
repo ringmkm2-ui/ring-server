@@ -958,7 +958,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.6 beta</div>
+  <div class="version-badge">Bro Chat v1.29.7 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -6013,8 +6013,17 @@ function openPostMenu(p) {
     } catch (_) {}
   };
   window.refreshLiveStrip();
-  // 通知を取りこぼしても出るように、開いている間はときどき見直す
-  setInterval(() => { if (!document.hidden) window.refreshLiveStrip(); }, 30000);
+  // 通知を取りこぼしても出るように、ときどき見直す。
+  // ただしWebSocketがつながっている間はやらない。live_started / live_ended はWSで届くし、
+  // つなぎ直した時は auth_ok で取り直しているので、定期的に聞く必要がない。
+  // 以前は30秒ごとに無条件で聞いていた。この1本があるだけで、アプリを開けている間ずっと
+  // DBに問い合わせが飛び(認証だけでもDBを引く)、DBが自動で眠れずコンピュート時間と
+  // 転送量を一日中食っていた。WSが切れている時だけ、5分おきの保険として聞く
+  setInterval(() => {
+    if (document.hidden) return;
+    if (talkWs && talkWs.readyState === WebSocket.OPEN) return;
+    window.refreshLiveStrip();
+  }, 5 * 60 * 1000);
 
   // ---------- チャンネルページ ----------
   const chan = {
