@@ -574,7 +574,11 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     }
     const v = ds.getVideoTracks()[0];
     if (!v) { ds.getTracks().forEach(t => t.stop()); return; }
-    try { v.contentHint = 'detail'; } catch (_) {} // 文字がつぶれないように(動きより細かさを優先)
+    // 30fpsなら文字がつぶれない方(detail = 動きより細かさ)を優先する。
+    // ただし60/120fpsを選んだ人は「なめらかさ」が目的なので motion にする。
+    // detailのままだと、動きの多い画面(ゲーム等)でブラウザが細かさを守るために勝手にフレームを
+    // 捨て、60fpsを選んでいても10fps台まで落ちる。
+    try { v.contentHint = (meta.fps || 30) > 30 ? 'motion' : 'detail'; } catch (_) {}
     screen = { stream: ds, video: v, mix: null, audio: null };
     // 画面(タブ・PC)の音もある時は、マイクと混ぜて1本にする(つなぎ直しをせずに差し替えられる)
     const da = ds.getAudioTracks()[0];
@@ -595,6 +599,9 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     el.video.classList.remove('mirror');
     if (el.scr) el.scr.classList.add('off');
     if (el.flip) el.flip.disabled = true;
+    // 差し替えた映像には、上限フレームレートと「なめらかさを守る」設定が付いていない。
+    // 付け直さないと既定(balanced)のまま送られ、選んだfpsが効かない
+    applyBitrate();
   }
 
   function stopScreen() {
@@ -610,6 +617,7 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     if (s.mix) s.mix.close().catch(() => {});
     if (el.scr) el.scr.classList.remove('off');
     if (el.flip) el.flip.disabled = false;
+    applyBitrate(); // カメラに戻した映像にも設定を付け直す(画面共有を始めた時と同じ理由)
   }
 
   function confirmEnd() { if (confirm(T('live_end_q', '配信を終わりますか?'))) stop(); }
