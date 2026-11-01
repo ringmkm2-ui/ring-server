@@ -359,8 +359,15 @@
     // 押した直後に別の所を触ったら(戻る・別タブ・別の行)、遷移を取り消して今の画面に留まる。
     // 以前は220ms後に必ず遷移が走り、すでに別の画面へ行こうとしていても引き戻されていた。
     let navStarted = false;
-    const undo = () => {
+    const unlisten = () => {
       document.removeEventListener('pointerdown', onOther, true);
+      window.removeEventListener('popstate', onLeave);
+      window.removeEventListener('hashchange', onLeave);
+      document.removeEventListener('visibilitychange', onHide);
+      document.removeEventListener('keydown', onEsc, true);
+    };
+    const undo = () => {
+      unlisten();
       clearTimeout(timer);
       flightBusy = null;
       main.classList.remove('lg-page-recede');
@@ -373,13 +380,27 @@
       if (navStarted) { try { window.stop(); } catch (_) {} }
       undo();
     };
+    // 「戻る」(端末のボタン・ジェスチャー・画面内の戻る)で出ていった時も取り消す。
+    // 以前は pointerdown しか見ていなかった。端末の戻るは pointerdown を起こさないので
+    // 素通りし、220ms後に遷移が走って、出ていったはずのトークに引き戻されていた。
+    // 遷移を始めた後(navStarted)は、行き先で着地アニメーションを出すための印を消さないよう触らない。
+    const onLeave = () => { if (!navStarted) undo(); };
+    // アプリを裏に回した・画面を消した時も同じ(戻ってきた時に知らないトークが開いているのを防ぐ)
+    const onHide = () => { if (document.hidden && !navStarted) undo(); };
+    const onEsc = e => { if (e.key === 'Escape' && !navStarted) undo(); };
     document.addEventListener('pointerdown', onOther, true);
+    window.addEventListener('popstate', onLeave);
+    window.addEventListener('hashchange', onLeave);
+    document.addEventListener('visibilitychange', onHide);
+    document.addEventListener('keydown', onEsc, true);
     const timer = setTimeout(() => {
+      // 待っている間に別の所へ行き始めていたら、もう遷移しない
+      if (!flightBusy) return;
       navStarted = true;
       navigateFn();
       // 画面が切り替わらないまま(遷移失敗・キャンセル)でも、数秒後には操作できる状態に戻す
       setTimeout(() => {
-        document.removeEventListener('pointerdown', onOther, true);
+        unlisten();
         if (flightBusy) undo();
       }, 4000);
     }, 220);
