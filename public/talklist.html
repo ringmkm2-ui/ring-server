@@ -370,6 +370,8 @@ html.dark-mode.dark-black .mc{--mc-fill:#0d0e11}
 #settingsMov .mc{max-width:none;max-height:none;height:100%;border-radius:0;transform:none;background:#f2f2f7;
   padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:-14px 0 40px rgba(0,0,0,.16)}
 /* 閉じた位置では縁の影が画面端にはみ出して見えるので、閉じ終わってから消す */
+/* 「変更を適用して閉じる」は一番下まで行かなくても押せるよう画面下に固定 */
+#settingsMov .mc > #saveSettings{position:sticky;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:30;box-shadow:0 6px 24px rgba(0,0,0,.18)}
 #settingsMov:not(.open) .mc{box-shadow:none;transition:box-shadow 0s linear .4s}
 @media (min-width:900px){#settingsMov .mc{max-width:720px;margin:0 auto}}
 html.dark-mode #settingsMov .mc{background:#000}
@@ -958,7 +960,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.8 beta</div>
+  <div class="version-badge">Bro Chat v1.29.9 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
