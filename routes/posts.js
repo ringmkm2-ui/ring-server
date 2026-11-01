@@ -418,7 +418,7 @@ router.post('/channel/:channelId/subscribe', verifyToken, asyncHandler(async (re
 router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => {
   const channelId = req.params.channelId;
   const me = req.user.userId;
-  const u = await db.get('SELECT id, display_name, profile_pic, bio, created_at FROM users WHERE id = ?', [channelId]);
+  const u = await db.get('SELECT id, display_name, profile_pic, bio, banner_url, created_at FROM users WHERE id = ?', [channelId]);
   if (!u) return res.status(404).json({ error: 'チャンネルが見つかりません' });
   // ブロック関係の相手のチャンネルは存在しないのと同じ扱い(フィードと同じ)
   if (channelId !== me && await isBlockedEither(me, channelId)) return res.status(404).json({ error: 'チャンネルが見つかりません' });
@@ -444,6 +444,7 @@ router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => 
     likesReceived,
     name: u.display_name || '不明なユーザー',
     pic: u.profile_pic || null,
+    banner: u.banner_url || null,
     bio: typeof u.bio === 'string' ? u.bio.slice(0, 500) : '',
     joinedAt: u.created_at || null,
     subscriberCount: Number(c?.cnt || 0),

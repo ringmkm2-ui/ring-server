@@ -466,6 +466,7 @@ async function initDB() {
     await pool.query(`CREATE TABLE IF NOT EXISTS icon_images (
       id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BYTEA NOT NULL, created_at TIMESTAMP DEFAULT now())`);
     await pool.query('ALTER TABLE groups ADD COLUMN IF NOT EXISTS avatar_url TEXT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT');
   } catch (e) {
     console.log('[db] icon migration skip:', e.message);
   }

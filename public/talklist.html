@@ -353,7 +353,7 @@ html.dark-mode .acr{color:#f1f5f9;border-bottom-color:rgba(255,255,255,.08)}
 html.dark-mode .myn{color:#f1f5f9}
 .sibtn{background:none;border:none;padding:0;cursor:pointer;outline:none;transition:transform .2s ease}
 .sibtn:hover{transform:rotate(30deg)}
-.siico{width:36px;height:36px;display:block;border-radius:9px;box-shadow:0 3px 8px rgba(0,0,0,.15)}
+.siico{width:36px;height:36px;display:block;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.18))}
 .mov{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:10000;display:flex;justify-content:center;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .18s ease}
 .mov.open{opacity:1;pointer-events:auto;transition:opacity .3s ease}
 .mc{width:100%;max-width:500px;max-height:90vh;overflow-y:auto;background:rgba(255,255,255,.9);border-radius:32px 32px 0 0;padding:24px;box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.15),0 80px 0 0 var(--mc-fill);--mc-fill:rgba(255,255,255,.9);transform:translateY(100%);
@@ -842,38 +842,8 @@ window.ensureGroupCrypto = (function () {
                 <div id="myIdCode" data-bd style="font-size:12px;color:#64748b;margin-top:2px;">ID: 読み込み中...</div>
               </div>
             </div>
-            <button class="sibtn glass-interactive" id="openSettings" type="button">
-              <svg class="siico" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="sg-bg" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stop-color="#c8c8cc"/>
-                    <stop offset="100%" stop-color="#8e8e93"/>
-                  </linearGradient>
-                  <linearGradient id="sg-gear" x1="0%" y1="0%" x2="30%" y2="100%">
-                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
-                    <stop offset="100%" stop-color="#d0d0d5" stop-opacity="0.85"/>
-                  </linearGradient>
-                  <linearGradient id="sg-shine" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#fff" stop-opacity="0.55"/>
-                    <stop offset="60%" stop-color="#fff" stop-opacity="0"/>
-                  </linearGradient>
-                </defs>
-                <!-- 背景 -->
-                <rect width="100" height="100" rx="23" fill="url(#sg-bg)"/>
-                <!-- 大歯車（左下寄り） -->
-                <g transform="translate(38,57)" fill="url(#sg-gear)">
-                  <path d="M0-20 a20 20 0 0 1 0 40 a20 20 0 0 1 0-40z" fill="none"/>
-                  <path d="M-3-22 h6 l1 6 a17 17 0 0 1 4 1.7l5-3 4 4-3 5a17 17 0 0 1 1.7 4l6 1 v6l-6 1a17 17 0 0 1-1.7 4l3 5-4 4-5-3a17 17 0 0 1-4 1.7l-1 6h-6l-1-6a17 17 0 0 1-4-1.7l-5 3-4-4 3-5a17 17 0 0 1-1.7-4l-6-1v-6l6-1a17 17 0 0 1 1.7-4l-3-5 4-4 5 3a17 17 0 0 1 4-1.7z"/>
-                  <circle cx="0" cy="0" r="8" fill="url(#sg-bg)"/>
-                </g>
-                <!-- 中歯車（右上寄り） -->
-                <g transform="translate(63,37)" fill="url(#sg-gear)" opacity="0.88">
-                  <path d="M-2-15 h4 l0.8 4.5a12 12 0 0 1 2.8 1.2l3.7-2.2 2.8 2.8-2.2 3.7a12 12 0 0 1 1.2 2.8l4.5 0.8v4l-4.5 0.8a12 12 0 0 1-1.2 2.8l2.2 3.7-2.8 2.8-3.7-2.2a12 12 0 0 1-2.8 1.2l-0.8 4.5h-4l-0.8-4.5a12 12 0 0 1-2.8-1.2l-3.7 2.2-2.8-2.8 2.2-3.7a12 12 0 0 1-1.2-2.8l-4.5-0.8v-4l4.5-0.8a12 12 0 0 1 1.2-2.8l-2.2-3.7 2.8-2.8 3.7 2.2a12 12 0 0 1 2.8-1.2z"/>
-                  <circle cx="0" cy="0" r="5.5" fill="url(#sg-bg)"/>
-                </g>
-                <!-- 光沢ハイライト -->
-                <rect width="100" height="50" rx="23" fill="url(#sg-shine)"/>
-              </svg>
+            <button class="sibtn glass-interactive" id="openSettings" type="button" aria-label="設定">
+              <img class="siico" src="/images/icons/settings-gear.png" width="36" height="36" alt="" draggable="false">
             </button>
           </div>
         </div>
@@ -960,7 +930,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.9 beta</div>
+  <div class="version-badge">Bro Chat v1.29.10 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -6048,7 +6018,7 @@ function openPostMenu(p) {
     const a = h % 360, b = (a + 48) % 360;
     return 'linear-gradient(135deg,hsl(' + a + ' 55% 38%),hsl(' + b + ' 60% 24%))';
   }
-  const chanFp = () => JSON.stringify([chan.info && [chan.info.name, (chan.info.pic || '').length, chan.info.bio, chan.info.subscriberCount, chan.info.subscribedByMe, chan.info.postCount, chan.info.totalViews], feedFp(chan.posts)]);
+  const chanFp = () => JSON.stringify([chan.info && [chan.info.name, (chan.info.pic || '').length, (chan.info.banner || '').length, chan.info.bio, chan.info.subscriberCount, chan.info.subscribedByMe, chan.info.postCount, chan.info.totalViews], feedFp(chan.posts)]);
   const chanLive = () => liveList.find(l => l.hostId === chan.id) || null;
   const cacheKey = id => 'chan_cache_' + (myUserId || '') + '_' + id;
   function saveChanCache() {
@@ -6245,6 +6215,7 @@ function openPostMenu(p) {
 
     const wrap = document.createElement('div'); wrap.className = 'yt-cwrap';
     const banner = document.createElement('div'); banner.className = 'yt-cbanner'; banner.style.background = gradFor(chan.id);
+    if (i.banner && /^(https:|\/)/.test(i.banner)) { banner.style.background = gradFor(chan.id); banner.style.backgroundImage = 'url(' + JSON.stringify(i.banner) + ')'; banner.style.backgroundSize = 'cover'; banner.style.backgroundPosition = 'center'; }
     wrap.appendChild(banner);
 
     const head = document.createElement('div'); head.className = 'yt-chead2';
@@ -6266,6 +6237,12 @@ function openPostMenu(p) {
     chan.meta = meta; chan.subBtn = null;
     if (mineCh) { meta.style.cursor = 'pointer'; meta.addEventListener('click', () => window.ytShowSubscribers()); }
 
+    if (mineCh) {
+      const row = document.createElement('div'); row.className = 'yt-csubrow';
+      const eb = document.createElement('button'); eb.type = 'button'; eb.className = 'yt-subbtn on'; eb.textContent = T('ch_edit', 'チャンネルを編集');
+      eb.addEventListener('click', () => openChannelEdit());
+      row.appendChild(eb); wrap.appendChild(row);
+    }
     if (!mineCh) {
       const row = document.createElement('div'); row.className = 'yt-csubrow';
       const sb = document.createElement('button'); sb.type = 'button';
@@ -6288,6 +6265,103 @@ function openPostMenu(p) {
     c.appendChild(wrap);
     renderChannelBody();
     c.scrollTop = keepScroll;
+  }
+
+
+  // ---------- チャンネル編集(名前・説明・アイコン・バナー) ----------
+  function fileToDataUrl(file, w, h, q) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          const ctx = c.getContext('2d'), r = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+          const sw = w / r, sh = h / r;
+          ctx.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, w, h);
+          URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', q));
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img')); };
+      img.src = url;
+    });
+  }
+  function openChannelEdit() {
+    const i = chan.info || {};
+    const dark = document.documentElement.classList.contains('dark-mode');
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10300;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center';
+    const sh = document.createElement('div');
+    sh.style.cssText = 'width:100%;max-width:560px;max-height:92vh;overflow-y:auto;overscroll-behavior:contain;border-radius:20px 20px 0 0;padding:18px 18px max(16px,env(safe-area-inset-bottom));box-sizing:border-box;color:var(--yt-fg);background:' + (dark ? (document.documentElement.classList.contains('dark-black') ? '#0d0d0f' : '#212121') : '#fff');
+    const mk = (tag, css, txt) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; };
+    const lab = t => mk('div', 'font-size:12px;font-weight:700;color:var(--yt-fg2);margin:14px 0 6px', t);
+    const field = 'width:100%;box-sizing:border-box;padding:11px 12px;border-radius:12px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;font-size:15px;font-family:inherit';
+    sh.appendChild(mk('div', 'font-size:17px;font-weight:800', T('ch_edit', 'チャンネルを編集')));
+
+    // バナー
+    let bannerData, picData; // undefined=変更なし / ''=削除 / data:...=新しい画像
+    sh.appendChild(lab(T('ch_banner', 'バナー')));
+    const bprev = mk('div', 'height:90px;border-radius:12px;background:' + gradFor(chan.id) + ';background-size:cover;background-position:center');
+    if (i.banner && /^(https:|\/)/.test(i.banner)) bprev.style.backgroundImage = 'url(' + JSON.stringify(i.banner) + ')';
+    sh.appendChild(bprev);
+    const brow = mk('div', 'display:flex;gap:8px;margin-top:8px');
+    const bpick = mk('button', 'flex:1;padding:10px;border-radius:12px;border:none;background:rgba(128,128,128,.18);color:inherit;font-weight:700;font-size:14px', T('ch_pick_banner', 'バナーを選ぶ')); bpick.type = 'button';
+    const bdel = mk('button', 'padding:10px 14px;border-radius:12px;border:none;background:rgba(128,128,128,.18);color:inherit;font-size:14px', T('ch_remove', '削除')); bdel.type = 'button';
+    const bfile = document.createElement('input'); bfile.type = 'file'; bfile.accept = 'image/*'; bfile.hidden = true;
+    bpick.onclick = () => bfile.click();
+    bfile.onchange = async () => { const f = bfile.files[0]; bfile.value = ''; if (!f) return; try { bannerData = await fileToDataUrl(f, 1280, 400, .85); bprev.style.backgroundImage = 'url(' + bannerData + ')'; } catch (_) { err.textContent = T('img_load_failed', '画像を読み込めませんでした'); } };
+    bdel.onclick = () => { bannerData = ''; bprev.style.backgroundImage = 'none'; bprev.style.background = gradFor(chan.id); };
+    brow.append(bpick, bdel, bfile); sh.appendChild(brow);
+
+    // アイコン
+    sh.appendChild(lab(T('ch_icon', 'アイコン')));
+    const irow = mk('div', 'display:flex;align-items:center;gap:12px');
+    const iprev = mk('div', 'width:64px;height:64px;border-radius:50%;flex:none;background-size:cover;background-position:center'); iprev.className = 'yt-cavbig'; iprev.style.width = iprev.style.height = '64px'; iprev.style.fontSize = '24px';
+    setAvatarBackground(iprev, i.pic, (i.name || '?')[0]);
+    const ipick = mk('button', 'flex:1;padding:10px;border-radius:12px;border:none;background:rgba(128,128,128,.18);color:inherit;font-weight:700;font-size:14px', T('ch_pick_icon', 'アイコンを選ぶ')); ipick.type = 'button';
+    const ifile = document.createElement('input'); ifile.type = 'file'; ifile.accept = 'image/*'; ifile.hidden = true;
+    ipick.onclick = () => ifile.click();
+    ifile.onchange = async () => { const f = ifile.files[0]; ifile.value = ''; if (!f) return; try { picData = await fileToDataUrl(f, 256, 256, .9); iprev.style.backgroundImage = 'url(' + picData + ')'; iprev.textContent = ''; } catch (_) { err.textContent = T('img_load_failed', '画像を読み込めませんでした'); } };
+    irow.append(iprev, ipick, ifile); sh.appendChild(irow);
+
+    // 名前・説明
+    sh.appendChild(lab(T('ch_name', 'チャンネル名')));
+    const nameIn = mk('input', field); nameIn.type = 'text'; nameIn.maxLength = 50; nameIn.value = i.name || '';
+    sh.appendChild(nameIn);
+    sh.appendChild(lab(T('ch_desc', '説明')));
+    const bioIn = mk('textarea', field + ';min-height:110px;resize:vertical'); bioIn.maxLength = 500; bioIn.value = i.bio || '';
+    sh.appendChild(bioIn);
+    const err = mk('div', 'color:#ef4444;font-size:13px;margin-top:10px;min-height:16px');
+    sh.appendChild(err);
+    const btns = mk('div', 'display:flex;gap:10px;margin-top:6px');
+    const cancel = mk('button', 'flex:1;padding:13px;border-radius:14px;border:none;background:rgba(128,128,128,.18);color:inherit;font-weight:700;font-size:15px', T('cancel', 'キャンセル')); cancel.type = 'button';
+    const save = mk('button', 'flex:2;padding:13px;border-radius:14px;border:none;background:var(--accent,#3b82f6);color:#fff;font-weight:800;font-size:15px', T('save', '保存')); save.type = 'button';
+    cancel.onclick = () => ov.remove();
+    save.onclick = async () => {
+      const name = nameIn.value.trim();
+      if (!name) { err.textContent = T('ch_name_required', 'チャンネル名を入力してください'); return; }
+      save.disabled = true; save.style.opacity = '.6'; err.textContent = '';
+      const body = { displayName: name, bio: bioIn.value };
+      if (picData !== undefined) body.profilePic = picData;
+      if (bannerData !== undefined) body.banner = bannerData;
+      try {
+        const r = await api('/api/friends/me', { method: 'POST', body: JSON.stringify(body) });
+        if (!r || !r.ok) throw new Error((r && r.error) || 'save');
+        const fresh = await api('/api/posts/channel/' + encodeURIComponent(chan.id));
+        if (fresh && !fresh.error) {
+          chan.info = fresh; saveChanCache();
+          try { localStorage.setItem('myName', fresh.name || name); if (fresh.pic) { localStorage.setItem('myAvatar', fresh.pic); window.myProfilePic = fresh.pic; } else if (picData === '') localStorage.removeItem('myAvatar'); } catch (_) {}
+        } else { chan.info = Object.assign({}, chan.info, { name, bio: bioIn.value }); }
+        ov.remove(); renderChannel();
+        try { if (typeof loadProfile === 'function') loadProfile(); } catch (_) {}
+      } catch (e) {
+        save.disabled = false; save.style.opacity = '1';
+        err.textContent = (e && e.message && e.message !== 'save') ? e.message : T('save_failed', '保存できませんでした');
+      }
+    };
+    btns.append(cancel, save); sh.appendChild(btns);
+    ov.appendChild(sh);
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
   }
 
   function switchTab(k) {

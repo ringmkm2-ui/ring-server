@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   profile_pic TEXT,
   bio TEXT,
+  banner_url TEXT,
   public_key TEXT,
   token_revoked_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT now()
