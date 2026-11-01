@@ -233,6 +233,7 @@ html.dark-mode .yt-watch{--yt-watch-bg:#0f0f0f}
 .yt-subbtn{flex-shrink:0;background:var(--yt-fg);color:var(--yt-watch-bg,#fff);border:none;border-radius:999px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 html.dark-mode .yt-subbtn{color:#0f0f0f}
 .yt-subbtn.on{background:var(--yt-chip);color:var(--yt-fg)}
+html.dark-mode .yt-subbtn.on{color:var(--yt-fg)}
 .yt-desc{background:var(--yt-chip);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--yt-fg);line-height:1.5;white-space:pre-wrap;word-break:break-word;cursor:pointer}
 .yt-desc.clamped{-webkit-line-clamp:3;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}
 .yt-sec-title{font-size:16px;font-weight:700;color:var(--yt-fg);margin:20px 0 12px}
@@ -930,7 +931,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.10 beta</div>
+  <div class="version-badge">Bro Chat v1.29.11 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -6239,7 +6240,7 @@ function openPostMenu(p) {
 
     if (mineCh) {
       const row = document.createElement('div'); row.className = 'yt-csubrow';
-      const eb = document.createElement('button'); eb.type = 'button'; eb.className = 'yt-subbtn on'; eb.textContent = T('ch_edit', 'チャンネルを編集');
+      const eb = document.createElement('button'); eb.type = 'button'; eb.className = 'yt-subbtn'; eb.textContent = T('ch_edit', 'チャンネルを編集');
       eb.addEventListener('click', () => openChannelEdit());
       row.appendChild(eb); wrap.appendChild(row);
     }
