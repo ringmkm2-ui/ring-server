@@ -958,7 +958,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.7 beta</div>
+  <div class="version-badge">Bro Chat v1.29.8 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1133,6 +1133,13 @@ window.ensureGroupCrypto = (function () {
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setSaveDrafts_t">下書きを保存</span><span class="sr-s"><span data-k="setSaveDrafts_d">送信前の文字を、閉じても残します。</span></span></span><input type="checkbox" class="ios-switch" id="setSaveDrafts" role="switch"></label>
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setAutoResend_t">送信失敗を自動で再送</span><span class="sr-s"><span data-k="setAutoResend_d">電波が戻ったら、送れなかったメッセージを自動で送り直します。</span></span></span><input type="checkbox" class="ios-switch" id="setAutoResend" role="switch"></label>
       <div class="set-row sr-d"><span style="display:flex;align-items:flex-start;gap:10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M9 2.5h6"/></svg><span><span class="sr-t" data-k="disappear_t">消えるメッセージ</span><span class="sr-s" data-k="disappear_d">トークごとに、そのトークのメニューから設定します。ここにスイッチはありません。</span></span></span></div>
+    </div>
+    <div class="set-section-title">アプリアイコン</div>
+    <div class="set-group" style="padding:12px 14px">
+      <div id="appIconGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
+      <button type="button" class="set-row set-btn" id="appIconImport" style="margin-top:8px;padding:0"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg><span>好きな画像をアイコンにする</span></span></button>
+      <input type="file" id="appIconFile" accept="image/*" hidden>
+      <div id="appIconMsg" style="font-size:12px;opacity:.7;margin-top:6px;min-height:16px"></div>
     </div>
     <div class="set-section-title" data-i18n="storage">ストレージ</div>
     <div class="set-group">
@@ -6535,6 +6542,74 @@ function openPostMenu(p) {
     banner.style.display='none';
     deferredPrompt=null;
   });
+})();
+</script>
+<script>
+// ========== アプリアイコン(設定) ==========
+(function(){
+  const ICONS=[['green','グリーン'],['blue','ブルー'],['purple','パープル'],['pink','ピンク'],['orange','オレンジ'],['dark','ダーク'],['mono','モノ']];
+  const grid=document.getElementById('appIconGrid'); if(!grid)return;
+  const msg=document.getElementById('appIconMsg');
+  const BI=()=>window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.BroIcon;
+  const say=t=>{msg.textContent=t||'';};
+  const imgSrc=n=>'/images/icons/app-'+n+'-192.png';
+  function applyWeb(n){
+    // PWA: インストール(ホーム画面に追加)する時に読まれるmanifestとapple-touch-iconを差し替える
+    try{localStorage.setItem('appIcon',n);localStorage.removeItem('appIconCustom');}catch(e){}
+    const m=document.querySelector('link[rel="manifest"]'); if(m)m.href=n==='green'?'/manifest.json':'/manifest-'+n+'.json';
+    const a=document.querySelector('link[rel="apple-touch-icon"]'); if(a)a.href='/images/icons/app-'+n+'-180.png';
+  }
+  function mark(cur){
+    grid.querySelectorAll('button').forEach(b=>{const on=b.dataset.n===cur;b.style.outline=on?'3px solid var(--accent)':'none';b.style.outlineOffset='2px';b.setAttribute('aria-pressed',on?'true':'false');});
+  }
+  ICONS.forEach(([n,label])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.n=n; b.setAttribute('aria-label',label);
+    b.style.cssText='border:0;padding:0;background:none;border-radius:16px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:inherit';
+    const im=document.createElement('img'); im.src=imgSrc(n); im.alt=''; im.width=56; im.height=56; im.style.cssText='width:56px;height:56px;border-radius:14px';
+    const sp=document.createElement('span'); sp.textContent=label;
+    b.append(im,sp);
+    b.onclick=async()=>{
+      const bi=BI();
+      if(bi){
+        try{await bi.setIcon({name:n});mark(n);say('変更しました。ホーム画面に反映されるまで数秒かかります。');}catch(e){say('変更できませんでした');}
+      }else{applyWeb(n);mark(n);say('次にホーム画面に追加する時のアイコンになります。');}
+    };
+    grid.appendChild(b);
+  });
+  (async()=>{
+    let cur='green'; const bi=BI();
+    if(bi){try{cur=(await bi.list()).current||'green';}catch(e){}}
+    else{try{cur=localStorage.getItem('appIcon')||'green';}catch(e){}}
+    mark(cur);
+  })();
+  const file=document.getElementById('appIconFile');
+  document.getElementById('appIconImport').onclick=()=>file.click();
+  file.onchange=()=>{
+    const f=file.files&&file.files[0]; file.value=''; if(!f)return;
+    const url=URL.createObjectURL(f); const img=new Image();
+    img.onload=async()=>{
+      const s=Math.min(img.naturalWidth,img.naturalHeight), c=document.createElement('canvas'); c.width=c.height=512;
+      c.getContext('2d').drawImage(img,(img.naturalWidth-s)/2,(img.naturalHeight-s)/2,s,s,0,0,512,512);
+      URL.revokeObjectURL(url);
+      const data=c.toDataURL('image/png'); const bi=BI();
+      if(bi){
+        try{await bi.pinCustom({data:data,label:'Bro Chat'});say('ホーム画面への追加を確認してください。本体のアイコンは変わらず、追加されるショートカットがこの画像になります。');}
+        catch(e){say('追加できませんでした: '+(e&&e.message||'このランチャーは未対応です'));}
+      }else{
+        const a=document.querySelector('link[rel="apple-touch-icon"]'); if(a)a.href=data;
+        try{localStorage.setItem('appIconCustom',data);}catch(e){}
+        mark(''); say('次にホーム画面に追加する時のアイコンになります(iPhoneのみ対応)。');
+      }
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);say('画像を読み込めませんでした');};
+    img.src=url;
+  };
+  // 保存済みのPWAアイコン設定を反映
+  if(!BI()){try{
+    const c=localStorage.getItem('appIconCustom'),n=localStorage.getItem('appIcon');
+    if(c){const a=document.querySelector('link[rel="apple-touch-icon"]');if(a)a.href=c;}
+    else if(n&&n!=='green')applyWeb(n);
+  }catch(e){}}
 })();
 </script>
 </body>
