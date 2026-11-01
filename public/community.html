@@ -45,10 +45,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .msg-acts{margin-left:auto;display:flex;gap:10px}
 .msg-acts button{background:none;border:0;padding:0;font-size:11px;color:rgba(255,255,255,.4);cursor:pointer}
 .msg-text{font-size:14px;color:rgba(255,255,255,.85);margin-top:2px;word-break:break-word;white-space:pre-wrap}
-.input-bar{padding:12px 16px;background:rgba(255,255,255,.08);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,.1);display:flex;gap:8px;align-items:center}
+.input-bar{position:relative;padding:12px 16px;background:rgba(255,255,255,.08);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,.1);display:flex;gap:8px;align-items:center}
 .input-bar input{flex:1;padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;font-size:14px;outline:none}
 .input-bar input::placeholder{color:rgba(255,255,255,.4)}
 .send-btn{width:36px;height:36px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
+/* 一番下へ戻るボタン。個人チャット(admin.html)と同じ見た目・同じ動き */
+.sd-btn{position:absolute;right:20px;bottom:calc(100% + 6px);width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
+  background:rgba(255,255,255,.82);border:1px solid rgba(255,255,255,.7);box-shadow:0 6px 18px rgba(15,23,42,.16);
+  opacity:0;transform:translateY(14px) scale(.6);pointer-events:none;transition:opacity .2s ease,transform .42s cubic-bezier(.34,1.56,.64,1)}
+.sd-btn.show{opacity:1;transform:none;pointer-events:auto}
+html.dark-mode .sd-btn{background:rgba(30,41,59,.9);border-color:rgba(255,255,255,.14)}
+html.dark-mode .sd-btn svg{stroke:#e2e8f0}
 .invite-badge{position:fixed;bottom:80px;right:16px;padding:8px 16px;border-radius:12px;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,.2);z-index:50}
 /* モバイル対応: サイドバーを隠してチャンネル選択はヘッダーから */
 @media(max-width:640px){
@@ -96,6 +103,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div class="chat-area">
     <div class="messages" id="messages"></div>
     <div class="input-bar">
+      <button type="button" class="sd-btn glass-interactive" id="scrollDownBtn" aria-label="一番下へ" tabindex="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
       <input type="text" id="msgInput" placeholder="メッセージを入力...">
       <button class="send-btn glass-clear glass-interactive" id="sendBtn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -286,17 +294,23 @@ async function loadMessages() {
   if (!data.ok || !data.messages) return;
   msgVersion = data.v || '';
 
+  // 上にさかのぼって読んだ分(olderMsgs)を先頭に足して並べる。
+  // 新しい方だけを取り直しても、さかのぼった分が消えないようにするため
+  const shown = olderMsgs.concat(data.messages.filter(m => !olderMsgs.some(o => o.id === m.id)));
+  if (shown.length) cmOldest = shown[0].created_at || cmOldest;
+
   // 5秒ごとの自動更新で、変わっていなければ作り直さない(以前は毎回作り直して一番下へ飛び、過去ログを読めなかった)
-  const fp = currentChannelId + '|' + data.messages.map(m => m.id + ':' + (m.edited_at || '')).join(',');
+  const fp = currentChannelId + '|' + shown.map(m => m.id + ':' + (m.edited_at || '')).join(',');
   if (fp === lastMessagesFp) return;
   const firstLoad = lastMessagesFp.split('|')[0] !== String(currentChannelId);
   lastMessagesFp = fp;
   const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   const prevTop = container.scrollTop;
+  const prevH = container.scrollHeight;
 
-  const texts = await Promise.all(data.messages.map(readContent));
+  const texts = await Promise.all(shown.map(readContent));
   container.textContent = '';
-  data.messages.forEach((m, i) => {
+  shown.forEach((m, i) => {
     const msg = document.createElement('div');
     msg.className = 'msg';
 
@@ -344,8 +358,48 @@ async function loadMessages() {
     container.appendChild(msg);
   });
 
-  container.scrollTop = (firstLoad || wasAtBottom) ? container.scrollHeight : prevTop;
+  // さかのぼった直後は、増えた高さの分だけ下げて「読んでいた所」に留める
+  if (cmPrepending) container.scrollTop = container.scrollHeight - prevH + prevTop;
+  else container.scrollTop = (firstLoad || wasAtBottom) ? container.scrollHeight : prevTop;
 }
+
+// 上にスクロールしたら、もっと前のメッセージを読み込む
+const CM_PAGE = 50;
+let olderMsgs = [], cmOldest = null, cmHasMore = true, cmLoadingOld = false, cmPrepending = false;
+function resetCommunityPaging() { olderMsgs = []; cmOldest = null; cmHasMore = true; }
+async function loadOlderCommunity() {
+  if (!cmHasMore || cmLoadingOld || !cmOldest || !currentChannelId) return;
+  cmLoadingOld = true;
+  try {
+    const d = await api(`/api/communities/${communityId}/channels/${currentChannelId}/messages?before=` + encodeURIComponent(cmOldest));
+    if (!d || !d.ok || !Array.isArray(d.messages)) return;
+    if (d.messages.length < CM_PAGE) cmHasMore = false;
+    const add = d.messages.filter(m => !olderMsgs.some(o => o.id === m.id));
+    if (!add.length) { cmHasMore = false; return; }
+    olderMsgs = add.concat(olderMsgs);
+    // 並べ直しを起こすため、前回の印を捨ててから描き直す
+    lastMessagesFp = ''; msgVersion = '';
+    cmPrepending = true;
+    await loadMessages();
+  } catch (e) { console.error('older community messages error:', e); }
+  finally { cmPrepending = false; cmLoadingOld = false; }
+}
+document.getElementById('messages').addEventListener('scroll', function () { if (this.scrollTop < 120) loadOlderCommunity(); }, { passive: true });
+
+// 一番下へ戻るボタン: 一番下から離れている時だけ出す(個人チャット・グループと同じ動き)
+(function () {
+  const cs = document.getElementById('messages'), btn = document.getElementById('scrollDownBtn');
+  if (!cs || !btn) return;
+  const smooth = () => { try { return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return true; } };
+  let shown = false;
+  const upd = () => {
+    const far = cs.scrollHeight - cs.scrollTop - cs.clientHeight > 260;
+    if (far === shown) return;
+    shown = far; btn.classList.toggle('show', far); btn.tabIndex = far ? 0 : -1;
+  };
+  cs.addEventListener('scroll', upd, { passive: true });
+  btn.addEventListener('click', () => { cs.scrollTo({ top: cs.scrollHeight, behavior: smooth() ? 'smooth' : 'auto' }); });
+})();
 
 let lastMessagesFp = '';
 let msgVersion = ''; // サーバーが返す「この時点の中身」の印。変わっていなければ本文を受け取らない
@@ -367,6 +421,7 @@ async function editMessage(m, current) {
   if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
   lastMessagesFp = '';
   msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
+  resetCommunityPaging();
   await loadMessages();
   if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
 }
@@ -377,6 +432,7 @@ async function deleteMessage(m) {
   if (!d.ok) { alert(d.error || 'うまくいきませんでした'); return; }
   lastMessagesFp = '';
   msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
+  resetCommunityPaging();
   await loadMessages();
 }
 
@@ -433,6 +489,7 @@ async function sendMessage() {
   if (data.ok && data.message) {
     lastMessagesFp = '';
     msgVersion = ''; // チャンネルを変えたら印も捨てる(別の話の印で「変わっていない」と判断しないため)
+  resetCommunityPaging();
     await loadMessages();
   }
   if (profane && window.BCProfanity) window.BCProfanity.reportAfterSend({ where: 'community' });
