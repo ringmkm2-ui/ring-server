@@ -52,7 +52,7 @@ function isValidProfilePic(value, req) {
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
-    const { displayName, bio, profilePic, publicKey } = req.body || {};
+    const { displayName, bio, profilePic, banner, publicKey } = req.body || {};
     if (await rejectIfProfane(req, res, typeof displayName === 'string' ? displayName : '', typeof bio === 'string' ? bio : '')) return;
     if ((displayName != null && typeof displayName !== 'string') || (bio != null && typeof bio !== 'string')) {
       return res.status(400).json({ error: '入力の形式が正しくありません' });
@@ -83,6 +83,24 @@ router.post('/me', auth, async (req, res) => {
         picToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
       }
       await db.run('UPDATE users SET profile_pic = ? WHERE id = ?', [picToSave, req.userId]);
+    }
+    // チャンネルのバナー(投稿タブのチャンネルページ上部の横長画像)。空文字で削除
+    if (banner !== undefined) {
+      if (!isValidProfilePic(banner, req)) {
+        return res.status(400).json({ error: 'バナー画像の形式が不正です' });
+      }
+      let bannerToSave = banner || null;
+      if (banner && banner.startsWith('data:')) {
+        const parsed = parseDataUrl(banner);
+        if (!parsed) return res.status(400).json({ error: 'バナー画像の形式が不正です' });
+        const now = Date.now();
+        const hist = (picUploads.get(req.userId) || []).filter(t => now - t < 60 * 60 * 1000);
+        if (hist.length >= 30) return res.status(429).json({ error: '画像の変更が多すぎます。しばらくしてからお試しください。' });
+        hist.push(now);
+        picUploads.set(req.userId, hist);
+        bannerToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
+      }
+      await db.run('UPDATE users SET banner_url = ? WHERE id = ?', [bannerToSave, req.userId]);
     }
     // 送られてきた項目だけ更新する。以前は名前だけ・画像だけを送っても、送っていない自己紹介が空に上書きされていた
     if (typeof displayName === 'string' && displayName.trim()) {
