@@ -14,7 +14,7 @@ const ALLOWED_MEDIA_TYPES = ['image', 'video', 'audio', 'file'];
 
 // メディアの置き場所はCloudinaryか、このサーバー経由のGoogleドライブ(/m/d/<id>)だけ。
 // 他所のURLは相手の端末に取りに行かせない。
-const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
+const SELF_HOSTS = new Set([...require('./siteHosts').SITE_HOSTS, ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
 // Cloudinaryは自分たちのクラウドだけ。以前は res.cloudinary.com なら誰のアカウントでも通り、
 // 他人のクラウドに置いた画像で開いた時刻を数えられた
 const CLOUD_NAMES = new Set(['a6rxinoz', ...String(process.env.CLOUDINARY_CLOUD_NAME || '').split(',').map(x => x.trim()).filter(Boolean)]);

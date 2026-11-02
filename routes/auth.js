@@ -646,6 +646,8 @@ setInterval(() => {
 const GOOGLE_STATE_RE = /^[A-Za-z0-9_-]{22,64}$/;
 
 function publicBase(req) {
+  const known = require('../utils/siteHosts').knownBase(req);
+  if (known) return known; // 独自ドメインで開いている時は、そのドメインに戻す(元のURLに飛ばすと学校では開けない)
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
   const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
   return proto + '://' + req.get('host');

@@ -30,7 +30,7 @@ function isValidMediaUrl(value) {
   // 100MBを超える動画はGoogleドライブ(このサーバーの /m/p/<id>)に置く
   return !!driveIdOf(value);
 }
-const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
+const SELF_HOSTS = new Set([...require('../utils/siteHosts').SITE_HOSTS, ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
 function driveIdOf(url) {
   const m = /^https?:\/\/([A-Za-z0-9.-]+(?::\d+)?)\/m\/p\/([A-Za-z0-9_-]{10,100})$/.exec(url || '');
   if (!m) return null;

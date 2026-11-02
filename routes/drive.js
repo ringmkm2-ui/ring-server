@@ -123,7 +123,7 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   }
   await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
   console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
-  const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const base = (require('../utils/siteHosts').knownBase(req) || process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
 }));
 
