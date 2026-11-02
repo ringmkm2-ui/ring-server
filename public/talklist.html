@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <script src="/js/themeBoot.js"></script>
 <script src="/js/appLock.js"></script>
+<script src="/js/schoolMode.js"></script>
 <script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
@@ -822,7 +823,7 @@ window.ensureGroupCrypto = (function () {
             <div id="groupList"></div>
           </div>
         </div>
-        <div class="card">
+        <div class="card school-hide">
           <div class="slabel" data-i18n="community">コミュニティ</div>
           <div>
             <button class="ngbtn" id="communityCreateBtn" type="button">
@@ -881,6 +882,7 @@ window.ensureGroupCrypto = (function () {
       </section>
 
       <section id="pagePosts" style="display:none">
+      <div class="school-note school-only"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg><div data-k="school_posts_off">学校モード中は投稿を使えません。</div></div>
         <div class="yt-top">
           <div class="yt-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -931,7 +933,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.11 beta</div>
+  <div class="version-badge">Bro Chat v1.29.12 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1106,6 +1108,11 @@ window.ensureGroupCrypto = (function () {
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setSaveDrafts_t">下書きを保存</span><span class="sr-s"><span data-k="setSaveDrafts_d">送信前の文字を、閉じても残します。</span></span></span><input type="checkbox" class="ios-switch" id="setSaveDrafts" role="switch"></label>
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setAutoResend_t">送信失敗を自動で再送</span><span class="sr-s"><span data-k="setAutoResend_d">電波が戻ったら、送れなかったメッセージを自動で送り直します。</span></span></span><input type="checkbox" class="ios-switch" id="setAutoResend" role="switch"></label>
       <div class="set-row sr-d"><span style="display:flex;align-items:flex-start;gap:10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M9 2.5h6"/></svg><span><span class="sr-t" data-k="disappear_t">消えるメッセージ</span><span class="sr-s" data-k="disappear_d">トークごとに、そのトークのメニューから設定します。ここにスイッチはありません。</span></span></span></div>
+    </div>
+    <div class="set-section-title" data-k="school_title">学校モード</div>
+    <div class="set-group">
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setSchool_t">学校モード</span><span class="sr-s" data-k="setSchool_d">通話・ライブ・投稿・コミュニティを使えなくします。解除にはパスワードが必要です。</span></span><input type="checkbox" class="ios-switch" id="setSchool" role="switch"></label>
+      <button type="button" class="set-row set-btn" id="setSchoolChange" hidden><span data-k="school_change">パスワードを変更</span></button>
     </div>
     <div class="set-section-title">アプリアイコン</div>
     <div class="set-group" style="padding:12px 14px">
@@ -3128,6 +3135,97 @@ function openAppLockDelay() {
   refreshSecureNote();
 }
 
+// --- 学校モード(通話・ライブ・投稿・コミュニティを止める。解除はパスワード) ---
+function schoolErrText(e) {
+  if (e && e.code === 'locked_out') {
+    const m = Math.max(1, Math.ceil((e.remainMs || 0) / 60000));
+    return t2('school_locked_out', '失敗が続いたため、しばらく試せません') + '(' + m + t2('school_min', '分') + ')';
+  }
+  return (e && e.message) || t2('settings_save_failed', '設定を保存できませんでした');
+}
+function schoolPwField(label) {
+  const wrap = secNode('div', null, 'margin-bottom:10px');
+  wrap.appendChild(secNode('div', label, 'font-size:13px;opacity:.7;margin:0 2px 4px'));
+  const i = document.createElement('input');
+  i.type = 'password'; i.className = 'al-pin';
+  i.setAttribute('autocomplete', 'off'); i.setAttribute('autocapitalize', 'off'); i.setAttribute('autocorrect', 'off'); i.setAttribute('spellcheck', 'false');
+  i.maxLength = BroSchool.maxLength; i.setAttribute('aria-label', label);
+  i.style.letterSpacing = 'normal'; i.style.textAlign = 'left';
+  wrap.appendChild(i);
+  wrap._input = i;
+  return wrap;
+}
+function refreshSchoolRows() {
+  const S = window.BroSchool;
+  const on = !!(S && S.isOn());
+  const sw = document.getElementById('setSchool');
+  if (sw) { sw.checked = on; sw.disabled = !S; }
+  const ch = document.getElementById('setSchoolChange');
+  if (ch) ch.hidden = !on;
+}
+function schoolClose() { secMov.classList.remove('open'); refreshSchoolRows(); }
+function openSchoolSetup() {
+  alOpen('school_title', '学校モード');
+  secBody.appendChild(secNode('p', t2('school_setup_intro', '学校モードの間は、通話・ライブ配信・投稿・コミュニティが使えなくなります。文字のトークは使えます。解除に使うパスワードを決めてください(6文字以上)。忘れるとこの端末では解除できません。'), 'font-size:14px;line-height:1.6;margin:0 2px 12px;opacity:.8'));
+  const a = schoolPwField(t2('school_pw', 'パスワード'));
+  const b = schoolPwField(t2('school_pw_again', 'もう一度入力'));
+  const err = alErrBox();
+  secBody.append(a, b, err);
+  secBody.appendChild(secButton(t2('school_start', '学校モードをオンにする'), 'savebtn', async () => {
+    err.textContent = '';
+    const p1 = a._input.value, p2 = b._input.value;
+    if (p1.length < BroSchool.minLength) { err.textContent = t2('school_err_format', 'パスワードは6文字以上にしてください'); a._input.focus(); return; }
+    if (p1 !== p2) { err.textContent = t2('applock_err_mismatch', '2回の入力が合っていません'); b._input.focus(); return; }
+    try { await BroSchool.setup(p1); schoolClose(); }
+    catch (e) { err.textContent = schoolErrText(e); }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', schoolClose));
+  setTimeout(() => a._input.focus(), 60);
+}
+function openSchoolOff() {
+  alOpen('school_off', '学校モードをオフにする');
+  secBody.appendChild(secNode('p', t2('school_off_intro', 'オフにするには、パスワードを入力してください。'), 'font-size:14px;line-height:1.6;margin:0 2px 12px;opacity:.8'));
+  const o = schoolPwField(t2('school_pw', 'パスワード'));
+  const err = alErrBox();
+  secBody.append(o, err);
+  secBody.appendChild(secButton(t2('school_off_btn', 'オフにする'), 'savebtn', async () => {
+    err.textContent = '';
+    try { await BroSchool.disable(o._input.value); schoolClose(); }
+    catch (e) { err.textContent = schoolErrText(e); if (e && e.code === 'wrong_pw') { o._input.value = ''; o._input.focus(); } }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', schoolClose));
+  setTimeout(() => o._input.focus(), 60);
+}
+function openSchoolChange() {
+  alOpen('school_change', 'パスワードを変更');
+  const o = schoolPwField(t2('school_pw_now', '今のパスワード'));
+  const n = schoolPwField(t2('school_pw_new', '新しいパスワード(6文字以上)'));
+  const n2 = schoolPwField(t2('school_pw_again', 'もう一度入力'));
+  const err = alErrBox();
+  secBody.append(o, n, n2, err);
+  secBody.appendChild(secButton(t2('applock_change_btn', '変更する'), 'savebtn', async () => {
+    err.textContent = '';
+    if (n._input.value !== n2._input.value) { err.textContent = t2('applock_err_mismatch', '2回の入力が合っていません'); n2._input.focus(); return; }
+    try { await BroSchool.change(o._input.value, n._input.value); schoolClose(); }
+    catch (e) { err.textContent = schoolErrText(e); if (e && e.code === 'wrong_pw') { o._input.value = ''; o._input.focus(); } }
+  }));
+  secBody.appendChild(secButton(t2('cancel', 'やめる'), 'cancelbtn', schoolClose));
+  setTimeout(() => o._input.focus(), 60);
+}
+{
+  const sw = document.getElementById('setSchool');
+  if (sw) sw.addEventListener('change', e => {
+    // 設定/解除が終わるまで見た目は元のままにしておく(やめたら戻る)
+    const want = e.target.checked;
+    e.target.checked = !want;
+    if (!window.BroSchool) return;
+    if (want) openSchoolSetup(); else openSchoolOff();
+  });
+  document.getElementById('setSchoolChange')?.addEventListener('click', openSchoolChange);
+  if (window.BroSchool) BroSchool.onChange(refreshSchoolRows);
+  refreshSchoolRows();
+}
+
 // --- ログイン中の端末(設定 > アカウントのセキュリティ) ---
 document.getElementById('setSessions')?.addEventListener('click', async () => {
   const token = localStorage.getItem('ring_token');
@@ -4040,6 +4138,10 @@ function connectTalkWs() {
     }
     // ブラウザ版: トーク一覧にいる時の着信はチャット画面に移って出す(APKはネイティブの着信画面が出る)
     // 着信: 発信側に「この端末で鳴っている」を知らせる(圏外ガイダンスとの出し分け用)
+    if (d.type === 'call_offer' && d.callId && window.BroSchool && BroSchool.isOn()) {
+      try { talkWs.send(JSON.stringify({ type: 'call_reject', recipientId: d.fromUserId, callId: d.callId, reason: 'declined' })); } catch (_) {}
+      return;
+    }
     if (d.type === 'call_offer' && d.callId) {
       try { talkWs.send(JSON.stringify({ type: 'call_ringing', callId: d.callId })); } catch (_) {}
     }
@@ -4127,6 +4229,7 @@ async function logout() {
   }
   // サーバー側のこの端末のセッションも失効させる(トークンが残っても使えなくする)。失敗しても端末側のログアウトは進める
   try { fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fcmToken: localStorage.getItem('fcm_token') || undefined }) }).catch(() => {}); } catch (e) {}
+  const schoolKeep = localStorage.getItem('bro_school_v1');
   if (wipe) {
     localStorage.clear();
     // 通知の復号用にService Worker向けへ写した鍵も消す
@@ -4141,6 +4244,8 @@ async function logout() {
     localStorage.clear();
     for (const k in keep) localStorage.setItem(k, keep[k]);
   }
+  // 学校モードはログアウトしても残す(抜け道にならないように)
+  if (schoolKeep) try { localStorage.setItem('bro_school_v1', schoolKeep); } catch (e) {}
   try { if (window.BroAppLock) BroAppLock.reset(); } catch (e) {}
   window.location.href = '/auth.html';
 }
@@ -4539,6 +4644,7 @@ function renderFeedSkeleton() {
 // 投稿一覧は前回の内容を端末に持っておき、開いた瞬間に出す(トーク一覧と同じLINE方式)。
 // 裏で最新を取り、先頭ページに変化があった時だけ描画し直す
 async function loadPosts() {
+  if (window.BroSchool && BroSchool.isOn()) return;
   if (window.refreshLiveStrip) window.refreshLiveStrip();
   if (postsLoading) { postsReloadPending = true; return; }
   postsLoading = true;

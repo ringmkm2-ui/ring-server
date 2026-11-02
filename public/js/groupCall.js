@@ -283,6 +283,7 @@
   }
 
   async function join(video) {
+    if (window.BroSchool && BroSchool.blocked()) return;
     if (inCall || joining) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('この端末では通話を使えません'); return; }
     joining = true;
