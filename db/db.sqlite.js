@@ -465,7 +465,7 @@ async function initDB() {
   // 本番(PostgreSQL)側で後から足した列を、既存のローカルDBにも足す。
   // 以前は banned_until が無く、ローカル(SQLite)ではログインした瞬間に「トークンが無効」になっていた
   const addCols = {
-    users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT']],
+    users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT'], ['banner_url', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
     posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],

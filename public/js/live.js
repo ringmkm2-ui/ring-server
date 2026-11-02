@@ -479,6 +479,7 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
 
   // ---- 配信する ----
   async function start() {
+    if (window.BroSchool && BroSchool.blocked()) return;
     if (role) return;
     if (!navigator.mediaDevices || !window.RTCPeerConnection) { alert('この端末では配信できません'); return; }
     if (cfg.feed) cfg.groupId = 'u:' + cfg.myUserId;
@@ -624,6 +625,7 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
 
   // ---- 見る ----
   async function watch() {
+    if (window.BroSchool && BroSchool.blocked()) return;
     if (role) return;
     if (!window.RTCPeerConnection) { alert('この端末では見られません'); return; }
     role = 'viewer';
@@ -771,6 +773,7 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
   function requestStatus() { if (cfg.groupId) send({ type: 'live_status', groupId: cfg.groupId }); }
   // 投稿タブ: 一覧から選んだ人のライブを見る
   function watchFeed(key, hId, hName) {
+    if (window.BroSchool && BroSchool.blocked()) return;
     if (role) return;
     cfg.groupId = key; hostId = hId; hostName = hName || '';
     watch();

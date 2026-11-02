@@ -356,7 +356,7 @@
       var keep = {};
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|community_key_|e2e_registered_|bc_sn_v1)/.test(k)) keep[k] = localStorage.getItem(k);
+        if (/^(e2e_keypair_|e2e_keyring_|e2e_peerkeys_|own_plaintext_|signal_identity_|group_key_|community_key_|e2e_registered_|bc_sn_v1|bro_school_v1)/.test(k)) keep[k] = localStorage.getItem(k);
       }
       localStorage.clear();
       for (var kk in keep) localStorage.setItem(kk, keep[kk]);
