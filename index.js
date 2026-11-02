@@ -39,7 +39,7 @@ const PORT = process.env.PORT || 3000;
 // 設定 = 悪意のある第三者サイトが被害者のブラウザ経由でこのAPIを叩ける状態だった。
 // ALLOWED_ORIGINS環境変数でカンマ区切り追加可能にしておく(将来別ドメインを足す場合用)。
 const DEFAULT_ALLOWED_ORIGINS = [
-  'https://ring-server-50sy.onrender.com',
+  ...require('./utils/siteHosts').SITE_ORIGINS,
   'http://localhost:3000',
 ];
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
