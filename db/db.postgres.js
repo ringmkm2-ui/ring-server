@@ -129,6 +129,27 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT now()
       )
     `);
+    // 友だち招待コード。1人が複数作れて、1つのコードを複数人が使える(人数・期限は作る時に決める)。
+    // 期限は epoch ミリ秒で持つ(PG/SQLiteで日時の扱いが違うため、数値にしておく)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_codes (
+        code TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL REFERENCES users(id),
+        max_uses INTEGER,
+        uses INTEGER NOT NULL DEFAULT 0,
+        expires_ms BIGINT,
+        created_ms BIGINT NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_invite_codes_owner ON invite_codes(owner_id)');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_redemptions (
+        code TEXT NOT NULL REFERENCES invite_codes(code) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        redeemed_ms BIGINT NOT NULL,
+        PRIMARY KEY (code, user_id)
+      )
+    `);
     // 古いDBで joined_at が無い場合に備える(無ければ足すだけ。既存の行は空のまま=今まで通り全部見える)
     await pool.query('ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMP');
     await pool.query('ALTER TABLE group_members ALTER COLUMN joined_at SET DEFAULT now()');

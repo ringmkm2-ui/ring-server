@@ -135,6 +135,23 @@ async function initDB() {
 
     CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT);
 
+    -- 友だち招待コード(1人が複数作れて、1つのコードを複数人が使える)
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      code TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      max_uses INTEGER,
+      uses INTEGER NOT NULL DEFAULT 0,
+      expires_ms INTEGER,
+      created_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_invite_codes_owner ON invite_codes(owner_id);
+    CREATE TABLE IF NOT EXISTS invite_redemptions (
+      code TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      redeemed_ms INTEGER NOT NULL,
+      PRIMARY KEY (code, user_id)
+    );
+
     -- 消えるメッセージ(会話ごとのタイマー)。conv_key は 'dm:<小さいID>:<大きいID>' または 'g:<groupId>'
     CREATE TABLE IF NOT EXISTS conversation_ttl (
       conv_key TEXT PRIMARY KEY,
