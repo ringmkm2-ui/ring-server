@@ -266,6 +266,7 @@ async function main() {
   app.use('/api/media', mediaRouter);
   app.use('/api/groups', groupsRouter);
   app.use('/api/friends', friendsRouter);
+  app.use('/api/invites', require('./routes/invites'));
   app.use('/api/messages', messagesRouter);
   app.use('/api/push', pushRouter);
   app.use('/api/posts', postsRouter);

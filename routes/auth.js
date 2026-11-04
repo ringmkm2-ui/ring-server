@@ -1017,6 +1017,11 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
     try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
     try { await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] user_pubkeys cleanup:', e.message); }
+    // 自分が作った招待コード(と、そのコードの使用記録)・自分が使った記録も消す
+    try {
+      await db.run('DELETE FROM invite_redemptions WHERE code IN (SELECT code FROM invite_codes WHERE owner_id = ?) OR user_id = ?', [userId, userId]);
+      await db.run('DELETE FROM invite_codes WHERE owner_id = ?', [userId]);
+    } catch (e) { console.error('[auth] invite cleanup:', e.message); }
     // 投稿とコメントも消す(以前は退会後も「退会済みユーザー」の名前で公開のまま残っていた)
     try {
       await db.run('UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE author_id = ? AND deleted_at IS NULL', [userId]);
