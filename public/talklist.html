@@ -977,7 +977,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.19 beta</div>
+  <div class="version-badge">Bro Chat v1.29.20 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -4604,7 +4604,8 @@ function gupBtn(label, kind, onClick) {
 let gupDoneFlag = false;
 function gupClose() {
   clearInterval(gupTimer); gupMov.classList.remove('open');
-  if (gupDoneFlag) { gupDoneFlag = false; if (typeof ytToast === 'function') ytToast(t2('gup_toast', 'メールとパスワードを設定しました')); }
+  // 設定が済んだ後は、古いトークンが失効しているので読み込み直して新しいトークンに切り替える(どの閉じ方でも)
+  if (gupDoneFlag) { gupDoneFlag = false; location.reload(); }
 }
 function gupBusy(btn, on) { btn.disabled = on; btn.style.opacity = on ? '.6' : ''; }
 function gupFinish(root) { if (window.applyI18n) window.applyI18n(root || gupBody); }
