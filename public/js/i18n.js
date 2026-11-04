@@ -713,7 +713,8 @@
     // 区切りの「・」だけが日本語の文(「最後のメッセージ ・ 3 members」など)
     if (k.indexOf("・") >= 0 && !JP.test(k.replace(/・/g, ""))) return str.replace(/・/g, "·");
     let m;
-    if ((m = /^(\d+)人$/.exec(k))) return m[1] + (m[1] === "1" ? " person" : " people");
+    // 「10人」は中国語でもそのまま正しい表記なので、中国語の時は英語にしない
+    if (getLang() !== "zh-CN" && (m = /^(\d+)人$/.exec(k))) return m[1] + (m[1] === "1" ? " person" : " people");
     if ((m = /^(発信|着信)\s+([\d:]+)$/.exec(k))) return (m[1] === "発信" ? "Outgoing call " : "Incoming call ") + m[2];
     if ((m = /^未読メッセージ\s*(\d+)\s*件$/.exec(k))) return m[1] + " unread";
     if ((m = /^招待:\s*(.+)$/.exec(k))) return "Invite: " + m[1];
