@@ -31,25 +31,39 @@ async function loadInvite(code) {
 // 使用の記録を先に入れる(主キー=コード+人)ので、同じ人が同時に何回送っても消費は1回だけ。
 // 人数の消費は1文で行うので、同時に使われても上限を超えない
 async function claimInvite(inv, userId, now = Date.now()) {
-  const ins = await db.run(
-    'INSERT INTO invite_redemptions (code, user_id, redeemed_ms) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
-    [inv.code, userId, now]
-  );
-  if (ins && ins.changes) {
-    const r = await db.run(
-      `UPDATE invite_codes SET uses = uses + 1
-        WHERE code = ? AND (expires_ms IS NULL OR expires_ms > ?) AND (max_uses IS NULL OR uses < max_uses)`,
-      [inv.code, now]
-    );
-    if (!r || !r.changes) {
-      await db.run('DELETE FROM invite_redemptions WHERE code = ? AND user_id = ?', [inv.code, userId]).catch(() => {});
-      return null;
-    }
-    return 'claimed';
+  // 記録(使用の証拠)は、人数を確保できた後にだけ入れる。こうすると記録が「一瞬だけ存在して消える」ことが無く、
+  // 満杯のコードに同じ人が同時に送って「前に使った人」の経路に紛れ込む、ということが起きない
+  const prev = await db.get('SELECT 1 AS x FROM invite_redemptions WHERE code = ? AND user_id = ?', [inv.code, userId]);
+  if (prev) {
+    // 前に使った事のあるコードでも、期限が切れていたり消されていれば再利用できない
+    const cur = await db.get('SELECT expires_ms FROM invite_codes WHERE code = ?', [inv.code]);
+    if (!cur || (cur.expires_ms != null && Number(cur.expires_ms) <= now)) return null;
+    return 'again';
   }
-  // 前に使った事のあるコードでも、期限が切れていれば再利用できない
-  if (inv.expires_ms != null && Number(inv.expires_ms) <= now) return null;
-  return 'again';
+  const r = await db.run(
+    `UPDATE invite_codes SET uses = uses + 1
+      WHERE code = ? AND (expires_ms IS NULL OR expires_ms > ?) AND (max_uses IS NULL OR uses < max_uses)`,
+    [inv.code, now]
+  );
+  if (!r || !r.changes) return null;
+  let ins;
+  try {
+    ins = await db.run(
+      'INSERT INTO invite_redemptions (code, user_id, redeemed_ms) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
+      [inv.code, userId, now]
+    );
+  } catch (e) {
+    // PostgreSQL: 間にコードが消された(外部キー違反)。確保した分を戻して「無効」扱いにする
+    await db.run('UPDATE invite_codes SET uses = uses - 1 WHERE code = ? AND uses > 0', [inv.code]).catch(() => {});
+    if (/foreign key|violates/i.test(String(e && e.message))) return null;
+    throw e;
+  }
+  if (!ins || !ins.changes) {
+    // 同じ人の別の送信が先に記録した(二重送信)。そちらが消費しているので、こちらの分は戻す
+    await db.run('UPDATE invite_codes SET uses = uses - 1 WHERE code = ? AND uses > 0', [inv.code]).catch(() => {});
+    return 'again';
+  }
+  return 'claimed';
 }
 
 // claimInvite が 'claimed' を返した後で失敗した時に、消費を元に戻す

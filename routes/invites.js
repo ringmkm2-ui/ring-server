@@ -11,6 +11,7 @@ const db = require('../db/db');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { sendServerError } = require('../utils/errorResponse');
 const { blockState } = require('../utils/relations');
+const { withLock } = require('../utils/keyedLock');
 const { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange } = require('../utils/inviteCore');
 
 const router = express.Router();
@@ -87,7 +88,8 @@ router.get('/', auth, async (req, res) => {
 });
 
 // コードを作る
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, (req, res) => withLock('invite-create:' + req.userId, () => createInvite(req, res)));
+async function createInvite(req, res) {
   try {
     const body = req.body || {};
     const maxUses = body.maxUses === undefined ? 10 : body.maxUses;
@@ -123,7 +125,7 @@ router.post('/', auth, async (req, res) => {
     const row = await db.get('SELECT * FROM invite_codes WHERE code = ?', [code]);
     res.json({ ok: true, invite: toInvite(row, now) });
   } catch (e) { sendServerError(res, e); }
-});
+}
 
 // 自分のコードを消す(消したコードは、まだ使っていない人には使えなくなる。すでに友だちになった人はそのまま)
 router.delete('/:code', auth, async (req, res) => {

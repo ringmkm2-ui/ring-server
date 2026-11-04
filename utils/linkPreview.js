@@ -156,7 +156,7 @@ async function resolveSafe(u, resolver) {
   }
   if (!Array.isArray(addrs) || !addrs.length) throw new PreviewError('取得できませんでした', 422);
   if (!allowTest && addrs.some(a => isBlockedIp(a.address))) throw new PreviewError('このURLは使えません');
-  return addrs[0];
+  return addrs.find(a => a.family === 4) || addrs[0]; // 片方しか試さないので、IPv6が使えない環境でも通りやすいIPv4を先に
 }
 
 const defaultResolver = async (host) => dns.promises.lookup(host, { all: true, verbatim: true });
@@ -165,9 +165,12 @@ const defaultResolver = async (host) => dns.promises.lookup(host, { all: true, v
 function pinnedLookup(addr) {
   return (hostname, options, cb) => {
     if (typeof options === 'function') { cb = options; options = {}; }
-    if (options && options.all) return cb(null, [{ address: addr.address, family: addr.family }]);
-    cb(null, addr.address, addr.family);
+    setImmediate(() => {
+      if (options && options.all) return cb(null, [{ address: addr.address, family: addr.family }]);
+      cb(null, addr.address, addr.family);
+    });
   };
+
 }
 
 function requestOnce(u, addr, deadline, image) {
@@ -190,7 +193,8 @@ function requestOnce(u, addr, deadline, image) {
         'Accept-Encoding': image ? 'identity' : 'gzip, deflate, br',
       },
     });
-    const timer = setTimeout(() => req.destroy(new PreviewError('時間内に取得できませんでした', 504)), left);
+    let bodyFinish = null;
+    const timer = setTimeout(() => { if (bodyFinish) bodyFinish(); else req.destroy(new PreviewError('時間内に取得できませんでした', 504)); }, left);
     req.on('error', (e) => { clearTimeout(timer); reject(e instanceof PreviewError ? e : new PreviewError('取得できませんでした', 422)); });
     req.on('response', (res) => {
       const status = res.statusCode || 0;
@@ -237,10 +241,12 @@ function requestOnce(u, addr, deadline, image) {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        bodyFinish = null;
         // 読むのをやめたら、展開ストリームも壊す。res だけ壊すと、入力済みの圧縮データが最後まで展開され続けて CPU を食う(圧縮爆弾)
         try { if (src !== res) { res.unpipe(src); src.destroy(); } res.destroy(); } catch (e) { /* 既に閉じている */ }
         resolve({ body: Buffer.concat(chunks), contentType: ct });
       };
+      bodyFinish = finish; // 時間切れの時は、読めた分でプレビューを作る
       src.on('data', (c) => {
         if (done) return;
         size += c.length;
@@ -264,12 +270,22 @@ function requestOnce(u, addr, deadline, image) {
   });
 }
 
+// 名前解決が遅い相手でも、全体の5秒を超えて待たない
+function withDeadline(p, deadline) {
+  const left = deadline - Date.now();
+  if (left <= 0) { p.catch(() => {}); return Promise.reject(new PreviewError('時間内に取得できませんでした', 504)); }
+  let t;
+  const timeout = new Promise((_, rej) => { t = setTimeout(() => rej(new PreviewError('時間内に取得できませんでした', 504)), left); });
+  p.catch(() => {});
+  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+}
+
 // リダイレクトを辿って本文を取る。毎回、検証と名前解決をやり直す
 async function fetchHtml(startUrl, resolver, image) {
   const deadline = Date.now() + TOTAL_TIMEOUT_MS;
   let u = parseHttpUrl(startUrl);
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const addr = await resolveSafe(u, resolver);
+    const addr = await withDeadline(resolveSafe(u, resolver), deadline);
     const r = await requestOnce(u, addr, deadline, image);
     if (r.body !== undefined) return image ? { buf: r.body, contentType: r.contentType } : { body: decodeBody(r.body, r.contentType), finalUrl: u };
     let next;
@@ -282,12 +298,13 @@ async function fetchHtml(startUrl, resolver, image) {
 // --- 文字コード ----------------------------------------------------------------
 // 日本語サイトには Shift_JIS / EUC-JP がまだ多い。UTF-8 と決めつけて読むと文字化けするので、
 // ①BOM ②Content-Type の charset ③先頭の <meta charset> の順に見て、分からなければ UTF-8。
+function knownCharset(label) { try { new TextDecoder(label); return true; } catch (e) { return false; } }
 function pickCharset(buf, contentType) {
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return 'utf-8';
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return 'utf-16le';
   if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return 'utf-16be';
   const h = /charset\s*=\s*["']?([\w:.-]+)/i.exec(String(contentType || ''));
-  if (h) return h[1];
+  if (h && knownCharset(h[1])) return h[1]; // 知らない名前なら、<meta> の宣言を見る
   const head = buf.subarray(0, 4096).toString('latin1');
   const m = /<meta\b[^>]*?charset\s*=\s*["']?([\w:.-]+)/i.exec(head);
   return m ? m[1] : 'utf-8';
@@ -323,7 +340,10 @@ function plain(s, max) {
   // eslint-disable-next-line no-control-regex
   t = t.replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ');
   t = t.replace(/\s+/g, ' ').trim();
-  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+  if (t.length <= max) return t;
+  let cut = t.slice(0, max - 1);
+  if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1); // 絵文字などの真ん中で切らない
+  return cut + '…';
 }
 
 function parseAttrs(tag) {
@@ -374,8 +394,36 @@ function scanTitle(head, low) {
   return head.slice(gt + 1, te < 0 ? gt + 1 + 2000 : Math.min(te, gt + 1 + 2000));
 }
 
+// コメント・script・style の中身を取り除く。indexOf だけで前へ進むので、閉じないものが大量にあっても入力の大きさに比例する時間で終わる
+// (正規表現の /<!--[\s\S]*?-->/ は、閉じない <!-- が多いと2乗の時間になる)。閉じていないものは、ブラウザと同じく最後まで中身として捨てる
+function stripBlocks(html) {
+  const low = lowerAscii(html);
+  const kinds = [['<!--', '-->'], ['<script', '</script'], ['<style', '</style']];
+  const next = [-2, -2, -2]; // -2: 未計算 / -1: もう無い
+  const out = [];
+  let pos = 0;
+  for (;;) {
+    let best = -1, bk = -1;
+    for (let k = 0; k < kinds.length; k++) {
+      if (next[k] === -1) continue;
+      if (next[k] < pos) next[k] = low.indexOf(kinds[k][0], pos);
+      if (next[k] >= 0 && (best < 0 || next[k] < best)) { best = next[k]; bk = k; }
+    }
+    if (best < 0) break;
+    out.push(html.slice(pos, best));
+    const close = low.indexOf(kinds[bk][1], best + kinds[bk][0].length);
+    if (close < 0) { pos = html.length; break; }
+    if (bk === 0) pos = close + 3;
+    else { const gt = low.indexOf('>', close); pos = gt < 0 ? html.length : gt + 1; }
+  }
+  out.push(html.slice(pos));
+  return out.join(' ');
+}
+
 function extractMeta(html, baseUrl) {
   // <head> の外(本文)のmetaは見ない。無ければ全体(読む量はもともと上限がある)
+  // コメントと script/style の中身は読まない(コメントアウトされた古い meta や、スクリプトの文字列に入ったタグを拾わない)
+  html = stripBlocks(html);
   const headEnd = html.search(/<\/head\s*>/i);
   const head = headEnd > 0 ? html.slice(0, headEnd) : html;
   const low = lowerAscii(head);

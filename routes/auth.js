@@ -57,6 +57,12 @@ const EMAIL_CODE_MAX_ATTEMPTS = 5;
 const TWOFA_SECRET = JWT_SECRET + ':2fa-pending';
 const TWOFA_TOKEN_TTL = '5m';
 
+// ログインと同じく、大文字を混ぜて打ったメールアドレスでも見つける(ゲストから変えたものは小文字で保存している)
+async function findByLoginName(name, cols = '*') {
+  let u = await db.get(`SELECT ${cols} FROM users WHERE username = ?`, [name]);
+  if (!u && name.includes('@') && name !== name.toLowerCase()) u = await db.get(`SELECT ${cols} FROM users WHERE username = ?`, [name.toLowerCase()]);
+  return u;
+}
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 const truthy = (v) => v === true || v === 1 || v === '1' || v === 't' || v === 'true';
 
@@ -224,7 +230,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     return res.status(400).json({ error: 'ユーザー名は3文字以上にしてください' });
   }
   // guest_ で始まる名前は、招待コードで作るアカウント専用(メールでもパスワードでもログインできない名前)
-  if (/^guest_/i.test(username)) {
+  if (/^(guest|deleted)_/i.test(username)) {
     return res.status(400).json({ error: 'そのユーザー名は使えません' });
   }
   // HTMLタグ・スクリプトインジェクション防止。英数字・日本語・一般的な記号のみ許可。
@@ -300,7 +306,9 @@ router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req
     const displayName = typeof body.displayName === 'string' ? body.displayName.normalize('NFKC').replace(/\s+/g, ' ').trim() : '';
     if (!displayName) return res.status(400).json({ error: '表示名を入力してください' });
     if (displayName.length > 50) return res.status(400).json({ error: '表示名は50文字以内にしてください' });
-    if (/[<>"'`\u0000-\u001f]/.test(displayName)) return res.status(400).json({ error: '表示名に使えない文字が含まれています' });
+    if (/[<>"'`\u0000-\u001f\u202a-\u202e\u2066-\u2069]/.test(displayName)) return res.status(400).json({ error: '表示名に使えない文字が含まれています' });
+    // ゼロ幅・空白に見える文字だけの名前は、誰か分からなくなるので断る
+    if (!displayName.replace(/[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g, '').trim()) return res.status(400).json({ error: '表示名を入力してください' });
     if (require('../utils/moderation').containsBannedWord(displayName)) {
       return res.status(400).json({ error: 'その名前は使えません' });
     }
@@ -345,9 +353,9 @@ router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req
 // メールの持ち主だと確かめるまでは何も変えない(他人のメールアドレスを先に押さえられないように)。
 // ゲストとは「ユーザー名が guest_ で始まり、パスワードが空」のアカウント。反映後はふつうのメール+パスワードのアカウントになる。
 const GUEST_SEND_MAX_PER_DAY = 10;    // 1人が1日に送れる確認メールの数(他人のアドレスにメールを送り付ける悪用を止める)
-const GUEST_MISS_MAX_PER_DAY = 15;
+const GUEST_MISS_MAX_PER_DAY = 15;     // 1人が1日に外せる確認コードの回数
 const GUEST_MAIL_MAX_PER_ADDRESS = 3;  // 1つのメールアドレス宛に、1日に送る確認メールの数(使い捨てゲストを大量に作って、同じ人にメールを送り付ける悪用を止める)
-const GUEST_SEND_MAX_PER_IP = 20;      // 1つのIPから1日に送れる確認メールの数    // 1人が1日に外せるコードの回数
+const GUEST_SEND_MAX_PER_IP = 200;     // 1つのIPから1日に送れる確認メールの数(教室など同じWi-Fiの全員が同じ日に設定できる広さ)
 
 async function loadGuest(userId) {
   const u = await db.get('SELECT id, username, password_hash FROM users WHERE id = ?', [userId]);
@@ -367,7 +375,8 @@ router.get('/guest/status', verifyToken, async (req, res) => {
 });
 
 // body: { email, password }
-router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req, res) => {
+router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, (req, res) => require('../utils/keyedLock').withLock('gup-start:' + req.user.userId, () => guestUpgradeStart(req, res)));
+async function guestUpgradeStart(req, res) {
   try {
     const userId = req.user.userId;
     if (!(await loadGuest(userId))) return res.status(403).json(NOT_GUEST);
@@ -375,7 +384,7 @@ router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req
     if (typeof rawEmail !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'メールアドレスとパスワードを入力してください' });
     const email = rawEmail.trim().toLowerCase();
     if (email.length > 254 || !EMAIL_RE.test(email)) return res.status(400).json({ error: 'メールアドレスの形式が正しくありません' });
-    if (/^guest_/.test(email)) return res.status(400).json({ error: 'そのメールアドレスは使えません' });
+    if (/^(guest|deleted)_/.test(email)) return res.status(400).json({ error: 'そのメールアドレスは使えません' });
     const pwErr = validatePassword(password, email);
     if (pwErr) return res.status(400).json({ error: pwErr });
     // 認証コードを送れない環境では、持ち主を確かめられないので進めない
@@ -425,7 +434,7 @@ router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req
     }
     res.json({ ok: true, email, retryAfter: Math.round(EMAIL_CODE_COOLDOWN_MS / 1000) });
   } catch (e) { sendServerError(res, e, 'guest-upgrade-start'); }
-});
+}
 
 // body: { code }  合えば、ユーザー名をメールアドレスに、パスワードを設定したものにして、新しいトークンを返す
 router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (req, res) => {
@@ -657,13 +666,14 @@ router.get('/features', (req, res) => {
 // 存在しないアカウントでも同じ応答を返す(アカウントの有無を探られないように)。
 router.post('/forgot-password', loginLimiter, async (req, res) => {
   try {
-    const username = req.body && req.body.username;
+    let username = req.body && req.body.username;
     if (typeof username !== 'string' || !EMAIL_RE.test(username) || username.length > 254) {
       return res.json({ ok: true });
     }
     if (isMailConfigured()) {
-      const user = await db.get('SELECT id FROM users WHERE username = ?', [username]);
+      const user = await findByLoginName(username, 'id, username');
       // 外れが上限に達したアカウントには新しいコードを作らない(メールの連打も止まる)
+      if (user) username = user.username; // ゲストから変えたアドレスは小文字で保存している。大文字を混ぜて打っても同じ人として扱う
       if (user && (await resetMissCount('reset:' + username)) < RESET_MISS_MAX_PER_DAY) {
         const now = Date.now();
         const row = await db.get('SELECT last_sent_ms FROM password_resets WHERE username = ?', [username]);
@@ -717,10 +727,11 @@ async function resetMiss(key) {
 
 router.post('/reset-password', loginLimiter, async (req, res) => {
   try {
-    const { username, code, newPassword, totpCode } = req.body || {};
+    let { username, code, newPassword, totpCode } = req.body || {};
     if (typeof username !== 'string' || typeof code !== 'string' || typeof newPassword !== 'string') {
       return res.status(400).json({ error: '入力内容が正しくありません' });
     }
+    { const u0 = await findByLoginName(username, 'username'); if (u0) username = u0.username; }
     const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
     const pwErr = validatePassword(newPassword, username);
     if (pwErr) return res.status(400).json({ error: pwErr });
