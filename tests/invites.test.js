@@ -272,3 +272,63 @@ test('間違いのコードだけが制限に数えられる(正しいコード�
   }
   assert.ok(limited >= 3, '失敗が20回を超えたら429(実際: ' + limited + ')');
 });
+
+// ---- 招待リンクと「誰が使ったか」 ----
+
+test('一覧に、そのコードで友だちになった人の名前が新しい順に出る', async () => {
+  const a = await S.user('JoinHost');
+  const code = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const names = [];
+  for (let i = 0; i < 3; i++) {
+    const u = await S.user('Joiner' + i);
+    assert.equal((await u.call('POST', '/api/invites/redeem', { code })).status, 200);
+    names.push(u.name || ('Joiner' + i));
+    await new Promise(r => setTimeout(r, 5));
+  }
+  const list = (await a.call('GET', '/api/invites')).data.codes.find(c => c.code === code);
+  assert.equal(list.uses, 3);
+  assert.equal(list.joined.length, 3);
+  assert.ok(list.joined.every(j => j.userId && typeof j.displayName === 'string'));
+  assert.ok(list.joined[0].at >= list.joined[2].at, '新しい順');
+  // 別の人のコードの使用者は混ざらない
+  const other = await S.user('JoinHost2');
+  const oc = (await other.call('POST', '/api/invites', {})).data.invite.code;
+  assert.deepEqual((await other.call('GET', '/api/invites')).data.codes.find(c => c.code === oc).joined, []);
+});
+
+test('使った人は1コードにつき5人までしか返さない(無制限コードでも重くしない)', async () => {
+  const a = await S.user('WhoCap');
+  const code = (await a.call('POST', '/api/invites', { maxUses: null, expiresInDays: 1 })).data.invite.code;
+  for (let i = 0; i < 7; i++) {
+    const u = await S.user('Cap' + i);
+    assert.equal((await u.call('POST', '/api/invites/redeem', { code })).status, 200);
+  }
+  const c = (await a.call('GET', '/api/invites')).data.codes.find(x => x.code === code);
+  assert.equal(c.uses, 7);
+  assert.equal(c.joined.length, 5);
+});
+
+test('招待リンク /i/コード は、どのコードでも同じ文面でログイン画面へ送る(コードの有無を教えない)', async () => {
+  const a = await S.user('LinkHost');
+  const code = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const real = await fetch(`${S.base}/i/${code.slice(0, 4)}-${code.slice(4).toLowerCase()}`);
+  const fake = await fetch(`${S.base}/i/ZZZZZZZZ`);
+  const rt = await real.text(), ft = await fake.text();
+  assert.equal(real.status, 200); assert.equal(fake.status, 200);
+  assert.match(rt, new RegExp('url=/auth\\.html\\?invite=' + code));
+  assert.match(ft, /url=\/auth\.html\?invite=ZZZZZZZZ/);
+  // 本物と偽物で、コード以外の文面は同じ
+  assert.equal(rt.replaceAll(code, 'XXXXXXXX'), ft.replaceAll('ZZZZZZZZ', 'XXXXXXXX'));
+  assert.match(rt, /og:title/);
+  assert.ok(!rt.includes('LinkHost'), '持ち主の名前は出さない');
+  assert.equal(real.headers.get('cache-control'), 'no-store');
+  assert.equal(real.headers.get('referrer-policy'), 'no-referrer');
+});
+
+test('招待リンクのコード部分に変な文字が入っていても、ページに混ざらない', async () => {
+  const r = await fetch(`${S.base}/i/${encodeURIComponent('"><script>alert(1)</script>')}`);
+  const t = await r.text();
+  assert.equal(r.status, 200);
+  assert.ok(!/<script>alert/.test(t));
+  assert.match(t, /url=\/auth\.html"/);
+});

@@ -152,6 +152,17 @@ async function initDB() {
       PRIMARY KEY (code, user_id)
     );
 
+    -- 招待コードで始めたゲストが、あとからメール+パスワードを付ける途中の状態(メールの持ち主だと確かめるコードを待っている間)
+    CREATE TABLE IF NOT EXISTS guest_upgrades (
+      user_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_ms INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_sent_ms INTEGER NOT NULL DEFAULT 0
+    );
+
     -- 消えるメッセージ(会話ごとのタイマー)。conv_key は 'dm:<小さいID>:<大きいID>' または 'g:<groupId>'
     CREATE TABLE IF NOT EXISTS conversation_ttl (
       conv_key TEXT PRIMARY KEY,

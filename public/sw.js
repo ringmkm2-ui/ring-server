@@ -389,6 +389,8 @@ self.addEventListener('fetch', event => {
 
   // 他のサイト(Cloudinary・CDN等)はブラウザ任せ
   if (url.origin !== self.location.origin) return;
+  // 招待リンク(/i/コード)は毎回サーバーから。コードごとにキャッシュを作らない
+  if (url.pathname.startsWith('/i/')) return;
   // ドライブのメディア(暗号化済み・大きい)はSWのキャッシュに入れない。ブラウザのHTTPキャッシュに任せる
   if (url.pathname.startsWith('/m/')) return;
 

@@ -150,6 +150,18 @@ async function initDB() {
         PRIMARY KEY (code, user_id)
       )
     `);
+    // 招待コードで始めたゲストが、あとからメール+パスワードを付ける途中の状態(メールの持ち主だと確かめるコードを待っている間)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS guest_upgrades (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_ms BIGINT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_sent_ms BIGINT NOT NULL DEFAULT 0
+      )
+    `);
     // 古いDBで joined_at が無い場合に備える(無ければ足すだけ。既存の行は空のまま=今まで通り全部見える)
     await pool.query('ALTER TABLE group_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMP');
     await pool.query('ALTER TABLE group_members ALTER COLUMN joined_at SET DEFAULT now()');
