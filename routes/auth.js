@@ -345,7 +345,9 @@ router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req
 // メールの持ち主だと確かめるまでは何も変えない(他人のメールアドレスを先に押さえられないように)。
 // ゲストとは「ユーザー名が guest_ で始まり、パスワードが空」のアカウント。反映後はふつうのメール+パスワードのアカウントになる。
 const GUEST_SEND_MAX_PER_DAY = 10;    // 1人が1日に送れる確認メールの数(他人のアドレスにメールを送り付ける悪用を止める)
-const GUEST_MISS_MAX_PER_DAY = 15;    // 1人が1日に外せるコードの回数
+const GUEST_MISS_MAX_PER_DAY = 15;
+const GUEST_MAIL_MAX_PER_ADDRESS = 3;  // 1つのメールアドレス宛に、1日に送る確認メールの数(使い捨てゲストを大量に作って、同じ人にメールを送り付ける悪用を止める)
+const GUEST_SEND_MAX_PER_IP = 20;      // 1つのIPから1日に送れる確認メールの数    // 1人が1日に外せるコードの回数
 
 async function loadGuest(userId) {
   const u = await db.get('SELECT id, username, password_hash FROM users WHERE id = ?', [userId]);
@@ -394,6 +396,11 @@ router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req
     if ((await resetMissCount('gupsend:' + userId)) >= GUEST_SEND_MAX_PER_DAY) {
       return res.status(429).json({ error: '今日はもう送れません。明日もう一度お試しください' });
     }
+    // 宛先のアドレスごと・IPごとの上限(人ごとの上限だけだと、ゲストを作り直すたびに同じ被害者へ送れてしまう)
+    const mailKey = 'gupmail:' + email, ipKey = 'gupip:' + (req.ip || '');
+    if ((await resetMissCount(mailKey)) >= GUEST_MAIL_MAX_PER_ADDRESS || (await resetMissCount(ipKey)) >= GUEST_SEND_MAX_PER_IP) {
+      return res.status(429).json({ error: '今日はもう送れません。明日もう一度お試しください' });
+    }
 
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     const hash = await bcrypt.hash(password, 12);
@@ -404,6 +411,7 @@ router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req
       [userId, email, hash, sha256(code), now + EMAIL_CODE_TTL_MS, now]
     );
     await resetMiss('gupsend:' + userId);
+    await resetMiss(mailKey); await resetMiss(ipKey);
     try {
       await sendMail({
         to: email,
@@ -432,11 +440,13 @@ router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (r
     if ((await resetMissCount('gup:' + userId)) >= GUEST_MISS_MAX_PER_DAY) {
       return res.status(429).json({ error: '失敗が続いたため、今日はこれ以上試せません。明日もう一度お試しください' });
     }
-    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) return invalid();
+    if (Date.now() > Number(row.expires_ms)) return invalid();
+    // 試行の消費を、確かめる前に1文で行う。「読んで→比べて→加算」だと、同時に何本も送られた時に全部が上限の手前で通ってしまう
+    const claim = await db.run('UPDATE guest_upgrades SET attempts = attempts + 1 WHERE user_id = ? AND attempts < ?', [userId, EMAIL_CODE_MAX_ATTEMPTS]);
+    if (!claim || !claim.changes) return invalid();
     const given = Buffer.from(sha256(code.replace(/\s/g, '')));
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
-      await db.run('UPDATE guest_upgrades SET attempts = attempts + 1 WHERE user_id = ?', [userId]);
       await resetMiss('gup:' + userId);
       return invalid();
     }
@@ -477,7 +487,14 @@ router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (r
     await db.run("DELETE FROM auth_misses WHERE key IN (?, ?)", ['gup:' + userId, 'gupsend:' + userId]).catch(() => {});
     const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
     // ユーザー名が変わったので、トークンも作り直して返す(今の端末のセッションはそのまま使える)
-    res.json(await sessionResponse(user, { upgraded: true }, reqMeta(req)));
+    const out = await sessionResponse(user, { upgraded: true }, reqMeta(req));
+    // ここから先は正規のアカウント。トークンだけが資格情報だった頃に持ち出された可能性のある、ほかの端末のセッションは失効させる
+    // (今の端末は、いま返す新しいトークンで続けられる)
+    try {
+      const sid = (jwt.decode(out.token) || {}).sid;
+      if (sid) await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id <> ? AND revoked_at IS NULL', [userId, sid]);
+    } catch (e) { console.warn('[auth] guest upgrade: session cleanup failed:', e.message); }
+    res.json(out);
   } catch (e) { sendServerError(res, e, 'guest-upgrade-confirm'); }
 });
 

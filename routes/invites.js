@@ -64,7 +64,7 @@ function toInvite(r, now) {
 router.get('/', auth, async (req, res) => {
   try {
     const now = Date.now();
-    const rows = await db.all('SELECT * FROM invite_codes WHERE owner_id = ? ORDER BY created_ms DESC', [req.userId]);
+    const rows = await db.all('SELECT * FROM invite_codes WHERE owner_id = ? ORDER BY created_ms DESC LIMIT 100', [req.userId]);
     const codes = rows.map(r => toInvite(r, now));
     if (codes.length) {
       // 誰がこのコードで友だちになったか(退会済みの人は出さない)。コードごとに新しい順で WHO_MAX 人まで
@@ -73,7 +73,7 @@ router.get('/', auth, async (req, res) => {
         `SELECT r.code AS code, r.user_id AS user_id, r.redeemed_ms AS redeemed_ms, u.display_name AS display_name
            FROM invite_redemptions r JOIN users u ON u.id = r.user_id
           WHERE r.code IN (${ph}) AND substr(u.username, 1, 8) != 'deleted_'
-          ORDER BY r.redeemed_ms DESC`,
+          ORDER BY r.redeemed_ms DESC LIMIT 500`,
         codes.map(c => c.code)
       );
       const byCode = new Map(codes.map(c => [c.code, c]));

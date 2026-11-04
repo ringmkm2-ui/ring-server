@@ -18,9 +18,11 @@ async function loadInvite(code) {
   const inv = await db.get('SELECT * FROM invite_codes WHERE code = ?', [code]);
   if (!inv) return null;
   const owner = await db.get(
-    "SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ? AND substr(username, 1, 8) != 'deleted_'",
+    "SELECT id, user_id, display_name, profile_pic, banned_until FROM users WHERE id = ? AND substr(username, 1, 8) != 'deleted_'",
     [inv.owner_id]
   );
+  // 使用停止中の持ち主のコードでは、友だちも新しいアカウントも作れない(停止を迂回する足場にさせない)
+  if (owner && (Number(owner.banned_until) || 0) > Date.now()) return null;
   return owner ? { inv, owner } : null;
 }
 

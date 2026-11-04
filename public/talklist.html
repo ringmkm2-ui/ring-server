@@ -975,7 +975,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.17 beta</div>
+  <div class="version-badge">Bro Chat v1.29.18 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -4711,7 +4711,7 @@ function gupRenderCode(email, wait, notice) {
 function gupRenderFormKeep(email) { gupRenderForm(); const i = gupBody.querySelector('input[type=email]'); if (i) i.value = email; }
 function gupDone(data) {
   clearInterval(gupTimer);
-  // 新しいトークンと名前を保存し、ゲストの印を外す。今開いているこのページは前のトークンのまま使える(失効させていない)
+  // 新しいトークンと名前を保存し、ゲストの印を外す。前のトークンはサーバー側で失効するので、以降の通信は新しいトークンで行う(各画面は localStorage から毎回読む)
   try {
     localStorage.setItem('ring_token', data.token);
     localStorage.setItem('ring_username', data.username);

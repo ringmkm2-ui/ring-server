@@ -113,7 +113,7 @@ test('コードで確定するまでは何も変わらず、確定するとメ�
 
   // 新しいトークンも、前のトークンも使える
   assert.equal((await S.req('GET', '/api/friends/me', { token: c.data.token })).status, 200);
-  assert.equal((await g.call('GET', '/api/friends/me')).status, 200);
+  assert.equal((await g.call('GET', '/api/friends/me')).status, 401, '確定前のトークンは失効している(新しいトークンに切り替わる)');
   // 友だち(招待してくれた人)は残っている
   const ids = (await S.req('GET', '/api/friends/list', { token: c.data.token })).data.map(f => f.userId);
   assert.ok(ids.includes(g.host.userId));
@@ -218,4 +218,44 @@ test('ゲストのまま退会しても、途中の設定は残らない', async
   await g.call('POST', '/api/auth/guest/upgrade/start', { email: newEmail(), password: PW() });
   const d = await g.call('POST', '/api/auth/delete-account', {});
   assert.equal(d.status, 200, JSON.stringify(d));
+});
+
+test('同じメールアドレス宛には、ゲストを何人作っても1日3通まで(メール爆撃・送信枠の枯渇を止める)', async () => {
+  const victim = newEmail().toLowerCase();
+  const results = [];
+  for (let i = 0; i < 4; i++) {
+    const g = await guest(S, 'Spam' + i);
+    results.push((await g.call('POST', '/api/auth/guest/upgrade/start', { email: i % 2 ? victim.toUpperCase() : victim, password: PW() })).status);
+  }
+  assert.deepEqual(results, [200, 200, 200, 429], JSON.stringify(results));
+});
+
+test('確定すると、確定前のトークン(ほかの端末に持ち出されていた分を含む)は使えなくなり、新しいトークンだけが使える', async () => {
+  const g = await guest(S);
+  const email = newEmail().toLowerCase();
+  const n = smtp.mails.length;
+  await g.call('POST', '/api/auth/guest/upgrade/start', { email, password: PW() });
+  const code = await waitCode(email, n);
+  const r = await g.call('POST', '/api/auth/guest/upgrade/confirm', { code });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.ok(r.data.token && r.data.token !== g.token);
+  assert.equal((await S.req('GET', '/api/friends/list', { token: g.token })).status, 401, '古いトークンは失効');
+  assert.equal((await S.req('GET', '/api/friends/list', { token: r.data.token })).status, 200, '新しいトークンは使える');
+});
+
+test('コードの試行は同時に送られても5回までしか数えない(同時に20本送っても、正しいコードが紛れても通らない)', async () => {
+  const g = await guest(S);
+  const email = newEmail().toLowerCase();
+  const n = smtp.mails.length;
+  await g.call('POST', '/api/auth/guest/upgrade/start', { email, password: PW() });
+  const code = await waitCode(email, n);
+  const wrong = code === '000000' ? '000001' : '000000';
+  const codes = Array.from({ length: 20 }, (_, i) => (i === 12 ? code : wrong));
+  const rs = await Promise.all(codes.map(c => g.call('POST', '/api/auth/guest/upgrade/confirm', { code: c })));
+  const okCount = rs.filter(r => r.status === 200).length;
+  // 正しいコードが5回目までに届いていれば確定してよいが、6回目以降(=上限の後)に届いたものは通らない。
+  // どちらでも「確定は多くて1回」で、上限を超えて当て続けることはできない
+  assert.ok(okCount <= 1);
+  const status = (await g.call('GET', '/api/auth/guest/status')).data;
+  if (!okCount) assert.equal(status.guest, true);
 });

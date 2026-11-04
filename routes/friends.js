@@ -325,6 +325,15 @@ async function dropFriendship(req, res, allowed) {
     if (f.user_a_id !== req.userId && f.user_b_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
     if (!allowed(f, req.userId)) return res.status(400).json({ error: 'この状態では実行できません' });
     await db.run('DELETE FROM friendships WHERE id = ?', [friendshipId]);
+    if (f.status === 'accepted') {
+      // 友だちを外したら、その2人の間の招待コードの「使用済み」の記録も消す。
+      // 残しておくと、外された人が使い切りのコードでも黙って友だちに戻れてしまう(戻るなら、新しく人数を1つ使う)。
+      try {
+        for (const [who, owner] of [[f.user_a_id, f.user_b_id], [f.user_b_id, f.user_a_id]]) {
+          await db.run('DELETE FROM invite_redemptions WHERE user_id = ? AND code IN (SELECT code FROM invite_codes WHERE owner_id = ?)', [who, owner]);
+        }
+      } catch (e) { console.warn('[friends] invite redemption cleanup failed:', e.message); }
+    }
     notifyFriendChange(f.user_a_id, f.user_b_id, 'removed');
     res.json({ ok: true });
   } catch (e) {

@@ -69,6 +69,11 @@ before(async () => {
     if (req.url === '/img-big.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(Buffer.alloc(2 * 1024 * 1024, 1)); }
     if (req.url === '/img-liar.png') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<script>alert(1)</script>'); }
     if (req.url === '/img-redir') { res.writeHead(302, { location: 'http://169.254.169.254/x.png' }); return res.end(); }
+    if (req.url === '/img-huge.png') { const b = Buffer.from(PNG1); b.writeUInt32BE(20000, 16); b.writeUInt32BE(20000, 20); res.writeHead(200, { 'content-type': 'image/png' }); return res.end(b); }
+    if (req.url === '/img-nohdr.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(Buffer.from('not really a png at all, just bytes')); }
+    if (req.url === '/redos-meta') return html('<html><head>' + '<meta "'.repeat(300000));
+    if (req.url === '/redos-title') return html('<html><head>' + '<title>'.repeat(300000));
+    if (req.url === '/redos-lt') return html('<html><head><meta property="og:title" content="' + '<'.repeat(1500000) + '">');
     if (req.url === '/weird-enc') { res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'zstd' }); return res.end('x'); }
     if (req.url === '/ua') { return html(`<html><head><title>${String(req.headers['user-agent'])}</title></head></html>`); }
     res.writeHead(404); res.end();
@@ -202,10 +207,10 @@ test('IP判定: 内部・予約・IPv4-mapped は拒否し、公開IPは通す',
   const blocked = ['0.0.0.0', '10.1.2.3', '100.64.0.1', '100.127.255.255', '127.0.0.1', '127.1.2.3', '169.254.169.254', '172.16.0.1', '172.31.255.255',
     '192.168.1.1', '192.0.0.1', '198.18.0.1', '224.0.0.1', '240.0.0.1', '255.255.255.255',
     '::', '::1', '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a00:1', '::ffff:169.254.169.254', '64:ff9b::7f00:1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fec0::1', 'ff02::1',
-    '2001:db8::1', '2002:7f00:1::1', '2002:a00:1::', '2001:0:1::1', '::127.0.0.1', 'not-an-ip', ''];
+    '2001:db8::1', '3fff::1', '3fff:fff::1', '::ffff:0:127.0.0.1', '::ffff:0:a00:1', '2002:7f00:1::1', '2002:a00:1::', '2001:0:1::1', '::127.0.0.1', 'not-an-ip', ''];
   for (const ip of blocked) assert.equal(lp.isBlockedIp(ip), true, ip);
   const open = ['8.8.8.8', '1.1.1.1', '93.184.216.34', '100.63.255.255', '172.15.0.1', '172.32.0.1', '192.169.0.1', '198.20.0.1',
-    '2606:4700:4700::1111', '2001:4860:4860::8888', '::ffff:8.8.8.8', '2002:808:808::1'];
+    '2606:4700:4700::1111', '2001:4860:4860::8888', '3fff:1000::1', '::ffff:0:8.8.8.8', '::ffff:8.8.8.8', '2002:808:808::1'];
   for (const ip of open) assert.equal(lp.isBlockedIp(ip), false, ip);
 });
 
@@ -342,4 +347,45 @@ test('画像の中継: 内部アドレスや http:// の画像は(免除なし�
 test('画像の中継: 取り出した og:image のURLは https だけが残る(中継は https 以外を断る)', () => {
   const m = lp.extractMeta('<head><meta property="og:image" content="//cdn.example.com/a.png"></head>', new URL('https://example.com/p'));
   assert.equal(m.image, 'https://cdn.example.com/a.png');
+});
+
+test('画像の中継: 縦横が大きすぎる画像(画像爆弾)や、ヘッダーが読めない画像は断る', async () => {
+  const u = await enabled('LpImgPx');
+  for (const p of ['/img-huge.png', '/img-nohdr.png']) {
+    const r = await qi(u, L(p));
+    assert.equal(r.status, 422, p);
+  }
+});
+
+test('画像の縦横の読み取り: png / jpeg / gif / webp', () => {
+  assert.deepEqual(lp.imageSize(PNG1, 'image/png'), [1, 1]);
+  const jpg = Buffer.from('ffd8ffe000104a46494600010100000100010000ffc0000b080' + '1e002800101110' + '0ffd9', 'hex');
+  assert.deepEqual(lp.imageSize(jpg, 'image/jpeg'), [640, 480]);
+  const gif = Buffer.from('47494638396101000100800000000000ffffff2c00000000010001000002024401003b', 'hex');
+  assert.deepEqual(lp.imageSize(gif, 'image/gif'), [1, 1]);
+  const w = Buffer.alloc(30); w.write('RIFF', 0); w.write('WEBP', 8); w.write('VP8X', 12); w.writeUIntLE(1199, 24, 3); w.writeUIntLE(629, 27, 3);
+  assert.deepEqual(lp.imageSize(w, 'image/webp'), [1200, 630]);
+  assert.equal(lp.imageSize(Buffer.from('xx'), 'image/png'), null);
+});
+
+test('悪意ある入力でも解析は一瞬で終わる(正規表現の2乗時間=ReDoSで、サーバー全体を止められない)', async () => {
+  const u = await enabled('LpRedos');
+  for (const p of ['/redos-meta', '/redos-title', '/redos-lt']) {
+    const t0 = Date.now();
+    const r = await q(u, L(p));
+    assert.ok(r.status === 200 || r.status === 422, p + ' -> ' + r.status);
+    assert.ok(Date.now() - t0 < 3000, p + ' が ' + (Date.now() - t0) + 'ms かかった');
+  }
+  // 解析関数そのものも、2MBの悪意ある入力に対して十分速い
+  for (const html of ['<meta "'.repeat(300000), '<title>'.repeat(300000), '<meta property="og:title" content="' + '<'.repeat(2000000) + '">']) {
+    const t0 = Date.now();
+    lp.extractMeta(html, new URL('https://example.com/'));
+    assert.ok(Date.now() - t0 < 500, 'extractMeta が ' + (Date.now() - t0) + 'ms');
+  }
+});
+
+test('<metadata> のような別のタグや大文字小文字違いも正しく扱う', () => {
+  const m = lp.extractMeta('<head><metadata name="og:title" content="no"><META PROPERTY="og:title" CONTENT="Yes"><TITLE>t</TITLE></head>', new URL('https://example.com/'));
+  assert.equal(m.title, 'Yes');
+  assert.equal(lp.extractMeta('<head><TITLE >Only title</TITLE></head>', new URL('https://example.com/')).title, 'Only title');
 });
