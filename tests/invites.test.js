@@ -175,3 +175,100 @@ test('退会すると、その人のコードは使えなくなる', async () =>
   assert.equal(del.status, 200, JSON.stringify(del));
   assert.equal((await b.call('POST', '/api/invites/redeem', { code })).status, 404);
 });
+
+// ---------- 招待コードだけで始める(メール・パスワード無し) ----------
+const signup = (body, ip) => S.req('POST', '/api/auth/register-invite', { body, ip });
+const NAMES = { displayName: 'Guest', realName: '山田 花子' };
+
+test('コードだけで登録できて、持ち主とお互いに友だちになる(メールもパスワードも送らない)', async () => {
+  const a = await S.user('Host');
+  const code = (await a.call('POST', '/api/invites', { maxUses: 5, expiresInDays: 7 })).data.invite.code;
+  const r = await signup({ code: code.slice(0, 4).toLowerCase() + '-' + code.slice(4), ...NAMES });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.ok(r.data.token && r.data.userId && r.data.userIdCode);
+  assert.match(r.data.username, /^guest_[0-9a-f]{18}$/);
+  assert.equal(r.data.friend.userId, a.userId);
+  const me = await S.req('GET', '/api/friends/me', { token: r.data.token });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.displayName, 'Guest');
+  const ids = (await a.call('GET', '/api/friends/list')).data.map(f => f.userId);
+  assert.ok(ids.includes(r.data.userId), '持ち主の一覧に新しい人が出る');
+  const mine = (await S.req('GET', '/api/friends/list', { token: r.data.token })).data.map(f => f.userId);
+  assert.ok(mine.includes(a.userId), '新しい人の一覧に持ち主が出る');
+  assert.equal((await a.call('GET', '/api/invites')).data.codes.find(c => c.code === code).uses, 1);
+});
+
+test('コードで作ったアカウントには、パスワードでもメールでもログインできない', async () => {
+  const a = await S.user('Host2');
+  const code = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const r = (await signup({ code, ...NAMES })).data;
+  for (const pw of ['', 'guest', 'Vq8!mZabcdefxL2']) {
+    const l = await S.req('POST', '/api/auth/login', { body: { username: r.username, password: pw } });
+    assert.ok(l.status === 400 || l.status === 401, 'login status ' + l.status);
+    assert.ok(!(l.data && l.data.token));
+  }
+  // パスワード再設定もメール形式でなければ何も起きない(アカウントの有無も漏らさない)
+  const f = await S.req('POST', '/api/auth/forgot-password', { body: { username: r.username } });
+  assert.equal(f.status, 200);
+});
+
+test('名前の入れ間違いでは人数を消費しない。コードが違えば404', async () => {
+  const a = await S.user('Host3');
+  const code = (await a.call('POST', '/api/invites', { maxUses: 1, expiresInDays: 1 })).data.invite.code;
+  assert.equal((await signup({ code, displayName: '', realName: '山田' })).status, 400);
+  assert.equal((await signup({ code, displayName: '<b>x</b>', realName: '山田' })).status, 400);
+  assert.equal((await signup({ code, displayName: 'ok', realName: '' })).status, 400);
+  assert.equal((await signup({ code, displayName: 'ok', realName: 'abc123' })).status, 400);
+  assert.equal((await a.call('GET', '/api/invites')).data.codes.find(c => c.code === code).uses, 0);
+  assert.equal((await signup({ code: 'ZZZZZZZZ', ...NAMES })).status, 404);
+  assert.equal((await signup({ code: { length: 8 }, ...NAMES })).status, 404);
+  assert.equal((await signup({ ...NAMES })).status, 404);
+  // 1人用のコードは、1人目だけ
+  assert.equal((await signup({ code, ...NAMES })).status, 200);
+  assert.equal((await signup({ code, ...NAMES })).status, 404);
+});
+
+test('同時に何人がコードで登録しても、上限を超えない', async () => {
+  const a = await S.user('Host4');
+  const code = (await a.call('POST', '/api/invites', { maxUses: 5, expiresInDays: 1 })).data.invite.code;
+  const rs = await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map(() => signup({ code, ...NAMES })));
+  assert.equal(rs.filter(r => r.status === 200).length, 5);
+  assert.equal((await a.call('GET', '/api/invites')).data.codes.find(c => c.code === code).uses, 5);
+  assert.equal((await a.call('GET', '/api/friends/list')).data.length, 5);
+});
+
+test('削除したコード・退会した持ち主のコードでは登録できない', async () => {
+  const a = await S.user('Host5'); const b = await S.user('Host6');
+  const c1 = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const c2 = (await b.call('POST', '/api/invites', {})).data.invite.code;
+  await a.call('DELETE', '/api/invites/' + c1);
+  await b.call('POST', '/api/auth/delete-account', { password: b.password });
+  assert.equal((await signup({ code: c1, ...NAMES })).status, 404);
+  assert.equal((await signup({ code: c2, ...NAMES })).status, 404);
+});
+
+test('guest_ で始まるユーザー名は、普通の登録では使えない', async () => {
+  const r = await S.req('POST', '/api/auth/register', { body: { username: 'guest_abc@example.com', password: 'Vq8!mZabcdefxL2', displayName: 'x', realName: '山田 太郎' } });
+  assert.equal(r.status, 400);
+});
+
+test('コードで作ったアカウントは、パスワード無しで退会できる(Googleアカウントと同じ扱い)', async () => {
+  const a = await S.user('Host7');
+  const code = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const g = (await signup({ code, ...NAMES })).data;
+  const del = await S.req('POST', '/api/auth/delete-account', { token: g.token, body: {} });
+  assert.equal(del.status, 200, JSON.stringify(del));
+});
+
+test('間違いのコードだけが制限に数えられる(正しいコードで大勢が登録しても止まらない)', async () => {
+  const a = await S.user('Host8');
+  const code = (await a.call('POST', '/api/invites', { maxUses: 10, expiresInDays: 1 })).data.invite.code;
+  const ip = '10.99.99.99';
+  for (let i = 0; i < 6; i++) assert.equal((await signup({ code, ...NAMES }, ip)).status, 200, '成功は数えない ' + i);
+  let limited = 0;
+  for (let i = 0; i < 24; i++) {
+    const r = await signup({ code: 'ABCDEFG' + (i % 8 + 2), ...NAMES }, ip);
+    if (r.status === 429) limited++;
+  }
+  assert.ok(limited >= 3, '失敗が20回を超えたら429(実際: ' + limited + ')');
+});

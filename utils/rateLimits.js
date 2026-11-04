@@ -53,6 +53,17 @@ const registerLimiter = rateLimit({
   message: { error: '登録試行が多すぎます。しばらくしてから再度お試しください。' },
 });
 
+// 招待コードでの新規登録: コードの総当たり対策。失敗(400以上)だけを数えるので、
+// 教室など同じWi-Fiから大勢が正しいコードで登録しても止まらない。IP単位で15分に20回の失敗まで
+const inviteSignupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
 // API全体: 1分240req（端末ごと）。トークを開くたびに履歴・鍵・状態などで8〜10回呼ぶので、
 // 以前の120回だとトークを次々に切り替えただけで「多すぎます」になりえた。スクリプトの連打は今でも止まる
 const apiLimiter = rateLimit({
@@ -117,6 +128,7 @@ const linkPreviewLimiter = rateLimit({
 });
 
 module.exports = {
+  inviteSignupLimiter,
   perUser,
   linkPreviewLimiter,
   loginLimiter,

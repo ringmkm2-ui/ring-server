@@ -695,6 +695,34 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 /* 承認/送信済みのチェック */
 @keyframes tlCheck{from{transform:scale(0) rotate(-30deg)}}
 .tl-check{display:inline-block;vertical-align:-3px;margin-right:4px;animation:tlCheck var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out) backwards}
+/* 友達追加シート: IDで追加 / 招待コード の切り替えと招待コード欄(シートは白固定なのでダーク用の指定は無し) */
+.inv-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:#f1f5f9;border-radius:14px;margin-bottom:18px}
+.inv-seg button{padding:9px 6px;border:0;border-radius:11px;background:transparent;color:#64748b;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s,color .2s,box-shadow .2s}
+.inv-seg button[aria-selected="true"]{background:#fff;color:#0f172a;box-shadow:0 1px 4px rgba(15,23,42,.14)}
+.inv-sec{font-size:12px;font-weight:700;color:#64748b;display:block;margin:20px 0 8px}
+.inv-sec.first{margin-top:0}
+.inv-in{width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:17px;font-weight:700;letter-spacing:.08em;outline:none;box-sizing:border-box;color:#0f172a;background:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.inv-in::placeholder{font-weight:500;letter-spacing:0;color:#94a3b8}
+.inv-btn{width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px}
+.inv-btn:disabled{opacity:.55;cursor:default}
+.inv-msg{font-size:13px;margin-top:8px;line-height:1.5}
+.inv-msg.err{color:#ef4444}
+.inv-ok,.inv-row{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;background:#f8fafc;border-radius:14px;margin-bottom:8px}
+.inv-ok{margin:12px 0 0;padding:12px}
+.inv-av{width:44px;height:44px;border-radius:50%;background:#94a3b8 center/cover no-repeat;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}
+.inv-main{flex:1;min-width:0}
+.inv-name{font-weight:700;color:#0f172a;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inv-sub{font-size:12px;color:#64748b;margin-top:2px;line-height:1.4}
+.inv-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:.06em;color:#0f172a}
+.inv-row.dead .inv-code{color:#94a3b8}
+.inv-acts{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.inv-ib{min-width:34px;height:34px;border-radius:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-size:12px;font-weight:700;white-space:nowrap}
+.inv-ib.glass-clear{color:#0f172a}
+.inv-ib.glass-clear.danger{color:#ef4444;padding:0 10px}
+.inv-ok .inv-sub{color:#059669;font-weight:700;font-size:13px}
+.inv-sel{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.inv-sel label{display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px}
+.inv-sel select{width:100%;padding:11px 10px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:15px;color:#0f172a;background:#fff;box-sizing:border-box}
 /* --- PWAインストール案内: 上からスプリングで降りてくる(display:none→flex になった時に再生) --- */
 @keyframes pwaIn{from{opacity:0;transform:translateY(-22px) scale(.97)}}
 @keyframes pwaOut{to{opacity:0;transform:translateY(-14px) scale(.97)}}
@@ -933,7 +961,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.14 beta</div>
+  <div class="version-badge">Bro Chat v1.29.15 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -2502,15 +2530,25 @@ function openAddFriend() {
   sheet.innerHTML = `
     <div style="width:40px;height:4px;background:#e2e8f0;border-radius:2px;margin:0 auto 20px;"></div>
     <h3 style="font-size:18px;font-weight:800;text-align:center;margin-bottom:20px;color:#0f172a" data-i18n="add_friend">友達を追加</h3>
+    <div class="inv-seg" role="tablist">
+      <button type="button" role="tab" id="afTabId" aria-selected="true" data-i18n="inv_tab_id" data-bd="plain">IDで追加</button>
+      <button type="button" role="tab" id="afTabCode" aria-selected="false" data-i18n="inv_tab_code" data-bd="plain">招待コード</button>
+    </div>
+    <div id="afIdPane">
     <label style="font-size:12px;font-weight:700;color:#64748b;display:block;margin-bottom:8px" data-i18n="other_id_placeholder">相手のID（例: U3K7F9）</label>
     <input id="addFriendInput" type="text" placeholder="IDを入力..." data-i18n-placeholder="id_input_placeholder" style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:15px;outline:none;box-sizing:border-box;transition:border-color 0.2s;">
     <div id="searchResult" style="margin-top:12px;min-height:0;"></div>
     <button data-call="searchFriend" class="glass-clear glass-interactive" style="width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px;" data-i18n="search">検索</button>
+    </div>
+    <div id="afCodePane" hidden></div>
     <button data-call="closeAddFriend" class="glass-clear glass-interactive" style="width:100%;padding:14px;color:#0f172a;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;" data-i18n="cancel">キャンセル</button>
   `;
 
   mov.appendChild(sheet);
   document.body.appendChild(mov);
+  initInviteMode(sheet);
+  // 動的に作ったシートにも翻訳キーを適用する(これが無いと、日本語の直書きを英語に自動置換する処理が先に走り、韓国語・中国語でも英語や日本語のまま残る)
+  if (window.applyI18n) window.applyI18n(sheet);
 
   // 背景タップで閉じる
   mov.addEventListener('click', e => { if (e.target === mov) closeAddFriend(); });
@@ -2520,7 +2558,8 @@ function openAddFriend() {
     const input = document.getElementById('addFriendInput');
     if (input) {
       input.addEventListener('keydown', e => { if (e.key === 'Enter') searchFriend(); });
-      input.focus();
+      const idPane = document.getElementById('afIdPane');
+      if (!idPane || !idPane.hidden) input.focus(); // 招待コードのタブに切り替え済みなら、フォーカスを奪わない
     }
   }, 400);
 
@@ -2545,6 +2584,249 @@ function closeAddFriend() {
   if (sheet) { sheet.style.transition = 'transform 0.22s cubic-bezier(.4,0,1,1)'; sheet.style.transform = 'translateY(100%)'; }
 
   setTimeout(() => mov.remove(), 240);
+}
+
+// ---- 友達追加シート: 招待コード ----
+const INV_ICONS = {
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/>',
+  share: '<path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+  trash: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+};
+function invSvg(name) { // 固定のSVGだけ。サーバーの値は入れない
+  return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + INV_ICONS[name] + '</svg>';
+}
+function invMk(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt !== undefined) e.textContent = txt;
+  return e;
+}
+function invFmt(s, vars) { return String(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)); }
+function invFmtCode(c) {
+  const s = String(c || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return s.length > 4 ? s.slice(0, 4) + '-' + s.slice(4) : s;
+}
+function invErr(d) { return (d && typeof d.error === 'string' && d.error) || t2('inv_err_net', '通信に失敗しました。もう一度試してください'); }
+function invMeta(c) {
+  const hasMax = typeof c.maxUses === 'number';
+  const uses = c.uses || 0;
+  const parts = [hasMax ? invFmt(t2('inv_used', '{u}/{m}人が使用'), { u: uses, m: c.maxUses }) : invFmt(t2('inv_used_unl', '{u}人が使用 (無制限)'), { u: uses })];
+  if (c.expired) parts.push(t2('inv_expired', '期限切れ'));
+  else if (hasMax && uses >= c.maxUses) parts.push(t2('inv_full', '上限に達しました'));
+  else if (typeof c.expiresAt !== 'number') parts.push(t2('inv_d_none', '期限なし'));
+  else {
+    const ms = Math.max(0, c.expiresAt - Date.now());
+    const h = Math.ceil(ms / 3600000);
+    if (h >= 24) parts.push(invFmt(t2('inv_left_d', 'あと{n}日'), { n: Math.ceil(h / 24) }));
+    else if (h > 1) parts.push(invFmt(t2('inv_left_h', 'あと{n}時間'), { n: h }));
+    else parts.push(invFmt(t2('inv_left_m', 'あと{n}分'), { n: Math.max(1, Math.ceil(ms / 60000)) }));
+  }
+  return parts.join(' ・ ');
+}
+async function invCopyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) { return false; }
+}
+function invIconBtn(name, label) {
+  const b = invMk('button', 'inv-ib glass-clear glass-interactive');
+  b.type = 'button'; b.title = label; b.setAttribute('aria-label', label);
+  b.innerHTML = invSvg(name);
+  return b;
+}
+// 1行ぶんを作る(読み込みのたびに全体を一度だけ作り直す)。ctx.say(text)=エラー表示、ctx.gone()=削除後
+function invBuildRow(c, ctx) {
+  const dead = !!c.expired || (typeof c.maxUses === 'number' && (c.uses || 0) >= c.maxUses);
+  const code = invFmtCode(c.code);
+  const row = invMk('div', 'inv-row' + (dead ? ' dead' : ''));
+  const main = invMk('div', 'inv-main');
+  main.appendChild(invMk('div', 'inv-code', code));
+  main.appendChild(invMk('div', 'inv-sub', invMeta(c)));
+  const acts = invMk('div', 'inv-acts');
+
+  const cp = invIconBtn('copy', t2('inv_copy', 'コピー'));
+  cp.addEventListener('click', async () => {
+    if (!(await invCopyText(code))) return;
+    cp.innerHTML = invSvg('check');
+    clearTimeout(cp.__t);
+    cp.__t = setTimeout(() => { cp.innerHTML = invSvg('copy'); }, 1400);
+  });
+  acts.appendChild(cp);
+
+  if (navigator.share) {
+    const sh = invIconBtn('share', t2('inv_share', '共有'));
+    sh.addEventListener('click', () => {
+      Promise.resolve(navigator.share({ text: invFmt(t2('inv_share_text', 'Bro Chat の招待コード: {code}'), { code }) })).catch(() => {});
+    });
+    acts.appendChild(sh);
+  }
+
+  const del = invIconBtn('trash', t2('inv_delete', '削除'));
+  const disarm = () => { del.__armed = false; del.classList.remove('danger'); del.innerHTML = invSvg('trash'); del.disabled = false; };
+  del.addEventListener('click', async () => {
+    if (!del.__armed) {
+      del.__armed = true; del.classList.add('danger');
+      del.textContent = t2('inv_delete_confirm', '削除する?');
+      del.__t = setTimeout(disarm, 3000);
+      return;
+    }
+    clearTimeout(del.__t);
+    del.disabled = true;
+    try {
+      const d = await api('/api/invites/' + encodeURIComponent(c.code), { method: 'DELETE' });
+      if (d && d.ok) { row.remove(); ctx.gone(); }
+      else { disarm(); ctx.say(invErr(d)); }
+    } catch (_) { disarm(); ctx.say(invErr()); }
+  });
+  acts.appendChild(del);
+
+  row.appendChild(main); row.appendChild(acts);
+  return row;
+}
+function invBuildPane(pane) {
+  // --- コードを入力 ---
+  const lbl = invMk('label', 'inv-sec first', t2('inv_enter_title', 'コードを入力'));
+  const input = invMk('input', 'inv-in');
+  input.id = 'invCodeInput'; lbl.htmlFor = input.id;
+  input.type = 'text'; input.maxLength = 12; input.autocomplete = 'off'; input.spellcheck = false;
+  input.setAttribute('autocapitalize', 'characters'); input.setAttribute('autocorrect', 'off');
+  input.placeholder = t2('inv_input_ph', '例: ABCD-EFGH');
+  const go = invMk('button', 'inv-btn glass-clear glass-interactive', t2('inv_redeem_btn', '友だちになる'));
+  go.type = 'button';
+  const res = invMk('div');
+  let busy = false;
+  input.addEventListener('input', () => {
+    const up = input.value.toUpperCase();
+    if (up === input.value) return;
+    const p = input.selectionStart;
+    input.value = up;
+    try { input.setSelectionRange(p, p); } catch (_) {}
+  });
+  const redeem = async () => {
+    if (busy) return;
+    const code = input.value.replace(/[\s-]/g, '').toUpperCase();
+    res.textContent = '';
+    if (!code) { res.appendChild(invMk('div', 'inv-msg err', t2('inv_err_empty', 'コードを入力してください'))); return; }
+    busy = true; go.disabled = true;
+    const label = go.textContent;
+    go.textContent = t2('inv_redeem_busy', '確認中...');
+    try {
+      const d = await api('/api/invites/redeem', { method: 'POST', body: JSON.stringify({ code }) });
+      if (d && d.ok && d.friend) {
+        const f = d.friend;
+        const ok = invMk('div', 'inv-ok');
+        const av = invMk('div', 'inv-av');
+        setAvatarBackground(av, f.profilePic, String(f.displayName || '?').charAt(0));
+        const main = invMk('div', 'inv-main');
+        main.appendChild(invMk('div', 'inv-name', f.displayName || ''));
+        const sub = invMk('div', 'inv-sub');
+        sub.appendChild(tlCheckSvg());
+        sub.appendChild(document.createTextNode(d.already ? t2('inv_ok_already', 'すでに友だちです') : t2('inv_ok_new', '友だちになりました')));
+        main.appendChild(sub);
+        ok.appendChild(av); ok.appendChild(main);
+        res.appendChild(ok);
+        input.value = '';
+        // friends_changed を受けた時と同じ更新
+        try { loadPendingRequests(); } catch (_) {}
+        try { scheduleTalkRefresh(); } catch (_) {}
+      } else {
+        res.appendChild(invMk('div', 'inv-msg err', invErr(d)));
+      }
+    } catch (_) {
+      res.appendChild(invMk('div', 'inv-msg err', invErr()));
+    } finally {
+      busy = false; go.disabled = false; go.textContent = label;
+    }
+  };
+  go.addEventListener('click', redeem);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); redeem(); } });
+
+  // --- 自分の招待コード ---
+  const myT = invMk('div', 'inv-sec', t2('inv_my_title', '自分の招待コード'));
+  const list = invMk('div');
+  const listMsg = invMk('div', 'inv-msg err');
+  const say = txt => { listMsg.textContent = txt || ''; };
+  const emptyEl = () => invMk('div', 'inv-sub', t2('inv_empty', 'まだコードがありません'));
+  const ctx = { say, gone: () => { say(''); if (!list.querySelector('.inv-row')) list.replaceChildren(emptyEl()); } };
+  let seq = 0, loaded = false;
+  const load = async () => {
+    const my = ++seq;
+    if (!loaded) list.replaceChildren(invMk('div', 'inv-sub', t2('inv_loading', '読み込み中...')));
+    try {
+      const d = await api('/api/invites');
+      if (my !== seq) return;
+      if (!d || !Array.isArray(d.codes)) throw d;
+      const frag = document.createDocumentFragment();
+      d.codes.forEach(c => frag.appendChild(invBuildRow(c, ctx)));
+      if (!d.codes.length) frag.appendChild(emptyEl());
+      list.replaceChildren(frag);
+      loaded = true; say('');
+    } catch (e) {
+      if (my !== seq) return;
+      if (loaded) say(invErr(e)); else list.replaceChildren(invMk('div', 'inv-msg err', invErr(e)));
+    }
+  };
+
+  // --- 新しいコードを作る ---
+  const newT = invMk('div', 'inv-sec', t2('inv_new_title', '新しいコードを作る'));
+  const sel = invMk('div', 'inv-sel');
+  const mkSel = (id, label, opts, def) => {
+    const w = invMk('div');
+    const l = invMk('label', '', label); l.htmlFor = id;
+    const s = document.createElement('select'); s.id = id;
+    opts.forEach(([v, k, fb]) => { const o = document.createElement('option'); o.value = v; o.textContent = t2(k, fb); if (v === def) o.selected = true; s.appendChild(o); });
+    w.appendChild(l); w.appendChild(s); sel.appendChild(w);
+    return s;
+  };
+  const selUses = mkSel('invUses', t2('inv_uses_label', '人数'), [['1', 'inv_u1', '1人'], ['5', 'inv_u5', '5人'], ['10', 'inv_u10', '10人'], ['', 'inv_u_unl', '無制限']], '10');
+  const selDays = mkSel('invDays', t2('inv_exp_label', '期限'), [['1', 'inv_d1', '1日'], ['7', 'inv_d7', '7日'], ['30', 'inv_d30', '30日'], ['', 'inv_d_none', '期限なし']], '7');
+  const mk = invMk('button', 'inv-btn glass-clear glass-interactive', t2('inv_create_btn', 'コードを作る'));
+  mk.type = 'button';
+  const mkMsg = invMk('div', 'inv-msg err');
+  mk.addEventListener('click', async () => {
+    if (mk.disabled) return;
+    mkMsg.textContent = ''; mk.disabled = true;
+    const label = mk.textContent;
+    mk.textContent = t2('inv_create_busy', '作成中...');
+    try {
+      const d = await api('/api/invites', { method: 'POST', body: JSON.stringify({
+        maxUses: selUses.value === '' ? null : Number(selUses.value),
+        expiresInDays: selDays.value === '' ? null : Number(selDays.value)
+      }) });
+      if (d && d.ok) await load(); else mkMsg.textContent = invErr(d);
+    } catch (_) { mkMsg.textContent = invErr(); }
+    finally { mk.disabled = false; mk.textContent = label; }
+  });
+
+  [lbl, input, go, res, myT, list, listMsg, newT, sel, mk, mkMsg].forEach(n => pane.appendChild(n));
+  return { load, focus: () => input.focus() };
+}
+function initInviteMode(sheet) {
+  const idPane = sheet.querySelector('#afIdPane'), pane = sheet.querySelector('#afCodePane');
+  const tabId = sheet.querySelector('#afTabId'), tabCode = sheet.querySelector('#afTabCode');
+  if (!idPane || !pane || !tabId || !tabCode) return;
+  let inv = null;
+  const show = code => {
+    tabId.setAttribute('aria-selected', String(!code));
+    tabCode.setAttribute('aria-selected', String(code));
+    idPane.hidden = code; pane.hidden = !code;
+    if (code) {
+      if (!inv) inv = invBuildPane(pane);
+      inv.load(); inv.focus();
+    } else {
+      const i = document.getElementById('addFriendInput'); if (i) i.focus();
+    }
+  };
+  tabId.addEventListener('click', () => show(false));
+  tabCode.addEventListener('click', () => show(true));
 }
 
 async function searchFriend() {
@@ -4216,7 +4498,30 @@ function askKeepKeys() {
   });
 }
 
+// 招待コードで始めたアカウント(メールもパスワードも無い)は、ログアウトすると戻れない。先に確認する
+function askGuestLogout() {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px';
+    const box = document.createElement('div');
+    box.style.cssText = 'width:100%;max-width:420px;background:var(--card-bg,#fff);color:var(--text,#111);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
+    const m = document.createElement('div'); m.style.cssText = 'font-size:14px;line-height:1.6;opacity:.85';
+    m.textContent = t2('inv2_guest_logout_msg', 'メールとパスワードが無いため、ログアウトするとこのアカウントには戻れません。本当にログアウトしますか?');
+    const done = v => { ov.remove(); resolve(v); };
+    const mk = (label, bg, fg, v) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'padding:13px;border-radius:14px;border:0;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;background:' + bg + ';color:' + fg; b.addEventListener('click', () => done(v)); return b; };
+    box.append(m,
+      mk(t2('inv2_guest_cancel', 'キャンセル'), 'rgba(127,127,127,.15)', 'inherit', false),
+      mk(t2('inv2_guest_logout_ok', 'ログアウトする'), 'rgba(239,68,68,.12)', '#ef4444', true));
+    ov.appendChild(box);
+    ov.addEventListener('click', e => { if (e.target === ov) done(false); });
+    document.body.appendChild(ov);
+  });
+}
+
 async function logout() {
+  let guest = false;
+  try { guest = localStorage.getItem('ring_guest') === '1'; } catch (e) {}
+  if (guest && !(await askGuestLogout())) return;
   let wipe = false;
   try {
     const kb = window.bcKeyBackup && window.bcKeyBackup._internal;

@@ -1,0 +1,83 @@
+// utils/inviteCore.js
+// 招待コードの共通処理。既存ユーザーがコードを入れる(routes/invites.js)のと、
+// コードだけで新規登録する(routes/auth.js の register-invite)の両方で使う。
+const { v4: uuidv4 } = require('uuid');
+const db = require('../db/db');
+
+const INVALID = { error: '招待コードが無効か、期限切れです' };
+
+// 入力のゆれ(小文字・ハイフン・空白)を吸収する。形式が違えば null
+function normalizeCode(v) {
+  if (typeof v !== 'string' || v.length > 40) return null;
+  const c = v.toUpperCase().replace(/[\s-]/g, '');
+  return /^[A-Z0-9]{8}$/.test(c) ? c : null;
+}
+
+// コードと持ち主を引く。コードが無い・持ち主が退会済みなら null
+async function loadInvite(code) {
+  const inv = await db.get('SELECT * FROM invite_codes WHERE code = ?', [code]);
+  if (!inv) return null;
+  const owner = await db.get(
+    "SELECT id, user_id, display_name, profile_pic FROM users WHERE id = ? AND substr(username, 1, 8) != 'deleted_'",
+    [inv.owner_id]
+  );
+  return owner ? { inv, owner } : null;
+}
+
+// 人数を1つ確保する。戻り値: 'claimed'(今回消費した) / 'again'(前に使った人。消費しない) / null(使えない)
+// 使用の記録を先に入れる(主キー=コード+人)ので、同じ人が同時に何回送っても消費は1回だけ。
+// 人数の消費は1文で行うので、同時に使われても上限を超えない
+async function claimInvite(inv, userId, now = Date.now()) {
+  const ins = await db.run(
+    'INSERT INTO invite_redemptions (code, user_id, redeemed_ms) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
+    [inv.code, userId, now]
+  );
+  if (ins && ins.changes) {
+    const r = await db.run(
+      `UPDATE invite_codes SET uses = uses + 1
+        WHERE code = ? AND (expires_ms IS NULL OR expires_ms > ?) AND (max_uses IS NULL OR uses < max_uses)`,
+      [inv.code, now]
+    );
+    if (!r || !r.changes) {
+      await db.run('DELETE FROM invite_redemptions WHERE code = ? AND user_id = ?', [inv.code, userId]).catch(() => {});
+      return null;
+    }
+    return 'claimed';
+  }
+  // 前に使った事のあるコードでも、期限が切れていれば再利用できない
+  if (inv.expires_ms != null && Number(inv.expires_ms) <= now) return null;
+  return 'again';
+}
+
+// claimInvite が 'claimed' を返した後で失敗した時に、消費を元に戻す
+async function releaseInvite(code, userId) {
+  await db.run('DELETE FROM invite_redemptions WHERE code = ? AND user_id = ?', [code, userId]).catch(() => {});
+  await db.run('UPDATE invite_codes SET uses = uses - 1 WHERE code = ? AND uses > 0', [code]).catch(() => {});
+}
+
+// 2人を承認済みの友だちにする。「無ければ作る→申請の途中なら承認済みにする」を、同時に来ても落ちない形で行う
+// (先に存在確認してから INSERT すると、同時送信で一意制約に当たって500になる)。持ち主から誘った形にする
+async function makeFriends(meId, ownerId) {
+  const [a, b] = [meId, ownerId].sort();
+  const iso = new Date().toISOString();
+  await db.run(
+    "INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by, requested_at, accepted_at) VALUES (?, ?, ?, 'accepted', ?, ?, ?) ON CONFLICT DO NOTHING",
+    [uuidv4(), a, b, ownerId, iso, iso]
+  );
+  await db.run(
+    "UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE user_a_id = ? AND user_b_id = ? AND status <> 'accepted'",
+    [iso, a, b]
+  );
+}
+
+// 友だちの関係が変わったことを両方の開いている画面に知らせる(friends.js と同じ)
+function notifyFriendChange(a, b) {
+  try {
+    const ws = require('../ws/wsServer');
+    if (ws.forgetPresenceContacts) { ws.forgetPresenceContacts(a); ws.forgetPresenceContacts(b); }
+    ws.broadcastToUser(a, { type: 'friends_changed', kind: 'accepted' });
+    ws.broadcastToUser(b, { type: 'friends_changed', kind: 'accepted' });
+  } catch (_) {}
+}
+
+module.exports = { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange };
