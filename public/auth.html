@@ -307,6 +307,8 @@
     .sec-title { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-align: center; }
     .sec-desc { font-size: 14px; color: #64748b; margin-bottom: 16px; text-align: center; line-height: 1.5; }
     .link-btn { display: block; width: 100%; margin-top: 12px; padding: 8px; background: none; border: none; color: #64748b; font-size: 14px; cursor: pointer; text-decoration: underline; }
+    #inviteCode { text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+    .btn-invite { margin-top: 14px; margin-bottom: 0; }
     .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
     .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
     .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -378,6 +380,7 @@
         <button type="submit" class="btn btn-login" data-i18n="login">ログイン</button>
       </form>
       <button type="button" class="link-btn" data-call="showForgot" data-i18n="forgot_link">パスワードを忘れましたか?</button>
+      <button type="button" class="btn btn-signup btn-invite" id="inviteOpenBtn" data-i18n="inv2_open">招待コードで始める</button>
     </div>
 
     <!-- 登録フォーム -->
@@ -409,6 +412,26 @@
         <button type="submit" class="btn btn-login" data-i18n="register">登録</button>
       </form>
       <p class="legal-note"><span data-i18n="agree_prefix">登録すると</span><a href="/terms.html" data-i18n="terms">利用規約</a><span data-i18n="legal_and">と</span><a href="/privacy.html" data-i18n="privacy_policy">プライバシーポリシー</a><span data-i18n="agree_suffix">に同意したことになります</span></p>
+    </div>
+
+    <!-- 招待コードで始める(メールもパスワードも不要) -->
+    <div id="inviteSection" class="form-section">
+      <h2 class="sec-title" data-i18n="inv2_open">招待コードで始める</h2>
+      <form id="inviteForm">
+        <div class="form-group">
+          <input type="text" id="inviteCode" name="invite-code" maxlength="12" placeholder="ABCD-EFGH" required autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next">
+        </div>
+        <div class="form-group">
+          <input type="text" id="inviteName" name="nickname" placeholder="表示名" data-i18n-placeholder="inv2_name_ph" required autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
+        </div>
+        <div class="form-group">
+          <input type="text" id="inviteRealName" placeholder="本名(フルネーム)" data-i18n-placeholder="real_name_ph" required maxlength="50" autocomplete="name" enterkeyhint="go">
+          <p class="field-note" data-i18n="real_name_note" style="font-size:12px;opacity:.65;margin:6px 4px 0">本名はほかの人には表示されません</p>
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="inv2_submit">はじめる</button>
+      </form>
+      <p class="legal-note" data-i18n="inv2_note">メールアドレスとパスワードは不要です。ただし、ログアウトするとこのアカウントには戻れません。</p>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
     <!-- メール認証コード入力 -->
@@ -484,6 +507,7 @@
     let pendingNewAccount = false;
 
     function storeSession(data) {
+      localStorage.removeItem('ring_guest');   // 通常のログインではゲスト印を外す(招待コードで始めた時だけ後で付ける)
       localStorage.setItem('ring_token', data.token);
       localStorage.setItem('ring_userId', data.userId);
       localStorage.setItem('ring_user_id', data.userId);
@@ -728,6 +752,7 @@
         }
 
         // ローカルストレージに保存
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
@@ -770,6 +795,7 @@
         }
 
         localStorage.setItem('bc_new_account', '1');
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
@@ -785,6 +811,46 @@
       } catch (error) {
         showError(error.message);
       }
+    }
+
+    // --- 招待コードで始める(メール・パスワードなし) ---
+    function inviteCodeClean(v) { return String(v || '').replace(/[\s-]/g, '').toUpperCase(); }
+
+    function showInvite() {
+      showOnly('inviteSection');
+      const c = document.getElementById('inviteCode');
+      if (c) c.focus();
+    }
+
+    async function submitInvite(e) {
+      e.preventDefault();
+      const code = inviteCodeClean(document.getElementById('inviteCode').value);
+      const displayName = document.getElementById('inviteName').value;
+      const realName = document.getElementById('inviteRealName').value.trim();
+      if (!code) { showError(tr('inv2_code_required', '招待コードを入力してください')); return; }
+      if (!realName) { showError(window.i18n ? i18n.t('real_name_required', '本名を入力してください') : '本名を入力してください'); return; }
+
+      let response, data;
+      try {
+        response = await fetch(`${API_BASE}/api/auth/register-invite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, displayName, realName })
+        });
+        data = await response.json();
+      } catch (err) {
+        showError(tr('inv2_net_err', 'ネットワークエラー。接続を確認して、もう一度お試しください'));
+        return;
+      }
+      if (!response.ok || !data || !data.token) {
+        showError((data && typeof data.error === 'string' && data.error) || tr('inv2_fail', '始められませんでした。もう一度お試しください'));
+        return;
+      }
+      // 通常の新規登録と同じ保存・同じ遷移(トーク一覧が暗号鍵の設定を案内する)
+      storeSession(data);
+      localStorage.setItem('bc_new_account', '1');
+      localStorage.setItem('ring_guest', '1');
+      window.location.replace('/talklist.html');
     }
 
     function handleGoogleSignIn(response) {
@@ -806,6 +872,7 @@
     function handleGoogleResult(data) {
       if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
       if (data.token) {
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_username', data.username);
@@ -935,13 +1002,21 @@
         }
       };
     }
-    ['emailLogin', 'emailSignup', 'submitVerify', 'submitTwoFa', 'submitForgot', 'submitReset'].forEach(name => {
+    ['emailLogin', 'emailSignup', 'submitVerify', 'submitTwoFa', 'submitForgot', 'submitReset', 'submitInvite'].forEach(name => {
       const orig = window[name];
       if (typeof orig !== 'function') return;
       window[name] = async function (ev) {
         const done = startBusy(ev);
         try { return await orig.apply(this, arguments); } finally { done(); }
       };
+    });
+
+    // 招待コードの画面(actions.js の許可リストには触れないので、ここで直接つなぐ)
+    document.getElementById('inviteOpenBtn').addEventListener('click', showInvite);
+    document.getElementById('inviteForm').addEventListener('submit', e => window.submitInvite(e));
+    document.getElementById('inviteCode').addEventListener('input', function () {
+      const p = this.selectionStart, u = this.value.toUpperCase();
+      if (u !== this.value) { this.value = u; try { this.setSelectionRange(p, p); } catch (_) {} }
     });
 </script>
 </body>

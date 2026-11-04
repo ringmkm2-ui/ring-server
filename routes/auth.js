@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('../db/db');
 const { JWT_SECRET } = require('../utils/jwtSecret');
-const { loginLimiter, registerLimiter } = require('../utils/rateLimits');
+const { loginLimiter, registerLimiter, inviteSignupLimiter } = require('../utils/rateLimits');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
@@ -223,6 +223,10 @@ router.post('/register', registerLimiter, async (req, res) => {
   if (username.length < 3) {
     return res.status(400).json({ error: 'ユーザー名は3文字以上にしてください' });
   }
+  // guest_ で始まる名前は、招待コードで作るアカウント専用(メールでもパスワードでもログインできない名前)
+  if (/^guest_/i.test(username)) {
+    return res.status(400).json({ error: 'そのユーザー名は使えません' });
+  }
   // HTMLタグ・スクリプトインジェクション防止。英数字・日本語・一般的な記号のみ許可。
   // < > " ' はXSSに悪用されるため禁止。
   if (/[<>"'`]/.test(username)) {
@@ -279,6 +283,61 @@ router.post('/register', registerLimiter, async (req, res) => {
   if (createdNew) await require('../utils/officialFriend').befriendOfficial(userId);
   const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
   res.json(await sessionResponse(user, {}, reqMeta(req)));
+});
+
+// --- 招待コードだけで始める(メールもパスワードも要らない) ---
+// body: { code, displayName, realName }
+// 招待コードを使うと、メールアドレスとパスワード無しでアカウントができ、コードの持ち主と承認待ちなしで友だちになる。
+// Googleログインと同じ password_hash = '' のアカウントで、ユーザー名は guest_ + 乱数(メールではない)。
+// パスワードでは入れず、この端末のトークンだけで使う(ログアウトすると戻れない)。
+router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req, res) => {
+  try {
+    const { normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange, INVALID } = require('../utils/inviteCore');
+    const body = req.body || {};
+    // 入力の確認はコードを消費する前に済ませる(名前の入れ間違いで人数を減らさない)
+    const rn = cleanRealName(body.realName);
+    if (rn.error) return res.status(400).json({ error: rn.error });
+    const displayName = typeof body.displayName === 'string' ? body.displayName.normalize('NFKC').replace(/\s+/g, ' ').trim() : '';
+    if (!displayName) return res.status(400).json({ error: '表示名を入力してください' });
+    if (displayName.length > 50) return res.status(400).json({ error: '表示名は50文字以内にしてください' });
+    if (/[<>"'`\u0000-\u001f]/.test(displayName)) return res.status(400).json({ error: '表示名に使えない文字が含まれています' });
+    if (require('../utils/moderation').containsBannedWord(displayName)) {
+      return res.status(400).json({ error: 'その名前は使えません' });
+    }
+
+    const code = normalizeCode(body.code);
+    if (!code) return res.status(404).json(INVALID);
+    const found = await loadInvite(code);
+    if (!found) return res.status(404).json(INVALID);
+    const { inv, owner } = found;
+
+    const userId = uuidv4();
+    const got = await claimInvite(inv, userId); // 新しい人なので必ず 'claimed' か null
+    if (!got) return res.status(404).json(INVALID);
+
+    let userIdCode;
+    try {
+      userIdCode = await uniqueUserIdCode();
+      const guestName = 'guest_' + crypto.randomBytes(9).toString('hex');
+      await db.run(
+        'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verified_at, real_name) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)',
+        [userId, userIdCode, guestName, '', displayName, rn.value]
+      );
+      await makeFriends(userId, owner.id);
+    } catch (e) {
+      await releaseInvite(code, userId);
+      await db.run('DELETE FROM friendships WHERE user_a_id = ? OR user_b_id = ?', [userId, userId]).catch(() => {});
+      await db.run('DELETE FROM users WHERE id = ?', [userId]).catch(() => {});
+      throw e;
+    }
+    await require('../utils/officialFriend').befriendOfficial(userId);
+    notifyFriendChange(userId, owner.id);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const friend = { userId: owner.id, userIdCode: owner.user_id, displayName: owner.display_name, profilePic: owner.profile_pic };
+    res.json(await sessionResponse(user, { friend }, reqMeta(req)));
+  } catch (e) {
+    sendServerError(res, e, 'register-invite');
+  }
 });
 
 // --- メール認証コードの確認 ---
