@@ -93,6 +93,8 @@ function isBlockedV6(ip) {
   if ((g[0] & 0xffc0) === 0xfec0) return true;                       // fec0::/10 (site-local, 廃止)
   if ((g[0] & 0xff00) === 0xff00) return true;                       // ff00::/8 (multicast)
   if (g[0] === 0x2001 && g[1] === 0x0db8) return true;               // documentation
+  if (g[0] === 0x3fff && (g[1] & 0xf000) === 0) return true; // 3fff::/20 (documentation, RFC 9637)
+  if (allZeroUpTo(4) && g[4] === 0xffff && g[5] === 0) return isBlockedV4(v4FromGroups(g[6], g[7])); // ::ffff:0:a.b.c.d (SIIT)
   if (g[0] === 0x2001 && g[1] === 0) return true;                    // Teredo
   if (g[0] === 0x2002) return isBlockedV4(v4FromGroups(g[1], g[2])); // 6to4: 埋め込まれたIPv4を見る
   return false;
@@ -235,6 +237,8 @@ function requestOnce(u, addr, deadline, image) {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        // 読むのをやめたら、展開ストリームも壊す。res だけ壊すと、入力済みの圧縮データが最後まで展開され続けて CPU を食う(圧縮爆弾)
+        try { if (src !== res) { res.unpipe(src); src.destroy(); } res.destroy(); } catch (e) { /* 既に閉じている */ }
         resolve({ body: Buffer.concat(chunks), contentType: ct });
       };
       src.on('data', (c) => {
@@ -311,6 +315,8 @@ function decodeEntities(s) {
 }
 function plain(s, max) {
   if (typeof s !== 'string') return '';
+  // 長すぎる入力は先に切る(以降の正規表現が長い入力で遅くなるのを避ける。表示は max 文字までなので十分)
+  if (s.length > max * 8) s = s.slice(0, max * 8);
   // 先にエンティティを戻してからタグを落とす(&lt;b&gt; のように隠した形でも、最終的にタグは残らない)
   let t = decodeEntities(s).replace(/<[^>]*>/g, ' ');
   t = t.replace(/[<>]/g, '');                    // 閉じていない < > も落とす(HTMLとして解釈させない)
@@ -331,20 +337,55 @@ function parseAttrs(tag) {
   return attrs;
 }
 
+// 正規表現ではなく、indexOf と1回なぞるだけの走査で読む。
+// 以前の正規表現は「閉じない引用符」を含む入力で、<meta の出現ごとに末尾まで読み直す2乗の時間になり、
+// 悪意あるページ1つでサーバー全体が数秒〜止まった(ReDoS)。ここは入力が何であっても、かかる時間が入力の大きさに比例する。
+const META_TAG_MAX = 4096;     // 1つのタグの最大長。これを超える(=閉じない)タグは読み飛ばす
+const META_TRIES_MAX = 400;    // 試すタグの数の上限(正常なページの head にある meta は多くても数十個)
+function lowerAscii(s) { return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32)); } // 長さを変えない小文字化
+function scanMetaTags(head, low) {
+  const out = [];
+  let pos = 0;
+  for (let tries = 0; tries < META_TRIES_MAX; tries++) {
+    const i = low.indexOf('<meta', pos);
+    if (i < 0) break;
+    const nc = low.charCodeAt(i + 5);
+    if (nc !== 62 && nc !== 47 && !(nc === 32 || (nc >= 9 && nc <= 13))) { pos = i + 5; continue; } // <metadata> などは別物
+    const lim = Math.min(head.length, i + 5 + META_TAG_MAX);
+    let q = 0, end = -1;
+    for (let j = i + 5; j < lim; j++) {
+      const c = head.charCodeAt(j);
+      if (q) { if (c === q) q = 0; } else if (c === 34 || c === 39) q = c; else if (c === 62) { end = j; break; } // 引用符の中の > では閉じない
+    }
+    if (end < 0) { pos = i + 5; continue; }
+    out.push(head.slice(i + 5, end));
+    pos = end + 1;
+  }
+  return out;
+}
+function scanTitle(head, low) {
+  const i = low.indexOf('<title');
+  if (i < 0) return '';
+  const nc = low.charCodeAt(i + 6);
+  if (nc !== 62 && !(nc === 32 || (nc >= 9 && nc <= 13))) return '';
+  const gt = low.indexOf('>', i + 6);
+  if (gt < 0) return '';
+  const te = low.indexOf('</title', gt + 1);
+  return head.slice(gt + 1, te < 0 ? gt + 1 + 2000 : Math.min(te, gt + 1 + 2000));
+}
+
 function extractMeta(html, baseUrl) {
-  // <head> の外(本文)のmetaは見ない。無ければ先頭から
+  // <head> の外(本文)のmetaは見ない。無ければ全体(読む量はもともと上限がある)
   const headEnd = html.search(/<\/head\s*>/i);
   const head = headEnd > 0 ? html.slice(0, headEnd) : html;
+  const low = lowerAscii(head);
   const meta = {};
-  // 引用符の中の > では閉じない(属性値に <script> のような文字が入っていても、タグの終わりを取り違えない)
-  const re = /<meta\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-  let m;
-  while ((m = re.exec(head))) {
-    const a = parseAttrs(m[1]);
+  for (const tag of scanMetaTags(head, low)) {
+    const a = parseAttrs(tag);
     const key = (a.property || a.name || '').toLowerCase();
     if (key && a.content !== undefined && !(key in meta)) meta[key] = a.content;
   }
-  const t = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(head);
+  const titleText = scanTitle(head, low);
 
   let image = '';
   const rawImg = meta['og:image'] || meta['og:image:url'] || meta['twitter:image'] || meta['twitter:image:src'] || '';
@@ -356,7 +397,7 @@ function extractMeta(html, baseUrl) {
     } catch (e) { /* 無効なら画像なし */ }
   }
   return {
-    title: plain(meta['og:title'] || meta['twitter:title'] || (t ? t[1] : ''), 200),
+    title: plain(meta['og:title'] || meta['twitter:title'] || titleText, 200),
     description: plain(meta['og:description'] || meta['twitter:description'] || meta['description'] || '', 300),
     image,
     siteName: plain(meta['og:site_name'] || '', 100),
@@ -378,6 +419,52 @@ function cachePut(k, v) {
   while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
 }
 function _clearCache() { cache.clear(); imgCache.clear(); imgBytes = 0; }
+
+// 画像の縦横(ピクセル)をヘッダーだけから読む。読めなければ null。
+// 1.5MBに収まっても、20000x20000のような巨大な画像はあり、見る人のブラウザが展開しきれず落ちる(画像爆弾)。
+const MAX_PIXELS = 25 * 1000 * 1000;
+function imageSize(buf, type) {
+  try {
+    if (type === 'image/png') {
+      if (buf.length < 24 || buf.toString('latin1', 1, 4) !== 'PNG') return null;
+      return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+    }
+    if (type === 'image/gif') {
+      if (buf.length < 10) return null;
+      return [buf.readUInt16LE(6), buf.readUInt16LE(8)];
+    }
+    if (type === 'image/jpeg') {
+      let i = 2;
+      while (i + 9 < buf.length) {
+        if (buf[i] !== 0xff) { i++; continue; }
+        const m = buf[i + 1];
+        if (m === 0xff) { i++; continue; }
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        const len = buf.readUInt16BE(i + 2);
+        if ((m >= 0xc0 && m <= 0xc3) || (m >= 0xc5 && m <= 0xc7) || (m >= 0xc9 && m <= 0xcb) || (m >= 0xcd && m <= 0xcf)) {
+          return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+        }
+        if (len < 2) return null;
+        i += 2 + len;
+      }
+      return null;
+    }
+    if (type === 'image/webp') {
+      if (buf.length < 30 || buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WEBP') return null;
+      const k = buf.toString('latin1', 12, 16);
+      if (k === 'VP8X') return [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)];
+      if (k === 'VP8L') { const b = buf.readUInt32LE(21); return [1 + (b & 0x3fff), 1 + ((b >> 14) & 0x3fff)]; }
+      if (k === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+      return null;
+    }
+    if (type === 'image/avif') {
+      const i = buf.indexOf('ispe');
+      if (i < 0 || i + 16 > buf.length) return null;
+      return [buf.readUInt32BE(i + 8), buf.readUInt32BE(i + 12)];
+    }
+  } catch (e) { /* 読めない */ }
+  return null;
+}
 
 // 画像のプロキシ。クライアントが外のサイトの画像を直接読むと、見た人のIPが相手サイトに伝わり、CSPも通らない。
 // なのでサーバーが代わりに取り(上と同じSSRF対策)、1.5MBまでのpng/jpeg/gif/webp/avifだけ返す。
@@ -402,6 +489,8 @@ async function getImage(rawUrl, resolver = defaultResolver) {
   if (hit) { imgBytes -= hit.v.buf.length; imgCache.delete(key); }
   const r = await fetchHtml(key, resolver, true);
   if (!r.buf.length) throw new PreviewError('画像を取得できませんでした', 422);
+  const dim = imageSize(r.buf, r.contentType);
+  if (!dim || !dim[0] || !dim[1] || dim[0] * dim[1] > MAX_PIXELS) throw new PreviewError('画像が大きすぎます', 422);
   const v = { buf: r.buf, contentType: r.contentType };
   imgCachePut(key, v);
   return v;
@@ -421,4 +510,4 @@ async function getPreview(rawUrl, resolver = defaultResolver) {
   return out;
 }
 
-module.exports = { getPreview, getImage, isBlockedIp, extractMeta, parseHttpUrl, PreviewError, _clearCache };
+module.exports = { getPreview, getImage, imageSize, isBlockedIp, extractMeta, parseHttpUrl, PreviewError, _clearCache };

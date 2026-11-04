@@ -119,15 +119,25 @@ test('友だち申請の途中でも、コードを入れればそのまま友�
   assert.ok((await friendIds(a)).includes(b.userId));
 });
 
-test('友だちを削除したあと、同じコードでまた友だちになれる(人数は増えない)', async () => {
-  const a = await S.user('Re1'); const b = await S.user('Re2');
-  const code = (await a.call('POST', '/api/invites', { maxUses: 1, expiresInDays: 7 })).data.invite.code;
-  assert.equal((await b.call('POST', '/api/invites/redeem', { code })).status, 200);
-  await b.call('POST', '/api/friends/remove', { userId: a.userId });
+test('友だちを削除したあと、使い切りのコードでは戻れない。人数に空きがあれば、新しく1人ぶん使って戻れる', async () => {
+  const a = await S.user('Re1'); const b = await S.user('Re2'); const c = await S.user('Re3');
+  // 使い切り(1人)のコード: 外された人は同じコードで黙って戻れない
+  const one = (await a.call('POST', '/api/invites', { maxUses: 1, expiresInDays: 7 })).data.invite.code;
+  assert.equal((await b.call('POST', '/api/invites/redeem', { code: one })).status, 200);
+  await a.call('POST', '/api/friends/remove', { userId: b.userId });
   assert.ok(!(await friendIds(a)).includes(b.userId));
-  const again = await b.call('POST', '/api/invites/redeem', { code });
-  assert.equal(again.status, 200);
-  assert.ok((await friendIds(a)).includes(b.userId));
+  assert.equal((await b.call('POST', '/api/invites/redeem', { code: one })).status, 404, '使い切りのコードでは戻れない');
+  assert.ok(!(await friendIds(a)).includes(b.userId));
+  // 空きのあるコード: 戻れるが、人数は新しく1つ使う
+  const five = (await a.call('POST', '/api/invites', { maxUses: 5, expiresInDays: 7 })).data.invite.code;
+  assert.equal((await c.call('POST', '/api/invites/redeem', { code: five })).status, 200);
+  await c.call('POST', '/api/friends/remove', { userId: a.userId });
+  assert.equal((await c.call('POST', '/api/invites/redeem', { code: five })).status, 200);
+  assert.ok((await friendIds(a)).includes(c.userId));
+  assert.equal((await a.call('GET', '/api/invites')).data.codes.find(x => x.code === five).uses, 2);
+  // 戻った後に同じコードをもう一度入れても、それ以上は減らない
+  assert.equal((await c.call('POST', '/api/invites/redeem', { code: five })).data.already, true);
+  assert.equal((await a.call('GET', '/api/invites')).data.codes.find(x => x.code === five).uses, 2);
 });
 
 test('コードを消すと、まだ使っていない人は使えない。すでに友だちの人はそのまま', async () => {
