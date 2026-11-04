@@ -5,6 +5,20 @@
 
   const URL_REGEX = /(?:https?:\/\/|www\.)[\w\-._~:/?#\[\]@!$&'()*+,;=%]+[\w\-_~/#=]/gi;
 
+  // リンクの色は class で当てる。自分の吹き出し(青地)やダークモードで青文字が沈まないように、背景ごとに色を変える
+  (function injectCss() {
+    if (document.getElementById('bro-link-css')) return;
+    const st = document.createElement('style');
+    st.id = 'bro-link-css';
+    st.textContent =
+      'a.bro-link{color:#2563eb;text-decoration:underline;text-underline-offset:2px;word-break:break-all}' +
+      'html.dark-mode a.bro-link{color:#7db3ff}' +
+      '.outgoing a.bro-link,.msg.out a.bro-link{color:#1d4ed8}' +
+      'html.dark-mode .outgoing a.bro-link,html.dark-mode .msg.out a.bro-link{color:#fff;text-decoration-thickness:1.5px}' +
+      'a.bro-link:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:3px}';
+    (document.head || document.documentElement).appendChild(st);
+  })();
+
   function escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -22,7 +36,7 @@
     return escaped.replace(URL_REGEX, function(url) {
       let href = url;
       if (href.startsWith('www.')) href = 'https://' + href;
-      return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline;word-break:break-all;">' + url + '</a>';
+      return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" class="bro-link">' + url + '</a>';
     });
   };
 

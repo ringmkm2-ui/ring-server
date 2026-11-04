@@ -9,7 +9,8 @@ const INVALID = { error: '招待コードが無効か、期限切れです' };
 // 入力のゆれ(小文字・ハイフン・空白)を吸収する。形式が違えば null
 function normalizeCode(v) {
   if (typeof v !== 'string' || v.length > 40) return null;
-  const c = v.toUpperCase().replace(/[\s-]/g, '');
+  // 全角の英数・ハイフン・空白(日本語キーボードの入力)を半角にそろえてから見る
+  const c = v.normalize('NFKC').toUpperCase().replace(/[\s\-\u2010-\u2015\u2212\u30fc]/g, '');
   return /^[A-Z0-9]{8}$/.test(c) ? c : null;
 }
 
