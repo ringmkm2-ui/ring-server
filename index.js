@@ -259,6 +259,23 @@ async function main() {
   // 起動時のスプラッシュ画面（Powered by → Welcome画面へ拡大遷移）
   app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'splash.html')));
 
+  // 招待リンク https://ホスト/i/ABCD-EFGH → ログイン画面(コード入力済み)へ。
+  // 誰のコードか・有効かは一切見せない(ここは誰でも開けるので、コードの存在を確かめる道具にならないようにする)。
+  // チャットアプリに貼られた時の表示用に og だけ付ける。中身はどのコードでも同じ文面。
+  app.get('/i/:code', (req, res) => {
+    const code = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const dest = /^[A-Z0-9]{8}$/.test(code) ? '/auth.html?invite=' + code : '/auth.html';
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
+    res.type('html').send(`<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Bro Chat に招待されました</title>
+<meta property="og:type" content="website"><meta property="og:site_name" content="Bro Chat">
+<meta property="og:title" content="Bro Chat に招待されました">
+<meta property="og:description" content="リンクを開いて、招待コードで友だちになろう。メールアドレスもパスワードも要りません。">
+<meta http-equiv="refresh" content="0;url=${dest}"></head>
+<body style="font-family:sans-serif;padding:32px"><a href="${dest}">Bro Chat を開く</a></body></html>`);
+  });
+
   app.use('/api/auth', authRouter);
   app.use('/api/prekeys', prekeysRouter);
   app.use('/api/icons', iconUploadRouter);

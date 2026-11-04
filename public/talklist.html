@@ -524,6 +524,19 @@ html.dark-mode .pwa-banner-title{color:#e2e8f0}
 html.dark-mode .pwa-banner-desc{color:#94a3b8}
 html.dark-mode .pwa-banner-close svg{stroke:#94a3b8}
 .sg label{display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px}
+.gup-in{width:100%;padding:12px 16px;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:16px;font-weight:600;color:#0f172a;font-family:inherit}
+.gup-in:focus{border-color:#007aff}
+html.dark-mode .gup-in{background:#1e293b;color:#f1f5f9;border-color:rgba(255,255,255,.14)}
+.gup-note{font-size:13px;line-height:1.65;margin:0 0 14px;color:#475569}
+html.dark-mode .gup-note{color:#cbd5e1}
+.gup-err{font-size:13px;line-height:1.5;margin:-6px 0 12px;color:#ef4444;min-height:0}
+.gup-ok{display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0 4px;text-align:center}
+.gup-ok svg{color:#16a34a}
+.gup-mail{font-weight:800;word-break:break-all}
+.gup-code:not(:placeholder-shown){letter-spacing:6px;font-size:22px;text-align:center}
+.gup-code{text-align:center}
+.gup-link{background:none;border:0;padding:10px 4px;color:#007aff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.gup-link:disabled{color:#94a3b8;cursor:default}
 .sg input[type=text]{width:100%;padding:12px 16px;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;box-sizing:border-box;outline:none;font-size:15px;font-weight:600}
 .fiw{position:relative;margin-bottom:10px}
 .fiw input[type=file]{position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer}
@@ -713,6 +726,7 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 .inv-main{flex:1;min-width:0}
 .inv-name{font-weight:700;color:#0f172a;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inv-sub{font-size:12px;color:#64748b;margin-top:2px;line-height:1.4}
+.inv-who{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .inv-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:.06em;color:#0f172a}
 .inv-row.dead .inv-code{color:#94a3b8}
 .inv-acts{display:flex;align-items:center;gap:6px;flex-shrink:0}
@@ -1113,6 +1127,7 @@ window.ensureGroupCrypto = (function () {
     </div>
     <div class="set-section-title" data-i18n="security">アカウントのセキュリティ</div>
     <div class="set-group">
+      <button type="button" class="set-row set-btn" id="setGuestUp" style="display:none"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg><span data-i18n="gup_row">メールとパスワードを設定</span></span><span class="set-val" data-i18n="gup_row_val">未設定</span></button>
       <label class="set-row"><span data-i18n="sec_login_alert">新しい端末のログインをメールで知らせる</span><input type="checkbox" class="ios-switch" id="setLoginAlert"></label>
       <button type="button" class="set-row set-btn" id="setSessions"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><rect x="17" y="9" width="5" height="11" rx="1.5"/><path d="M6 18h6"/></svg><span data-i18n="sec_sessions">ログイン中の端末</span></span><span class="set-val" id="setSessionsVal"></span></button>
       <button type="button" class="set-row set-btn" id="setSecurity"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9-4.8-.7-8-4.5-8-9V6l8-3z"/><polyline points="9 12 11 14 15 10"/></svg><span data-i18n="twofa_row">2段階認証</span></span><span class="set-val" id="setSecVal"></span></button>
@@ -1181,6 +1196,14 @@ window.ensureGroupCrypto = (function () {
   <div class="mc">
     <h3 class="mtitle" id="secTitle" data-i18n="twofa_title">2段階認証</h3>
     <div id="secBody"></div>
+  </div>
+</div>
+
+<!-- ゲスト(招待コードで始めた人)にメールとパスワードを付ける -->
+<div class="mov" id="gupMov">
+  <div class="mc">
+    <h3 class="mtitle" id="gupTitle" data-i18n="gup_title">メールとパスワードを設定</h3>
+    <div id="gupBody"></div>
   </div>
 </div>
 
@@ -2502,7 +2525,9 @@ function openChat(userId, name, pic) {
 }
 
 // 友達追加モーダル（下から上にスライドアニメーション）
-function openAddFriend() {
+function openAddFriend(opts) {
+  // data-call 経由だとイベント等が渡ってくることがあるので、code が文字列の時だけ招待リンクからの呼び出しとみなす
+  const linkCode = opts && typeof opts.code === 'string' ? opts.code : '';
   // 既存があれば削除
   const existing = document.getElementById('addFriendMov');
   if (existing) existing.remove();
@@ -2546,7 +2571,7 @@ function openAddFriend() {
 
   mov.appendChild(sheet);
   document.body.appendChild(mov);
-  initInviteMode(sheet);
+  initInviteMode(sheet, linkCode ? { code: linkCode } : null);
   // 動的に作ったシートにも翻訳キーを適用する(これが無いと、日本語の直書きを英語に自動置換する処理が先に走り、韓国語・中国語でも英語や日本語のまま残る)
   if (window.applyI18n) window.applyI18n(sheet);
 
@@ -2573,6 +2598,7 @@ function openAddFriend() {
 }
 
 function closeAddFriend() {
+  try { sessionStorage.removeItem('bc_pending_invite'); } catch (_) {}   // 招待リンクで開いた画面を閉じたら、もう開き直さない
   const mov = document.getElementById('addFriendMov');
   if (!mov) return;
   const sheet = mov.querySelector('div:last-child') || mov.children[0];
@@ -2591,6 +2617,7 @@ const INV_ICONS = {
   copy: '<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/>',
   share: '<path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
+  link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.1 1.1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.1-1.1"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>'
 };
 function invSvg(name) { // 固定のSVGだけ。サーバーの値は入れない
@@ -2607,6 +2634,13 @@ function invFmtCode(c) {
   const s = String(c || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   return s.length > 4 ? s.slice(0, 4) + '-' + s.slice(4) : s;
 }
+// 入力欄に貼られたものからコードだけ取り出す。「https://…/i/ABCD1234」や「…?invite=ABCD1234」「ABCD-EFGH」どれでも
+function invExtractCode(raw) {
+  const v = String(raw || '');
+  const m = /\/i\/([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(v) || /[?&]invite=([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(v);
+  return (m ? m[1] : v).replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
+}
+function invLink(code) { return location.origin + '/i/' + String(code).replace(/[^A-Za-z0-9]/g, '').toUpperCase(); }
 function invErr(d) { return (d && typeof d.error === 'string' && d.error) || t2('inv_err_net', '通信に失敗しました。もう一度試してください'); }
 function invMeta(c) {
   const hasMax = typeof c.maxUses === 'number';
@@ -2650,6 +2684,12 @@ function invBuildRow(c, ctx) {
   const main = invMk('div', 'inv-main');
   main.appendChild(invMk('div', 'inv-code', code));
   main.appendChild(invMk('div', 'inv-sub', invMeta(c)));
+  if (Array.isArray(c.joined) && c.joined.length) {
+    // 誰が使ったか(新しい順に最大5人)。使用人数より少ない時は「ほか」を付ける
+    const names = c.joined.map(j => String(j.displayName || '')).filter(Boolean).slice(0, 3).join('、');
+    const more = (c.uses || 0) > Math.min(3, c.joined.length);
+    main.appendChild(invMk('div', 'inv-sub inv-who', invFmt(t2(more ? 'inv3_joined_more' : 'inv3_joined', '参加: {names}'), { names: names })));
+  }
   const acts = invMk('div', 'inv-acts');
 
   const cp = invIconBtn('copy', t2('inv_copy', 'コピー'));
@@ -2661,10 +2701,19 @@ function invBuildRow(c, ctx) {
   });
   acts.appendChild(cp);
 
+  const lk = invIconBtn('link', t2('inv3_copy_link', '招待リンクをコピー'));
+  lk.addEventListener('click', async () => {
+    if (!(await invCopyText(invLink(c.code)))) return;
+    lk.innerHTML = invSvg('check');
+    clearTimeout(lk.__t);
+    lk.__t = setTimeout(() => { lk.innerHTML = invSvg('link'); }, 1400);
+  });
+  acts.appendChild(lk);
+
   if (navigator.share) {
     const sh = invIconBtn('share', t2('inv_share', '共有'));
     sh.addEventListener('click', () => {
-      Promise.resolve(navigator.share({ text: invFmt(t2('inv_share_text', 'Bro Chat の招待コード: {code}'), { code }) })).catch(() => {});
+      Promise.resolve(navigator.share({ text: invFmt(t2('inv3_share_text', 'Bro Chat で友だちになろう。コード: {code}'), { code }), url: invLink(c.code) })).catch(() => {});
     });
     acts.appendChild(sh);
   }
@@ -2696,7 +2745,7 @@ function invBuildPane(pane) {
   const lbl = invMk('label', 'inv-sec first', t2('inv_enter_title', 'コードを入力'));
   const input = invMk('input', 'inv-in');
   input.id = 'invCodeInput'; lbl.htmlFor = input.id;
-  input.type = 'text'; input.maxLength = 12; input.autocomplete = 'off'; input.spellcheck = false;
+  input.type = 'text'; input.maxLength = 120; input.autocomplete = 'off'; input.spellcheck = false;
   input.setAttribute('autocapitalize', 'characters'); input.setAttribute('autocorrect', 'off');
   input.placeholder = t2('inv_input_ph', '例: ABCD-EFGH');
   const go = invMk('button', 'inv-btn glass-clear glass-interactive', t2('inv_redeem_btn', '友だちになる'));
@@ -2704,15 +2753,18 @@ function invBuildPane(pane) {
   const res = invMk('div');
   let busy = false;
   input.addEventListener('input', () => {
-    const up = input.value.toUpperCase();
-    if (up === input.value) return;
+    // リンクやメッセージごと貼られたら、コードだけに直す。普通に打っている間は大文字にするだけ
+    const raw = input.value;
+    const looksLong = raw.length > 9 || /[\/?=:]/.test(raw);
+    const fixed = looksLong ? invFmtCode(invExtractCode(raw)) : raw.toUpperCase();
+    if (fixed === raw) return;
     const p = input.selectionStart;
-    input.value = up;
-    try { input.setSelectionRange(p, p); } catch (_) {}
+    input.value = fixed;
+    try { input.setSelectionRange(Math.min(p, fixed.length), Math.min(p, fixed.length)); } catch (_) {}
   });
   const redeem = async () => {
     if (busy) return;
-    const code = input.value.replace(/[\s-]/g, '').toUpperCase();
+    const code = invExtractCode(input.value);
     res.textContent = '';
     if (!code) { res.appendChild(invMk('div', 'inv-msg err', t2('inv_err_empty', 'コードを入力してください'))); return; }
     busy = true; go.disabled = true;
@@ -2734,6 +2786,7 @@ function invBuildPane(pane) {
         ok.appendChild(av); ok.appendChild(main);
         res.appendChild(ok);
         input.value = '';
+        try { sessionStorage.removeItem('bc_pending_invite'); } catch (_) {}
         // friends_changed を受けた時と同じ更新
         try { loadPendingRequests(); } catch (_) {}
         try { scheduleTalkRefresh(); } catch (_) {}
@@ -2807,9 +2860,15 @@ function invBuildPane(pane) {
   });
 
   [lbl, input, go, res, myT, list, listMsg, newT, sel, mk, mkMsg].forEach(n => pane.appendChild(n));
-  return { load, focus: () => input.focus() };
+  // 招待リンクから来た時: コードを入れておき、押すのは本人(リンクを開いただけで勝手に友だちにはしない)
+  const setCode = (c) => {
+    input.value = invFmtCode(c);
+    res.textContent = '';
+    res.appendChild(invMk('div', 'inv-sub', t2('inv3_from_link', '招待リンクのコードを入れました。「友だちになる」を押すと追加されます')));
+  };
+  return { load, focus: () => input.focus(), setCode };
 }
-function initInviteMode(sheet) {
+function initInviteMode(sheet, opts) {
   const idPane = sheet.querySelector('#afIdPane'), pane = sheet.querySelector('#afCodePane');
   const tabId = sheet.querySelector('#afTabId'), tabCode = sheet.querySelector('#afTabCode');
   if (!idPane || !pane || !tabId || !tabCode) return;
@@ -2827,7 +2886,26 @@ function initInviteMode(sheet) {
   };
   tabId.addEventListener('click', () => show(false));
   tabCode.addEventListener('click', () => show(true));
+  if (opts && opts.code) { show(true); if (inv) inv.setCode(opts.code); }
 }
+
+// 招待リンク(/i/コード → auth.html → ここ ?invite=コード)で来た時は、友だち追加の画面を招待コード入りで開く。
+// このページは起動直後に1回読み込み直すことがあるので、URLからは消しても、開くまでは sessionStorage に覚えておく
+(function () {
+  const KEY = 'bc_pending_invite';
+  try {
+    let c = invExtractCode(new URLSearchParams(location.search).get('invite') || '');
+    if (c.length === 8) {
+      try { sessionStorage.setItem(KEY, c); } catch (_) {}
+      history.replaceState(null, '', location.pathname + location.hash);
+    } else {
+      try { c = invExtractCode(sessionStorage.getItem(KEY) || ''); } catch (_) { c = ''; }
+    }
+    if (c.length !== 8) return;
+    // 覚えたコードは、画面を閉じるか友だちになるまで消さない(開いた直後に読み込み直されても、もう一度開く)
+    window.addEventListener('load', () => setTimeout(() => { try { openAddFriend({ code: c }); } catch (_) {} }, 900));
+  } catch (_) {}
+})();
 
 async function searchFriend() {
   const q = document.getElementById('addFriendInput').value.trim();
@@ -2929,6 +3007,7 @@ document.getElementById('openSettings').onclick=()=>{
   document.getElementById('setVersion').textContent = vb ? vb.textContent.replace('Bro Chat ', '') : '';
   document.getElementById('setMyId').textContent = localStorage.getItem('ring_userIdCode') || (document.getElementById('myIdCode') || {}).textContent || '';
   refreshSecRow();
+  refreshGuestRow();
   applyServerSettingsToUI();
   if (typeof refreshAppLockRows === 'function') { refreshAppLockRows(); refreshSecureNote(); }
   if (window.bcSettings) bcSettings.refresh().then(applyServerSettingsToUI).catch(() => {});
@@ -4498,6 +4577,169 @@ function askKeepKeys() {
   });
 }
 
+// --- ゲストにメールとパスワードを付ける(設定 > アカウントのセキュリティ、またはログアウトの警告から) ---
+// 流れ: メール+パスワードを入れる → 届いた6桁のコードを入れる → 完了。コードが合うまでアカウントは何も変わらない
+const gupMov = document.getElementById('gupMov');
+const gupBody = document.getElementById('gupBody');
+let gupEmail = '', gupTimer = null;
+const GUP_EMAIL_RE = /^[^\s@<>"'`]+@[^\s@<>"'`]+\.[^\s@<>"'`]+$/;
+function gupNode(tag, text, cls) { const el = document.createElement(tag); if (text != null) el.textContent = text; if (cls) el.className = cls; return el; }
+function gupInput(type, placeholder, autocomplete, max) {
+  const i = document.createElement('input');
+  i.type = type; i.placeholder = placeholder; i.className = 'gup-in';
+  i.setAttribute('autocomplete', autocomplete); i.setAttribute('autocapitalize', 'off'); i.setAttribute('autocorrect', 'off'); i.spellcheck = false;
+  i.maxLength = max || 254;
+  const w = gupNode('div', null, 'sg'); w.appendChild(i); w._i = i;
+  return w;
+}
+function gupBtn(label, kind, onClick) {
+  const b = gupNode('button', label, kind === 'gup-link' ? kind : kind + ' btn-glass glass-clear glass-interactive');
+  b.type = 'button'; b.addEventListener('click', onClick);
+  return b;
+}
+let gupDoneFlag = false;
+function gupClose() {
+  clearInterval(gupTimer); gupMov.classList.remove('open');
+  if (gupDoneFlag) { gupDoneFlag = false; if (typeof ytToast === 'function') ytToast(t2('gup_toast', 'メールとパスワードを設定しました')); }
+}
+function gupBusy(btn, on) { btn.disabled = on; btn.style.opacity = on ? '.6' : ''; }
+function gupFinish(root) { if (window.applyI18n) window.applyI18n(root || gupBody); }
+async function gupPost(path, body) {
+  try {
+    const res = await fetch(path, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: t2('gup_net', 'ネットワークに繋がりません。接続を確認してもう一度お試しください') } };
+  }
+}
+// ゲストでなくなっていたら(別の端末で設定済み)、印と行を消す
+async function refreshGuestRow() {
+  const row = document.getElementById('setGuestUp');
+  if (!row) return;
+  let guest = false;
+  try { guest = localStorage.getItem('ring_guest') === '1'; } catch (e) {}
+  row.style.display = guest ? '' : 'none';
+  if (!guest) return;
+  try {
+    const d = await api('/api/auth/guest/status');
+    if (d && d.guest === false) { try { localStorage.removeItem('ring_guest'); } catch (e) {} row.style.display = 'none'; }
+  } catch (e) { /* 取れなくても行は出したままにする */ }
+}
+function openGuestUpgrade() {
+  gupEmail = '';
+  gupRenderForm();
+  gupMov.classList.add('open');
+  // 前にコードを送ったまま途中ならすぐ続きに入れる
+  api('/api/auth/guest/status').then(d => {
+    if (d && d.guest === false) { try { localStorage.removeItem('ring_guest'); } catch (e) {} gupClose(); refreshGuestRow(); }
+    else if (d && d.pending && d.pending.email && !gupEmail) gupRenderForm(d.pending.email);
+  }).catch(() => {});
+}
+function gupRenderForm(pendingEmail) {
+  clearInterval(gupTimer);
+  gupBody.textContent = '';
+  gupBody.appendChild(gupNode('p', t2('gup_intro', 'メールアドレスとパスワードを設定すると、ログアウトしても、機種変更しても、このアカウントに戻れます。今のトークと友だちはそのまま引き継がれます。'), 'gup-note'));
+  const em = gupInput('email', t2('gup_email_ph', 'メールアドレス'), 'email');
+  const pw = gupInput('password', t2('gup_pw_ph', 'パスワード(8文字以上)'), 'new-password', 128);
+  const pw2 = gupInput('password', t2('gup_pw2_ph', 'パスワード(もう一度)'), 'new-password', 128);
+  const err = gupNode('div', '', 'gup-err'); err.setAttribute('role', 'alert');
+  gupBody.append(em, pw, pw2, err);
+  const go = gupBtn(t2('gup_send', '確認コードを送る'), 'savebtn', async () => {
+    const email = em._i.value.trim();
+    err.textContent = '';
+    if (!GUP_EMAIL_RE.test(email)) { err.textContent = t2('gup_e_email', 'メールアドレスの形式が正しくありません'); em._i.focus(); return; }
+    if (pw._i.value.length < 8) { err.textContent = t2('gup_e_pw_short', 'パスワードは8文字以上にしてください'); pw._i.focus(); return; }
+    if (pw._i.value !== pw2._i.value) { err.textContent = t2('gup_e_pw_match', 'パスワードが一致しません'); pw2._i.focus(); return; }
+    gupBusy(go, true);
+    const r = await gupPost('/api/auth/guest/upgrade/start', { email, password: pw._i.value });
+    gupBusy(go, false);
+    if (!r.ok) {
+      if (r.status === 429 && r.data.retryAfter) { gupEmail = email; gupRenderCode(email, r.data.retryAfter, r.data.error); return; } // 送ったばかりなら、続きのコード入力へ
+      err.textContent = r.data.error || t2('gup_fail', '設定できませんでした。もう一度お試しください'); return;
+    }
+    gupRenderCode(r.data.email || email, r.data.retryAfter || 60);
+  });
+  gupBody.appendChild(go);
+  if (pendingEmail) {
+    const cont = gupBtn(t2('gup_have_code', '届いたコードを入力する'), 'gup-link', () => { gupEmail = pendingEmail; gupRenderCode(pendingEmail, 0); });
+    cont.style.cssText = 'display:block;margin:6px auto 0';
+    gupBody.appendChild(cont);
+  }
+  gupBody.appendChild(gupBtn(t2('close', '閉じる'), 'cancelbtn', gupClose));
+  gupFinish();
+}
+function gupRenderCode(email, wait, notice) {
+  gupEmail = email;
+  clearInterval(gupTimer);
+  gupBody.textContent = '';
+  const p = gupNode('p', null, 'gup-note');
+  p.appendChild(document.createTextNode(t2('gup_code_intro', '次のアドレスに6桁の確認コードを送りました。10分以内に入力してください。')));
+  p.appendChild(document.createElement('br'));
+  p.appendChild(gupNode('span', email, 'gup-mail'));
+  gupBody.appendChild(p);
+  const code = gupInput('text', t2('gup_code_ph', '6桁のコード'), 'one-time-code', 8);
+  code._i.setAttribute('inputmode', 'numeric'); code._i.classList.add('gup-code');
+  const err = gupNode('div', notice || '', 'gup-err'); err.setAttribute('role', 'alert');
+  gupBody.append(code, err);
+  const ok = gupBtn(t2('gup_confirm', '確定する'), 'savebtn', async () => {
+    const v = code._i.value.replace(/\s/g, '');
+    err.textContent = '';
+    if (!/^\d{6}$/.test(v)) { err.textContent = t2('gup_e_code', '6桁の数字を入力してください'); code._i.focus(); return; }
+    gupBusy(ok, true);
+    const r = await gupPost('/api/auth/guest/upgrade/confirm', { code: v });
+    gupBusy(ok, false);
+    if (!r.ok) { err.textContent = r.data.error || t2('gup_fail', '設定できませんでした。もう一度お試しください'); return; }
+    gupDone(r.data);
+  });
+  gupBody.appendChild(ok);
+  // 送り直しは60秒あけてから
+  const again = gupBtn('', 'gup-link', () => { gupRenderFormKeep(email); });
+  again.style.cssText = 'display:block;margin:6px auto 0';
+  let left = Math.max(0, Number(wait) || 0);
+  const tick = () => {
+    again.disabled = left > 0;
+    again.textContent = left > 0 ? t2('gup_resend_wait', 'コードを送り直す') + ' (' + left + ')' : t2('gup_resend', 'メールアドレスを直す / コードを送り直す');
+    if (left > 0) left -= 1; else clearInterval(gupTimer);
+  };
+  tick(); gupTimer = setInterval(tick, 1000);
+  gupBody.appendChild(again);
+  gupBody.appendChild(gupBtn(t2('close', '閉じる'), 'cancelbtn', gupClose));
+  gupFinish();
+  setTimeout(() => { try { code._i.focus(); } catch (e) {} }, 350);
+}
+function gupRenderFormKeep(email) { gupRenderForm(); const i = gupBody.querySelector('input[type=email]'); if (i) i.value = email; }
+function gupDone(data) {
+  clearInterval(gupTimer);
+  // 新しいトークンと名前を保存し、ゲストの印を外す。今開いているこのページは前のトークンのまま使える(失効させていない)
+  try {
+    localStorage.setItem('ring_token', data.token);
+    localStorage.setItem('ring_username', data.username);
+    localStorage.removeItem('ring_guest');
+  } catch (e) {}
+  gupBody.textContent = '';
+  const box = gupNode('div', null, 'gup-ok');
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('width', '56'); svg.setAttribute('height', '56'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
+  const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+  const pl = document.createElementNS(NS, 'polyline'); pl.setAttribute('points', '8 12.5 11 15.5 16 9');
+  svg.append(c, pl);
+  box.append(svg, gupNode('div', t2('gup_done_t', '設定しました'), 'mtitle'));
+  const n = gupNode('p', null, 'gup-note'); n.style.margin = '0';
+  n.appendChild(document.createTextNode(t2('gup_done_d', 'これからは、このメールアドレスとパスワードでログインできます。')));
+  n.appendChild(document.createElement('br'));
+  n.appendChild(gupNode('span', data.username, 'gup-mail'));
+  box.appendChild(n);
+  gupBody.appendChild(box);
+  gupBody.appendChild(gupBtn(t2('close', '閉じる'), 'savebtn', gupClose));
+  gupFinish();
+  refreshGuestRow();
+  gupDoneFlag = true;
+}
+document.getElementById('setGuestUp').addEventListener('click', openGuestUpgrade);
+gupMov.addEventListener('click', e => { if (e.target === gupMov) gupClose(); });
+refreshGuestRow();
+
 // 招待コードで始めたアカウント(メールもパスワードも無い)は、ログアウトすると戻れない。先に確認する
 function askGuestLogout() {
   return new Promise(resolve => {
@@ -4507,9 +4749,12 @@ function askGuestLogout() {
     box.style.cssText = 'width:100%;max-width:420px;background:var(--card-bg,#fff);color:var(--text,#111);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
     const m = document.createElement('div'); m.style.cssText = 'font-size:14px;line-height:1.6;opacity:.85';
     m.textContent = t2('inv2_guest_logout_msg', 'メールとパスワードが無いため、ログアウトするとこのアカウントには戻れません。本当にログアウトしますか?');
+    const hint = document.createElement('div'); hint.style.cssText = 'font-size:13px;line-height:1.6;opacity:.7';
+    hint.textContent = t2('gup_logout_hint', 'メールとパスワードを設定しておけば、ログアウトしても戻れます。1分ほどで終わります。');
     const done = v => { ov.remove(); resolve(v); };
     const mk = (label, bg, fg, v) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'padding:13px;border-radius:14px;border:0;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;background:' + bg + ';color:' + fg; b.addEventListener('click', () => done(v)); return b; };
-    box.append(m,
+    box.append(m, hint,
+      mk(t2('gup_logout_setup', 'メールとパスワードを設定する'), '#007aff', '#fff', 'setup'),
       mk(t2('inv2_guest_cancel', 'キャンセル'), 'rgba(127,127,127,.15)', 'inherit', false),
       mk(t2('inv2_guest_logout_ok', 'ログアウトする'), 'rgba(239,68,68,.12)', '#ef4444', true));
     ov.appendChild(box);
@@ -4521,7 +4766,11 @@ function askGuestLogout() {
 async function logout() {
   let guest = false;
   try { guest = localStorage.getItem('ring_guest') === '1'; } catch (e) {}
-  if (guest && !(await askGuestLogout())) return;
+  if (guest) {
+    const ans = await askGuestLogout();
+    if (ans === 'setup') { openGuestUpgrade(); return; }   // 先にメールとパスワードを付ける(終わったらもう一度ログアウトを押せば、確認なしで出られる)
+    if (ans !== true) return;
+  }
   let wipe = false;
   try {
     const kb = window.bcKeyBackup && window.bcKeyBackup._internal;

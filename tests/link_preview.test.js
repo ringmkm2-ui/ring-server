@@ -4,10 +4,12 @@ process.env.NODE_ENV = 'test';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
+const zlib = require('zlib');
 const { startServer } = require('./helpers');
 const lp = require('../utils/linkPreview');
 
 let S, T, port, hits;
+const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const BIG = '<html><head><title>Big page</title></head><body>' + 'x'.repeat(700 * 1024) + '</body></html>';
 
 before(async () => {
@@ -34,6 +36,41 @@ before(async () => {
     if (req.url === '/plain') return html('<title>no</title>', 'text/plain');
     if (req.url === '/json') return html('{"a":1}', 'application/json');
     if (req.url === '/slow') return; // 応答しない
+    if (req.url === '/sjis') {
+      const sj = new TextEncoder(); void sj;
+      // 「日本語のタイトル」を Shift_JIS のバイト列で返す(文字コードは Content-Type で宣言)
+      const bytes = Buffer.from([0x93,0xfa,0x96,0x7b,0x8c,0xea,0x82,0xcc,0x83,0x5e,0x83,0x43,0x83,0x67,0x83,0x8b]);
+      res.writeHead(200, { 'content-type': 'text/html; charset=Shift_JIS' });
+      return res.end(Buffer.concat([Buffer.from('<html><head><title>'), bytes, Buffer.from('</title></head></html>')]));
+    }
+    if (req.url === '/sjis-meta') {
+      const bytes = Buffer.from([0x93,0xfa,0x96,0x7b,0x8c,0xea]);
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end(Buffer.concat([Buffer.from('<html><head><meta charset="shift_jis"><title>'), bytes, Buffer.from('</title></head></html>')]));
+    }
+    if (req.url === '/gzip' || req.url === '/br' || req.url === '/deflate') {
+      const html = Buffer.from('<html><head><title>圧縮されたページ</title></head></html>');
+      const [enc, out] = req.url === '/gzip' ? ['gzip', zlib.gzipSync(html)] : req.url === '/br' ? ['br', zlib.brotliCompressSync(html)] : ['deflate', zlib.deflateSync(html)];
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-encoding': enc });
+      return res.end(out);
+    }
+    if (req.url === '/bomb') {
+      // 小さく圧縮した巨大データ。展開後の上限で打ち切って、頭にあるタイトルは拾えること
+      const big = Buffer.concat([Buffer.from('<html><head><title>bomb head</title></head><body>'), Buffer.alloc(200 * 1024 * 1024, 0x78)]);
+      res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'gzip' });
+      return res.end(zlib.gzipSync(big));
+    }
+    if (req.url === '/late-title') {
+      // YouTube型: head の中で巨大なスクリプトが先に来て、タイトルは900KB付近
+      return html('<html><head><script>' + 'a'.repeat(900 * 1024) + '</script><title>late title</title><meta property="og:description" content="late desc"></head><body>' + 'z'.repeat(300 * 1024) + '</body></html>');
+    }
+    if (req.url === '/img.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG1); }
+    if (req.url === '/img.svg') { res.writeHead(200, { 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'); }
+    if (req.url === '/img-big.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(Buffer.alloc(2 * 1024 * 1024, 1)); }
+    if (req.url === '/img-liar.png') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<script>alert(1)</script>'); }
+    if (req.url === '/img-redir') { res.writeHead(302, { location: 'http://169.254.169.254/x.png' }); return res.end(); }
+    if (req.url === '/weird-enc') { res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'zstd' }); return res.end('x'); }
+    if (req.url === '/ua') { return html(`<html><head><title>${String(req.headers['user-agent'])}</title></head></html>`); }
     res.writeHead(404); res.end();
   });
   await new Promise(r => T.listen(0, '127.0.0.1', r));
@@ -209,4 +246,100 @@ test('免除の環境変数が無ければ、テスト環境でも 127.0.0.1 は
   delete process.env.LINK_PREVIEW_TEST_ALLOW;
   lp._clearCache();
   await assert.rejects(lp.getPreview(L('/ok')), e => e.status === 400);
+});
+
+// ---- 実際のサイトで起きがちなこと: 文字コード・圧縮・名乗り ----
+
+test('Shift_JIS のページ(Content-Type で宣言)も文字化けせず読める', async () => {
+  const u = await enabled('LpSjis');
+  const r = await q(u, L('/sjis'));
+  assert.equal(r.status, 200);
+  assert.equal(r.data.title, '日本語のタイトル');
+});
+
+test('Shift_JIS を <meta charset> だけで宣言していても読める', async () => {
+  const u = await enabled('LpSjisMeta');
+  const r = await q(u, L('/sjis-meta'));
+  assert.equal(r.status, 200);
+  assert.equal(r.data.title, '日本語');
+});
+
+test('gzip / deflate / br で圧縮されて返ってきても読める', async () => {
+  const u = await enabled('LpZip');
+  for (const p of ['/gzip', '/deflate', '/br']) {
+    const r = await q(u, L(p));
+    assert.equal(r.status, 200, p);
+    assert.equal(r.data.title, '圧縮されたページ', p);
+  }
+});
+
+test('小さく圧縮された巨大データ(zip爆弾)は展開後の大きさで打ち切り、頭のタイトルは拾える', async () => {
+  const u = await enabled('LpBomb');
+  const t0 = Date.now();
+  const r = await q(u, L('/bomb'));
+  assert.equal(r.status, 200);
+  assert.equal(r.data.title, 'bomb head');
+  assert.ok(Date.now() - t0 < 4000, '時間内に返る');
+});
+
+test('知らない圧縮方式は取得失敗として扱う', async () => {
+  const u = await enabled('LpEnc');
+  const r = await q(u, L('/weird-enc'));
+  assert.equal(r.status, 422);
+});
+
+test('名乗りは BroChat だと分かる形', async () => {
+  const u = await enabled('LpUa');
+  const r = await q(u, L('/ua'));
+  assert.equal(r.status, 200);
+  assert.match(r.data.title, /^BroChatLinkPreview\/[\d.]+$/);
+});
+
+test('head の中で巨大スクリプトが先に来て、タイトルが後ろにあるページ(YouTube型)も読める', async () => {
+  const u = await enabled('LpLate');
+  const r = await q(u, L('/late-title'));
+  assert.equal(r.status, 200);
+  assert.equal(r.data.title, 'late title');
+  assert.equal(r.data.description, 'late desc');
+});
+
+// ---- プレビュー画像の中継 ----
+const qi = (u, url) => u.call('GET', '/api/link-preview/image?url=' + encodeURIComponent(url));
+
+test('画像の中継: 設定オフは403、認証なしは401', async () => {
+  const off = await S.user('LpImgOff');
+  assert.equal((await qi(off, L('/img.png'))).status, 403);
+  const anon = await S.req('GET', '/api/link-preview/image?url=' + encodeURIComponent(L('/img.png')));
+  assert.equal(anon.status, 401);
+});
+
+test('画像の中継: png はそのまま返り、nosniff と sandbox が付く', async () => {
+  const u = await enabled('LpImgOk');
+  const r = await fetch(`${S.base}/api/link-preview/image?url=` + encodeURIComponent(L('/img.png')), { headers: { authorization: 'Bearer ' + u.token } });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/png');
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(r.headers.get('content-security-policy') || '', /sandbox/);
+  assert.deepEqual(Buffer.from(await r.arrayBuffer()), PNG1);
+});
+
+test('画像の中継: svg・画像と偽るもの・1.5MB超・内部へのリダイレクトは断る', async () => {
+  const u = await enabled('LpImgBad');
+  for (const p of ['/img.svg', '/img-liar.png', '/img-big.png', '/img-redir']) {
+    const r = await qi(u, L(p));
+    assert.ok(r.status === 422 || r.status === 400, p + ' -> ' + r.status);
+  }
+});
+
+test('画像の中継: 内部アドレスや http:// の画像は(免除なしなら)断る', async () => {
+  const u = await enabled('LpImgSsrf');
+  for (const url of ['http://169.254.169.254/a.png', 'https://10.0.0.1/a.png', 'https://[::1]/a.png', 'http://example.com/a.png', 'file:///etc/passwd']) {
+    const r = await qi(u, url);
+    assert.equal(r.status, 400, url);
+  }
+});
+
+test('画像の中継: 取り出した og:image のURLは https だけが残る(中継は https 以外を断る)', () => {
+  const m = lp.extractMeta('<head><meta property="og:image" content="//cdn.example.com/a.png"></head>', new URL('https://example.com/p'));
+  assert.equal(m.image, 'https://cdn.example.com/a.png');
 });

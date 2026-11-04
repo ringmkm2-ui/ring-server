@@ -419,7 +419,7 @@
       <h2 class="sec-title" data-i18n="inv2_open">招待コードで始める</h2>
       <form id="inviteForm">
         <div class="form-group">
-          <input type="text" id="inviteCode" name="invite-code" maxlength="12" placeholder="ABCD-EFGH" required autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next">
+          <input type="text" id="inviteCode" name="invite-code" maxlength="120" placeholder="ABCD-EFGH" required autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next">
         </div>
         <div class="form-group">
           <input type="text" id="inviteName" name="nickname" placeholder="表示名" data-i18n-placeholder="inv2_name_ph" required autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
@@ -814,7 +814,12 @@
     }
 
     // --- 招待コードで始める(メール・パスワードなし) ---
-    function inviteCodeClean(v) { return String(v || '').replace(/[\s-]/g, '').toUpperCase(); }
+    // 貼られたものが招待リンクでも読めるようにする(…/i/ABCD1234 や …?invite=ABCD1234)
+    function inviteCodeClean(v) {
+      const raw = String(v || '');
+      const m = /\/i\/([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(raw) || /[?&]invite=([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(raw);
+      return (m ? m[1] : raw).replace(/[\s-]/g, '').toUpperCase();
+    }
 
     function showInvite() {
       showOnly('inviteSection');
@@ -940,10 +945,22 @@
     // ページロード時にログイン状態をチェック
     window.addEventListener('load', () => {
       const token = localStorage.getItem('ring_token');
+      // 招待リンク(/i/コード)から来た時のコード。8文字の英数字だけ通す
+      const linkCode = inviteCodeClean(new URLSearchParams(location.search).get('invite') || '');
+      const validLinkCode = /^[A-Z0-9]{8}$/.test(linkCode) ? linkCode : '';
       if (token) {
-        // 既にログイン済み
-        window.location.replace('/talklist.html');
+        // 既にログイン済み。招待リンクなら、友だち追加の画面(コード入り)で開く
+        window.location.replace('/talklist.html' + (validLinkCode ? '?invite=' + validLinkCode : ''));
         return;
+      }
+      if (validLinkCode) {
+        // 未ログイン: コードを入れた状態で「招待コードで始める」を開く。押すのは本人
+        showInvite();
+        const ci = document.getElementById('inviteCode');
+        if (ci) ci.value = validLinkCode.slice(0, 4) + '-' + validLinkCode.slice(4);
+        history.replaceState(null, '', location.pathname);
+        const nm = document.getElementById('inviteName');
+        if (nm) nm.focus();
       }
 
       // アプリ内(WebView)はブラウザ経由のログインに切り替える
@@ -1015,8 +1032,11 @@
     document.getElementById('inviteOpenBtn').addEventListener('click', showInvite);
     document.getElementById('inviteForm').addEventListener('submit', e => window.submitInvite(e));
     document.getElementById('inviteCode').addEventListener('input', function () {
-      const p = this.selectionStart, u = this.value.toUpperCase();
-      if (u !== this.value) { this.value = u; try { this.setSelectionRange(p, p); } catch (_) {} }
+      // リンクごと貼られたらコードだけにする。普通に打っている間は大文字にするだけ
+      const looksLong = this.value.length > 9 || /[\/?=:]/.test(this.value);
+      const p = this.selectionStart;
+      const u = looksLong ? inviteCodeClean(this.value).slice(0, 8) : this.value.toUpperCase();
+      if (u !== this.value) { this.value = u; try { this.setSelectionRange(Math.min(p, u.length), Math.min(p, u.length)); } catch (_) {} }
     });
 </script>
 </body>

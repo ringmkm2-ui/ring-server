@@ -3,7 +3,8 @@
 //
 // プライバシー: リンク先の取得はサーバーが代わりに行う(GET /api/link-preview?url=...)ので、プレビューを出すとそのURLがサーバーに伝わる。
 //   E2E暗号化のトークでは重要なので、設定 linkPreview が true の人だけ動く(未設定=オフ。オフの時はネットワークに何も出さない)。
-// 安全: サーバーから返った文字列は全部 textContent で入れる(HTMLとして解釈しない)。画像は https のものだけ。
+// 安全: サーバーから返った文字列は全部 textContent で入れる(HTMLとして解釈しない)。
+//   画像は外のサイトから直接読まない(閲覧者のIPが相手サイトに伝わるため)。サーバーが中継した画像を blob: にして表示する。
 //   カード全体が <a rel="noopener noreferrer" target="_blank"> で、リンク先はメッセージ本文のURL(サーバーが返したURLではない)。
 //   エラー・403(サーバー側で無効)・タイムアウトは全部「プレビューなし」として黙って無視する。
 //
@@ -65,7 +66,8 @@
   function clean(d) {
     if (!d || typeof d !== 'object') return null;
     const o = { title: clip(d.title, 140), description: clip(d.description, 220), siteName: clip(d.siteName, 60), image: '' };
-    // 画像は出さない: CSPで任意の外部画像は読めず、読めても閲覧者のIPが相手サイトに漏れるため
+    // 画像のURLはここでは使わない(<img src> に入れない)。サーバー経由で取った blob: だけを表示する
+    if (typeof d.image === 'string' && /^https?:\/\//i.test(d.image) && d.image.length <= 500) o.image = d.image;
     return (o.title || o.description) ? o : null;
   }
 
@@ -81,6 +83,29 @@
       if (!r.ok) return null;
       return await r.json();
     } finally { clearTimeout(tm); }
+  }
+
+  // プレビュー画像: サーバーに取りに行かせて blob: にする。同じ画像は作り直さない
+  const imgMem = new Map(); // url -> Promise<string|null>
+  function loadImage(url) {
+    if (imgMem.has(url)) return imgMem.get(url);
+    const p = (async () => {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const tm = setTimeout(() => ctl && ctl.abort(), TIMEOUT);
+      try {
+        const r = await fetch('/api/link-preview/image?url=' + encodeURIComponent(url), {
+          headers: { Authorization: 'Bearer ' + (localStorage.getItem('ring_token') || '') },
+          signal: ctl ? ctl.signal : undefined,
+        });
+        if (!r.ok) return null;
+        const b = await r.blob();
+        if (!/^image\//.test(b.type)) return null;
+        return URL.createObjectURL(b);
+      } catch (e) { return null; } finally { clearTimeout(tm); }
+    })();
+    imgMem.set(url, p);
+    if (imgMem.size > 60) imgMem.delete(imgMem.keys().next().value);
+    return p;
   }
 
   function pump() {
@@ -123,17 +148,23 @@
     document.head.appendChild(s);
   }
 
-  function card(url, d) {
+  function card(url, d, onImage) {
     css();
     const a = document.createElement('a');
     a.className = 'blp'; a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
     a.setAttribute('aria-label', d.title || url);
     if (d.image) {
-      const im = document.createElement('img');
-      im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.referrerPolicy = 'no-referrer';
-      im.addEventListener('error', () => im.remove(), { once: true });
-      im.src = d.image;
-      a.appendChild(im);
+      // 取れた時だけ上に差し込む(取れなければ文字だけのカードのまま)。付いたら高さが変わるので呼び出し側に知らせる
+      loadImage(d.image).then(src => {
+        if (!src || !a.isConnected) return;
+        const im = document.createElement('img');
+        im.alt = ''; im.decoding = 'async';
+        im.addEventListener('error', () => { im.remove(); }, { once: true });
+        im.addEventListener('load', () => { if (onImage) onImage(); }, { once: true });
+        im.src = src;
+        a.style.width = '280px';                       // 画像が付くカードは幅をそろえる(文字だけの時は中身の幅)
+        a.insertBefore(im, a.firstChild);
+      });
     }
     const b = document.createElement('div'); b.className = 'blp-b';
     let host = ''; try { host = new URL(url).hostname; } catch (e) {}
@@ -160,7 +191,7 @@
         if (!d || bubble._blpDone) return;
         if (!enabled()) return;                          // 取得中に設定をオフにされた
         bubble._blpDone = true;
-        bubble.appendChild(card(url, d));
+        bubble.appendChild(card(url, d, () => { if (typeof opts.onAdd === 'function') { try { opts.onAdd(); } catch (e) {} } }));
         if (typeof opts.onAdd === 'function') { try { opts.onAdd(); } catch (e) {} }
       }).catch(() => {});
     } catch (e) {}

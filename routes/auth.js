@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('../db/db');
 const { JWT_SECRET } = require('../utils/jwtSecret');
-const { loginLimiter, registerLimiter, inviteSignupLimiter } = require('../utils/rateLimits');
+const { loginLimiter, registerLimiter, inviteSignupLimiter, guestUpgradeLimiter } = require('../utils/rateLimits');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
@@ -340,6 +340,147 @@ router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req
   }
 });
 
+// --- ゲスト(招待コードで始めた人)に、あとからメールとパスワードを付ける ---
+// 2段階: start でメールとパスワードを預かってコードを送り、confirm でコードが合えば反映する。
+// メールの持ち主だと確かめるまでは何も変えない(他人のメールアドレスを先に押さえられないように)。
+// ゲストとは「ユーザー名が guest_ で始まり、パスワードが空」のアカウント。反映後はふつうのメール+パスワードのアカウントになる。
+const GUEST_SEND_MAX_PER_DAY = 10;    // 1人が1日に送れる確認メールの数(他人のアドレスにメールを送り付ける悪用を止める)
+const GUEST_MISS_MAX_PER_DAY = 15;    // 1人が1日に外せるコードの回数
+
+async function loadGuest(userId) {
+  const u = await db.get('SELECT id, username, password_hash FROM users WHERE id = ?', [userId]);
+  if (!u || !/^guest_/.test(String(u.username || '')) || u.password_hash) return null;
+  return u;
+}
+const NOT_GUEST = { error: 'このアカウントはメールとパスワードを設定する対象ではありません' };
+
+// いまゲストか(別の端末で設定済みなら false)。画面が「設定する」の表示を出すか決めるのに使う
+router.get('/guest/status', verifyToken, async (req, res) => {
+  try {
+    const guest = !!(await loadGuest(req.user.userId));
+    const row = guest ? await db.get('SELECT email, expires_ms FROM guest_upgrades WHERE user_id = ?', [req.user.userId]) : null;
+    const pending = row && Number(row.expires_ms) > Date.now() ? { email: row.email } : null;
+    res.json({ guest, mailConfigured: isMailConfigured(), pending });
+  } catch (e) { sendServerError(res, e, 'guest-status'); }
+});
+
+// body: { email, password }
+router.post('/guest/upgrade/start', verifyToken, guestUpgradeLimiter, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    if (!(await loadGuest(userId))) return res.status(403).json(NOT_GUEST);
+    const { email: rawEmail, password } = req.body || {};
+    if (typeof rawEmail !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'メールアドレスとパスワードを入力してください' });
+    const email = rawEmail.trim().toLowerCase();
+    if (email.length > 254 || !EMAIL_RE.test(email)) return res.status(400).json({ error: 'メールアドレスの形式が正しくありません' });
+    if (/^guest_/.test(email)) return res.status(400).json({ error: 'そのメールアドレスは使えません' });
+    const pwErr = validatePassword(password, email);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+    // 認証コードを送れない環境では、持ち主を確かめられないので進めない
+    if (!isMailConfigured()) return res.status(503).json({ error: '今はメールを送れないため設定できません。あとでもう一度お試しください' });
+
+    // 大文字小文字が違うだけのものも同じ扱い。認証前のまま放置された登録だけは、持ち主が現れた時に譲る(/register と同じ考え方)
+    const taken = await db.get('SELECT id, username, email_verify_required, email_verified_at FROM users WHERE LOWER(username) = ? AND id <> ?', [email, userId]);
+    if (taken && !(truthy(taken.email_verify_required) && !taken.email_verified_at)) {
+      return res.status(409).json({ error: 'そのメールアドレスは既に使われています' });
+    }
+
+    const now = Date.now();
+    const prev = await db.get('SELECT last_sent_ms FROM guest_upgrades WHERE user_id = ?', [userId]);
+    if (prev && now - Number(prev.last_sent_ms || 0) < EMAIL_CODE_COOLDOWN_MS) {
+      const wait = Math.ceil((EMAIL_CODE_COOLDOWN_MS - (now - Number(prev.last_sent_ms))) / 1000);
+      return res.status(429).json({ error: `コードを送ったばかりです。${wait}秒ほど待ってからもう一度お試しください`, retryAfter: wait });
+    }
+    if ((await resetMissCount('gupsend:' + userId)) >= GUEST_SEND_MAX_PER_DAY) {
+      return res.status(429).json({ error: '今日はもう送れません。明日もう一度お試しください' });
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const hash = await bcrypt.hash(password, 12);
+    await db.run(
+      `INSERT INTO guest_upgrades (user_id, email, password_hash, code_hash, expires_ms, attempts, last_sent_ms) VALUES (?, ?, ?, ?, ?, 0, ?)
+       ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, password_hash = excluded.password_hash, code_hash = excluded.code_hash,
+         expires_ms = excluded.expires_ms, attempts = 0, last_sent_ms = excluded.last_sent_ms`,
+      [userId, email, hash, sha256(code), now + EMAIL_CODE_TTL_MS, now]
+    );
+    await resetMiss('gupsend:' + userId);
+    try {
+      await sendMail({
+        to: email,
+        subject: 'Bro Chat 認証コード',
+        text: `Bro Chat のアカウントにこのメールアドレスを設定するための認証コードです。\n\n${code}\n\n10分以内に入力してください。心当たりがない場合はこのメールを無視してください(何も変わりません)。`,
+      });
+    } catch (e) {
+      console.error('[auth] ゲスト設定の確認メール送信失敗:', e.message);
+      await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+      return res.status(502).json({ error: '確認メールを送信できませんでした。メールアドレスを確認してもう一度試してください' });
+    }
+    res.json({ ok: true, email, retryAfter: Math.round(EMAIL_CODE_COOLDOWN_MS / 1000) });
+  } catch (e) { sendServerError(res, e, 'guest-upgrade-start'); }
+});
+
+// body: { code }  合えば、ユーザー名をメールアドレスに、パスワードを設定したものにして、新しいトークンを返す
+router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    if (!(await loadGuest(userId))) return res.status(403).json(NOT_GUEST);
+    const code = req.body && req.body.code;
+    if (typeof code !== 'string') return res.status(400).json({ error: 'コードを入力してください' });
+    const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
+    const row = await db.get('SELECT * FROM guest_upgrades WHERE user_id = ?', [userId]);
+    if (!row) return invalid();
+    if ((await resetMissCount('gup:' + userId)) >= GUEST_MISS_MAX_PER_DAY) {
+      return res.status(429).json({ error: '失敗が続いたため、今日はこれ以上試せません。明日もう一度お試しください' });
+    }
+    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) return invalid();
+    const given = Buffer.from(sha256(code.replace(/\s/g, '')));
+    const real = Buffer.from(row.code_hash);
+    if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
+      await db.run('UPDATE guest_upgrades SET attempts = attempts + 1 WHERE user_id = ?', [userId]);
+      await resetMiss('gup:' + userId);
+      return invalid();
+    }
+
+    // コードを待つ間に、そのメールを別の人が使い始めていないか確かめ直す
+    const taken = await db.get('SELECT id, username, email_verify_required, email_verified_at FROM users WHERE LOWER(username) = ? AND id <> ?', [row.email, userId]);
+    if (taken) {
+      if (!(truthy(taken.email_verify_required) && !taken.email_verified_at)) {
+        await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+        return res.status(409).json({ error: 'そのメールアドレスは既に使われています' });
+      }
+      // 認証されないまま放置された登録(トークンも友だちも無い)は、メールの持ち主が確かめられたので譲ってもらう
+      try {
+        await db.run('DELETE FROM email_codes WHERE username = ?', [taken.username || row.email]);
+        await db.run('DELETE FROM users WHERE id = ?', [taken.id]);
+      } catch (e) {
+        await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+        return res.status(409).json({ error: 'そのメールアドレスは既に使われています' });
+      }
+    }
+    try {
+      // guest のままの時だけ書き換える(同時に2回押されても、勝つのは1回だけ)
+      const r = await db.run(
+        `UPDATE users SET username = ?, password_hash = ?, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+           failed_login_count = 0, locked_until = 0
+         WHERE id = ? AND password_hash = '' AND username LIKE 'guest\\_%' ESCAPE '\\'`,
+        [row.email, row.password_hash, userId]
+      );
+      if (!r || !r.changes) return res.status(403).json(NOT_GUEST);
+    } catch (e) {
+      if (/unique|constraint|duplicate/i.test(String(e && e.message))) {
+        await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+        return res.status(409).json({ error: 'そのメールアドレスは既に使われています' });
+      }
+      throw e;
+    }
+    await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+    await db.run("DELETE FROM auth_misses WHERE key IN (?, ?)", ['gup:' + userId, 'gupsend:' + userId]).catch(() => {});
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    // ユーザー名が変わったので、トークンも作り直して返す(今の端末のセッションはそのまま使える)
+    res.json(await sessionResponse(user, { upgraded: true }, reqMeta(req)));
+  } catch (e) { sendServerError(res, e, 'guest-upgrade-confirm'); }
+});
+
 // --- メール認証コードの確認 ---
 // body: { username, code, password }  成功したらそのままログイン状態(トークン発行)にする
 // password も必須: 認証前のアカウントは登録し直しで上書きできるため、他人が同じメールで
@@ -416,7 +557,11 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'ユーザー名またはパスワードが違います' });
   }
 
-  const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+  let user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+  // ゲストから変えたメールアドレスは小文字で保存している。大文字を混ぜて打っても入れるようにする
+  if (!user && username.includes('@') && username !== username.toLowerCase()) {
+    user = await db.get('SELECT * FROM users WHERE username = ?', [username.toLowerCase()]);
+  }
   if (!user) {
     await bcrypt.compare(password, DUMMY_HASH);
     return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
@@ -1076,6 +1221,7 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
     try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
     try { await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] user_pubkeys cleanup:', e.message); }
+    try { await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] guest_upgrades cleanup:', e.message); }
     // 自分が作った招待コード(と、そのコードの使用記録)・自分が使った記録も消す
     try {
       await db.run('DELETE FROM invite_redemptions WHERE code IN (SELECT code FROM invite_codes WHERE owner_id = ?) OR user_id = ?', [userId, userId]);

@@ -127,7 +127,30 @@ const linkPreviewLimiter = rateLimit({
   message: { error: 'リンクのプレビューが多すぎます。しばらくしてからお試しください。' },
 });
 
+// プレビュー画像の中継: 画像は1枚ずつ別リクエストなので、プレビュー本体とは別枠で1人1分に60回まで。
+const linkPreviewImageLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リンクのプレビューが多すぎます。しばらくしてからお試しください。' },
+});
+
+// ゲストのメール・パスワード設定: 人ごとに15分で20回まで(コードの当てずっぽうと、メールの連打を止める)。
+// 1日あたりの送信数・失敗数は routes/auth.js でDBに数えている
+const guestUpgradeLimiter = rateLimit({
+  ...perUser,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
 module.exports = {
+  guestUpgradeLimiter,
+  linkPreviewImageLimiter,
   inviteSignupLimiter,
   perUser,
   linkPreviewLimiter,

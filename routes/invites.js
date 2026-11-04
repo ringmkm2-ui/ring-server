@@ -41,6 +41,9 @@ const redeemLimiter = rateLimit({
   message: { error: '試行が多すぎます。しばらくしてからお試しください' },
 });
 
+// 1つのコードに表示する「使った人」は新しい順に5人まで(全員を返すと無制限コードで重くなる)
+const WHO_MAX = 5;
+
 function toInvite(r, now) {
   const expiresAt = r.expires_ms == null ? null : Number(r.expires_ms);
   const maxUses = r.max_uses == null ? null : Number(r.max_uses);
@@ -53,6 +56,7 @@ function toInvite(r, now) {
     expired: expiresAt != null && expiresAt <= now,
     full: maxUses != null && uses >= maxUses,
     createdAt: Number(r.created_ms),
+    joined: [],
   };
 }
 
@@ -61,7 +65,24 @@ router.get('/', auth, async (req, res) => {
   try {
     const now = Date.now();
     const rows = await db.all('SELECT * FROM invite_codes WHERE owner_id = ? ORDER BY created_ms DESC', [req.userId]);
-    res.json({ codes: rows.map(r => toInvite(r, now)) });
+    const codes = rows.map(r => toInvite(r, now));
+    if (codes.length) {
+      // 誰がこのコードで友だちになったか(退会済みの人は出さない)。コードごとに新しい順で WHO_MAX 人まで
+      const ph = codes.map(() => '?').join(',');
+      const who = await db.all(
+        `SELECT r.code AS code, r.user_id AS user_id, r.redeemed_ms AS redeemed_ms, u.display_name AS display_name
+           FROM invite_redemptions r JOIN users u ON u.id = r.user_id
+          WHERE r.code IN (${ph}) AND substr(u.username, 1, 8) != 'deleted_'
+          ORDER BY r.redeemed_ms DESC`,
+        codes.map(c => c.code)
+      );
+      const byCode = new Map(codes.map(c => [c.code, c]));
+      for (const w of who) {
+        const c = byCode.get(w.code);
+        if (c && c.joined.length < WHO_MAX) c.joined.push({ userId: w.user_id, displayName: w.display_name, at: Number(w.redeemed_ms) });
+      }
+    }
+    res.json({ codes });
   } catch (e) { sendServerError(res, e); }
 });
 
