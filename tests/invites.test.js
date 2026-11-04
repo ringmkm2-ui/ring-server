@@ -29,6 +29,16 @@ test('コードを作って入れると、入れた人も持ち主もお互い�
   assert.equal((await b.call('GET', '/api/friends/pending')).data.length, 0);
 });
 
+test('全角の英数字・全角ハイフンで打っても通る(日本語キーボード)', async () => {
+  const a = await S.user('Inviter'); const b = await S.user('Guest');
+  const code = (await a.call('POST', '/api/invites', {})).data.invite.code;
+  const full = s => s.replace(/[A-Z0-9]/gi, ch => String.fromCharCode(ch.charCodeAt(0) + 0xFEE0));
+  const typed = full(code.slice(0, 4)) + '\uff0d' + full(code.slice(4).toLowerCase());
+  const r = await b.call('POST', '/api/invites/redeem', { code: typed });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.friend.userId, a.userId);
+});
+
 test('同じ人がもう一度入れても、人数は減らない', async () => {
   const a = await S.user('A'); const b = await S.user('B');
   const code = (await a.call('POST', '/api/invites', { maxUses: 5, expiresInDays: 7 })).data.invite.code;

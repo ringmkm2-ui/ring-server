@@ -715,11 +715,13 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 .inv-sec{font-size:12px;font-weight:700;color:#64748b;display:block;margin:20px 0 8px}
 .inv-sec.first{margin-top:0}
 .inv-in{width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:14px;font-size:17px;font-weight:700;letter-spacing:.08em;outline:none;box-sizing:border-box;color:#0f172a;background:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.inv-in::placeholder{font-weight:500;letter-spacing:0;color:#94a3b8}
+.inv-in::placeholder{font-weight:500;letter-spacing:0;color:#64748b}
 .inv-btn{width:100%;color:#0f172a;padding:14px;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px}
 .inv-btn:disabled{opacity:.55;cursor:default}
 .inv-msg{font-size:13px;margin-top:8px;line-height:1.5}
-.inv-msg.err{color:#ef4444}
+.inv-msg.err{color:#dc2626}
+.inv-in:focus-visible{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.25)}
+.inv-seg button:focus-visible,.inv-btn:focus-visible,.inv-ib:focus-visible,.inv-sel select:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .inv-ok,.inv-row{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;background:#f8fafc;border-radius:14px;margin-bottom:8px}
 .inv-ok{margin:12px 0 0;padding:12px}
 .inv-av{width:44px;height:44px;border-radius:50%;background:#94a3b8 center/cover no-repeat;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}
@@ -728,14 +730,14 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 .inv-sub{font-size:12px;color:#64748b;margin-top:2px;line-height:1.4}
 .inv-who{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .inv-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:.06em;color:#0f172a}
-.inv-row.dead .inv-code{color:#94a3b8}
+.inv-row.dead .inv-code{color:#64748b}
 .inv-acts{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.inv-ib{min-width:34px;height:34px;border-radius:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-size:12px;font-weight:700;white-space:nowrap}
+.inv-ib{min-width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-size:12px;font-weight:700;white-space:nowrap}
 .inv-ib.glass-clear{color:#0f172a}
-.inv-ib.glass-clear.danger{color:#ef4444;padding:0 10px}
-.inv-ok .inv-sub{color:#059669;font-weight:700;font-size:13px}
+.inv-ib.glass-clear.danger{color:#fff;background:#dc2626;padding:0 12px}
+.inv-ok .inv-sub{color:#047857;font-weight:700;font-size:13px}
 .inv-sel{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.inv-sel label{display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px}
+.inv-sel label{display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px}
 .inv-sel select{width:100%;padding:11px 10px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:15px;color:#0f172a;background:#fff;box-sizing:border-box}
 /* --- PWAインストール案内: 上からスプリングで降りてくる(display:none→flex になった時に再生) --- */
 @keyframes pwaIn{from{opacity:0;transform:translateY(-22px) scale(.97)}}
@@ -975,7 +977,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.18 beta</div>
+  <div class="version-badge">Bro Chat v1.29.19 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -2626,6 +2628,7 @@ function invSvg(name) { // 固定のSVGだけ。サーバーの値は入れな�
 function invMk(tag, cls, txt) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
+  if (cls && /(^| )inv-msg( |$)/.test(cls)) e.setAttribute('role', 'alert');   // エラーを読み上げ機器にも伝える
   if (txt !== undefined) e.textContent = txt;
   return e;
 }
@@ -2636,7 +2639,7 @@ function invFmtCode(c) {
 }
 // 入力欄に貼られたものからコードだけ取り出す。「https://…/i/ABCD1234」や「…?invite=ABCD1234」「ABCD-EFGH」どれでも
 function invExtractCode(raw) {
-  const v = String(raw || '');
+  const v = String(raw || '').normalize('NFKC');
   const m = /\/i\/([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(v) || /[?&]invite=([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(v);
   return (m ? m[1] : v).replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
 }
@@ -2722,11 +2725,12 @@ function invBuildRow(c, ctx) {
   const disarm = () => { del.__armed = false; del.classList.remove('danger'); del.innerHTML = invSvg('trash'); del.disabled = false; };
   del.addEventListener('click', async () => {
     if (!del.__armed) {
-      del.__armed = true; del.classList.add('danger');
+      del.__armed = true; del.__at = Date.now(); del.classList.add('danger');
       del.textContent = t2('inv_delete_confirm', '削除する?');
-      del.__t = setTimeout(disarm, 3000);
+      del.__t = setTimeout(disarm, 3500);
       return;
     }
+    if (Date.now() - del.__at < 450) return;   // 二度押し・連打で消えないように少し待つ
     clearTimeout(del.__t);
     del.disabled = true;
     try {
@@ -2756,7 +2760,7 @@ function invBuildPane(pane) {
     // リンクやメッセージごと貼られたら、コードだけに直す。普通に打っている間は大文字にするだけ
     const raw = input.value;
     const looksLong = raw.length > 9 || /[\/?=:]/.test(raw);
-    const fixed = looksLong ? invFmtCode(invExtractCode(raw)) : raw.toUpperCase();
+    const fixed = looksLong ? invFmtCode(invExtractCode(raw)) : raw.normalize('NFKC').toUpperCase();
     if (fixed === raw) return;
     const p = input.selectionStart;
     input.value = fixed;
@@ -2872,14 +2876,14 @@ function initInviteMode(sheet, opts) {
   const idPane = sheet.querySelector('#afIdPane'), pane = sheet.querySelector('#afCodePane');
   const tabId = sheet.querySelector('#afTabId'), tabCode = sheet.querySelector('#afTabCode');
   if (!idPane || !pane || !tabId || !tabCode) return;
-  let inv = null;
+  let inv = null, fromLink = !!(opts && opts.code);
   const show = code => {
     tabId.setAttribute('aria-selected', String(!code));
     tabCode.setAttribute('aria-selected', String(code));
     idPane.hidden = code; pane.hidden = !code;
     if (code) {
       if (!inv) inv = invBuildPane(pane);
-      inv.load(); inv.focus();
+      inv.load(); if (!fromLink) inv.focus(); fromLink = false;
     } else {
       const i = document.getElementById('addFriendInput'); if (i) i.focus();
     }
