@@ -22,7 +22,7 @@ async function adminUserIds(envName = 'ADMIN_NOTIFY', fallback = DEFAULT_ADMINS)
   const ids = [];
   if (codes.length) {
     const rows = await db.all(
-      `SELECT id FROM users WHERE user_id IN (${codes.map(() => '?').join(',')}) AND username NOT LIKE 'deleted%'`,
+      `SELECT id FROM users WHERE user_id IN (${codes.map(() => '?').join(',')}) AND substr(username, 1, 8) != 'deleted_'`,
       codes
     );
     rows.forEach(r => ids.push(r.id));
@@ -30,7 +30,7 @@ async function adminUserIds(envName = 'ADMIN_NOTIFY', fallback = DEFAULT_ADMINS)
   if (emails.length) {
     const rows = await db.all(
       `SELECT id FROM users WHERE LOWER(username) IN (${emails.map(() => '?').join(',')})
-         AND username NOT LIKE 'deleted%'
+         AND substr(username, 1, 8) != 'deleted_'
          AND (email_verified_at IS NOT NULL OR password_hash = '')`,
       emails
     );

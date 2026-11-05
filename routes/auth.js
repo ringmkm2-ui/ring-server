@@ -2,13 +2,16 @@
 // UserAuthenticator: 登録・ログイン・JWT発行
 const express = require('express');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+// 計算は別スレッドで行う(メインスレッドを塞ぐと全員のチャットが止まる)。使い方は bcryptjs の compare / hash と同じ
+const bcrypt = require('../utils/passwordHash');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('../db/db');
 const { JWT_SECRET } = require('../utils/jwtSecret');
-const { loginLimiter, registerLimiter, inviteSignupLimiter, guestUpgradeLimiter } = require('../utils/rateLimits');
+const { loginLimiter, registerLimiter, inviteSignupLimiter, guestUpgradeLimiter, passwordActionLimiter } = require('../utils/rateLimits');
+const { consume, bump, refund, clear, LOGIN_POLICY, RESET_POLICY, accountGuard, clearAccount } = require('../utils/attemptLimit');
+const { takeMailQuota } = require('../utils/mailQuota');
 const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken, verifyTokenWithRevocation } = require('../utils/authMiddleware');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
@@ -50,7 +53,7 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // ---------------------------------------------------------------------
 const EMAIL_RE = /^[^\s@<>"'`]+@[^\s@<>"'`]+\.[^\s@<>"'`]+$/;
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
-const EMAIL_CODE_COOLDOWN_MS = 60 * 1000;
+const EMAIL_CODE_COOLDOWN_MS = Number(process.env.EMAIL_CODE_COOLDOWN_MS) || 60 * 1000; // 環境変数はテスト用
 const EMAIL_CODE_MAX_ATTEMPTS = 5;
 // 2FA途中トークンは通常のセッションJWTとは別の鍵で署名する。
 // 同じ鍵だと、パスワードだけ通った段階のトークンが verifyToken を通ってしまい2FAを丸ごと迂回される。
@@ -106,6 +109,12 @@ async function sendEmailCode(username) {
     e.cooldown = true;
     throw e;
   }
+  // 上限を超えたら、送らずに成功と同じ形で返す(呼び出し側の応答は変わらない)。
+  // エラーにすると、登録やログインの応答の違いから「そのアドレスが何に使われているか」を探られる
+  if (!(await takeMailQuota(username, 'signup'))) {
+    console.warn('[auth] メールの上限に達したので認証コードを送りませんでした');
+    return;
+  }
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   await db.run(
     `INSERT INTO email_codes (username, code_hash, expires_ms, attempts, last_sent_ms) VALUES (?, ?, ?, 0, ?)
@@ -133,25 +142,32 @@ function twoFaFail(userId) {
 }
 function twoFaOk(userId) { twoFaFails.delete(userId); }
 
-// パスワード総当たり対策(アカウント単位)。IP単位のレート制限だけだと、IPを散らされたら素通りになる。
-// 連続8回失敗で15分ロック。成功したらカウントを戻す。
-const LOGIN_MAX_FAILS = 8;
-const LOGIN_LOCK_MS = 15 * 60 * 1000;
-// 存在しないユーザーでもbcryptを1回走らせて、応答時間でアカウントの有無を探られないようにする
-const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing-only', 12);
+// パスワード総当たりの回数は utils/attemptLimit.js で「アカウント+IP」と「アカウント全体」に分けて数える。
+// 以前はアカウント全体だけだったので、誰でも8回間違えるだけで本人を15分締め出せて、ロックの有無で登録の有無も分かった
+const LOGIN_LOCK_MESSAGE = 'ログインの失敗が続いたため、一時的にロックしています。15分ほど待ってからもう一度試してください';
+// 存在しないユーザーでもbcryptを1回走らせて、応答時間でアカウントの有無を探られないようにする。
+// 定数にしたのは、ここで計算すると起動のたびにメインスレッドを塞ぐため(平文は 'dummy-password-for-timing-only'、コスト12)
+const DUMMY_HASH = '$2a$12$rO.KYTc3jbZyDNd5bNu4GuTlb8C2AYGbRTjfaL.gsKvtK5iob0A9u';
 
-async function recordLoginFailure(userId) {
-  await db.run('UPDATE users SET failed_login_count = COALESCE(failed_login_count, 0) + 1 WHERE id = ?', [userId]);
-  const row = await db.get('SELECT failed_login_count FROM users WHERE id = ?', [userId]);
-  if (row && Number(row.failed_login_count) >= LOGIN_MAX_FAILS) {
-    await db.run('UPDATE users SET failed_login_count = 0, locked_until = ? WHERE id = ?', [Date.now() + LOGIN_LOCK_MS, userId]);
+// パスワード変更・退会など、ログイン済みの人が現在のパスワードを確かめる所。戻り値 'ok' | 'wrong' | 'locked'
+// トークンだけ持っている人がパスワードを当てに来られるので、人ごとに失敗を数える。
+// ログインのロックとは別枠にする(トークンを盗んだ人が、本人のログインまで止められないように)
+const PW_CHECK_MAX_FAILS = 8;
+const PW_CHECK_WINDOW_MS = 15 * 60 * 1000;
+async function checkCurrentPassword(userId, password, hash) {
+  const key = 'pwchk:' + userId;
+  if (!(await consume(key, PW_CHECK_MAX_FAILS, PW_CHECK_WINDOW_MS))) return 'locked';
+  let ok;
+  try {
+    ok = await bcrypt.compare(password, hash);
+  } catch (e) {
+    await refund(key).catch(() => {}); // 混雑で判定できなかった分は失敗に数えない
+    throw e;
   }
+  if (ok) await clear(key);
+  return ok ? 'ok' : 'wrong';
 }
-async function clearLoginFailures(user) {
-  if (Number(user.failed_login_count || 0) > 0 || Number(user.locked_until || 0) > 0) {
-    await db.run('UPDATE users SET failed_login_count = 0, locked_until = 0 WHERE id = ?', [user.id]);
-  }
-}
+const PW_CHECK_LOCKED = { error: '失敗が続いたため一時的に止めています。15分ほど待ってからもう一度お試しください' };
 
 function normalizeBackup(code) {
   return String(code || '').toLowerCase().replace(/[^a-f0-9]/g, '');
@@ -206,12 +222,30 @@ function cleanRealName(v) {
   return { value: s };
 }
 
+// 表示名のチェック。ほかの人の画面に出るので、長さ・制御文字・文字の向きを変える記号を断る
+// (/register は以前これが無く、3MBの名前や画面を崩す記号で登録でき、友だち一覧を開いた人まで巻き込めた)
+function cleanDisplayName(v) {
+  if (typeof v !== 'string') return { error: '表示名を入力してください' };
+  const displayName = v.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  if (!displayName) return { error: '表示名を入力してください' };
+  if (displayName.length > 50) return { error: '表示名は50文字以内にしてください' };
+  if (/[<>"'`\u0000-\u001f\u202a-\u202e\u2066-\u2069]/.test(displayName)) return { error: '表示名に使えない文字が含まれています' };
+  // ゼロ幅・空白に見える文字だけの名前は、誰か分からなくなるので断る
+  if (!displayName.replace(/[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g, '').trim()) return { error: '表示名を入力してください' };
+  return { value: displayName };
+}
+
 router.post('/register', registerLimiter, async (req, res) => {
-  const { username, password, displayName } = req.body;
+  const { username, password } = req.body;
   const rn = cleanRealName(req.body.realName);
   if (rn.error) return res.status(400).json({ error: rn.error });
+  // 表示名を送らない端末もあるので、無い時は今まで通りユーザー名で始める(下の displayName || username)
+  const rawName = req.body.displayName;
+  const dn = rawName === undefined || rawName === null || rawName === '' ? { value: '' } : cleanDisplayName(rawName);
+  if (dn.error) return res.status(400).json({ error: dn.error });
+  const displayName = dn.value;
   // 登録前なので停止する相手がいない。名前に禁止語があれば登録自体を断る
-  if (require('../utils/moderation').containsBannedWord(typeof displayName === 'string' ? displayName : '')) {
+  if (require('../utils/moderation').containsBannedWord(displayName)) {
     return res.status(400).json({ error: 'その名前は使えません' });
   }
   if (!username || !password) {
@@ -259,7 +293,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       return res.status(409).json({ error: 'そのユーザー名は既に使われています' });
     }
     userId = existing.id;
-    await db.run('UPDATE users SET password_hash = ?, display_name = ?, real_name = ? WHERE id = ?', [passwordHash, displayName || username, rn.value, userId]);
+    await db.run('UPDATE users SET password_hash = ?, display_name = ?, real_name = ? WHERE id = ?', [passwordHash, displayName || username.slice(0, 50), rn.value, userId]);
   } else {
     // bcryptのコスト係数: 10→12に引き上げ。総当たり耐性が上がる一方、
     // ハッシュ化にかかる時間は数十ms程度の増加に留まりログイン体感には影響しない。
@@ -267,7 +301,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     userIdCode = await uniqueUserIdCode(); // User ID like U3K7F9
     await db.run(
       'INSERT INTO users (id, user_id, username, password_hash, display_name, email_verify_required, real_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [userId, userIdCode, username, passwordHash, displayName || username, mailOn ? 1 : 0, rn.value]
+      [userId, userIdCode, username, passwordHash, displayName || username.slice(0, 50), mailOn ? 1 : 0, rn.value]
     );
     createdNew = true;
   }
@@ -303,12 +337,9 @@ router.post('/register-invite', registerLimiter, inviteSignupLimiter, async (req
     // 入力の確認はコードを消費する前に済ませる(名前の入れ間違いで人数を減らさない)
     const rn = cleanRealName(body.realName);
     if (rn.error) return res.status(400).json({ error: rn.error });
-    const displayName = typeof body.displayName === 'string' ? body.displayName.normalize('NFKC').replace(/\s+/g, ' ').trim() : '';
-    if (!displayName) return res.status(400).json({ error: '表示名を入力してください' });
-    if (displayName.length > 50) return res.status(400).json({ error: '表示名は50文字以内にしてください' });
-    if (/[<>"'`\u0000-\u001f\u202a-\u202e\u2066-\u2069]/.test(displayName)) return res.status(400).json({ error: '表示名に使えない文字が含まれています' });
-    // ゼロ幅・空白に見える文字だけの名前は、誰か分からなくなるので断る
-    if (!displayName.replace(/[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g, '').trim()) return res.status(400).json({ error: '表示名を入力してください' });
+    const dn = cleanDisplayName(body.displayName);
+    if (dn.error) return res.status(400).json({ error: dn.error });
+    const displayName = dn.value;
     if (require('../utils/moderation').containsBannedWord(displayName)) {
       return res.status(400).json({ error: 'その名前は使えません' });
     }
@@ -356,6 +387,9 @@ const GUEST_SEND_MAX_PER_DAY = 10;    // 1人が1日に送れる確認メール�
 const GUEST_MISS_MAX_PER_DAY = 15;     // 1人が1日に外せる確認コードの回数
 const GUEST_MAIL_MAX_PER_ADDRESS = 3;  // 1つのメールアドレス宛に、1日に送る確認メールの数(使い捨てゲストを大量に作って、同じ人にメールを送り付ける悪用を止める)
 const GUEST_SEND_MAX_PER_IP = 200;     // 1つのIPから1日に送れる確認メールの数(教室など同じWi-Fiの全員が同じ日に設定できる広さ)
+
+// 昇格した端末のWebSocketを切るまでの猶予。完了画面を閉じて読み込み直すだけの時間があればよい
+const GUEST_UPGRADE_WS_GRACE_MS = Number(process.env.GUEST_UPGRADE_WS_GRACE_MS) || 2 * 60 * 1000;
 
 async function loadGuest(userId) {
   const u = await db.get('SELECT id, username, password_hash FROM users WHERE id = ?', [userId]);
@@ -419,6 +453,11 @@ async function guestUpgradeStart(req, res) {
          expires_ms = excluded.expires_ms, attempts = 0, last_sent_ms = excluded.last_sent_ms`,
       [userId, email, hash, sha256(code), now + EMAIL_CODE_TTL_MS, now]
     );
+    // 同じアドレスへのメールは、登録や再設定の分と合わせて宛先ごと・全体の上限にも数える
+    if (!(await takeMailQuota(email, 'account'))) {
+      await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]);
+      return res.status(429).json({ error: '今日はもう送れません。明日もう一度お試しください' });
+    }
     await resetMiss('gupsend:' + userId);
     await resetMiss(mailKey); await resetMiss(ipKey);
     try {
@@ -502,6 +541,15 @@ router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (r
     try {
       const sid = (jwt.decode(out.token) || {}).sid;
       if (sid) await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id <> ? AND revoked_at IS NULL', [userId, sid]);
+      // 開いたままのWebSocketも切る(DBで失効させただけだと、接続し直すまで通知を受け取り続ける)。
+      // ただし昇格した今の端末(req.user.sid)は外す。画面は session_revoked を受けると強制ログアウトし、
+      // 新しいトークンを保存する前に端末の情報を消してしまう。この端末は「閉じる」で読み込み直して新しいトークンに変わる
+      sessionEvents.emit('revoked', { userId, exceptSid: req.user.sid || sid });
+      // 持ち出されたトークンは今の端末と同じ sid なので、上では切れない。少し待ってから、知らせずに切る。
+      // 繋ぎ直そうとしても古いトークンは失効済みなので入れない
+      if (req.user.sid) {
+        setTimeout(() => sessionEvents.emit('revoked', { userId, quietSid: req.user.sid }), GUEST_UPGRADE_WS_GRACE_MS).unref();
+      }
     } catch (e) { console.warn('[auth] guest upgrade: session cleanup failed:', e.message); }
     res.json(out);
   } catch (e) { sendServerError(res, e, 'guest-upgrade-confirm'); }
@@ -517,32 +565,45 @@ router.post('/verify-email', loginLimiter, async (req, res) => {
     const { username, code, password } = req.body || {};
     if (typeof username !== 'string' || typeof code !== 'string') return res.status(400).json({ error: 'メールアドレスとコードを入力してください' });
     if (typeof password !== 'string' || !password) return res.status(400).json({ error: 'パスワードを入力してください', needsPassword: true });
+    // ここもパスワードの当てずっぽうに使えるので、ログインと同じ数え方・同じ枠を共有する
+    const guard = accountGuard(LOGIN_POLICY, username, req.ip);
+    if (!(await guard.take())) return res.status(429).json({ error: LOGIN_LOCK_MESSAGE });
     const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     const row = await db.get('SELECT * FROM email_codes WHERE username = ?', [username]);
     const invalid = () => res.status(400).json({ error: 'コードが正しくないか、期限切れです' });
-    if (!user || !row) return invalid();
-    // ここもパスワードの当てずっぽうに使えるので、ログインと同じアカウント単位のロックを共有する
-    if (Number(user.locked_until || 0) > Date.now()) {
-      return res.status(429).json({ error: 'ログインの失敗が続いたため、一時的にロックしています。15分ほど待ってからもう一度試してください' });
+    let pwOk;
+    try {
+      // 未登録・認証済みのアドレスでも同じだけ時間をかける
+      pwOk = await bcrypt.compare(password, (user && row && user.password_hash) || DUMMY_HASH);
+    } catch (e) {
+      await guard.giveBack().catch(() => {});
+      throw e;
     }
-    if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
-      await recordLoginFailure(user.id);
+    if (!user || !row) return invalid();
+    if (!user.password_hash || !pwOk) {
       return res.status(401).json({ error: 'パスワードが違います。もう一度登録し直してください', needsPassword: true });
     }
+    await guard.succeed();
     // 認証コードの当てずっぽうが続いたら、そのアカウントの認証を24時間止める
     // (以前はパスワード再設定の失敗回数を見ていて、無関係な再設定の失敗で認証が止まり、再設定コードまで消えていた)
     if ((await resetMissCount('verify:' + username)) >= RESET_MISS_MAX_PER_DAY) {
       await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
       return res.status(429).json({ error: '失敗が続いたため、このアカウントの認証を24時間止めました' });
     }
-    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
+    if (Date.now() > Number(row.expires_ms)) {
+      await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
+      return invalid();
+    }
+    // 試行の消費を、確かめる前に1文で行う(/guest/upgrade/confirm と同じ)。
+    // 「読んで→比べて→加算」だと、同時に何十本も送られた時に全部が上限の手前で通ってしまう
+    const claim = await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE username = ? AND attempts < ?', [username, EMAIL_CODE_MAX_ATTEMPTS]);
+    if (!claim || !claim.changes) {
       await db.run('DELETE FROM email_codes WHERE username = ?', [username]);
       return invalid();
     }
     const given = Buffer.from(sha256(String(code).replace(/\s/g, '')));
     const real = Buffer.from(row.code_hash);
     if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
-      await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE username = ?', [username]);
       await resetMiss('verify:' + username);
       return invalid();
     }
@@ -583,27 +644,29 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'ユーザー名またはパスワードが違います' });
   }
 
-  let user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
+  // アカウントを引く前に数える。未登録のアドレスでも同じ回数で同じロックになるので、ロックの有無で登録を探れない
+  const guard = accountGuard(LOGIN_POLICY, username, req.ip);
+  if (!(await guard.take())) return res.status(429).json({ error: LOGIN_LOCK_MESSAGE });
+
+  let user = username.length > 254 ? null : await db.get('SELECT * FROM users WHERE username = ?', [username]);
   // ゲストから変えたメールアドレスは小文字で保存している。大文字を混ぜて打っても入れるようにする
-  if (!user && username.includes('@') && username !== username.toLowerCase()) {
+  if (!user && username.length <= 254 && username.includes('@') && username !== username.toLowerCase()) {
     user = await db.get('SELECT * FROM users WHERE username = ?', [username.toLowerCase()]);
   }
-  if (!user) {
-    await bcrypt.compare(password, DUMMY_HASH);
-    return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
-  }
 
-  if (Number(user.locked_until || 0) > Date.now()) {
-    return res.status(429).json({ error: 'ログインの失敗が続いたため、一時的にロックしています。15分ほど待ってからもう一度試してください' });
+  // 未登録のアドレスとGoogle連携アカウント(password_hashが空)もダミーで照合する。
+  // 応答時間でアカウントの有無を探られないようにしつつ、パスワードログインは通さない
+  let match;
+  try {
+    match = await bcrypt.compare(password, (user && user.password_hash) || DUMMY_HASH) && !!(user && user.password_hash);
+  } catch (e) {
+    await guard.giveBack().catch(() => {}); // 混雑(503)で判定できなかった分は失敗に数えない
+    throw e;
   }
-
-  // Google連携アカウント(password_hashが空)にはパスワードログインを通さない
-  const match = await bcrypt.compare(password, user.password_hash || DUMMY_HASH) && !!user.password_hash;
   if (!match) {
-    await recordLoginFailure(user.id);
     return res.status(401).json({ error: 'ユーザー名またはパスワードが違います' });
   }
-  await clearLoginFailures(user);
+  await guard.succeed();
 
   if (truthy(user.email_verify_required) && !user.email_verified_at) {
     if (isMailConfigured()) {
@@ -672,27 +735,26 @@ router.post('/forgot-password', loginLimiter, async (req, res) => {
     }
     if (isMailConfigured()) {
       const user = await findByLoginName(username, 'id, username');
-      // 外れが上限に達したアカウントには新しいコードを作らない(メールの連打も止まる)
       if (user) username = user.username; // ゲストから変えたアドレスは小文字で保存している。大文字を混ぜて打っても同じ人として扱う
-      if (user && (await resetMissCount('reset:' + username)) < RESET_MISS_MAX_PER_DAY) {
+      // 外れがアカウント全体の上限に達したら新しいコードを作らない。
+      // 1つのIPからの外れでは止めない(第三者がわざと外すだけで、本人の再設定を止められてしまうため)
+      if (user && !(await accountGuard(RESET_POLICY, username, req.ip).accountFull())) {
         const now = Date.now();
         const row = await db.get('SELECT last_sent_ms FROM password_resets WHERE username = ?', [username]);
-        if (!row || now - Number(row.last_sent_ms || 0) >= EMAIL_CODE_COOLDOWN_MS) {
+        // 宛先ごと・全体の上限を超えていたら作らず送らない(応答は同じ)
+        if ((!row || now - Number(row.last_sent_ms || 0) >= EMAIL_CODE_COOLDOWN_MS) && (await takeMailQuota(username, 'account'))) {
           const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
           await db.run(
             `INSERT INTO password_resets (username, code_hash, expires_ms, attempts, last_sent_ms) VALUES (?, ?, ?, 0, ?)
              ON CONFLICT(username) DO UPDATE SET code_hash = excluded.code_hash, expires_ms = excluded.expires_ms, attempts = 0, last_sent_ms = excluded.last_sent_ms`,
             [username, sha256(code), now + EMAIL_CODE_TTL_MS, now]
           );
-          try {
-            await sendMail({
-              to: username,
-              subject: 'Bro Chat パスワード再設定コード',
-              text: `Bro Chat のパスワード再設定コードです。\n\n${code}\n\n10分以内に入力してください。心当たりがない場合はこのメールを無視してください(パスワードは変わりません)。`,
-            });
-          } catch (e) {
-            console.error('[auth] 再設定メール送信失敗:', e.message);
-          }
+          // 送信の完了を待たない。待つと、実在するアドレスの時だけ応答が遅くなり、時間で登録の有無が分かってしまう
+          sendMail({
+            to: username,
+            subject: 'Bro Chat パスワード再設定コード',
+            text: `Bro Chat のパスワード再設定コードです。\n\n${code}\n\n10分以内に入力してください。心当たりがない場合はこのメールを無視してください(パスワードは変わりません)。`,
+          }).catch(e => console.error('[auth] 再設定メール送信失敗:', e.message));
         }
       }
     }
@@ -703,8 +765,8 @@ router.post('/forgot-password', loginLimiter, async (req, res) => {
 });
 
 // body: { username, code, newPassword, totpCode? }  2段階認証が有効なアカウントは totpCode も必要
-// パスワード再設定コードの外れ回数(アカウントごと、24時間)。IPを変えながら
-// 「1分ごとに新しいコード→5回ずつ当てずっぽう」を繰り返されると、IP単位の制限では止まらなかった
+// コードの外れ回数(アカウントごと、24時間)。メール認証の当てずっぽうを止める。
+// パスワード再設定の外れは、第三者に止められないよう別に数えている(RESET_POLICY)
 const RESET_MISS_MAX_PER_DAY = 15;
 const MISS_WINDOW_MS = 24 * 3600 * 1000;
 // 以前はメモリのMapで数えていたが、(1)再設定の側では数えるだけで判定しておらず上限が効いていなかった
@@ -714,15 +776,9 @@ async function resetMissCount(key) {
   if (!r || Date.now() - Number(r.since_ms) > MISS_WINDOW_MS) return 0;
   return Number(r.n);
 }
+// 1文で足す。読んでから足すと、同時に来た失敗を数え漏らす(最初の1回が同時だと全部が n = 1 に戻っていた)
 async function resetMiss(key) {
-  const now = Date.now();
-  const r = await db.get('SELECT n, since_ms FROM auth_misses WHERE key = ?', [key]);
-  if (!r || now - Number(r.since_ms) > MISS_WINDOW_MS) {
-    await db.run(`INSERT INTO auth_misses (key, n, since_ms) VALUES (?, 1, ?)
-      ON CONFLICT(key) DO UPDATE SET n = 1, since_ms = excluded.since_ms`, [key, now]);
-  } else {
-    await db.run('UPDATE auth_misses SET n = n + 1 WHERE key = ?', [key]);
-  }
+  await bump(key, MISS_WINDOW_MS);
 }
 
 router.post('/reset-password', loginLimiter, async (req, res) => {
@@ -736,25 +792,34 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     const pwErr = validatePassword(newPassword, username);
     if (pwErr) return res.status(400).json({ error: pwErr });
 
-    // 「1分ごとに新しいコード→5回ずつ当てずっぽう」をIPを変えながら続けられないよう、アカウント単位で24時間止める
-    if ((await resetMissCount('reset:' + username)) >= RESET_MISS_MAX_PER_DAY) {
-      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+    // 「1分ごとに新しいコード→5回ずつ当てずっぽう」をIPを変えながら続けられないよう、外れを24時間数える。
+    // アカウント全体だけで数えると第三者が本人の再設定を止められるので、アカウント+IPを低く、全体を高くする。
+    // アカウントを引く前に数えるので、未登録のアドレスでも同じ回数で同じ応答になり、登録の有無を探れない
+    const guard = accountGuard(RESET_POLICY, username, req.ip);
+    if (!(await guard.take())) {
+      if (await guard.accountFull()) await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
       return res.status(429).json({ error: '失敗が続いたため、このアカウントの再設定を24時間止めました' });
     }
     const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     const row = await db.get('SELECT * FROM password_resets WHERE username = ?', [username]);
     if (!user || !row) return invalid();
-    if (Date.now() > Number(row.expires_ms) || Number(row.attempts) >= EMAIL_CODE_MAX_ATTEMPTS) {
+    if (Date.now() > Number(row.expires_ms)) {
+      await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+      return invalid();
+    }
+    // 試行の消費を、確かめる前に1文で行う(/guest/upgrade/confirm と同じ)。
+    // 「読んで→比べて→加算」だと、同時に何十本も送られた時に全部が上限の手前で通ってしまう
+    const claim = await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE username = ? AND attempts < ?', [username, EMAIL_CODE_MAX_ATTEMPTS]);
+    if (!claim || !claim.changes) {
       await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
       return invalid();
     }
     const given = Buffer.from(sha256(code.replace(/\s/g, '')));
     const real = Buffer.from(row.code_hash);
-    if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) {
-      await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE username = ?', [username]);
-      await resetMiss('reset:' + username);
-      return invalid();
-    }
+    if (given.length !== real.length || !crypto.timingSafeEqual(given, real)) return invalid();
+    // メールのコードは合っていた。外れではないので数えた分を返す(2段階認証の打ち間違いでコードが無駄にならない)
+    await guard.giveBack();
+    await db.run('UPDATE password_resets SET attempts = attempts - 1 WHERE username = ? AND attempts > 0', [username]);
     // メールを押さえられただけで2段階認証を迂回されないよう、2FAが有効なら認証アプリのコードも必須にする
     if (truthy(user.totp_enabled)) {
       if (twoFaLocked(user.id)) return res.status(429).json({ error: '失敗が続いたため一時的にロックしました。15分後にもう一度試してください' });
@@ -774,6 +839,9 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
     // 盗まれた時の再設定なら、盗んだ人が足した端末の鍵に送り続けないようにする。本人の端末は開いた時に戻る
     await require('../utils/deviceKeys').clearAll(user.id);
+    // メールで本人確認が取れたので、攻撃で溜まっていたロックも外す(新しいパスワードですぐ入れるように)
+    await clearAccount(RESET_POLICY, username);
+    await clearAccount(LOGIN_POLICY, username);
     sessionEvents.emit('revoked', { userId: user.id });
     res.json({ ok: true, message: 'パスワードを変更しました。新しいパスワードでログインしてください。' });
   } catch (e) {
@@ -808,6 +876,8 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
     let user = await db.get('SELECT * FROM users WHERE username = ?', [email]);
 
     if (!user) {
+      // guest_ / deleted_ は内部で使う名前。Google Workspaceなら作れるアドレスなので、登録と同じく断る
+      if (/^(guest|deleted)_/i.test(email)) return { status: 401, body: { error: 'Google認証に失敗しました' } };
       // 初回ログイン：ユーザーを自動作成
       const userId = uuidv4();
       const userIdCode = await uniqueUserIdCode();
@@ -1040,7 +1110,7 @@ async function verifyTokenRaw(token) {
 // --- パスワード変更 ---
 // body: { currentPassword, newPassword }
 // 変更後、既存の全セッションを自動的に失効させる(トークン漏洩対策)。
-router.post('/change-password', verifyToken, async (req, res) => {
+router.post('/change-password', passwordActionLimiter, verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
@@ -1060,8 +1130,9 @@ router.post('/change-password', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'パスワードが設定されていないアカウントです（Google連携アカウント）' });
     }
 
-    const match = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!match) {
+    const checked = await checkCurrentPassword(req.user.userId, currentPassword, user.password_hash);
+    if (checked === 'locked') return res.status(429).json(PW_CHECK_LOCKED);
+    if (checked !== 'ok') {
       return res.status(401).json({ error: '現在のパスワードが違います' });
     }
 
@@ -1156,8 +1227,9 @@ router.post('/2fa/disable', verifyToken, loginLimiter, async (req, res) => {
     if (!user || !truthy(user.totp_enabled)) return res.status(400).json({ error: '有効になっていません' });
     if (twoFaLocked(user.id)) return res.status(429).json({ error: '失敗が続いたため一時的にロックしました。15分後にもう一度試してください' });
     if (user.password_hash) {
-      const okPw = req.body.password && await bcrypt.compare(req.body.password, user.password_hash);
-      if (!okPw) return res.status(401).json({ error: 'パスワードが違います' });
+      const checked = await checkCurrentPassword(user.id, req.body.password, user.password_hash);
+      if (checked === 'locked') return res.status(429).json(PW_CHECK_LOCKED);
+      if (checked !== 'ok') return res.status(401).json({ error: 'パスワードが違います' });
     }
     const ok = await checkSecondFactor(user, req.body.code);
     if (!ok) { twoFaFail(user.id); return res.status(401).json({ error: 'コードが正しくありません' }); }
@@ -1229,7 +1301,7 @@ router.post('/logout', verifyToken, async (req, res) => {
 // ユーザーデータを完全に削除する。メッセージのcontent列は空文字に置換し、
 // メタデータ(sender_id/recipient_id等)は外部キー制約の関係でnullにできないため
 // そのまま残る(相手側の会話画面で「退会済みユーザー」と表示する想定)。
-router.post('/delete-account', verifyToken, async (req, res) => {
+router.post('/delete-account', passwordActionLimiter, verifyToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await db.get('SELECT password_hash FROM users WHERE id = ?', [userId]);
@@ -1239,8 +1311,9 @@ router.post('/delete-account', verifyToken, async (req, res) => {
     if (user.password_hash) {
       const { password } = req.body;
       if (!password) return res.status(400).json({ error: '確認のため現在のパスワードを入力してください' });
-      const match = await bcrypt.compare(password, user.password_hash);
-      if (!match) return res.status(401).json({ error: 'パスワードが違います' });
+      const checked = await checkCurrentPassword(userId, password, user.password_hash);
+      if (checked === 'locked') return res.status(429).json(PW_CHECK_LOCKED);
+      if (checked !== 'ok') return res.status(401).json({ error: 'パスワードが違います' });
     }
 
     // メッセージ内容を消去(メタデータは残す)
@@ -1266,6 +1339,10 @@ router.post('/delete-account', verifyToken, async (req, res) => {
       await db.run('DELETE FROM invite_redemptions WHERE code IN (SELECT code FROM invite_codes WHERE owner_id = ?) OR user_id = ?', [userId, userId]);
       await db.run('DELETE FROM invite_codes WHERE owner_id = ?', [userId]);
     } catch (e) { console.error('[auth] invite cleanup:', e.message); }
+    try {
+      await db.run('DELETE FROM invite_removals WHERE owner_id = ? OR user_id = ?', [userId, userId]);
+      await db.run('DELETE FROM call_assist_usage WHERE user_id = ?', [userId]);
+    } catch (e) { console.error('[auth] removal/usage cleanup:', e.message); }
     // 投稿とコメントも消す(以前は退会後も「退会済みユーザー」の名前で公開のまま残っていた)
     try {
       await db.run('UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE author_id = ? AND deleted_at IS NULL', [userId]);
