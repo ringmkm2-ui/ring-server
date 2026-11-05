@@ -411,7 +411,7 @@
   window.addEventListener('pageshow', () => {
     flightBusy = null;
     document.querySelectorAll('.lg-page-recede').forEach(el => el.classList.remove('lg-page-recede'));
-    document.querySelectorAll('.lg-flying-avatar').forEach(el => el.remove());
+    document.querySelectorAll('.lg-flying-avatar:not(.lg-fly-back)').forEach(el => el.remove()); // 戻ってきた時の飛行(下)は消さない
   });
 
   // 遷移先で「飛んできた直後か」を判定し、着地アニメーションを再生する。
@@ -433,6 +433,110 @@
   }
 
   // ============================================================
+  // トーク画面 → トーク一覧の「戻る」(flyAvatarTo の逆向き)
+  // 別のページなので、出ていく側で印を残し、一覧を開いた側で続きを再生する。
+  // 印は pagehide で残すので、画面内の戻るボタンだけでなく、端末の戻るやジェスチャーでも再生される。
+  // ============================================================
+  const BACK_KEY = 'lg_back_flight';
+  const backMotionOk = () => !document.documentElement.classList.contains('reduce-motion')
+    && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function armChatBack(key, avatarEl) {
+    if (window.parent !== window || !key) return;   // PC版の右側に埋め込み中は、一覧へ移動しない
+    window.addEventListener('pagehide', () => {
+      if (!document.documentElement.__lgLeaving) rememberAvatarTarget(avatarEl);
+      try { sessionStorage.setItem(BACK_KEY, JSON.stringify({ key, t: Date.now() })); } catch (e) { /* ignore */ }
+    });
+  }
+
+  // 戻るボタン: 画面を右へずらしながら移動する。遷移が終わるまで真っ白にならないよう、消し切らない
+  function leaveChat(pageEl, avatarEl, navigate) {
+    if (document.documentElement.__lgLeaving) return;
+    if (!pageEl || !pageEl.animate || !backMotionOk()) { navigate(); return; }
+    rememberAvatarTarget(avatarEl);   // ずらす前の位置を覚える(これがアバターの飛び立つ位置)
+    document.documentElement.__lgLeaving = true;
+    const a = pageEl.animate(
+      [{ transform: 'none', opacity: 1 }, { transform: 'translateX(22%)', opacity: 0.35 }],
+      { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' }
+    );
+    const restore = () => { document.documentElement.__lgLeaving = false; a.cancel(); };
+    // キャッシュから復元された時や、遷移が起きなかった時は元に戻す(ずれたまま操作できなくなるのを防ぐ)
+    window.addEventListener('pageshow', e => { if (e.persisted) restore(); }, { once: true });
+    setTimeout(restore, 2500);
+    setTimeout(navigate, 80);
+  }
+
+  function clearBackClass() {
+    const root = document.documentElement;
+    if (!root.classList.contains('lg-back')) return;
+    root.classList.remove('lg-back');
+    // 付いたままの入場クラスが、外した瞬間にもう一度再生されないようにする
+    const page = document.getElementById('pageTalk');
+    if (page) page.classList.remove('lg-page-enter', 'lg-page-enter-right', 'lg-page-enter-left');
+  }
+
+  function flyAvatarBack(key) {
+    const sel = key.charAt(0) === 'g' ? '[data-group-id="' : '.ti[data-user-id="';
+    const id = window.CSS && CSS.escape ? CSS.escape(key.slice(2)) : '';
+    if (!id) return;
+    let start = null;
+    try { start = JSON.parse(sessionStorage.getItem(TARGET_RECT_KEY) || 'null'); } catch (e) { /* ignore */ }
+    if (!start || !(start.width > 0)) return;
+    const page = document.getElementById('pageTalk');
+    const until = Date.now() + 800;   // 一覧がまだ描かれていなければ少し待つ。来なければ飛ばさない
+    const tryFly = () => {
+      const av = document.querySelector(sel + id + '"] .tav');
+      if (!av) { if (Date.now() < until) requestAnimationFrame(tryFly); return; }
+      const r = av.getBoundingClientRect();
+      // 一覧自体が入場で少しずれている分を引いて、本来の位置へ着地させる
+      let dx = 0;
+      try { if (page) dx = new DOMMatrixReadOnly(getComputedStyle(page).transform).m41; } catch (e) { /* ignore */ }
+      if (!(r.width > 0) || r.top < 0 || r.bottom > innerHeight - 70) return;   // 画面の外にある行は飛ばさない
+      const cs = getComputedStyle(av);
+      const clone = document.createElement('div');
+      clone.className = 'lg-flying-avatar lg-fly-back';
+      clone.style.cssText = 'transition:none;transform-origin:0 0;top:' + r.top + 'px;left:' + (r.left - dx) + 'px;width:' + r.width + 'px;height:' + r.height + 'px';
+      clone.style.fontSize = cs.fontSize;
+      clone.style.color = cs.color;
+      clone.style.backgroundColor = cs.backgroundColor;
+      clone.style.backgroundImage = cs.backgroundImage;
+      clone.textContent = av.textContent;
+      document.body.appendChild(clone);
+      const prev = av.style.visibility;
+      av.style.visibility = 'hidden';
+      const s = start.width / r.width;
+      const a = clone.animate(
+        [{ transform: 'translate(' + (start.left - r.left + dx) + 'px,' + (start.top - r.top) + 'px) scale(' + s + ')' }, { transform: 'none' }],
+        { duration: 340, easing: 'cubic-bezier(.2,.9,.25,1)' }
+      );
+      const done = () => {
+        clone.remove();
+        av.style.visibility = prev;
+        if (av.animate) av.animate([{ transform: 'scale(1.14)' }, { transform: 'none' }], { duration: 220, easing: 'ease-out' });
+      };
+      a.onfinish = done; a.oncancel = done;
+    };
+    tryFly();
+  }
+
+  function playBackArrival() {
+    let d = null;
+    try {
+      d = JSON.parse(sessionStorage.getItem(BACK_KEY) || 'null');
+      sessionStorage.removeItem(BACK_KEY);
+    } catch (e) { /* ignore */ }
+    const fresh = d && typeof d.key === 'string' && Date.now() - d.t < 3000;
+    if (!fresh || !backMotionOk()) { clearBackClass(); return; }
+    document.documentElement.classList.add('lg-back');
+    setTimeout(clearBackClass, 500);
+    flyAvatarBack(d.key);
+  }
+  if (document.getElementById && document.getElementById('pageTalk')) {
+    playBackArrival();
+    window.addEventListener('pageshow', e => { if (e.persisted) playBackArrival(); });
+  }
+
+  // ============================================================
   // グローバル公開
   // ============================================================
   window.LiquidGlass = {
@@ -448,6 +552,8 @@
     flyAvatarTo,
     consumeAvatarFlight,
     rememberAvatarTarget,
+    armChatBack,
+    leaveChat,
   };
 
   // タップ時のハプティクス + 膨らむフラッシュアニメーション

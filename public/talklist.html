@@ -14,7 +14,8 @@
 (function(){try{var d=document.documentElement,ls=localStorage,mm=window.matchMedia;
 if(ls.getItem('uiTheme')==='whatsapp')d.classList.add('theme-wa');
 if(ls.getItem('batterySaverAnimations')==='1'||(mm&&mm('(prefers-reduced-motion: reduce)').matches))d.classList.add('reduce-motion');
-if(ls.getItem('myBgImage'))d.classList.add('has-bg');}catch(e){}})();
+if(ls.getItem('myBgImage'))d.classList.add('has-bg');
+var bk=JSON.parse(sessionStorage.getItem('lg_back_flight')||'null');if(bk&&Date.now()-bk.t<3000)d.classList.add('lg-back');}catch(e){}})();
 </script>
 <title data-i18n="talk_list">トーク一覧</title>
 <link rel="manifest" href="/manifest.json">
@@ -600,6 +601,10 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 @keyframes tbIconPop{from{transform:scale(.7) translateY(2px)}}
 .tb26-item svg.tb-ipop{animation:tbIconPop var(--spring-bouncy-dur,.6s) var(--spring-bouncy,ease-out)}
 /* タブの中身: 移動方向から、スプリングでスッと入る */
+@keyframes lgBackIn{from{opacity:.2;transform:translateX(-18px)}}
+html.lg-back #pageTalk{animation:lgBackIn .3s cubic-bezier(.2,.8,.3,1) backwards}
+html.reduce-motion.lg-back #pageTalk{animation:none}
+@media (prefers-reduced-motion:reduce){html.lg-back #pageTalk{animation:none}}
 @keyframes tlPgR{from{opacity:0;transform:translateX(34px)}}
 @keyframes tlPgL{from{opacity:0;transform:translateX(-34px)}}
 @keyframes tlPgU{from{opacity:0;transform:translateY(12px) scale(.985)}}
@@ -1011,7 +1016,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.23 beta</div>
+  <div class="version-badge">Bro Chat v1.29.24 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
