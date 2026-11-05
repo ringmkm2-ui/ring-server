@@ -563,7 +563,7 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // body: { content, mediaType?, mediaData?, encrypted? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
-router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
+router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, deviceKeys.requireApprovedSession, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
@@ -836,7 +836,7 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
 }));
 
 // --- グループメッセージ編集 ---
-router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
+router.post('/:groupId/messages/:msgId/edit', verifyToken, deviceKeys.requireApprovedSession, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
   const { content, encrypted, keyVersion } = req.body;

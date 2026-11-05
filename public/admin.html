@@ -1129,7 +1129,7 @@ async function encryptMessage(plaintext, recipientId) {
     // 一度e5で話した相手には、サーバーの設定が無効と言っても旧方式へ落とさない
     const pinnedPeer = await c.isPinned(recipientId);
     if (pinnedPeer || (peers.length && await bcE5.enabled())) {
-      const sealedR = await c.seal(nacl.util.decodeUTF8(plaintext), [...peers, ...mine], { from: myUserId, to: recipientId });
+      const sealedR = await c.seal(nacl.util.decodeUTF8(plaintext), peers, { from: myUserId, to: recipientId, mine });
       if (sealedR) return { encrypted: true, content: sealedR };
       if (pinnedPeer) { const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした'); e.code = 'RATCHET_DOWNGRADE'; throw e; }
     }
@@ -1202,12 +1202,17 @@ async function openMediaKey(mk, senderId) {
 }
 
 async function decryptMessage(encryptedString, senderId, sentAt) {
+  // 友だちなら誰でも不正なバイト列を送れる。文字に戻せない時の例外で履歴の読み込みごと止めない
+  try { return await decryptMessageInner(encryptedString, senderId, sentAt); }
+  catch (e) { if (e instanceof URIError) return null; throw e; }
+}
+async function decryptMessageInner(encryptedString, senderId, sentAt) {
   await getOrCreateMyKeyPair();
   const iAmSender = String(senderId) === String(myUserId);
   const peerId = iAmSender ? otherId : senderId;
   if (window.bcE5 && bcE5.isRatchet(encryptedString)) {
     const c = bcE5.get();
-    const out = c ? await c.open(encryptedString, { from: senderId, to: iAmSender ? otherId : myUserId }) : null;
+    const out = c ? await c.open(encryptedString, { from: senderId, to: iAmSender ? otherId : myUserId, sentAt }) : null;
     if (!out) return null;
     let text;
     // 友だちなら誰でも不正なバイト列を送れる。ここで例外にすると履歴の読み込みごと止まる
@@ -1318,7 +1323,9 @@ async function candidateSharedKeys() {
 async function decryptFor(msg, senderId) {
   const out = await decryptMessageContent(msg.content, senderId, msg.createdAt);
   if (out !== null && window.bcE5 && bcE5.isRatchet(msg.content) && msg.id) {
-    bcE5.get().bindMessage(msg.id, msg.content, msg.expiresAt).catch(() => {});
+    // 同じ暗号文が別のメッセージとして届いたら再送なので見せない
+    const first = await bcE5.get().bindMessage(msg.id, msg.content, msg.expiresAt).catch(() => true);
+    if (first === false) return null;
   }
   return out;
 }
@@ -1505,7 +1512,7 @@ async function sendMediaViaCloudinary(f, t) {
     const e5Peer = window.bcE5 && bcE5.get() && await bcE5.get().isPinned(otherId);
     if (window.bcE5 && bcE5.get() && (e5Peer || (peers.length && await bcE5.enabled()))) {
       sharedKey = nacl.randomBytes(32);
-      mediaKeys = await bcE5.get().seal(sharedKey, [...peers, ...mine], { from: myUserId, to: otherId });
+      mediaKeys = await bcE5.get().seal(sharedKey, peers, { from: myUserId, to: otherId, mine });
     } else if (all && window.E2EMulti) {
       sharedKey = nacl.randomBytes(32);
       mediaKeys = E2EMulti.seal(sharedKey, myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);

@@ -51,7 +51,8 @@
     prekeyAt = Date.now();
     const lsk = 'e5_prekey_at_' + uid();
     try { if (Date.now() - Number(localStorage.getItem(lsk) || 0) < 12 * 60 * 60 * 1000) return; } catch (e) {}
-    if (!(await enabled())) return;
+    await enabled();
+    if (!cfg || !cfg.publish) return;
     const c = get();
     if (!c) return;
     try {

@@ -50,7 +50,7 @@ async function swDecrypt(cipher, senderPubB64, senderId) {
       const p = E2ERatchet.parse(cipher);
       const uid = await idbGetKv('uid');
       const mine = p && ring.find(k => { try { return p.entries.has(nacl.util.encodeBase64(new Uint8Array(k.publicKey))); } catch (e) { return false; } });
-      if (!uid || !mine) return null;
+      if (!uid || !mine || !senderId) return null;
       const client = E2ERatchet.makeClient({
         uid,
         identity: () => ({ pub: new Uint8Array(mine.publicKey), sec: new Uint8Array(mine.secretKey) }),

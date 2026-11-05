@@ -21,8 +21,10 @@
   const VERSION = 1;
   const MAX_SKIP = 1000;            // 1つのチェーンで飛ばせる数(巨大な番号を送られて計算を止められないように)
   const MAX_SKIP_DORMANT = 100;     // 今使っていないセッションでは小さく(細工した1通で何秒も止められないように)
-  const DORMANT_MS = 7 * 24 * 60 * 60 * 1000; // 使わなくなったセッションは捨てる。残すと、盗まれた古い状態で割り込まれる
-  const UNCONFIRMED_MS = 24 * 60 * 60 * 1000; // 返事が来ないセッションは作り直す(相手が開けていないかもしれない)
+  const DORMANT_MS = 14 * 24 * 60 * 60 * 1000; // 使わなくなったセッションは捨てる。残すと、盗まれた古い状態で割り込まれる
+  const UNCONFIRMED_MS = 24 * 60 * 60 * 1000;  // 一度も返事が来ないセッションは作り直す(相手が開けていないかもしれない)
+  const SILENT_MS = 7 * 24 * 60 * 60 * 1000;   // このセッションで長く受信していなければ作り直す(分岐や破損から自動で回復し、鍵も新しくなる)
+  const SIM_START_MS = 60 * 60 * 1000;         // 両者が同時に始めたとみなす範囲
   const MAX_SKIPPED_TOTAL = 4000;   // 溜めておく飛ばした鍵の総数
   const SKIPPED_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 飛ばした鍵は前方秘匿性を弱めるので、古いものは捨てる
   const MAX_SESSIONS_PER_PEER = 5;  // 同時に始めた時など、1組に複数のセッションがありうる
@@ -382,7 +384,7 @@
 
     const nsOf = my => b64e(my.pub) + '|';   // 端末の鍵を作り直したら、古い鍵の状態は使わない
     const pruneList = (list, now) => list.filter((x, i) => i === 0 || now - (x.lastUsed || 0) <= DORMANT_MS);
-    const stale = (x, now) => !!x.pending && now - (x.createdAt || 0) > UNCONFIRMED_MS;
+    const stale = (x, now) => now - Math.max(x.lastRecv || 0, x.createdAt || 0) > (x.pending ? UNCONFIRMED_MS : SILENT_MS);
 
     function wrap(bytes, ctx) {
       return concat(utf8(JSON.stringify({ f: String(ctx.from), t: String(ctx.to) })), Uint8Array.of(0), bytes);
@@ -394,14 +396,14 @@
       let m;
       try { m = JSON.parse(nacl().util.encodeUTF8(out.slice(0, z))); } catch (e) { return null; }
       if (!m || typeof m.f !== 'string' || typeof m.t !== 'string') return null;
-      if (ctx) {
-        if (ctx.from != null && String(ctx.from) !== m.f) return null;
-        if (ctx.to != null && String(ctx.to) !== m.t) return null;
-        if (ctx.from == null && ctx.members) {
-          const set = ctx.members.map(String);
-          if (!set.includes(m.f) || !set.includes(m.t)) return null;
-        }
-      }
+      // 文脈なしでは開かない。送信者が分からない経路は members で「この2人の間の文」とだけ確かめる
+      if (!ctx) return null;
+      if (ctx.from != null && ctx.to != null) {
+        if (String(ctx.from) !== m.f || String(ctx.to) !== m.t) return null;
+      } else if (ctx.members) {
+        const set = ctx.members.map(String);
+        if (m.f === m.t || !set.includes(m.f) || !set.includes(m.t)) return null;
+      } else return null;
       return { bytes: out.slice(z + 1), f: m.f, t: m.t };
     }
 
@@ -455,7 +457,7 @@
         list.splice(MAX_SESSIONS_PER_PEER);
         out = ratchetEncrypt(init, plain);
         st.put(list, key);
-        t.objectStore('meta').put(true, 'peer:' + peerPub);   // この端末は対応済み。以後 box に戻さない
+        t.objectStore('meta').put(Date.now(), 'peer:' + peerPub);   // この端末は対応済み。以後 box に戻さない
       });
       return out;
     }
@@ -469,25 +471,35 @@
     async function bindMessage(msgId, content, expiresAt) {
       const k = cacheKey(content);
       const exp = expiresAt ? (Date.parse(expiresAt) || Number(expiresAt) || 0) : 0;
-      await tx(['plain', 'meta'], 'readwrite', async t => {
-        t.objectStore('meta').put(k, 'msg:' + msgId);
+      return tx(['plain', 'meta'], 'readwrite', async t => {
+        const m = t.objectStore('meta');
+        // 同じ暗号文が別のメッセージとして来たら、再送(リプレイ)。持ち主は最初の1通だけ
+        const owner = await idbReq(m.get('owner:' + k));
+        if (owner && owner !== msgId) return false;
+        if (!owner) m.put(msgId, 'owner:' + k);
+        m.put(k, 'msg:' + msgId);
         if (exp) {
           const st = t.objectStore('plain');
           const v = await idbReq(st.get(k));
           if (v && v.exp !== exp) { v.exp = exp; st.put(v, k); }
         }
+        return true;
       });
     }
     async function forgetMessage(msgId) {
       await tx(['plain', 'meta'], 'readwrite', async t => {
         const m = t.objectStore('meta');
         const k = await idbReq(m.get('msg:' + msgId));
-        if (k) { t.objectStore('plain').delete(k); m.delete('msg:' + msgId); }
+        if (!k) return;
+        m.delete('msg:' + msgId);
+        // サーバーが同じ暗号文で別の行を作って消しても、最初の1通の本文は消えない
+        if ((await idbReq(m.get('owner:' + k))) === msgId) { t.objectStore('plain').delete(k); m.delete('owner:' + k); }
       });
     }
 
     // bytes を recipients(公開鍵Base64の配列)全員あてに。ctx = { from, to } 自分と相手のユーザーID
-    async function seal(bytes, recipients, ctx) {
+    async function seal(bytes, peers, ctx) {
+      // peers = 相手の端末、ctx.mine = 自分の他の端末。前方秘匿性の判定は相手の端末だけで行う
       if (!ctx || ctx.from == null || ctx.to == null) throw new Error('seal: ctx required');
       const my = me();
       const myB64 = b64e(my.pub);
@@ -495,23 +507,26 @@
       const entries = [];
       const inner = wrap(bytes, ctx);
       const pinned = await isPinned(ctx.to);
-      let ratcheted = false;
-      for (const pb of recipients) {
+      let ratcheted = false, peerEntries = 0;
+      const peerSet = new Set(peers);
+      for (const pb of [...peers, ...(ctx.mine || [])]) {
         if (!pb || seen.has(pb)) continue;
+        const isPeer = peerSet.has(pb);
         const pk = canonicalKey(pb);
         if (!pk) continue;                                 // 別表記の鍵は受け取らない
         if (entries.length >= MAX_RECIPIENTS) throw new Error('送り先の端末が多すぎます');
         seen.add(pb);
         const ct = await encryptFor(pb, inner);
-        if (ct) { entries.push(pb + '.r' + b64e(ct)); ratcheted = true; continue; }
+        if (ct) { entries.push(pb + '.r' + b64e(ct)); if (isPeer) { ratcheted = true; peerEntries += 1; } continue; }
         const devicePinned = await tx(['meta'], 'readonly', t => idbReq(t.objectStore('meta').get('peer:' + pb)));
         // 前方秘匿性ありで話した相手に旧方式で送ると、サーバーがプリキーを隠すだけで弱められる。この端末の分は入れない
         if (pinned || devicePinned) continue;
         const nonce = nacl().randomBytes(24);
         entries.push(pb + '.b' + b64e(concat(nonce, nacl().box(inner, nonce, pk, my.sec))));
+        if (isPeer) peerEntries += 1;
       }
-      if (!entries.length || (pinned && !ratcheted)) {
-        if (!pinned && !recipients.some(k => k && k !== myB64)) return null;
+      // 相手に届く分が1つも無いのに「送信成功」にしない(サーバーが鍵一覧を隠した時など)
+      if (!peerEntries) {
         const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした');
         e.code = 'RATCHET_DOWNGRADE';
         throw e;
@@ -548,8 +563,19 @@
       });
     }
 
+    const FAILED_RETRY_MS = 5 * 60 * 1000;
     const failed = new Map();  // 開けなかった暗号文。同期のたびに重い計算をやり直さない
-    function markFailed(k) { if (failed.size > 500) failed.clear(); failed.set(k, true); }
+    function markFailed(k) { if (failed.size > 500) failed.clear(); failed.set(k, Date.now()); }
+    const keyCache = new Map();
+    async function peerKeysCached(userId, want) {
+      const c = keyCache.get(userId);
+      // 無い鍵は聞き直す(たった今増えた端末かもしれない)。覚えているのは一覧にあった時の通信を減らすためだけ
+      if (c && Date.now() - c.at < 60000 && c.list.includes(want)) return c.list;
+      const list = await opts.peerKeys(userId);
+      if (keyCache.size > 200) keyCache.clear();
+      keyCache.set(userId, { at: Date.now(), list });
+      return list;
+    }
 
     // 戻り値: 本文のバイト列 / 開けなければ null。同じ暗号文は何度呼んでも同じ結果(2回目からは保存分)
     // ctx = { from, to } サーバーの言う送信者と宛先。メディアの鍵など送信者が分からない時は { members: [自分, 相手] }
@@ -559,7 +585,8 @@
       const k = cacheKey(content);
       const hit = await recall(content, ctx);
       if (hit) return hit;
-      if (failed.has(k)) return null;
+      if (Date.now() - (failed.get(k) || 0) < FAILED_RETRY_MS) return null;
+      if (!ctx) return null;
       const my = me();
       const myB64 = b64e(my.pub);
       if (p.senderPub === myB64) return null;   // 自分の鍵を相手の発言に見せかけたもの(自分の分は保存から読む)
@@ -570,9 +597,13 @@
       try { body = b64d(entry.slice(1)); } catch (e) { return null; }
       if (kind === 'b') {
         const peerUser = ctx && (ctx.from != null ? (String(ctx.from) === String(opts.uid) ? ctx.to : ctx.from) : null);
-        const pinned = await tx(['meta'], 'readonly', async t => !!(await idbReq(t.objectStore('meta').get('peer:' + p.senderPub)))
-          || (peerUser != null && !!(await idbReq(t.objectStore('meta').get('user:' + peerUser)))));
-        if (pinned) return null;   // 前方秘匿性ありで話した相手からの旧方式は受けない
+        const pinAt = await tx(['meta'], 'readonly', async t => {
+          const a = await idbReq(t.objectStore('meta').get('peer:' + p.senderPub));
+          const b2 = peerUser != null ? await idbReq(t.objectStore('meta').get('user:' + peerUser)) : 0;
+          return Math.max(Number(a) || 0, Number(b2) || 0);
+        });
+        // 前方秘匿性ありで話した相手からの旧方式は受けない。ただし話し始める前に送られた、まだ読んでいない文は読む
+        if (pinAt && !(ctx.sentAt && Date.parse(ctx.sentAt) < pinAt)) return null;
         if (body.length < 24 + 16) return null;
         let out = null;
         try { out = nacl().box.open(body.slice(24), body.slice(0, 24), b64d(p.senderPub), my.sec); } catch (e) { out = null; }
@@ -607,10 +638,11 @@
           const bytes = finish(t, out);
           if (!bytes) return { out: null };  // 中身の送信者が合わない。状態は進めない
           list[i] = trial;
-          // 送る時に使うセッションは、受信しただけでは簡単に切り替えない(盗まれた古い状態で乗っ取られないように)。
-          // 今のものが未確認か、同時に始めた時に両端で同じ方へ揃える時だけ
-          const newer = i > 0 && now - (list[0].lastUsed || 0) < UNCONFIRMED_MS && String(trial.sid) > String(list[0].sid);
-          if (i > 0 && (list[0].pending || newer)) { list.splice(i, 1); list.unshift(trial); }
+          trial.lastRecv = now;
+          // 送る時に使うセッションは、受信しただけでは切り替えない(盗まれた古い状態で乗っ取られないように)。
+          // 両者が同時に始めた時だけ、両端で同じ方(番号の大きい方)へ揃える
+          const sim = Math.abs((trial.createdAt || 0) - (list[0].createdAt || 0)) < SIM_START_MS;
+          if (i > 0 && sim && String(trial.sid) > String(list[0].sid)) { list.splice(i, 1); list.unshift(trial); }
           sessions.put(list, sKey);
           return { out: bytes };
         }
@@ -625,9 +657,10 @@
       // 送信者として名乗るユーザーの今の端末にある鍵だけ受ける(知らない鍵でセッションを増やされないように)。通信はトランザクションの外
       const senderUser = ctx && ctx.from != null ? ctx.from : null;
       let okKeys = null;
-      if (opts.peerKeys && senderUser != null) { try { okKeys = await opts.peerKeys(senderUser); } catch (e) { okKeys = null; } }
-      if (!Array.isArray(okKeys) || !okKeys.includes(p.senderPub)) return null;
-      return tx(['sessions', 'plain', 'prekeys', 'meta'], 'readwrite', async t => {
+      if (opts.peerKeys && senderUser != null) { try { okKeys = await peerKeysCached(senderUser, p.senderPub); } catch (e) { okKeys = null; } }
+      if (!Array.isArray(okKeys)) return null;   // 通信できない時や Service Worker では判断しない。ページで開いた時にもう一度
+      if (!okKeys.includes(p.senderPub)) { markFailed(k); return null; }
+      const created = await tx(['sessions', 'plain', 'prekeys', 'meta'], 'readwrite', async t => {
         // 鍵の確認を待つ間に、同じセッションの前の1通が開かれているかもしれない
         const again = await tryExisting(t);
         if (!again.needNew) return again.out;
@@ -651,14 +684,21 @@
         if (!bytes) return null;
         if (h.pre.otkId) pks.delete(ns + 'otk:' + h.pre.otkId);   // 前方秘匿性のために使ったら消す
         metaS.put(Date.now(), 'ek:' + ns + ekB64);
-        metaS.put(true, 'peer:' + p.senderPub);
+        metaS.put(Date.now(), 'peer:' + p.senderPub);
         const sessions = t.objectStore('sessions');
-        const list = pruneList((await idbReq(sessions.get(sKey))) || [], Date.now());
-        list.unshift(state);
+        const nowT = Date.now();
+        const list = pruneList((await idbReq(sessions.get(sKey))) || [], nowT);
+        state.lastRecv = nowT;
+        // 同時に始めた時は、両端で同じ方を送信に使う(分岐したままにしない)
+        const head = list[0];
+        if (head && head.pending && Math.abs((head.createdAt || 0) - nowT) < SIM_START_MS && String(head.sid) > String(state.sid)) list.splice(1, 0, state);
+        else list.unshift(state);
         list.splice(MAX_SESSIONS_PER_PEER);
         sessions.put(list, sKey);
         return bytes;
       });
+      if (!created) markFailed(k);
+      return created;
     }
 
     // プリキーを用意してサーバーへ。古いSPKは回転し、OTKは減ったら足す
@@ -676,8 +716,10 @@
         const curId = await idbReq(metaS.get(ns + 'spkId'));
         const curAt = await idbReq(metaS.get(ns + 'spkAt'));
         let otkNext = await idbReq(metaS.get(ns + 'otkNext'));
-        // 端末の中の状態が無いのにサーバーに古いOTKが残っていると、その秘密鍵はもう無い。全部置き換える
-        replace = !otkNext;
+        // 端末の中の状態が無いのにサーバーに古いOTKが残っていると、その秘密鍵はもう無い。全部置き換える。
+        // 送信に失敗してもやり直せるよう、完了するまで印を残す
+        replace = !otkNext || !!(await idbReq(metaS.get(ns + 'needReplace')));
+        if (replace) metaS.put(true, ns + 'needReplace');
         const needSpk = !curId || !curAt || now - curAt > SPK_ROTATE_MS || !(cnt && cnt.spkId === curId);
         const needOtk = replace || remote < OTK_LOW;
         if (!needSpk && !needOtk) return;
@@ -728,6 +770,7 @@
         deviceKey: myB64, spk: { id: spkId, pub: b64e(spkPub), sig: b64e(spkSig) }, otks: otksOut, replace,
         challengeId: c.id, answer: b64e(answer),
       });
+      if (replace) await tx(['meta'], 'readwrite', async t => { t.objectStore('meta').delete(ns + 'needReplace'); });
       return true;
     }
     function ensurePrekeys() {
