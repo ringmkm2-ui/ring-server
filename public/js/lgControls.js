@@ -886,6 +886,7 @@
     if (input !== wrap) wrap.querySelectorAll('.ts-track').forEach(n => n.remove());
     else { wrap = input.parentElement; input.style.display = 'none'; }
     wrap.dataset.lgSw = '1';
+    input.dataset.lgSw = '1';   // 入力欄そのものを渡された時も、二重に作らない
 
     const root = document.createElement('div');
     root.className = 'lg-sw';
@@ -1027,10 +1028,36 @@
     }
   }
   function upgradeSwitches() { document.querySelectorAll('.ts-wrap, input.ios-switch').forEach(upgradeSwitch); }
+  // 起動時は、今見えているスイッチだけすぐ作る。閉じている設定の中の分は、手が空いた時に少しずつ作る
+  // (全部を起動中に作ると、弱い端末で開くのが遅くなる。作りかけのまま開かれたら、見えた分をその場で作る)
+  function upgradeSwitchesLater() {
+    const rest = [];
+    document.querySelectorAll('.ts-wrap, input.ios-switch').forEach(w => {
+      if (w.dataset.lgSw) return;
+      // 設定画面は display:none ではなく画面の外に置いてあるので、位置で見る
+      const r = w.getBoundingClientRect();
+      if (r.width && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight) upgradeSwitch(w); else rest.push(w);
+    });
+    if (!rest.length) return;
+    const seen = window.IntersectionObserver ? new IntersectionObserver(es => {
+      es.forEach(en => { if (en.isIntersecting) { seen.unobserve(en.target); upgradeSwitch(en.target); } });
+    }) : null;
+    if (seen) rest.forEach(w => seen.observe(w));
+    const idle = window.requestIdleCallback || (fn => setTimeout(() => fn({ timeRemaining: () => 8 }), 200));
+    const step = dl => {
+      while (rest.length && dl.timeRemaining() > 4) {
+        const w = rest.shift();
+        if (seen) seen.unobserve(w);
+        upgradeSwitch(w);
+      }
+      if (rest.length) idle(step, { timeout: 1500 });
+    };
+    setTimeout(() => idle(step, { timeout: 1500 }), 1500);
+  }
 
   function init() {
     if (WA) document.documentElement.classList.add('theme-wa');
-    upgradeSwitches();
+    upgradeSwitchesLater();
     // ページを開いた時からあるボタンは、最初からガラスで出す。以前はここでも「出現」
     // (透明→膨らんで現れる)を毎回やっていたため、画面を開くたびにボタンが点滅して見えた。
     // 出現の動きは、メニュー等で後から出てくるボタンにだけ使う(タップ後の scanSoon)

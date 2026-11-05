@@ -826,10 +826,7 @@ window.ensureGroupCrypto = (function () {
   };
 })();
 </script>
-<script src="/js/libsodium-wrappers.min.js"></script>
-<script src="/js/signalkeymanager.js"></script>
 <script src="/js/safetyNumber.js"></script>
-<script src="/js/groupE2E.js"></script>
 <script src="/js/communityE2E.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/cloudinarySign.js"></script>
@@ -1016,7 +1013,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.24 beta</div>
+  <div class="version-badge">Bro Chat v1.29.25 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1902,7 +1899,9 @@ const TBL = (function () {
 
   const tb = { h: 60, pitch: 86, restW: 0, restH: 0, lensW: 0, lensH: 0 };
   const T = { pressed: false, drag: false, p0: 0, fx: 0, lifted: false, x: 0, vx: 0, tx: 0, g: 0, vg: 0, s: 0, sel: 0, lt: 0, key: '', ckey: '', mapKey: '', max: 1, lastDs: -1, ks: items.map((_, i) => i === 0 ? 1 : 0), shown: false };
-  const center = i => items[i].offsetLeft + items[i].offsetWidth / 2;
+  // 毎フレーム読むので覚えておく(直前に書いたスタイルのせいで、読むたびに全体のレイアウトが走っていた)
+  let centers = null;
+  const center = i => (centers || (centers = items.map(el => el.offsetLeft + el.offsetWidth / 2)))[i];
   const nearest = x => { let b = 0, d = Infinity; items.forEach((_, i) => { const e = Math.abs(center(i) - x); if (e < d) { d = e; b = i; } }); return b; };
   function clampX(x) {
     const a = center(0), b = center(items.length - 1), L = tb.pitch * .3, rub = d => L * (1 - 1 / (d / L + 1));
@@ -1910,6 +1909,7 @@ const TBL = (function () {
   }
   function localX(clientX) { const nr = nav.getBoundingClientRect(), sc = nav.offsetWidth ? nr.width / nav.offsetWidth : 1; return (clientX - nr.left) / sc; }
   function layout() {
+    centers = null;
     tb.h = nav.offsetHeight || 60;
     tb.pitch = items.length > 1 ? center(1) - center(0) : items[0].offsetWidth;
     tb.restH = Math.round((tb.h - 8) / 2) * 2; tb.restW = Math.round(Math.min(tb.pitch + 6, tb.pitch * 1.12) / 2) * 2;
@@ -6389,7 +6389,7 @@ function openPostMenu(p) {
       // 作るときに共有鍵も作って、自分宛に暗号化した塊だけをサーバーへ渡す。
       // 以後このコミュニティの投稿はこの鍵で暗号化され、サーバーには読めない。
       let keyPair = null;
-      try { keyPair = await communityE2E.createInitialKey(); }
+      try { await window.ensureGroupCrypto(); keyPair = await communityE2E.createInitialKey(); }
       catch (e) { console.warn('[community] 鍵を作れませんでした。暗号化なしで作成します', e); }
 
       const data = await api('/api/communities', {
