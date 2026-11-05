@@ -148,7 +148,20 @@ const guestUpgradeLimiter = rateLimit({
   message: { error: '試行が多すぎます。しばらくしてからお試しください' },
 });
 
+// パスワード変更・退会(現在のパスワードの照合が走る): 人ごとに15分で20回まで。
+// トークンを持っているだけの人が、ここを使ってパスワードを当てに来る・bcryptを回し続けるのを止める。
+// 間違いの回数は routes/auth.js でDBに数えている
+const passwordActionLimiter = rateLimit({
+  ...perUser,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
 module.exports = {
+  passwordActionLimiter,
   guestUpgradeLimiter,
   linkPreviewImageLimiter,
   inviteSignupLimiter,

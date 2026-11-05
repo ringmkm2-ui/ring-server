@@ -9,7 +9,7 @@ async function befriendOfficial(userId) {
   try {
     const code = String(process.env.OFFICIAL_FRIEND_ID === undefined ? 'UMTUK9D' : process.env.OFFICIAL_FRIEND_ID).trim().toUpperCase();
     if (!code || !userId) return;
-    const off = await db.get("SELECT id FROM users WHERE user_id = ? AND username NOT LIKE 'deleted%'", [code]);
+    const off = await db.get("SELECT id FROM users WHERE user_id = ? AND substr(username, 1, 8) != 'deleted_'", [code]);
     if (!off || off.id === userId) return;
     const [a, b] = [userId, off.id].sort();
     const ex = await db.get('SELECT id FROM friendships WHERE user_a_id = ? AND user_b_id = ?', [a, b]);

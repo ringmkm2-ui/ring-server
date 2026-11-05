@@ -11,6 +11,8 @@ const callAssist = require('./callAssistProxy');
 const sessionEvents = require('../utils/sessionEvents');
 const { canInteract, getBlockVersion, isBlockedEither } = require('../utils/relations');
 const { getSettings } = require('../utils/userSettings');
+const { isGuestUser } = require('../utils/guest');
+const callAssistQuota = require('../utils/callAssistQuota');
 
 const connections = new Map(); // userId -> Set<ws>
 
@@ -413,10 +415,16 @@ async function flushOfflineQueue(userId) {
 
 // セッションが失効したら、その端末のWebSocketもすぐ切る(トークンを失効させても、
 // 既に繋がっている接続は生きたままメッセージを受け取り続けてしまうため)。
-sessionEvents.on('revoked', ({ userId, sid, exceptSid }) => {
+sessionEvents.on('revoked', ({ userId, sid, exceptSid, quietSid }) => {
   const set = connections.get(userId);
   if (!set) return;
   for (const c of [...set]) {
+    // quietSid: session_revoked を送らずに切る。画面はこれを受けると強制ログアウトするので、
+    // 新しいトークンに切り替わった本人の端末を巻き込まないため(ゲストの昇格)
+    if (quietSid) {
+      if (c.sessionId === quietSid) { try { c.close(4002, 'session replaced'); } catch (e) {} set.delete(c); }
+      continue;
+    }
     const hit = sid ? c.sessionId === sid : (exceptSid ? c.sessionId !== exceptSid : true);
     if (!hit) continue;
     try { c.send(JSON.stringify({ type: 'session_revoked' })); } catch (e) {}
@@ -452,6 +460,9 @@ function initWebSocketServer(server) {
   wss.on('close', () => clearInterval(heartbeat));
 
   wss.on('connection', (ws, req) => {
+    // 大きすぎるフレームや壊れたフレームが来ると、ws は 'error' を出す。リスナーが無いと uncaughtException になり、
+    // 認証前の誰でもログを埋められる。接続はwsが閉じてくれるので、ここでは記録だけ
+    ws.on('error', (err) => { console.warn('[ws] connection error:', err && (err.code || err.message)); });
     let userId = null;
     // 「今アプリが使われている」印。後回しでいい定期処理の判断に使う(utils/activity.js)
     require('../utils/activity').note();
@@ -461,6 +472,7 @@ function initWebSocketServer(server) {
     // 自分のマイク音声と相手の受信音声(remoteAudio)を別々に文字起こしするため。
     let callAssistSessions = { mic: null, remote: null };
     let callAssistCallIds = { mic: null, remote: null }; // 字幕を始めた通話。終わった通話の字幕は音声を流しても止める
+    const callAssistStartSeq = { mic: 0, remote: 0 }; // 開始の確認を待つ間に次の開始が来たら、古い方は始めない
     // 入力中表示・オンライン問い合わせのたびにDBを引かないよう、関係の確認結果を1分だけ覚える
     const relationCache = new Map(); // targetId -> { ok, ts }
     const fakeCalls = new Map(); // ブロックされた相手への「呼び出し中」だけの通話 callId -> timer
@@ -1195,6 +1207,28 @@ function initWebSocketServer(server) {
           return;
         }
         const track = data.track === 'remote' ? 'remote' : 'mic';
+        const startSeq = ++callAssistStartSeq[track];
+        // ゲストは使い捨てで何人でも作れるので使えない。1日の上限は再起動で消えないようDBで見る(utils/callAssistQuota.js)
+        let remainingSeconds;
+        try {
+          if (await isGuestUser(userId)) {
+            ws.send(JSON.stringify({ type: 'call_assist_error', error: 'ゲストのアカウントでは字幕を使えません', track: data.track }));
+            return;
+          }
+          remainingSeconds = callAssistQuota.dailyLimitSeconds() - await callAssistQuota.usedSeconds(userId);
+        } catch (e) {
+          // 数えられない時に開始すると、上限なしで課金が増える
+          console.error('[callAssist] 利用量の確認に失敗:', e.message);
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'call_assist_error', error: '字幕を開始できませんでした', track: data.track }));
+          return;
+        }
+        if (ws.readyState !== ws.OPEN) return;
+        if (remainingSeconds <= 0) {
+          ws.send(JSON.stringify({ type: 'call_assist_error', error: callAssist.DAILY_LIMIT_MESSAGE, track: data.track }));
+          return;
+        }
+        // 確認を待っている間に、通話が終わったり次の開始が来たりしていないか
+        if (startSeq !== callAssistStartSeq[track] || !isCallAnswered(data.callId, userId)) return;
         if (callAssistSessions[track]) {
           callAssist.stopSession(callAssistSessions[track]);
         }
@@ -1205,6 +1239,7 @@ function initWebSocketServer(server) {
         callAssist.startSession(sessionId, {
           owner: userId,
           language: lang,
+          allowanceSeconds: remainingSeconds,
           onTranscript: (text, isFinal) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'call_assist_transcript', text, isFinal, track }));

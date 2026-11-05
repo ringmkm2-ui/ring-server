@@ -38,9 +38,10 @@ const PORT = process.env.PORT || 3000;
 // 以前は cors() を引数無しで使っており、これは全オリジンを無条件許可する
 // 設定 = 悪意のある第三者サイトが被害者のブラウザ経由でこのAPIを叩ける状態だった。
 // ALLOWED_ORIGINS環境変数でカンマ区切り追加可能にしておく(将来別ドメインを足す場合用)。
+// http://localhost:3000 は開発用。本番で許すと、利用者の端末で動く別のアプリがAPIを読めてしまう。
 const DEFAULT_ALLOWED_ORIGINS = [
   ...require('./utils/siteHosts').SITE_ORIGINS,
-  'http://localhost:3000',
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:3000']),
 ];
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? DEFAULT_ALLOWED_ORIGINS.concat(process.env.ALLOWED_ORIGINS.split(','))
@@ -152,6 +153,23 @@ async function main() {
     origin: ALLOWED_ORIGINS,
     credentials: true,
   }));
+  // Slowloris/遅延攻撃対策: リクエスト全体のタイムアウトを設定。
+  // デフォルトは無制限で、接続を意図的に遅延させてサーバーリソースを枯渇させる攻撃が可能。
+  // ファイルアップロード(最大50MB)を考慮して60秒に設定する。
+  // JSONの読み込みより前に置く(本文をゆっくり送り続ける相手にも効かせるため)。
+  app.use((req, res, next) => {
+    res.setTimeout(60000, () => {
+      // 動画の配信など、応答の途中で切れた時はもう返せない
+      if (!res.headersSent) res.status(408).json({ error: 'リクエストタイムアウト' });
+    });
+    next();
+  });
+
+  // API全体への高頻度リクエストを制限(スクリプトによる連打・スクレイピング対策)
+  // JSONの解析より前に置く。後ろだと、回数を超えた後も4MBの本文を毎回読んで解析してしまい、CPUとメモリを使わせ放題だった。
+  // 本文を見ないので、アップロード(本文をそのまま流す)にも影響しない。
+  app.use('/api', apiLimiter);
+
   // JSON本文の上限。以前は全API(ログイン等の未ログインで叩ける所も含む)に50MBを許していたため、
   // 誰でも50MBのJSONを何本か同時に送るだけでメモリ(512MB)を使い切らせてサーバーを落とせた。
   // 普段は4MB(プロフィール画像のBase64が最大3MB)まで。画像・動画を本文に入れて送る
@@ -175,19 +193,6 @@ async function main() {
     }
     return smallJson(req, res, next);
   });
-
-  // Slowloris/遅延攻撃対策: リクエスト全体のタイムアウトを設定。
-  // デフォルトは無制限で、接続を意図的に遅延させてサーバーリソースを枯渇させる攻撃が可能。
-  // ファイルアップロード(最大50MB)を考慮して60秒に設定する。
-  app.use((req, res, next) => {
-    res.setTimeout(60000, () => {
-      res.status(408).json({ error: 'リクエストタイムアウト' });
-    });
-    next();
-  });
-
-  // API全体への高頻度リクエストを制限(スクリプトによる連打・スクレイピング対策)
-  app.use('/api', apiLimiter);
 
   // 「今アプリが使われている」印(utils/activity.js)。後回しでいい定期処理は、この印を見て
   // 誰も使っていない間は動かない。DBを眠らせてNeonのコンピュート時間を節約するため。
@@ -322,6 +327,8 @@ async function main() {
   // 4引数(err, req, res, next)はExpressがエラーハンドラと認識するために必須。
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
+    // パスワード照合の待ち行列が満杯(utils/passwordHash.js)。try/catchの無いルートからここへ来る
+    if (err && err.code === 'PASSWORD_BUSY') return require('./utils/errorResponse').sendBusy(res);
     // 壊れたJSON・大きすぎる本文などはクライアント側の問題なので4xxで返す(以前は全部500になり、
     // スタック付きのエラーログがログを埋めていた)
     if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large' || err.type === 'encoding.unsupported' || err.type === 'charset.unsupported')) {

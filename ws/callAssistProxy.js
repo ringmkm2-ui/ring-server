@@ -14,8 +14,11 @@
 // クライアントには一切渡らない。
 // -----------------------------------------------------------------------
 const WebSocket = require('ws');
+const callAssistQuota = require('../utils/callAssistQuota');
 
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY || '';
+const DEEPGRAM_WS_URL = (process.env.DEEPGRAM_WS_URL || 'wss://api.deepgram.com').replace(/\/$/, ''); // 環境変数はテスト用
+const DAILY_LIMIT_MESSAGE = '今日の字幕の利用上限に達しました。明日またお使いください';
 
 function isDeepgramConfigured() {
   return !!DEEPGRAM_API_KEY;
@@ -30,7 +33,29 @@ const MAX_SESSIONS_PER_USER = 2;
 // 音声は実時間ぶん(16kHz・16bit = 32KB/秒)より速くは流させない。速く送れば実時間より速く課金されるため
 const AUDIO_BYTES_PER_SEC = 32000;
 const AUDIO_BURST_BYTES = 128 * 1024;
-const sessionMeta = new Map(); // sessionId -> { owner, tokens, last }
+// 使った秒数をDBに書く間隔(音声の秒数)。再起動で失うのはせいぜいこの分だけ
+const USAGE_FLUSH_SECONDS = 15;
+const sessionMeta = new Map(); // sessionId -> { owner, tokens, last, unbilled, sent, allowanceBytes, onError }
+
+// 送った音声の秒数をDBに足す。final はセッションの終わりで、端数を切り上げて全部書く
+function flushUsage(sessionId, meta, final) {
+  const seconds = final ? Math.ceil(meta.unbilled / AUDIO_BYTES_PER_SEC) : Math.floor(meta.unbilled / AUDIO_BYTES_PER_SEC);
+  if (seconds <= 0) return;
+  meta.unbilled = Math.max(0, meta.unbilled - seconds * AUDIO_BYTES_PER_SEC);
+  callAssistQuota.addSeconds(meta.owner, seconds).then((total) => {
+    // 同じ人の別のセッションと合わせて上限を超えた
+    if (!final && total >= callAssistQuota.dailyLimitSeconds()) stopForLimit(sessionId, meta);
+  }).catch((e) => {
+    console.error('[callAssist] 利用量の記録に失敗:', e.message);
+    if (!final) meta.unbilled += seconds * AUDIO_BYTES_PER_SEC; // 次の回に書き直す
+  });
+}
+
+function stopForLimit(sessionId, meta) {
+  if (sessionMeta.get(sessionId) !== meta) return; // もう終わっている
+  stopSession(sessionId);
+  if (meta.onError) meta.onError(new Error(DAILY_LIMIT_MESSAGE));
+}
 function sessionsOf(owner) {
   let n = 0;
   for (const [id, m] of sessionMeta) if (m.owner === owner && activeSessions.has(id)) n++;
@@ -41,7 +66,7 @@ function sessionsOf(owner) {
  * クライアントの音声ストリーミングセッションを開始する。
  * onTranscript(text, isFinal) が呼ばれるたびに文字起こし結果を通知する。
  */
-function startSession(sessionId, { language = 'ja', onTranscript, onError, onClose, owner } = {}) {
+function startSession(sessionId, { language = 'ja', onTranscript, onError, onClose, owner, allowanceSeconds } = {}) {
   if (!isDeepgramConfigured()) {
     if (onError) onError(new Error('DEEPGRAM_API_KEY が未設定です'));
     return null;
@@ -54,9 +79,13 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
     if (onError) onError(new Error('字幕は同時に2つまでです'));
     return null;
   }
-  sessionMeta.set(sessionId, { owner, tokens: AUDIO_BURST_BYTES, last: Date.now() });
+  sessionMeta.set(sessionId, {
+    owner, tokens: AUDIO_BURST_BYTES, last: Date.now(), unbilled: 0, sent: 0, onError,
+    // 開始時点の残り。書き込みを待たずに、このセッションの分はここで止める
+    allowanceBytes: Number.isFinite(allowanceSeconds) ? allowanceSeconds * AUDIO_BYTES_PER_SEC : Infinity,
+  });
 
-  const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=${encodeURIComponent(language)}&encoding=linear16&sample_rate=16000&interim_results=true`;
+  const dgUrl = `${DEEPGRAM_WS_URL}/v1/listen?model=nova-2&language=${encodeURIComponent(language)}&encoding=linear16&sample_rate=16000&interim_results=true`;
   const dgWs = new WebSocket(dgUrl, {
     headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` },
   });
@@ -86,7 +115,12 @@ function startSession(sessionId, { language = 'ja', onTranscript, onError, onClo
   dgWs.on('close', () => {
     console.log(`[callAssist] Deepgramセッション終了: ${sessionId}`);
     // 同じIDで作り直された新しいセッションを、古い方のcloseで消さない
-    if (activeSessions.get(sessionId) === dgWs) { activeSessions.delete(sessionId); sessionMeta.delete(sessionId); }
+    if (activeSessions.get(sessionId) === dgWs) {
+      const meta = sessionMeta.get(sessionId);
+      if (meta) flushUsage(sessionId, meta, true);
+      activeSessions.delete(sessionId);
+      sessionMeta.delete(sessionId);
+    }
     if (onClose) onClose();
   });
 
@@ -112,10 +146,16 @@ function sendAudioChunk(sessionId, audioBuffer) {
   if (audioBuffer.length > meta.tokens) return false; // 実時間より速い分は捨てる
   meta.tokens -= audioBuffer.length;
   dgWs.send(audioBuffer);
+  meta.unbilled += audioBuffer.length;
+  meta.sent += audioBuffer.length;
+  if (meta.sent >= meta.allowanceBytes) stopForLimit(sessionId, meta);
+  else if (meta.unbilled >= USAGE_FLUSH_SECONDS * AUDIO_BYTES_PER_SEC) flushUsage(sessionId, meta, false);
   return true;
 }
 
 function stopSession(sessionId) {
+  const meta = sessionMeta.get(sessionId);
+  if (meta) flushUsage(sessionId, meta, true);
   const dgWs = activeSessions.get(sessionId);
   if (dgWs) {
     try { dgWs.close(); } catch (e) {}
@@ -124,4 +164,4 @@ function stopSession(sessionId) {
   sessionMeta.delete(sessionId);
 }
 
-module.exports = { startSession, sendAudioChunk, stopSession, isDeepgramConfigured };
+module.exports = { startSession, sendAudioChunk, stopSession, isDeepgramConfigured, DAILY_LIMIT_MESSAGE };

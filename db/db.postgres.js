@@ -250,6 +250,24 @@ async function initDB() {
         since_ms BIGINT NOT NULL
       )
     `);
+    // 招待コードの持ち主が友だちから外した相手(コードで黙って戻れないように)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_removals (
+        owner_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        removed_ms BIGINT NOT NULL,
+        PRIMARY KEY (owner_id, user_id)
+      )
+    `);
+    // 字幕(Deepgram)を人ごと・日ごとに使った秒数。再起動で消えないようにDBに置く
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS call_assist_usage (
+        user_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        seconds INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, day)
+      )
+    `);
   } catch (e) {
     console.log('[db] email verify / totp migration skip:', e.message);
   }

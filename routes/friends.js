@@ -14,6 +14,8 @@ const { blockState, bumpBlockVersion, isAcquainted } = require('../utils/relatio
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
 const deviceKeys = require('../utils/deviceKeys');
+const { markRemoved, clearRemoved } = require('../utils/inviteCore');
+
 const router = express.Router();
 const picUploads = new Map(); // userId -> [アップロード時刻]
 
@@ -265,6 +267,7 @@ router.post('/request', auth, async (req, res) => {
         const full = await db.get('SELECT requested_by FROM friendships WHERE id = ?', [existing.id]);
         if (full && full.requested_by !== req.userId) {
           await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [new Date().toISOString(), existing.id]);
+          await clearRemoved(req.userId, targetUser.id); // 自分から戻したので、招待コードの制限も外す
           notifyFriendChange(req.userId, targetUser.id, 'accepted');
           return res.json({ ok: true, friendshipId: existing.id, accepted: true });
         }
@@ -274,6 +277,7 @@ router.post('/request', auth, async (req, res) => {
 
     const friendshipId = uuidv4();
     await db.run('INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by) VALUES (?, ?, ?, ?, ?)', [friendshipId, userA, userB, 'pending', req.userId]);
+    await clearRemoved(req.userId, targetUser.id); // 自分から申請したので、招待コードの制限も外す
     notifyFriendChange(req.userId, targetUser.id, 'request');
     res.json({ ok: true, friendshipId });
   } catch (e) {
@@ -300,6 +304,7 @@ router.post('/accept', auth, async (req, res) => {
 
     const now = new Date().toISOString();
     await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [now, friendshipId]);
+    await clearRemoved(req.userId, friendship.user_a_id === req.userId ? friendship.user_b_id : friendship.user_a_id); // 自分から戻したので、招待コードの制限も外す
     notifyFriendChange(friendship.user_a_id, friendship.user_b_id, 'accepted');
     res.json({ ok: true });
   } catch (e) {
@@ -333,6 +338,10 @@ async function dropFriendship(req, res, allowed) {
           await db.run('DELETE FROM invite_redemptions WHERE user_id = ? AND code IN (SELECT code FROM invite_codes WHERE owner_id = ?)', [who, owner]);
         }
       } catch (e) { console.warn('[friends] invite redemption cleanup failed:', e.message); }
+      // 外した人を覚える。上の記録を消すだけだと、人数に空きのあるコードで黙って戻れてしまう
+      try {
+        await markRemoved(req.userId, f.user_a_id === req.userId ? f.user_b_id : f.user_a_id);
+      } catch (e) { console.warn('[friends] invite removal record failed:', e.message); }
     }
     notifyFriendChange(f.user_a_id, f.user_b_id, 'removed');
     res.json({ ok: true });

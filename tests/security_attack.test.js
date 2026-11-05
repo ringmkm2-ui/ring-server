@@ -66,21 +66,17 @@ test('攻撃: パスワード再設定コードを何度も取り直して総当
     await waitFor(() => smtp.lastCode(email));
     const v = await s.req('POST', '/api/auth/verify-email', { body: { username: email, code: smtp.lastCode(email), password: pw } });
     assert.strictEqual(v.status, 200);
-    // 攻撃者: 「コードを出させる → 5回外す」を3周(15回外す)。周ごとにIPを変える
-    for (let round = 0; round < 3; round++) {
-      if (round) await sleep(61000); // コードの再発行は1分に1回
-      await s.req('POST', '/api/auth/forgot-password', { body: { username: email } });
-      for (let i = 0; i < 5; i++) {
-        await s.req('POST', '/api/auth/reset-password', { body: { username: email, code: String(100000 + round * 10 + i), newPassword: 'Hacked!Pw123x' } });
-      }
-    }
-    // 4周目: 正しいコードを手に入れても(=総当たりが当たったのと同じ)、もう通ってはいけない
-    await sleep(61000);
+    // 攻撃者: コードを出させて、IPを変えながら外し続ける(helpers はリクエストごとに別のIPを名乗る)。
+    // アカウント全体の上限は60回。IPごとの15回は第三者に本人を締め出させないための枠で、ここでは効かない
     await s.req('POST', '/api/auth/forgot-password', { body: { username: email } });
+    for (let i = 0; i < 60; i++) {
+      await s.req('POST', '/api/auth/reset-password', { body: { username: email, code: String(100000 + i), newPassword: 'Hacked!Pw123x' } });
+    }
+    // 正しいコードを手に入れても(=総当たりが当たったのと同じ)、もう通ってはいけない
     await sleep(300);
     const code = smtp.lastCode(email);
     const hit = await s.req('POST', '/api/auth/reset-password', { body: { username: email, code: code || '000000', newPassword: 'Hacked!Pw123x' } });
-    assert.notStrictEqual(hit.status, 200, '15回外した後も再設定が通った(1日の上限が効いていない)');
+    assert.strictEqual(hit.status, 429, '60回外した後も再設定が止まらない(1日の上限が効いていない)');
     const login = await s.req('POST', '/api/auth/login', { body: { username: email, password: pw } });
     assert.strictEqual(login.status, 200, '元のパスワードが変わってしまった');
   } finally { await s.stop(); await smtp.close(); }
