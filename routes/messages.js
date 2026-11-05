@@ -102,6 +102,12 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     const badInput = validateMessageInput(req.body);
     if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
 
+    // 承認待ちの端末からは送らせない(パスワードを盗んだ人が本人になりすまして送るのを止める)
+    const senderKey = /^e3:([A-Za-z0-9+/=]{44}):/.exec(typeof content === 'string' ? content : '');
+    if (senderKey && await require('../utils/deviceKeys').isPending(req.userId, senderKey[1])) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
+
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
 

@@ -772,6 +772,8 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
     );
     await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
     await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
+    // 盗まれた時の再設定なら、盗んだ人が足した端末の鍵に送り続けないようにする。本人の端末は開いた時に戻る
+    await require('../utils/deviceKeys').clearAll(user.id);
     sessionEvents.emit('revoked', { userId: user.id });
     res.json({ ok: true, message: 'パスワードを変更しました。新しいパスワードでログインしてください。' });
   } catch (e) {
@@ -1071,6 +1073,7 @@ router.post('/change-password', verifyToken, async (req, res) => {
     // 新しいトークンを発行(変更直後に再ログインさせないため)。
     // token_revoked_at とiatが同じ秒だと失効扱いになるので、sid付き(セッション有効判定)で発行する。
     const token = await issueToken({ id: req.user.userId, username: req.user.username }, reqMeta(req));
+    await require('../utils/deviceKeys').clearAll(req.user.userId); // 盗まれた端末の鍵にはもう送らない。本人の端末は開いた時に戻る
     sessionEvents.emit('revoked', { userId: req.user.userId }); // 旧セッションのWebSocketを全て切る(この端末は新トークンで繋ぎ直す)
     res.json({ ok: true, token, message: 'パスワードを変更しました。他の全端末からサインアウトされます。' });
   } catch (e) {
@@ -1114,7 +1117,8 @@ router.post('/2fa/setup', verifyToken, async (req, res) => {
     if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
     const secret = generateSecret();
     await db.run('UPDATE users SET totp_secret = ? WHERE id = ?', [secretBox.encrypt(secret), req.user.userId]);
-    res.json({ secret, uri: otpauthUri(secret, user.username) });
+    const pwRow = await db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.userId]);
+    res.json({ secret, uri: otpauthUri(secret, user.username), needsPassword: !!(pwRow && pwRow.password_hash) });
   } catch (e) {
     sendServerError(res, e, '2fa-setup');
   }
@@ -1126,6 +1130,13 @@ router.post('/2fa/enable', verifyToken, loginLimiter, async (req, res) => {
     const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.userId]);
     if (!user || !user.totp_secret) return res.status(400).json({ error: '先に設定を開始してください' });
     if (truthy(user.totp_enabled)) return res.status(400).json({ error: 'すでに有効です' });
+    // トークンだけで有効にできると、盗んだ人が2FAを入れて本人を締め出せる。パスワードがある人には確認する
+    if (user.password_hash) {
+      const pw = req.body && req.body.password;
+      if (typeof pw !== 'string' || !pw || pw.length > 200 || !(await bcrypt.compare(pw, user.password_hash))) {
+        return res.status(403).json({ error: 'パスワードが正しくありません', code: 'PASSWORD_REQUIRED' });
+      }
+    }
     const plainSecret = secretBox.decrypt(user.totp_secret);
     const step = plainSecret ? verifyTotp(plainSecret, req.body.code) : null;
     if (step === null) return res.status(400).json({ error: 'コードが正しくありません' });

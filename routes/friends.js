@@ -114,7 +114,9 @@ router.post('/me', auth, async (req, res) => {
       if (typeof publicKey !== 'string' || publicKey.length > 200 || !/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
         return res.status(400).json({ error: '公開鍵の形式が不正です' });
       }
-      await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
+      // 端末の承認を素通りしないよう、登録は必ず deviceKeys.touch を通す(ここで users.public_key を直接書かない)
+      if (publicKey.length !== 44) return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
+      await registerDeviceKey(req.userId, publicKey);
     }
     res.json({ ok: true });
   } catch (e) {
@@ -123,6 +125,17 @@ router.post('/me', auth, async (req, res) => {
 });
 
 // E2E暗号化用の公開鍵を登録（初回ログイン時にクライアントが自動で呼ぶ）
+// 公開鍵の登録の共通処理。新しく有効になれば相手に知らせ、承認待ちなら本人の端末に知らせる
+async function registerDeviceKey(userId, publicKey) {
+  const reg = await deviceKeys.touch(userId, publicKey);
+  if (reg.activated) await deviceKeys.announce(userId);
+  if (reg.isNew && reg.status === 'pending') {
+    try { require('../ws/wsServer').broadcastToUser(userId, { type: 'device_pending' }); } catch (e) {}
+    require('./devices').mailPending(userId, publicKey).catch(() => {});
+  }
+  return reg;
+}
+
 router.post('/publickey', auth, async (req, res) => {
   try {
     const { publicKey } = req.body;
@@ -135,21 +148,8 @@ router.post('/publickey', auth, async (req, res) => {
     if (!/^[A-Za-z0-9+/=]+$/.test(publicKey) || publicKey.length !== 44) {
       return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
     }
-    await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
-    const isNew = await deviceKeys.touch(req.userId, publicKey);
-    if (isNew) {
-      // 新しい端末が増えた。同じグループの人(と自分のほかの端末)に、その端末あてにグループ鍵を配り直してもらう
-      try {
-        const { broadcastToUser } = require('../ws/wsServer');
-        const peers = await db.all(
-          `SELECT DISTINCT gm2.user_id FROM group_members gm1
-           JOIN group_members gm2 ON gm2.group_id = gm1.group_id AND gm2.left_at IS NULL
-           WHERE gm1.user_id = ? AND gm1.left_at IS NULL`,
-          [req.userId]
-        );
-        for (const p of peers) broadcastToUser(p.user_id, { type: 'member_keys_ready', userId: req.userId });
-      } catch (e) { console.error('[friends] member_keys_ready broadcast failed:', e.message); }
-    }
+    const reg = await registerDeviceKey(req.userId, publicKey);
+    if (reg.status === 'pending') return res.json({ ok: true, status: 'pending', approveAfter: reg.approveAfter, code: deviceKeys.codeFor(publicKey) });
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);

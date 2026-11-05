@@ -100,6 +100,8 @@ async function initDB() {
       public_key TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       last_seen_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      approve_after INTEGER,
       PRIMARY KEY (user_id, public_key)
     );
 
