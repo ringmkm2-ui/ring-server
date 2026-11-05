@@ -841,6 +841,7 @@ window.ensureGroupCrypto = (function () {
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script src="/js/userSettings.js"></script>
+<script defer src="/js/deviceApproval.js"></script>
 <script src="/js/privacyScreen.js"></script>
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/shareTarget.js"></script>
@@ -3252,8 +3253,10 @@ function renderSecSetup(r) {
   secBody.appendChild(secNode('p', t2('twofa_enter_code', ''), 'font-size:13px;margin:14px 0 4px;opacity:.7'));
   const code = secInput('123456', { numeric: true, max: 8 });
   secBody.appendChild(code);
+  const pwBox = r.needsPassword ? secInput(t2('sec_current_password', '今のパスワード'), { type: 'password' }) : null;
+  if (pwBox) secBody.appendChild(pwBox);
   secBody.appendChild(secButton(t2('twofa_enable_btn', '有効にする'), 'savebtn', async () => {
-    const res = await api('/api/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ code: code._input.value }) });
+    const res = await api('/api/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ code: code._input.value, password: pwBox ? pwBox._input.value : undefined }) });
     if (!res.ok) { alert(res.error || 'error'); return; }
     renderSecBackup(res.backupCodes);
   }));
@@ -4575,6 +4578,7 @@ function connectTalkWs() {
   talkWs.onmessage = e => {
     let d; try { d = JSON.parse(e.data); } catch (_) { return; }
     if (window.bcHandleWsAuth && window.bcHandleWsAuth(d)) return;
+    if (d && /^device_/.test(d.type || '') && window.BcDevices) { window.BcDevices.onWs(d); return; }
     if (d && d.type === 'auth_ok') { if (window.Live && window.Live.onAuthed) window.Live.onAuthed(); if (window.refreshLiveStrip) window.refreshLiveStrip(); return; }
     if (!d || d.type === 'presence_update' || d.type === 'pong') return;
     if (typeof d.type === 'string' && d.type.startsWith('live_')) {

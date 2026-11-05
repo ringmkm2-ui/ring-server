@@ -2832,6 +2832,12 @@ function connectRealWS() {
           msg.reactions = data.reactions;
           renderMessage(msg);
         }
+      } else if (data.type === 'peer_keys_changed') {
+        // 相手か自分の端末が増えた。次に送る時を待たずに「鍵が変わりました」を出す
+        _myKeysCache = null;
+        if (data.userId === otherId && window.SafetyNumber) {
+          getRecipientKeyList(otherId).then(keys => { if (keys.length) { SafetyNumber.observe(myUserId, otherId, keys); refreshSnUi(keys); } }).catch(() => {});
+        }
       } else if (data.type === 'message_pinned') {
         // ピン留め状態のみ更新
         const msg = realMessages.find(m => m.id === data.messageId);
