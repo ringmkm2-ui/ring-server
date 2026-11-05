@@ -484,6 +484,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eMulti.js"></script>
+<script src="/js/lineImport.js"></script>
 <script src="/js/qrcode.min.js"></script>
 <script src="/js/safetyNumber.js"></script>
 <script src="/js/session.js"></script>
@@ -504,7 +505,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.29.26 beta</div>
+  <div class="version-badge">Bro Chat v1.29.27 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -3127,6 +3128,8 @@ async function loadOlderDM() {
 document.getElementById('chatScreen').addEventListener('scroll', function () { if (this.scrollTop < 120) loadOlderDM(); }, { passive: true });
 
 async function initialLoadHistory() {
+  // LINEから読み込んだ履歴があれば、一番上に入口を出す(タップするまで描かない)
+  if (window.BroLineImport) BroLineImport.mount({ uid: myUserId, peerId: otherId, peerName: partnerName, chat: document.getElementById('chatScreen') });
   try {
     let data = null;
     if (window.__histPrefetch) { data = await window.__histPrefetch; window.__histPrefetch = null; }
@@ -5441,6 +5444,20 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
     if (!card || card.querySelector('[data-bc-row]')) return;
     const head = card.querySelector('.peer-head');
     if (!head) return;
+    // LINEのトークの読み込み(この端末の中だけ)。一番下に足す
+    if (window.BroLineImport) {
+      const ICON_IMPORT = '<path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M4 21h16"/>';
+      const lctx = { uid: myUserId, peerId: otherId, peerName: partnerName, chat: document.getElementById('chatScreen') };
+      const lastRow = () => { const rows = card.querySelectorAll('button'); return rows[rows.length - 1] || head; };
+      setTimeout(() => {
+        const r1 = addRow(card, lastRow(), ICON_IMPORT, tx('li_menu', 'LINEのトークを読み込む'), () => {});
+        // ファイル選択はタップの直後でないと開けないので、閉じる前に開く
+        r1.addEventListener('click', e => { e.stopImmediatePropagation(); closeSheet(); BroLineImport.pickFile(lctx); }, true);
+        BroLineImport.has(lctx).then(has => {
+          if (has && document.body.contains(r1)) addRow(card, r1, ICON_IMPORT, tx('li_menu_del', '読み込んだLINEの履歴を消す'), () => BroLineImport.confirmRemove(lctx));
+        });
+      }, 0);
+    }
     // 上から: トーク内検索 / 写真・リンク / 消えるメッセージ(既存の行はそのまま下に続く)
     let last = head;
     last = addRow(card, last, ICON_SEARCH, tx('bro_chat_search', 'トーク内検索'), openSearch);
