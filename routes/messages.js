@@ -102,7 +102,10 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     const badInput = validateMessageInput(req.body);
     if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
 
-    // 承認待ちの端末からは送らせない(パスワードを盗んだ人が本人になりすまして送るのを止める)
+    // 承認待ちの端末からは送らせない(パスワードを盗んだ人が本人になりすまして送るのを止める)。形式を問わず、セッションで見る
+    if (await require('../utils/deviceKeys').isPendingSession(req.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
     const senderKey = /^e[35]:([A-Za-z0-9+/=]{44}):/.exec(typeof content === 'string' ? content : '');
     if (senderKey && await require('../utils/deviceKeys').isPending(req.userId, senderKey[1])) {
       return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
@@ -458,6 +461,9 @@ async function blockedByOther(actor, msg) {
 // body: { messageId, content }
 router.post('/edit', auth, async (req, res) => {
   try {
+    if (await require('../utils/deviceKeys').isPendingSession(req.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
     if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content']);
     const { messageId, content, encrypted } = req.body;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });

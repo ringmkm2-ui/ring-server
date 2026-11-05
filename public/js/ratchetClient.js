@@ -18,6 +18,12 @@
     client = E2ERatchet.makeClient({
       uid: clientFor,
       identity,
+      peerKeys: async userId => {
+        const r = await fetch('/api/friends/publickey/' + encodeURIComponent(userId), { headers: { Authorization: 'Bearer ' + localStorage.getItem('ring_token') } });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return Array.isArray(d.publicKeys) ? d.publicKeys : [];
+      },
       http: async (method, path, body) => {
         const r = await fetch(path, {
           method,
@@ -56,4 +62,5 @@
   window.bcE5 = { get, enabled, ensure, isRatchet: s => !!(window.E2ERatchet && E2ERatchet.isRatchet(s)) };
   // 端末の鍵の登録が終わった後で
   setTimeout(ensure, 5000);
+  setTimeout(() => { const c = get(); if (c) c.sweepExpired().catch(() => {}); }, 8000);
 })();

@@ -118,7 +118,7 @@ router.post('/me', auth, async (req, res) => {
       }
       // 端末の承認を素通りしないよう、登録は必ず deviceKeys.touch を通す(ここで users.public_key を直接書かない)
       if (publicKey.length !== 44) return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
-      await registerDeviceKey(req.userId, publicKey);
+      await registerDeviceKey(req.userId, publicKey, req.user && req.user.sid);
     }
     res.json({ ok: true });
   } catch (e) {
@@ -128,8 +128,8 @@ router.post('/me', auth, async (req, res) => {
 
 // E2E暗号化用の公開鍵を登録（初回ログイン時にクライアントが自動で呼ぶ）
 // 公開鍵の登録の共通処理。新しく有効になれば相手に知らせ、承認待ちなら本人の端末に知らせる
-async function registerDeviceKey(userId, publicKey) {
-  const reg = await deviceKeys.touch(userId, publicKey);
+async function registerDeviceKey(userId, publicKey, sid) {
+  const reg = await deviceKeys.touch(userId, publicKey, sid);
   if (reg.activated) await deviceKeys.announce(userId);
   if (reg.isNew && reg.status === 'pending') {
     try { require('../ws/wsServer').broadcastToUser(userId, { type: 'device_pending' }); } catch (e) {}
@@ -150,7 +150,10 @@ router.post('/publickey', auth, async (req, res) => {
     if (!/^[A-Za-z0-9+/=]+$/.test(publicKey) || publicKey.length !== 44) {
       return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
     }
-    const reg = await registerDeviceKey(req.userId, publicKey);
+    // 同じ鍵の別表記(末尾の未使用ビット等)を別の端末として登録させない
+    { const raw = Buffer.from(publicKey, 'base64');
+      if (raw.length !== 32 || (raw[31] & 0x80) || raw.toString('base64') !== publicKey) return res.status(400).json({ error: '公開鍵の形式が不正です' }); }
+    const reg = await registerDeviceKey(req.userId, publicKey, req.user && req.user.sid);
     if (reg.status === 'pending') return res.json({ ok: true, status: 'pending', approveAfter: reg.approveAfter, code: deviceKeys.codeFor(publicKey) });
     res.json({ ok: true });
   } catch (e) {

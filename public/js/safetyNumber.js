@@ -90,6 +90,11 @@
   function checkSender(me, peer, pub) {
     if (!me || !peer || !pub || typeof pub !== 'string') return { ok: true };
     const st = get(me, peer);
+    // 確認済みの相手は、確認した鍵の一覧で判定する(一度見た鍵を「既知」に入れただけで印が消えないように)
+    if (st && Array.isArray(st.verified) && !st.verified.includes(pub)) {
+      if (!(st.known || []).includes(pub)) observe(me, peer, [...(st.known || []), pub]);
+      return { ok: false, added: true };
+    }
     if (st && (st.known || []).includes(pub)) return { ok: true };
     const wasVerified = !!(st && Array.isArray(st.verified));
     observe(me, peer, [...((st && st.known) || []), pub]);

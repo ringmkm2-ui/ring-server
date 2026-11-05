@@ -227,6 +227,7 @@ async function initDB() {
         device_key TEXT NOT NULL,
         spk_id BIGINT NOT NULL,
         spk_pub TEXT NOT NULL,
+        spk_sig TEXT NOT NULL,
         updated_at BIGINT NOT NULL,
         PRIMARY KEY (user_id, device_key)
       )
@@ -243,6 +244,7 @@ async function initDB() {
     // 端末の承認: 既存の鍵はそのまま active。新しい端末は pending から始まる(utils/deviceKeys.js)
     await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`);
     await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS approve_after BIGINT`);
+    await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS pending_sid TEXT`);
     // パスワード再設定コード(メール認証コードとは別テーブル。同時に進行しても干渉しない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_resets (
