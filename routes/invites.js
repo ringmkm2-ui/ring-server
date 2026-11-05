@@ -12,7 +12,7 @@ const { verifyToken: auth } = require('../utils/authMiddleware');
 const { sendServerError } = require('../utils/errorResponse');
 const { blockState } = require('../utils/relations');
 const { withLock } = require('../utils/keyedLock');
-const { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange } = require('../utils/inviteCore');
+const { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange, clearRemoved, wasRemoved } = require('../utils/inviteCore');
 
 const router = express.Router();
 
@@ -161,6 +161,9 @@ router.post('/redeem', auth, redeemLimiter, async (req, res) => {
     const existing = await db.get('SELECT status FROM friendships WHERE user_a_id = ? AND user_b_id = ?', [a, b]);
     if (existing && existing.status === 'accepted') return res.json({ ok: true, already: true, friend });
 
+    // 持ち主に外された人は、どのコードでも戻れない。外されたことを悟らせないよう「無効」と同じ返事にする
+    if (await wasRemoved(owner.id, me)) return res.status(404).json(INVALID);
+
     const got = await claimInvite(inv, me);
     if (!got) return res.status(404).json(INVALID);
     try {
@@ -169,6 +172,8 @@ router.post('/redeem', auth, redeemLimiter, async (req, res) => {
       if (got === 'claimed') await releaseInvite(code, me); // 友だちにできなかったなら、人数の消費も元に戻す
       throw e;
     }
+    // 自分が前に外した相手のコードを自分で使ったのは、自分から戻したのと同じ
+    await clearRemoved(me, owner.id);
     notifyFriendChange(me, owner.id);
     res.json({ ok: true, already: false, friend });
   } catch (e) { sendServerError(res, e); }
