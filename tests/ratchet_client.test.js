@@ -160,3 +160,24 @@ test('サーバーの設定で有効/無効を切り替えられ、既定は無�
     assert.equal((await u.call('GET', '/api/ratchet/config')).data.enabled, false);
   } finally { await S3.stop(); }
 });
+
+test('履歴の書き出しと読み込み: 新しい端末で過去の本文が読める。パスフレーズが違えば開けない。鍵は移らない', async () => {
+  globalThis.window = globalThis;
+  globalThis.bcE5 = null;
+  require('../public/js/historyBackup.js');
+  const { da, db } = await people();
+  const m = await da.c.seal(enc('過去の文'), [db.pub]);
+  assert.equal(dec(await db.c.open(m)), '過去の文');
+  const items = await db.c.exportPlain();
+  assert.equal(items.length, 1);
+  const file = await globalThis.bcHistoryBackup.pack(items, 'correct horse battery');
+  assert.ok(!file.includes(b64(enc('過去の文'))));
+  await assert.rejects(globalThis.bcHistoryBackup.unpack(file, 'wrong passphrase xx'));
+  const restored = await globalThis.bcHistoryBackup.unpack(file, 'correct horse battery');
+  const nw = core.genDH();
+  const c2 = makeClient({ uid: 'restore' + (++seq), identity: () => nw, http: async () => null });
+  assert.equal(await c2.open(m), null, '読み込む前は読めない');
+  assert.equal(await c2.importPlain(restored), 1);
+  assert.equal(dec(await c2.open(m)), '過去の文');
+  assert.equal(await c2.importPlain(restored), 0, '二重に入らない');
+});

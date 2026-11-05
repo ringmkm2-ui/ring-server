@@ -494,7 +494,31 @@
       return true;
     }
 
-    return { seal, open, recall, remember, ensurePrekeys };
+    // 端末の中の本文を全部取り出す / 取り込む(履歴の書き出し用)。鍵やセッションは含めない。
+    // セッションを別の端末に複製すると同じ鍵を2台で使うことになるので、絶対に移さない
+    async function exportPlain() {
+      return tx(['plain'], 'readonly', async t => {
+        const st = t.objectStore('plain');
+        const keys = await idbReq(st.getAllKeys());
+        const vals = await idbReq(st.getAll());
+        return keys.map((k, i) => ({ k, b: vals[i].b, at: vals[i].at }));
+      });
+    }
+    async function importPlain(items) {
+      let added = 0;
+      await tx(['plain'], 'readwrite', async t => {
+        const st = t.objectStore('plain');
+        for (const it of items) {
+          if (!it || typeof it.k !== 'string' || !(it.b instanceof Uint8Array)) continue;
+          if (await idbReq(st.get(it.k))) continue;
+          st.put({ b: it.b, at: Number(it.at) || Date.now() }, it.k);
+          added += 1;
+        }
+      });
+      return added;
+    }
+
+    return { seal, open, recall, remember, ensurePrekeys, exportPlain, importPlain };
   }
 
   g.E2ERatchet = {

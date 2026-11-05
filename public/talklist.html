@@ -805,6 +805,7 @@ html.reduce-motion .inv-seg::before{transition:none}
 <script src="/js/e2eMulti.js"></script>
 <script src="/js/ratchet.js"></script>
 <script src="/js/ratchetClient.js"></script>
+<script src="/js/historyBackup.js"></script>
 <script>
 // libsodium(1.8MB)はグループ作成の時しか使わないのに、トーク一覧を開くたびに同期で
 // 読み込み・解析していて、Galaxy A25クラスの端末だと表示が数百ms止まっていた。
@@ -3261,6 +3262,7 @@ function renderSecOff() {
     renderSecSetup(r);
   }));
   appendKeyBackup();
+  appendHistoryBackup();
   appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
 }
@@ -3309,11 +3311,52 @@ function renderSecOn(d) {
   btn.style.color = '#ef4444';
   secBody.appendChild(btn);
   appendKeyBackup();
+  appendHistoryBackup();
   appendSessions();
   secBody.appendChild(secButton(t2('close', '閉じる'), 'cancelbtn', closeSec));
 }
 
 // --- 暗号鍵のバックアップ(端末の乗り換え・複数端末で過去のメッセージを読むため) ---
+// トーク履歴の書き出しと読み込み(e5 の本文は端末の中にしか無い)
+function appendHistoryBackup() {
+  if (!window.bcHistoryBackup || !window.bcE5 || !bcE5.get()) return;
+  const box = secNode('div', null, 'margin-top:18px');
+  box.appendChild(secNode('p', t2('hb_section', 'トーク履歴の書き出し'), 'font-size:13px;margin:0 0 6px;opacity:.7'));
+  box.appendChild(secNode('p', t2('hb_desc', ''), 'font-size:13px;line-height:1.6;margin:0 0 8px;opacity:.8'));
+  const pass = secInput(t2('hb_pass', 'パスフレーズ(12文字以上)'), { type: 'password' });
+  box.appendChild(pass);
+  const msg = secNode('p', '', 'font-size:13px;line-height:1.5;margin:6px 2px;min-height:18px');
+  const pw = () => {
+    const v = pass._input.value;
+    if (v.length < 12) { msg.textContent = t2('hb_pass_short', 'パスフレーズは12文字以上にしてください'); return null; }
+    return v;
+  };
+  box.appendChild(secButton(t2('hb_export', '書き出す'), 'savebtn', async () => {
+    const v = pw(); if (!v) return;
+    msg.textContent = '...';
+    try {
+      const r = await bcHistoryBackup.exportTo(v);
+      if (!r.count) { msg.textContent = t2('hb_empty', '書き出す履歴がまだありません'); return; }
+      bcHistoryBackup.download(r.text);
+      msg.textContent = t2('hb_done_export', '{n}件を書き出しました').replace('{n}', r.count);
+    } catch (e) { msg.textContent = t2('hb_bad', '失敗しました'); }
+  }));
+  const file = document.createElement('input');
+  file.type = 'file'; file.accept = '.bchb'; file.style.display = 'none';
+  file.addEventListener('change', async () => {
+    const f = file.files && file.files[0]; file.value = '';
+    const v = pw(); if (!f || !v) return;
+    msg.textContent = '...';
+    try {
+      const n = await bcHistoryBackup.importFrom(await f.text(), v);
+      msg.textContent = t2('hb_done_import', '{n}件を読み込みました').replace('{n}', n);
+    } catch (e) { msg.textContent = t2('hb_bad', '読み込めませんでした'); }
+  });
+  box.appendChild(file);
+  box.appendChild(secButton(t2('hb_import', 'ファイルから読み込む'), 'cancelbtn', () => { if (pw()) file.click(); }));
+  box.appendChild(msg);
+  secBody.appendChild(box);
+}
 async function appendKeyBackup() {
   if (!window.bcKeyBackup) return;
   const box = secNode('div', null, 'margin-top:18px');
