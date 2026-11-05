@@ -734,10 +734,42 @@ html.dark-mode .glass-plus-btn::before,html.dark-mode .glass-plus-btn::after{bac
 .inv-acts{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .inv-ib{min-width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-size:12px;font-weight:700;white-space:nowrap}
 .inv-ib.glass-clear{color:#0f172a}
-.inv-ib.glass-clear.danger{color:#fff;background:#dc2626;padding:0 12px}
+.inv-ib.glass-clear.danger{color:#fff!important;background:#dc2626!important;padding:0 12px}
 .inv-ok .inv-sub{color:#047857;font-weight:700;font-size:13px}
 .inv-sel{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .inv-sel label{display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px}
+/* 招待コード画面の動き(transform / opacity だけ。動くのは操作した時の一度きり) */
+.inv-seg{position:relative}
+.inv-seg::before{content:'';position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 6px);border-radius:11px;background:#fff;box-shadow:0 1px 4px rgba(15,23,42,.14);transition:transform .32s cubic-bezier(.3,1.25,.5,1)}
+.inv-seg.code::before{transform:translateX(calc(100% + 4px))}
+.inv-seg button{position:relative;z-index:1}
+.inv-seg button[aria-selected="true"]{background:transparent;box-shadow:none}
+@keyframes invPaneR{from{opacity:0;transform:translateX(26px)}}
+@keyframes invPaneL{from{opacity:0;transform:translateX(-26px)}}
+/* シートを開いた時の順番入場(.tl-sheet-stagger > *)と混ざると、タブ切替の後にもう一度再生されてしまうので、切替後は止める */
+.tl-sheet-stagger > .inv-sw{animation:none}
+.tl-sheet-stagger > .inv-sw.inv-pane-r{animation:invPaneR .28s cubic-bezier(.2,.9,.3,1) backwards}
+.tl-sheet-stagger > .inv-sw.inv-pane-l{animation:invPaneL .28s cubic-bezier(.2,.9,.3,1) backwards}
+@keyframes invShake{20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}}
+.inv-shake{animation:invShake .36s ease-out}
+@keyframes invMsgIn{from{opacity:0;transform:translateY(-4px)}}
+.inv-msg.err:not(:empty){animation:invMsgIn .2s ease-out backwards}
+@keyframes invOkIn{from{opacity:0;transform:translateY(12px) scale(.94)}}
+.inv-ok-in{animation:invOkIn .42s cubic-bezier(.2,1.2,.4,1) backwards}
+@keyframes invAvIn{from{opacity:0;transform:scale(.3) rotate(-14deg)}}
+.inv-ok .inv-av{position:relative}
+.inv-ok-in .inv-av{animation:invAvIn .5s .08s cubic-bezier(.2,1.5,.4,1) backwards}
+@keyframes invRing{from{opacity:.65;transform:scale(1)}to{opacity:0;transform:scale(1.9)}}
+.inv-ok-in.fresh .inv-av::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid #10b981;opacity:0;pointer-events:none;animation:invRing .75s .28s ease-out}
+.inv-ok-in .tl-check{animation-delay:.26s}
+.inv-ok:not(.inv-ok-in) .tl-check{animation:none}
+@keyframes invIconPop{from{opacity:0;transform:scale(.45) rotate(-24deg)}}
+.inv-ipop{animation:invIconPop .3s cubic-bezier(.2,1.5,.4,1)}
+@keyframes invArm{from{transform:scale(.82)}}
+.inv-ib.danger{animation:invArm .24s cubic-bezier(.2,1.5,.4,1)}
+.inv-row{position:relative}
+@keyframes invNew{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+.inv-row.inv-new::after{content:'';position:absolute;inset:0;border-radius:inherit;border:2px solid #2563eb;opacity:0;pointer-events:none;animation:invNew 1.5s .15s ease-out}
 .inv-sel select{width:100%;padding:11px 10px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:15px;color:#0f172a;background:#fff;box-sizing:border-box}
 /* --- PWAインストール案内: 上からスプリングで降りてくる(display:none→flex になった時に再生) --- */
 @keyframes pwaIn{from{opacity:0;transform:translateY(-22px) scale(.97)}}
@@ -751,12 +783,14 @@ html.reduce-motion .tb-badge.tb-pop,html.reduce-motion .tb26-item svg.tb-ipop,ht
 html.reduce-motion .lk-tick,html.reduce-motion .lk-burst,html.reduce-motion .yt-act svg.lk-pop,html.reduce-motion .yt-act svg.lk-down,
 html.reduce-motion .yt-subbtn.sub-pop,html.reduce-motion .yt-toast,html.reduce-motion .tl-sheet-ov,html.reduce-motion .tl-sheet-ov > .tl-sheet,
 html.reduce-motion .mov .mc > *,html.reduce-motion .tl-sheet-stagger > *,html.reduce-motion .thm-seg button svg,html.reduce-motion .myav.av-land,
-html.reduce-motion .tl-check,html.reduce-motion .pwa-banner,html.reduce-motion #pageTalk,html.reduce-motion #pageHome,html.reduce-motion #pagePosts,
+html.reduce-motion .tl-check,html.reduce-motion .tl-sheet-stagger > .inv-sw.inv-pane-r,html.reduce-motion .tl-sheet-stagger > .inv-sw.inv-pane-l,html.reduce-motion .inv-shake,html.reduce-motion .inv-msg.err,html.reduce-motion .inv-ok-in,html.reduce-motion .inv-ok-in .inv-av,html.reduce-motion .inv-ok-in.fresh .inv-av::after,html.reduce-motion .inv-ipop,html.reduce-motion .inv-ib.danger,html.reduce-motion .inv-row.inv-new::after,html.reduce-motion .pwa-banner,html.reduce-motion #pageTalk,html.reduce-motion #pageHome,html.reduce-motion #pagePosts,
 html.reduce-motion .yt-watch,html.reduce-motion .yt-chan{animation:none!important}
 html.reduce-motion .yt-toast.out,html.reduce-motion .tl-sheet-ov.out,html.reduce-motion .yt-watch.closing,html.reduce-motion .pwa-banner.out{animation:none!important;opacity:0}
+html.reduce-motion .inv-seg::before{transition:none}
 @media (prefers-reduced-motion:reduce){
+  .inv-seg::before{transition:none}
   .tl-in,.tl-in-r,.tl-fade,.yt-enter,.tl-swap,.tb-badge.tb-pop,.tb26-item svg.tb-ipop,.chip-pop,.yt-compose.tl-open,.lk-tick,.lk-burst,.yt-act svg.lk-pop,.yt-act svg.lk-down,
-  .yt-subbtn.sub-pop,.yt-toast,.tl-sheet-ov,.tl-sheet-ov > .tl-sheet,.mov .mc > *,.tl-sheet-stagger > *,.thm-seg button svg,.myav.av-land,.tl-check,.pwa-banner,
+  .yt-subbtn.sub-pop,.yt-toast,.tl-sheet-ov,.tl-sheet-ov > .tl-sheet,.mov .mc > *,.tl-sheet-stagger > *,.thm-seg button svg,.myav.av-land,.tl-check,.pwa-banner,.tl-sheet-stagger > .inv-sw.inv-pane-r,.tl-sheet-stagger > .inv-sw.inv-pane-l,.inv-shake,.inv-msg.err,.inv-ok-in,.inv-ok-in .inv-av,.inv-ok-in.fresh .inv-av::after,.inv-ipop,.inv-ib.danger,.inv-row.inv-new::after,
   #pageTalk,#pageHome,#pagePosts,.yt-watch,.yt-chan{animation:none!important}
   .yt-toast.out,.tl-sheet-ov.out,.yt-watch.closing,.pwa-banner.out{animation:none!important;opacity:0}
 }
@@ -977,7 +1011,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.22 beta</div>
+  <div class="version-badge">Bro Chat v1.29.23 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1437,7 +1471,7 @@ window.TLM = (function () {
     btn.appendChild(svg);
     setTimeout(() => svg.remove(), 700);
   }
-  return { ok, anim, spring, flip, sync, replay, likeBurst };
+  return { ok, anim, spring, flip, leave, sync, replay, likeBurst };
 })();
 </script>
 <script>
@@ -2679,7 +2713,13 @@ function invIconBtn(name, label) {
   b.innerHTML = invSvg(name);
   return b;
 }
-// 1行ぶんを作る(読み込みのたびに全体を一度だけ作り直す)。ctx.say(text)=エラー表示、ctx.gone()=削除後
+// アイコンを差し替えて、差し替えた時だけ弾ませる
+function invSetIcon(btn, name, pop) {
+  btn.innerHTML = invSvg(name);
+  const svg = btn.firstElementChild;
+  if (pop && svg) { svg.classList.add('inv-ipop'); svg.addEventListener('animationend', () => svg.classList.remove('inv-ipop'), { once: true }); }
+}
+// 1行ぶんを作る(内容が変わった行だけ作り直す)。ctx.say(text)=エラー表示、ctx.gone()=削除後
 function invBuildRow(c, ctx) {
   const dead = !!c.expired || (typeof c.maxUses === 'number' && (c.uses || 0) >= c.maxUses);
   const code = invFmtCode(c.code);
@@ -2698,18 +2738,18 @@ function invBuildRow(c, ctx) {
   const cp = invIconBtn('copy', t2('inv_copy', 'コピー'));
   cp.addEventListener('click', async () => {
     if (!(await invCopyText(code))) return;
-    cp.innerHTML = invSvg('check');
+    invSetIcon(cp, 'check', true);
     clearTimeout(cp.__t);
-    cp.__t = setTimeout(() => { cp.innerHTML = invSvg('copy'); }, 1400);
+    cp.__t = setTimeout(() => { invSetIcon(cp, 'copy', true); }, 1400);
   });
   acts.appendChild(cp);
 
   const lk = invIconBtn('link', t2('inv3_copy_link', '招待リンクをコピー'));
   lk.addEventListener('click', async () => {
     if (!(await invCopyText(invLink(c.code)))) return;
-    lk.innerHTML = invSvg('check');
+    invSetIcon(lk, 'check', true);
     clearTimeout(lk.__t);
-    lk.__t = setTimeout(() => { lk.innerHTML = invSvg('link'); }, 1400);
+    lk.__t = setTimeout(() => { invSetIcon(lk, 'link', true); }, 1400);
   });
   acts.appendChild(lk);
 
@@ -2735,7 +2775,7 @@ function invBuildRow(c, ctx) {
     del.disabled = true;
     try {
       const d = await api('/api/invites/' + encodeURIComponent(c.code), { method: 'DELETE' });
-      if (d && d.ok) { row.remove(); ctx.gone(); }
+      if (d && d.ok) { if (row.parentNode) TLM.leave(row.parentNode, row); else row.remove(); ctx.gone(); }
       else { disarm(); ctx.say(invErr(d)); }
     } catch (_) { disarm(); ctx.say(invErr()); }
   });
@@ -2770,7 +2810,7 @@ function invBuildPane(pane) {
     if (busy) return;
     const code = invExtractCode(input.value);
     res.textContent = '';
-    if (!code) { res.appendChild(invMk('div', 'inv-msg err', t2('inv_err_empty', 'コードを入力してください'))); return; }
+    if (!code) { res.appendChild(invMk('div', 'inv-msg err', t2('inv_err_empty', 'コードを入力してください'))); TLM.replay(input, 'inv-shake'); return; }
     busy = true; go.disabled = true;
     const label = go.textContent;
     go.textContent = t2('inv_redeem_busy', '確認中...');
@@ -2778,7 +2818,8 @@ function invBuildPane(pane) {
       const d = await api('/api/invites/redeem', { method: 'POST', body: JSON.stringify({ code }) });
       if (d && d.ok && d.friend) {
         const f = d.friend;
-        const ok = invMk('div', 'inv-ok');
+        const ok = invMk('div', 'inv-ok inv-ok-in' + (d.already ? '' : ' fresh'));
+        setTimeout(() => ok.classList.remove('inv-ok-in'), 1200); // 残すとタブを戻した時にもう一度再生される
         const av = invMk('div', 'inv-av');
         setAvatarBackground(av, f.profilePic, String(f.displayName || '?').charAt(0));
         const main = invMk('div', 'inv-main');
@@ -2796,9 +2837,11 @@ function invBuildPane(pane) {
         try { scheduleTalkRefresh(); } catch (_) {}
       } else {
         res.appendChild(invMk('div', 'inv-msg err', invErr(d)));
+        TLM.replay(input, 'inv-shake');
       }
     } catch (_) {
       res.appendChild(invMk('div', 'inv-msg err', invErr()));
+      TLM.replay(input, 'inv-shake');
     } finally {
       busy = false; go.disabled = false; go.textContent = label;
     }
@@ -2812,19 +2855,45 @@ function invBuildPane(pane) {
   const listMsg = invMk('div', 'inv-msg err');
   const say = txt => { listMsg.textContent = txt || ''; };
   const emptyEl = () => invMk('div', 'inv-sub', t2('inv_empty', 'まだコードがありません'));
-  const ctx = { say, gone: () => { say(''); if (!list.querySelector('.inv-row')) list.replaceChildren(emptyEl()); } };
+  const noRows = () => !list.querySelector('.inv-row:not(.tl-leaving)');
+  const ctx = { say, gone: () => {
+    say('');
+    // 消える動きが終わってから「まだコードがありません」に変える
+    if (noRows()) setTimeout(() => { if (noRows()) list.replaceChildren(emptyEl()); }, TLM.ok() ? 240 : 0);
+  } };
   let seq = 0, loaded = false;
-  const load = async () => {
+  const known = new Set();
+  const load = async (markNew) => {
     const my = ++seq;
     if (!loaded) list.replaceChildren(invMk('div', 'inv-sub', t2('inv_loading', '読み込み中...')));
     try {
       const d = await api('/api/invites');
       if (my !== seq) return;
       if (!d || !Array.isArray(d.codes)) throw d;
-      const frag = document.createDocumentFragment();
-      d.codes.forEach(c => frag.appendChild(invBuildRow(c, ctx)));
-      if (!d.codes.length) frag.appendChild(emptyEl());
-      list.replaceChildren(frag);
+      let fresh = null;
+      if (d.codes.length) {
+        // 変わっていない行には触らない。新しい行だけ入ってきて、他の行はその分だけ滑る
+        TLM.sync(list, d.codes.map(c => ({
+          key: c.code,
+          fp: JSON.stringify(c) + invMeta(c),
+          build: () => {
+            const r = invBuildRow(c, ctx);
+            if (markNew && !known.has(c.code)) {
+              r.classList.add('inv-new'); fresh = fresh || r;
+              // 残すとタブを戻した時にもう一度光る
+              r.addEventListener('animationend', function f(e) { if (e.animationName !== 'invNew') return; r.removeEventListener('animationend', f); r.classList.remove('inv-new'); });
+            }
+            return r;
+          },
+        })), { enter: 'up', stagger: true });
+      } else if (noRows()) {
+        if (!list.querySelector('.tl-leaving')) list.replaceChildren(emptyEl());
+      } else {
+        TLM.sync(list, [], {});
+        ctx.gone();
+      }
+      known.clear(); d.codes.forEach(c => known.add(c.code));
+      if (fresh && fresh.scrollIntoView) fresh.scrollIntoView({ block: 'nearest', behavior: TLM.ok() ? 'smooth' : 'auto' });
       loaded = true; say('');
     } catch (e) {
       if (my !== seq) return;
@@ -2858,7 +2927,7 @@ function invBuildPane(pane) {
         maxUses: selUses.value === '' ? null : Number(selUses.value),
         expiresInDays: selDays.value === '' ? null : Number(selDays.value)
       }) });
-      if (d && d.ok) await load(); else mkMsg.textContent = invErr(d);
+      if (d && d.ok) await load(true); else mkMsg.textContent = invErr(d);
     } catch (_) { mkMsg.textContent = invErr(); }
     finally { mk.disabled = false; mk.textContent = label; }
   });
@@ -2876,8 +2945,15 @@ function initInviteMode(sheet, opts) {
   const idPane = sheet.querySelector('#afIdPane'), pane = sheet.querySelector('#afCodePane');
   const tabId = sheet.querySelector('#afTabId'), tabCode = sheet.querySelector('#afTabCode');
   if (!idPane || !pane || !tabId || !tabCode) return;
-  let inv = null, fromLink = !!(opts && opts.code);
+  let inv = null, fromLink = !!(opts && opts.code), cur = false;
+  const seg = tabId.parentElement;
   const show = code => {
+    if (code !== cur) {
+      cur = code;
+      seg.classList.toggle('code', code);
+      idPane.classList.add('inv-sw'); pane.classList.add('inv-sw');
+      TLM.replay(code ? pane : idPane, code ? 'inv-pane-r' : 'inv-pane-l');
+    }
     tabId.setAttribute('aria-selected', String(!code));
     tabCode.setAttribute('aria-selected', String(code));
     idPane.hidden = code; pane.hidden = !code;
