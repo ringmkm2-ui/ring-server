@@ -484,6 +484,8 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eMulti.js"></script>
+<script src="/js/ratchet.js"></script>
+<script src="/js/ratchetClient.js"></script>
 <script src="/js/qrcode.min.js"></script>
 <script src="/js/safetyNumber.js"></script>
 <script src="/js/session.js"></script>
@@ -1032,9 +1034,9 @@ async function multiRecipients(recipientId) {
     if (recipientId === otherId) refreshSnUi(peers);
     if (r.hold) throw SafetyNumber.holdError();
   }
-  if (!peers.length) return { peers, all: null };
-  if (peers.length === 1 && !mineOthers.length) return { peers, all: null };
-  return { peers, all: [...peers, ...mineOthers] };
+  if (!peers.length) return { peers, all: null, mine: mineOthers };
+  if (peers.length === 1 && !mineOthers.length) return { peers, all: null, mine: mineOthers };
+  return { peers, all: [...peers, ...mineOthers], mine: mineOthers };
 }
 
 // ---- 安全番号(鍵の照合) ----
@@ -1120,7 +1122,13 @@ async function encryptMessage(plaintext, recipientId) {
   const myKeys = await getOrCreateMyKeyPair();
   // 送信時は毎回サーバーの最新鍵を取りに行く。古いキャッシュで暗号化すると
   // 相手が鍵を作り直していた場合に相手側で絶対に開けない
-  const { peers, all } = await multiRecipients(recipientId);
+  const { peers, all, mine } = await multiRecipients(recipientId);
+  // 前方秘匿性のある形式(e5)。使える人は常にこちら。相手の端末がまだ対応していなければ、その端末の分だけ旧方式になる
+  if (peers.length && window.bcE5 && await bcE5.enabled()) {
+    const c = bcE5.get();
+    const sealedR = c && await c.seal(nacl.util.decodeUTF8(plaintext), [...peers, ...mine]);
+    if (sealedR) return { encrypted: true, content: sealedR };
+  }
   if (all && window.E2EMulti) {
     const sealed = E2EMulti.seal(nacl.util.decodeUTF8(plaintext), myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
     if (sealed) return { encrypted: true, content: sealed };
@@ -1178,10 +1186,28 @@ function senderVerdict(peerId, senderPub, text) {
 
 // メッセージ内容を復号化
 // senderId が自分なら「自分が送ったメッセージ」なので、相手の公開鍵で開く
+// 画像・動画・ファイルの鍵を開く(e5 と e3 の両方)
+async function openMediaKey(mk) {
+  await getOrCreateMyKeyPair();
+  const k = window.bcE5 && bcE5.isRatchet(mk)
+    ? await bcE5.get().open(mk)
+    : (window.E2EMulti ? E2EMulti.open(mk, ringForMulti()) : null);
+  if (!k) throw new Error('この端末あての鍵がありません');
+  return k;
+}
+
 async function decryptMessage(encryptedString, senderId) {
   await getOrCreateMyKeyPair();
   const iAmSender = String(senderId) === String(myUserId);
   const peerId = iAmSender ? otherId : senderId;
+  if (window.bcE5 && bcE5.isRatchet(encryptedString)) {
+    const c = bcE5.get();
+    const out = c ? await c.open(encryptedString) : null;
+    if (!out) return null;
+    const text = nacl.util.encodeUTF8(out);
+    if (!iAmSender) { const p = E2ERatchet.parse(encryptedString); return senderVerdict(peerId, p && p.senderPub, text); }
+    return text;
+  }
   if (window.E2EMulti && E2EMulti.isMulti(encryptedString)) {
     const out = E2EMulti.open(encryptedString, ringForMulti());
     if (!out) console.warn('復号化に失敗しました(e3: この端末あての分がありません)');
@@ -1445,7 +1471,7 @@ async function sendMediaViaCloudinary(f, t) {
     // 対称鍵(secretbox)として cloudinaryE2EUpload.js にそのまま渡せる。
     const myKeys = await getOrCreateMyKeyPair();
     // 相手か自分が複数の端末を使っている時は、ファイル用の鍵を新しく作って、その鍵を全端末あてに包む(mediaKeys)
-    const { peers, all } = await multiRecipients(otherId);
+    const { peers, all, mine } = await multiRecipients(otherId);
     const recipientPublicKey = peers.length ? nacl.util.decodeBase64(peers[0]) : await getRecipientPublicKey(otherId);
     if (!recipientPublicKey) {
       alert(i18n.t('err_encryption_not_ready'));
@@ -1453,7 +1479,10 @@ async function sendMediaViaCloudinary(f, t) {
       return;
     }
     let sharedKey, mediaKeys = null;
-    if (all && window.E2EMulti) {
+    if (peers.length && window.bcE5 && await bcE5.enabled()) {
+      sharedKey = nacl.randomBytes(32);
+      mediaKeys = await bcE5.get().seal(sharedKey, [...peers, ...mine]);
+    } else if (all && window.E2EMulti) {
       sharedKey = nacl.randomBytes(32);
       mediaKeys = E2EMulti.seal(sharedKey, myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
     }
@@ -1745,12 +1774,7 @@ async function loadLazyMedia(placeholder) {
       localFile: window.__localFiles && window.__localFiles.get(cm.mediaUrl),
       getKeys: async () => {
         const mk = cm.mediaKeys;
-        if (mk && window.E2EMulti) {
-          await getOrCreateMyKeyPair();
-          const k = E2EMulti.open(mk, ringForMulti());
-          if (!k) throw new Error('この端末あての鍵がありません');
-          return [k];
-        }
+        if (mk) return [await openMediaKey(mk)];
         return await candidateSharedKeys();
       },
     });
@@ -1764,12 +1788,8 @@ async function loadLazyMedia(placeholder) {
     try {
       let keys;
       const mk = placeholder._cloudinaryMedia.mediaKeys;
-      if (mk && window.E2EMulti) {
-        await getOrCreateMyKeyPair();
-        const k = E2EMulti.open(mk, ringForMulti());
-        if (!k) throw new Error('この端末あての鍵がありません');
-        keys = [k];
-      } else keys = await candidateSharedKeys();
+      if (mk) keys = [await openMediaKey(mk)];
+      else keys = await candidateSharedKeys();
       if (!keys.length) throw new Error('相手の公開鍵が見つかりません');
 
       // ぼかしプレビュー: 本体のダウンロード・復号を待たず、暗号化メタデータだけ先に開いて色合いと縦横比を出す

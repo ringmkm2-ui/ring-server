@@ -803,6 +803,8 @@ html.reduce-motion .inv-seg::before{transition:none}
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eMulti.js"></script>
+<script src="/js/ratchet.js"></script>
+<script src="/js/ratchetClient.js"></script>
 <script>
 // libsodium(1.8MB)はグループ作成の時しか使わないのに、トーク一覧を開くたびに同期で
 // 読み込み・解析していて、Galaxy A25クラスの端末だと表示が数百ms止まっていた。
@@ -2350,6 +2352,7 @@ function buildTalkRow(t, prev, replacing) {
     const msgEl = document.createElement('div');
     msgEl.className = 'tmsg';
     msgEl.textContent = dmPreview(t);
+    if (t.lastKind === 'encrypted' && t.lastCipher) { msgEl.dataset.pvCipher = '1'; msgEl.__pvCipher = t.lastCipher; }
     body.appendChild(row);
     body.appendChild(msgEl);
 
@@ -3128,6 +3131,8 @@ const _pvCache = new Map(); // 暗号文 -> 平文(同じものを何度も開�
 function openPreviewCipher(cipher, fromMe) {
   if (!cipher || typeof nacl === 'undefined' || !nacl.util) return null;
   if (_pvCache.has(cipher)) return _pvCache.get(cipher);
+  // e5 は開くと鍵が進むので非同期(IndexedDB)。開けたら行の文言だけ差し替える
+  if (window.bcE5 && bcE5.isRatchet(cipher)) { openPreviewRatchet(cipher); return null; }
   let text = null;
   try {
     const parts = cipher.slice(3).split(':');
@@ -3156,6 +3161,22 @@ function openPreviewCipher(cipher, fromMe) {
     _pvCache.set(cipher, text);
   }
   return text;
+}
+const _pvPending = new Set();
+function openPreviewRatchet(cipher) {
+  if (_pvPending.has(cipher)) return;
+  _pvPending.add(cipher);
+  Promise.resolve().then(() => bcE5.get().open(cipher)).then(out => {
+    if (!out) return;
+    let text = nacl.util.encodeUTF8(out);
+    if (text[0] === '{') {
+      try { const j = JSON.parse(text); if (j && typeof j.text === 'string') text = j.text || (j.mediaType ? t2('preview_image', '画像が送信されました') : ''); } catch (e) {}
+    }
+    text = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (_pvCache.size > 300) _pvCache.clear();
+    _pvCache.set(cipher, text);
+    document.querySelectorAll('.tmsg[data-pv-cipher]').forEach(el => { if (el.__pvCipher === cipher) el.textContent = text; });
+  }).catch(() => {}).finally(() => { _pvPending.delete(cipher); });
 }
 // LINEと同じく「通話時間 3:21」「不在着信」「キャンセル」を出す
 function callPreview(c, fromMe) {
