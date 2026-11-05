@@ -290,7 +290,10 @@ async function fetchHtml(startUrl, resolver, image) {
     if (r.body !== undefined) return image ? { buf: r.body, contentType: r.contentType } : { body: decodeBody(r.body, r.contentType), finalUrl: u };
     let next;
     try { next = new URL(r.redirect, u); } catch (e) { throw new PreviewError('取得できませんでした', 422); }
-    u = parseHttpUrl(next.href);
+    const nextUrl = parseHttpUrl(next.href);
+    // 画像は https だけの約束なので、リダイレクトで http へ落ちるのも認めない(getImage の入口の検査をすり抜けさせない)
+    if (image && u.protocol === 'https:' && nextUrl.protocol !== 'https:') throw new PreviewError('https の画像だけ使えます');
+    u = nextUrl;
   }
   throw new PreviewError('リダイレクトが多すぎます', 422);
 }
