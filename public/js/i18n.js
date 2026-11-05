@@ -642,6 +642,7 @@
     hb_done_import: { ja: "{n}件を読み込みました", en: "Imported {n} items", "zh-CN": "已导入 {n} 条", ko: "{n}개를 가져왔습니다" },
     hb_bad: { ja: "読み込めませんでした。パスフレーズかファイルが違います", en: "Couldn't import. Wrong passphrase or file.", "zh-CN": "无法导入。密码短语或文件不正确。", ko: "가져오지 못했습니다. 암호 문구나 파일이 잘못되었습니다." },
     hb_empty: { ja: "書き出す履歴がまだありません", en: "There's no history to export yet", "zh-CN": "还没有可导出的记录", ko: "내보낼 기록이 아직 없습니다" },
+    e5_old_format: { ja: "[古い暗号方式で届きました] ", en: "[Received in the older encryption format] ", "zh-CN": "[以旧加密方式收到] ", ko: "[이전 암호화 방식으로 받음] " },
     twofa_start: { ja: "設定を始める", en: "Set up", "zh-CN": "开始设置", ko: "설정 시작" },
     twofa_step1: { ja: "認証アプリ(Google Authenticator、Microsoft Authenticator、1Password など)にこのキーを登録してください。", en: "Add this key to an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, etc.).", "zh-CN": "请在验证器应用（Google Authenticator、Microsoft Authenticator、1Password 等）中添加此密钥。", ko: "인증 앱(Google Authenticator, Microsoft Authenticator, 1Password 등)에 이 키를 등록하세요." },
     twofa_open_app: { ja: "認証アプリで開く", en: "Open in authenticator app", "zh-CN": "在验证器应用中打开", ko: "인증 앱에서 열기" },

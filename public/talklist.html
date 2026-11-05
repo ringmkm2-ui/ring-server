@@ -3129,11 +3129,11 @@ function previewKeyring() {
   return out;
 }
 const _pvCache = new Map(); // 暗号文 -> 平文(同じものを何度も開かない)
-function openPreviewCipher(cipher, fromMe) {
+function openPreviewCipher(cipher, fromMe, peerId) {
   if (!cipher || typeof nacl === 'undefined' || !nacl.util) return null;
   if (_pvCache.has(cipher)) return _pvCache.get(cipher);
   // e5 は開くと鍵が進むので非同期(IndexedDB)。開けたら行の文言だけ差し替える
-  if (window.bcE5 && bcE5.isRatchet(cipher)) { openPreviewRatchet(cipher); return null; }
+  if (window.bcE5 && bcE5.isRatchet(cipher)) { openPreviewRatchet(cipher, fromMe, peerId); return null; }
   let text = null;
   try {
     const parts = cipher.slice(3).split(':');
@@ -3164,12 +3164,13 @@ function openPreviewCipher(cipher, fromMe) {
   return text;
 }
 const _pvPending = new Set();
-function openPreviewRatchet(cipher) {
+function openPreviewRatchet(cipher, fromMe, peerId) {
   if (_pvPending.has(cipher)) return;
   _pvPending.add(cipher);
-  Promise.resolve().then(() => bcE5.get().open(cipher)).then(out => {
+  Promise.resolve().then(() => bcE5.get().open(cipher, { from: fromMe ? myUserId : peerId, to: fromMe ? peerId : myUserId })).then(out => {
     if (!out) return;
-    let text = nacl.util.encodeUTF8(out);
+    let text;
+    try { text = nacl.util.encodeUTF8(out); } catch (e) { return; }
     if (text[0] === '{') {
       try { const j = JSON.parse(text); if (j && typeof j.text === 'string') text = j.text || (j.mediaType ? t2('preview_image', '画像が送信されました') : ''); } catch (e) {}
     }
@@ -3199,7 +3200,7 @@ function dmPreview(t) {
     case 'file': return t2('preview_file', 'ファイルが送信されました');
     case 'call': return callPreview(t.lastCall, !!t.lastFromMe);
     case 'encrypted': {
-      const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe);
+      const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe, t.userId);
       return txt !== null && txt !== '' ? txt : t2('message_generic', 'メッセージ');
     }
     default: return t.lastMessage || '';

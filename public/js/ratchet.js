@@ -2,7 +2,8 @@
 // 個人チャットの暗号(e5)。X3DH で最初の鍵を決め、Double Ratchet でメッセージごとに鍵を更新する。
 //
 // e3(固定の端末鍵)との違い:
-//  - 前方秘匿性: 使った鍵はすぐ捨てる。今の鍵を盗まれても、過去の暗号文は開けない
+//  - 前方秘匿性: 使った鍵はすぐ捨てる。今の鍵を盗まれても、サーバーに残る過去の暗号文は開けない
+//    (端末そのものを盗まれると、端末に保存した本文は読まれる。これは鍵の更新では防げない)
 //  - 侵害後の回復: 相手とやり取りが続けば新しいDH鍵が混ざり、盗まれた状態から回復する
 // その代わり、サーバーの暗号文は後からもう開けない。読めた本文は端末の中(IndexedDB)にだけ残す。
 //
@@ -12,19 +13,23 @@
 //
 // 形式:  e5:<送信端末の公開鍵>:<受信端末の公開鍵>.<種類><Base64>,...
 //   種類 r = ラチェットの暗号文 / b = まだ対応していない端末あての nacl.box(移行期間だけ)
+// 本文の前に {f: 送信者, t: 宛先} を入れて暗号化する。別の会話の暗号文や自分の文を、相手の発言として見せられない。
 // window / Service Worker / Node(テスト)で動く。nacl と nacl.util が先に必要。
 (function (g) {
   'use strict';
   const PREFIX = 'e5:';
   const VERSION = 1;
-  const MAX_SKIP = 2000;            // 1つのチェーンで飛ばせる数(巨大な番号を送られて計算を止められないように)
+  const MAX_SKIP = 1000;            // 1つのチェーンで飛ばせる数(巨大な番号を送られて計算を止められないように)
+  const MAX_SKIP_DORMANT = 100;     // 今使っていないセッションでは小さく(細工した1通で何秒も止められないように)
+  const DORMANT_MS = 7 * 24 * 60 * 60 * 1000; // 使わなくなったセッションは捨てる。残すと、盗まれた古い状態で割り込まれる
+  const UNCONFIRMED_MS = 24 * 60 * 60 * 1000; // 返事が来ないセッションは作り直す(相手が開けていないかもしれない)
   const MAX_SKIPPED_TOTAL = 4000;   // 溜めておく飛ばした鍵の総数
   const SKIPPED_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 飛ばした鍵は前方秘匿性を弱めるので、古いものは捨てる
   const MAX_SESSIONS_PER_PEER = 5;  // 同時に始めた時など、1組に複数のセッションがありうる
   const MAX_RECIPIENTS = 32;
   const SPK_ROTATE_MS = 7 * 24 * 60 * 60 * 1000;
   const SPK_KEEP_MS = 30 * 24 * 60 * 60 * 1000;   // 回転後も、届くのが遅れた最初の1通のために少し残す
-  const OTK_TARGET = 50, OTK_LOW = 20;
+  const OTK_TARGET = 50, OTK_LOW = 20, OTK_LOCAL_MAX = 300;
 
   const nacl = () => g.nacl;
   const u8 = n => new Uint8Array(n);
@@ -48,6 +53,16 @@
     return d === 0;
   }
 
+  // 正規の形の鍵だけ受け取る。同じ鍵の別表記(末尾ビットや最上位ビットの違い)を「別の端末」に見せかけられないように
+  function canonicalKey(s) {
+    try {
+      if (typeof s !== 'string') return null;
+      const k = b64d(s);
+      if (k.length !== 32 || (k[31] & 0x80) || b64e(k) !== s) return null;
+      return k;
+    } catch (e) { return null; }
+  }
+
   // --- HMAC-SHA512 / HKDF(RFC 2104 / 5869)---
   function hmac(key, msg) {
     const BLOCK = 128;
@@ -67,6 +82,71 @@
     }
     return out;
   }
+
+  // --- XEdDSA(Signal公開仕様)---
+  // 端末の鍵は X25519 なので、そのままでは署名できない。同じ鍵で Ed25519 互換の署名を作る(SPKの署名に使う)。
+  // 署名は端末の中で週1回ほどしか行わないので、BigIntで十分。検証は標準の Ed25519(nacl.sign)で行う。
+  const P = (1n << 255n) - 19n;
+  const Q = (1n << 252n) + 27742317777372353535851937790883648493n;
+  const D = (P - 121665n) * modInv(121666n, P) % P;
+  const BY = 4n * modInv(5n, P) % P;
+  const BX = xFromY(BY);
+  function modPow(b, e, m) { let r = 1n; b %= m; while (e > 0n) { if (e & 1n) r = r * b % m; b = b * b % m; e >>= 1n; } return r; }
+  function modInv(a, m) { return modPow(((a % m) + m) % m, m - 2n, m); }
+  function xFromY(y) {
+    const yy = y * y % P;
+    const xx = (yy - 1n + P) * modInv(D * yy + 1n, P) % P;
+    let x = modPow(xx, (P + 3n) / 8n, P);
+    if ((x * x - xx) % P !== 0n) x = x * modPow(2n, (P - 1n) / 4n, P) % P;
+    return x & 1n ? P - x : x;
+  }
+  function leToBig(b) { let r = 0n; for (let i = b.length - 1; i >= 0; i--) r = (r << 8n) | BigInt(b[i]); return r; }
+  function bigToLe(n, len) { const o = u8(len); for (let i = 0; i < len; i++) { o[i] = Number(n & 255n); n >>= 8n; } return o; }
+  function ptAdd(p, q) {
+    const [x1, y1, z1, t1] = p, [x2, y2, z2, t2] = q;
+    const a = (y1 - x1 + P) * (y2 - x2 + P) % P, b = (y1 + x1) * (y2 + x2) % P, c = t1 * 2n * D * t2 % P, d = z1 * 2n * z2 % P;
+    const e = (b - a + P) % P, f = (d - c + P) % P, gg = (d + c) % P, h = (b + a) % P;
+    return [e * f % P, gg * h % P, f * gg % P, e * h % P];
+  }
+  function ptMulBase(n) {
+    let r = [0n, 1n, 1n, 0n], q = [BX, BY, 1n, BX * BY % P];
+    while (n > 0n) { if (n & 1n) r = ptAdd(r, q); q = ptAdd(q, q); n >>= 1n; }
+    return r;
+  }
+  function ptCompress(p) {
+    const zi = modInv(p[2], P), x = p[0] * zi % P, y = p[1] * zi % P;
+    const o = bigToLe(y, 32);
+    if (x & 1n) o[31] |= 0x80;
+    return o;
+  }
+  // X25519の公開鍵 → 符号0のEd25519公開鍵
+  function montToEd(u) {
+    const n = leToBig(u) & ((1n << 255n) - 1n);
+    return bigToLe((n - 1n + P) * modInv(n + 1n, P) % P, 32);
+  }
+  function hashToScalar(b) { return leToBig(nacl().hash(b)) % Q; }
+  function xeddsaSign(sec, msg) {
+    const c = sec.slice();
+    c[0] &= 248; c[31] &= 127; c[31] |= 64;
+    let a = leToBig(c);
+    const A0 = ptCompress(ptMulBase(a));
+    const neg = A0[31] & 0x80;
+    a = a % Q;
+    if (neg) a = (Q - a) % Q;
+    const A = A0.slice(); A[31] &= 0x7f;
+    const pad = u8(32).fill(0xff); pad[0] = 0xfe;
+    const r = hashToScalar(concat(pad, bigToLe(a, 32), msg, nacl().randomBytes(64)));
+    const R = ptCompress(ptMulBase(r));
+    const h = hashToScalar(concat(R, A, msg));
+    const S = (r + h * a) % Q;
+    wipe(c);
+    return concat(R, bigToLe(S, 32));
+  }
+  function xeddsaVerify(pub, msg, sig) {
+    if (!sig || sig.length !== 64) return false;
+    try { return nacl().sign.detached.verify(msg, sig, montToEd(pub)); } catch (e) { return false; }
+  }
+  const spkMessage = pub => concat(utf8('BroChat-SPK-v1'), pub);
 
   const INFO_X3DH = utf8('BroChat-X3DH-v1');
   const INFO_RK = utf8('BroChat-DR-root-v1');
@@ -132,7 +212,7 @@
     const r = kdfRK(sk, dh(s.sec, bundle.spk.pub));
     const state = {
       v: VERSION, rk: r.rk, cks: r.ck, ckr: null, dhs: s, dhr: bundle.spk.pub, ns: 0, nr: 0, pn: 0,
-      skipped: [], peer: bundle.ik, me: myIk.pub, createdAt: Date.now(), lastUsed: Date.now(),
+      skipped: [], peer: bundle.ik, me: myIk.pub, createdAt: Date.now(), lastUsed: Date.now(), sid: b64e(ek.pub),
       pending: { ik: myIk.pub, ek: ek.pub, spkId: bundle.spk.id, otkId: bundle.otk ? bundle.otk.id : 0 },
     };
     wipe(ek.sec); wipe(sk);
@@ -146,7 +226,7 @@
     parts.forEach(wipe);
     return {
       v: VERSION, rk: sk, cks: null, ckr: null, dhs: { pub: spk.pub.slice(), sec: spk.sec.slice() }, dhr: null, ns: 0, nr: 0, pn: 0,
-      skipped: [], peer: pre.ik, me: myIk.pub, createdAt: Date.now(), lastUsed: Date.now(), pending: null, ek: pre.ek,
+      skipped: [], peer: pre.ik, me: myIk.pub, createdAt: Date.now(), lastUsed: Date.now(), pending: null, sid: b64e(pre.ek),
     };
   }
 
@@ -179,8 +259,8 @@
     wipe(step.mk); wipe(b.key);
     return concat(header, ct);
   }
-  function skipKeys(state, until, now) {
-    if (until - state.nr > MAX_SKIP) throw new Error('too many skipped messages');
+  function skipKeys(state, until, now, maxSkip) {
+    if (until - state.nr > maxSkip) throw new Error('too many skipped messages');
     if (!state.ckr) return;
     while (state.nr < until) {
       const step = kdfCK(state.ckr);
@@ -198,7 +278,8 @@
     state.skipped = keep;
   }
   // state は書き換える。失敗した時は呼び出し側が元の状態を使う(開けない暗号文で状態を壊させない)
-  function ratchetDecrypt(state, bytes) {
+  function ratchetDecrypt(state, bytes, maxSkip) {
+    const limit = maxSkip || MAX_SKIP;
     const now = Date.now();
     const h = decHeader(bytes);
     const header = bytes.subarray(0, h.size), ct = bytes.subarray(h.size);
@@ -219,7 +300,7 @@
       return out;
     }
     if (!state.dhr || !equal(h.dh, state.dhr)) {
-      skipKeys(state, h.pn, now);
+      skipKeys(state, h.pn, now, limit);
       state.pn = state.ns; state.ns = 0; state.nr = 0;
       state.dhr = h.dh;
       const r1 = kdfRK(state.rk, dh(state.dhs.sec, state.dhr));
@@ -229,7 +310,7 @@
       wipe(state.dhs.sec);
       state.dhs = s; state.rk = r2.rk; state.cks = r2.ck;
     }
-    skipKeys(state, h.n, now);
+    skipKeys(state, h.n, now, limit);
     if (h.n < state.nr) throw new Error('replay or old message');
     const step = kdfCK(state.ckr);
     const out = open(step.mk);
@@ -299,133 +380,265 @@
       });
     }
 
+    const nsOf = my => b64e(my.pub) + '|';   // 端末の鍵を作り直したら、古い鍵の状態は使わない
+    const pruneList = (list, now) => list.filter((x, i) => i === 0 || now - (x.lastUsed || 0) <= DORMANT_MS);
+    const stale = (x, now) => !!x.pending && now - (x.createdAt || 0) > UNCONFIRMED_MS;
+
+    function wrap(bytes, ctx) {
+      return concat(utf8(JSON.stringify({ f: String(ctx.from), t: String(ctx.to) })), Uint8Array.of(0), bytes);
+    }
+    // 中身の {f,t} が、サーバーの言う送信者・宛先と合っている時だけ本文を返す
+    function unwrap(out, ctx) {
+      const z = out.indexOf(0);
+      if (z < 1) return null;
+      let m;
+      try { m = JSON.parse(nacl().util.encodeUTF8(out.slice(0, z))); } catch (e) { return null; }
+      if (!m || typeof m.f !== 'string' || typeof m.t !== 'string') return null;
+      if (ctx) {
+        if (ctx.from != null && String(ctx.from) !== m.f) return null;
+        if (ctx.to != null && String(ctx.to) !== m.t) return null;
+        if (ctx.from == null && ctx.members) {
+          const set = ctx.members.map(String);
+          if (!set.includes(m.f) || !set.includes(m.t)) return null;
+        }
+      }
+      return { bytes: out.slice(z + 1), f: m.f, t: m.t };
+    }
+
     // 相手の端末あての1通を作る。セッションの読み書きとラチェットを1つのトランザクションで
     async function encryptFor(peerPub, plain) {
       const my = me();
+      const key = nsOf(my) + peerPub;
+      const now = Date.now();
       let out = await tx(['sessions'], 'readwrite', async t => {
         const st = t.objectStore('sessions');
-        const list = (await idbReq(st.get(peerPub))) || [];
-        if (!list.length) return null;
+        const list = pruneList((await idbReq(st.get(key))) || [], now);
+        if (!list.length || stale(list[0], now)) return null;
         const bytes = ratchetEncrypt(list[0], plain);
-        st.put(list, peerPub);
+        st.put(list, key);
         return bytes;
       });
       if (out) return out;
       // セッションが無ければプリキーを取る(通信はトランザクションの外)
       const b = await opts.http('GET', '/api/ratchet/bundle/' + encodeURIComponent(peerPub));
-      if (!b || !b.spk) return null;
-      const peer = b64d(peerPub);
-      if (!equal(b64d(b.deviceKey), peer)) throw new Error('bundle mismatch');
+      const peer = canonicalKey(peerPub);
+      const spkPub = b && b.spk ? canonicalKey(b.spk.pub) : null;
+      if (!b || !spkPub || !peer) {
+        // 作り直せなければ、返事の無いセッションでもそのまま使う
+        return tx(['sessions'], 'readwrite', async t => {
+          const st = t.objectStore('sessions');
+          const list = (await idbReq(st.get(key))) || [];
+          if (!list.length) return null;
+          const bytes = ratchetEncrypt(list[0], plain);
+          st.put(list, key);
+          return bytes;
+        });
+      }
+      if (b.deviceKey !== peerPub) throw new Error('bundle mismatch');
+      let sig = null;
+      try { sig = b64d(b.spk.sig || ''); } catch (e) { sig = null; }
+      if (!xeddsaVerify(peer, spkMessage(spkPub), sig)) {
+        const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした');
+        e.code = 'RATCHET_BAD_SPK';
+        throw e;
+      }
+      const otkPub = b.otk ? canonicalKey(b.otk.pub) : null;
       const init = x3dhInitiate(my, {
         ik: peer,
-        spk: { id: b.spk.id, pub: b64d(b.spk.pub) },
-        otk: b.otk ? { id: b.otk.id, pub: b64d(b.otk.pub) } : null,
+        spk: { id: b.spk.id, pub: spkPub },
+        otk: otkPub ? { id: b.otk.id, pub: otkPub } : null,
       });
       await tx(['sessions', 'meta'], 'readwrite', async t => {
         const st = t.objectStore('sessions');
-        const list = (await idbReq(st.get(peerPub))) || [];
+        const list = pruneList((await idbReq(st.get(key))) || [], now);
         list.unshift(init);
         list.splice(MAX_SESSIONS_PER_PEER);
         out = ratchetEncrypt(init, plain);
-        st.put(list, peerPub);
+        st.put(list, key);
         t.objectStore('meta').put(true, 'peer:' + peerPub);   // この端末は対応済み。以後 box に戻さない
       });
       return out;
     }
 
-    // bytes を recipients(公開鍵Base64の配列)全員あてに。対応していない端末は移行期間だけ box で包む
-    async function seal(bytes, recipients) {
+    // この相手とは前方秘匿性ありで話したことがあるか。あれば旧方式には戻さない(サーバーの設定やプリキーの細工でも)
+    async function pinnedAt(peerUserId) {
+      return (await tx(['meta'], 'readonly', t => idbReq(t.objectStore('meta').get('user:' + peerUserId)))) || 0;
+    }
+    async function isPinned(peerUserId) { return !!(await pinnedAt(peerUserId)); }
+    // メッセージIDと暗号文を結びつける。閉じている間に取り消された分も、次に開いた時に消せるように
+    async function bindMessage(msgId, content, expiresAt) {
+      const k = cacheKey(content);
+      const exp = expiresAt ? (Date.parse(expiresAt) || Number(expiresAt) || 0) : 0;
+      await tx(['plain', 'meta'], 'readwrite', async t => {
+        t.objectStore('meta').put(k, 'msg:' + msgId);
+        if (exp) {
+          const st = t.objectStore('plain');
+          const v = await idbReq(st.get(k));
+          if (v && v.exp !== exp) { v.exp = exp; st.put(v, k); }
+        }
+      });
+    }
+    async function forgetMessage(msgId) {
+      await tx(['plain', 'meta'], 'readwrite', async t => {
+        const m = t.objectStore('meta');
+        const k = await idbReq(m.get('msg:' + msgId));
+        if (k) { t.objectStore('plain').delete(k); m.delete('msg:' + msgId); }
+      });
+    }
+
+    // bytes を recipients(公開鍵Base64の配列)全員あてに。ctx = { from, to } 自分と相手のユーザーID
+    async function seal(bytes, recipients, ctx) {
+      if (!ctx || ctx.from == null || ctx.to == null) throw new Error('seal: ctx required');
       const my = me();
       const myB64 = b64e(my.pub);
       const seen = new Set([myB64]);
       const entries = [];
+      const inner = wrap(bytes, ctx);
+      const pinned = await isPinned(ctx.to);
+      let ratcheted = false;
       for (const pb of recipients) {
         if (!pb || seen.has(pb)) continue;
+        const pk = canonicalKey(pb);
+        if (!pk) continue;                                 // 別表記の鍵は受け取らない
         if (entries.length >= MAX_RECIPIENTS) throw new Error('送り先の端末が多すぎます');
         seen.add(pb);
-        let pk;
-        try { pk = b64d(pb); } catch (e) { continue; }
-        if (pk.length !== 32) continue;
-        let ct = await encryptFor(pb, bytes);
-        if (ct) { entries.push(pb + '.r' + b64e(ct)); continue; }
-        const pinned = await tx(['meta'], 'readonly', t => idbReq(t.objectStore('meta').get('peer:' + pb)));
-        if (pinned) {
-          // 前は前方秘匿性ありで話せていた端末。ここで box に落とすと、サーバーがプリキーを隠すだけで弱められる
-          const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした');
-          e.code = 'RATCHET_DOWNGRADE';
-          throw e;
-        }
+        const ct = await encryptFor(pb, inner);
+        if (ct) { entries.push(pb + '.r' + b64e(ct)); ratcheted = true; continue; }
+        const devicePinned = await tx(['meta'], 'readonly', t => idbReq(t.objectStore('meta').get('peer:' + pb)));
+        // 前方秘匿性ありで話した相手に旧方式で送ると、サーバーがプリキーを隠すだけで弱められる。この端末の分は入れない
+        if (pinned || devicePinned) continue;
         const nonce = nacl().randomBytes(24);
-        entries.push(pb + '.b' + b64e(concat(nonce, nacl().box(bytes, nonce, pk, my.sec))));
+        entries.push(pb + '.b' + b64e(concat(nonce, nacl().box(inner, nonce, pk, my.sec))));
       }
-      if (!entries.length) return null;
+      if (!entries.length || (pinned && !ratcheted)) {
+        if (!pinned && !recipients.some(k => k && k !== myB64)) return null;
+        const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした');
+        e.code = 'RATCHET_DOWNGRADE';
+        throw e;
+      }
       const content = PREFIX + myB64 + ':' + entries.join(',');
-      await remember(content, bytes);   // 自分の分は暗号文に入れない。本文は端末の中だけに残す
+      const k = cacheKey(content);
+      await tx(['plain', 'meta'], 'readwrite', async t => {
+        t.objectStore('plain').put({ b: inner, at: Date.now() }, k);   // 自分の分は暗号文に入れない。本文は端末の中だけに残す
+        if (ratcheted) t.objectStore('meta').put(Date.now(), 'user:' + ctx.to);
+      });
       return content;
     }
 
-    async function remember(content, bytes) {
-      const k = cacheKey(content);
-      const v = { b: bytes.slice(), at: Date.now() };
-      await tx(['plain'], 'readwrite', async t => { t.objectStore('plain').put(v, k); });
-    }
-    async function recall(content) {
+    async function recall(content, ctx) {
       const k = cacheKey(content);
       const v = await tx(['plain'], 'readonly', t => idbReq(t.objectStore('plain').get(k)));
-      return v ? v.b : null;
+      if (!v) return null;
+      const u = unwrap(v.b, ctx);
+      return u ? u.bytes : null;
+    }
+    // 取り消し・消えるメッセージ・編集前の文は、端末の中からも消す
+    async function forget(content) {
+      if (!content) return;
+      const k = cacheKey(content);
+      await tx(['plain'], 'readwrite', async t => { t.objectStore('plain').delete(k); });
+    }
+    async function sweepExpired() {
+      const now = Date.now();
+      await tx(['plain'], 'readwrite', async t => {
+        const st = t.objectStore('plain');
+        const keys = await idbReq(st.getAllKeys());
+        const vals = await idbReq(st.getAll());
+        keys.forEach((k, i) => { if (vals[i] && vals[i].exp && vals[i].exp <= now) st.delete(k); });
+      });
     }
 
+    const failed = new Map();  // 開けなかった暗号文。同期のたびに重い計算をやり直さない
+    function markFailed(k) { if (failed.size > 500) failed.clear(); failed.set(k, true); }
+
     // 戻り値: 本文のバイト列 / 開けなければ null。同じ暗号文は何度呼んでも同じ結果(2回目からは保存分)
-    async function open(content) {
+    // ctx = { from, to } サーバーの言う送信者と宛先。メディアの鍵など送信者が分からない時は { members: [自分, 相手] }
+    async function open(content, ctx) {
       const p = parse(content);
-      if (!p) return null;
-      const hit = await recall(content);
+      if (!p || !canonicalKey(p.senderPub)) return null;
+      const k = cacheKey(content);
+      const hit = await recall(content, ctx);
       if (hit) return hit;
+      if (failed.has(k)) return null;
       const my = me();
-      const entry = p.entries.get(b64e(my.pub));
+      const myB64 = b64e(my.pub);
+      if (p.senderPub === myB64) return null;   // 自分の鍵を相手の発言に見せかけたもの(自分の分は保存から読む)
+      const entry = p.entries.get(myB64);
       if (!entry) return null;
       const kind = entry[0];
       let body;
       try { body = b64d(entry.slice(1)); } catch (e) { return null; }
       if (kind === 'b') {
+        const peerUser = ctx && (ctx.from != null ? (String(ctx.from) === String(opts.uid) ? ctx.to : ctx.from) : null);
+        const pinned = await tx(['meta'], 'readonly', async t => !!(await idbReq(t.objectStore('meta').get('peer:' + p.senderPub)))
+          || (peerUser != null && !!(await idbReq(t.objectStore('meta').get('user:' + peerUser)))));
+        if (pinned) return null;   // 前方秘匿性ありで話した相手からの旧方式は受けない
         if (body.length < 24 + 16) return null;
         let out = null;
         try { out = nacl().box.open(body.slice(24), body.slice(0, 24), b64d(p.senderPub), my.sec); } catch (e) { out = null; }
-        if (!out) return null;
-        await remember(content, out);
-        return out;
+        const u = out && unwrap(out, ctx);
+        if (!u) { markFailed(k); return null; }
+        await tx(['plain'], 'readwrite', async t => { t.objectStore('plain').put({ b: out, at: Date.now() }, k); });
+        return u.bytes;
       }
       if (kind !== 'r') return null;
-      const k = cacheKey(content);
-      return tx(['sessions', 'plain', 'prekeys', 'meta'], 'readwrite', async t => {
+      const sKey = nsOf(my) + p.senderPub;
+      const peerUserOf = ctx && ctx.from != null ? (String(ctx.from) === String(opts.uid) ? ctx.to : ctx.from) : null;
+      const finish = (t, out) => {
+        const u = unwrap(out, ctx);
+        if (!u) return null;
+        t.objectStore('plain').put({ b: out, at: Date.now() }, k);
+        if (peerUserOf != null) t.objectStore('meta').put(Date.now(), 'user:' + peerUserOf);
+        return u.bytes;
+      };
+      // 今あるセッションで開く。戻り値 { out } か、新しいセッションが要る時は { needNew: true }
+      const tryExisting = async t => {
         const sessions = t.objectStore('sessions');
         // 別のページや Service Worker が先に開いていたら、もう鍵は無い。保存された本文を返す
         const done = await idbReq(t.objectStore('plain').get(k));
-        if (done) return done.b;
-        const list = (await idbReq(sessions.get(p.senderPub))) || [];
+        if (done) { const u = unwrap(done.b, ctx); return { out: u ? u.bytes : null }; }
+        const now = Date.now();
+        const list = pruneList((await idbReq(sessions.get(sKey))) || [], now);
         for (let i = 0; i < list.length; i++) {
           const trial = cloneState(list[i]);
           let out = null;
-          try { out = ratchetDecrypt(trial, body); } catch (e) { out = null; }
+          try { out = ratchetDecrypt(trial, body, i === 0 ? MAX_SKIP : MAX_SKIP_DORMANT); } catch (e) { out = null; }
           if (!out) continue;
-          list.splice(i, 1);
-          list.unshift(trial);
-          sessions.put(list, p.senderPub);
-          t.objectStore('plain').put({ b: out, at: Date.now() }, k);
-          return out;
+          const bytes = finish(t, out);
+          if (!bytes) return { out: null };  // 中身の送信者が合わない。状態は進めない
+          list[i] = trial;
+          // 送る時に使うセッションは、受信しただけでは簡単に切り替えない(盗まれた古い状態で乗っ取られないように)。
+          // 今のものが未確認か、同時に始めた時に両端で同じ方へ揃える時だけ
+          const newer = i > 0 && now - (list[0].lastUsed || 0) < UNCONFIRMED_MS && String(trial.sid) > String(list[0].sid);
+          if (i > 0 && (list[0].pending || newer)) { list.splice(i, 1); list.unshift(trial); }
+          sessions.put(list, sKey);
+          return { out: bytes };
         }
-        // 既存のセッションで開けない: 相手が始めた新しいセッションの最初の1通か確かめる
-        let h;
-        try { h = decHeader(body); } catch (e) { return null; }
-        if (!h.pre || b64e(h.pre.ik) !== p.senderPub) return null;
+        return { needNew: true };
+      };
+      const first = await tx(['sessions', 'plain', 'meta'], 'readwrite', tryExisting);
+      if (!first.needNew) return first.out;
+      // 2. 相手が始めた新しいセッションの最初の1通か確かめる
+      let h;
+      try { h = decHeader(body); } catch (e) { markFailed(k); return null; }
+      if (!h.pre || b64e(h.pre.ik) !== p.senderPub) { markFailed(k); return null; }
+      // 送信者として名乗るユーザーの今の端末にある鍵だけ受ける(知らない鍵でセッションを増やされないように)。通信はトランザクションの外
+      const senderUser = ctx && ctx.from != null ? ctx.from : null;
+      let okKeys = null;
+      if (opts.peerKeys && senderUser != null) { try { okKeys = await opts.peerKeys(senderUser); } catch (e) { okKeys = null; } }
+      if (!Array.isArray(okKeys) || !okKeys.includes(p.senderPub)) return null;
+      return tx(['sessions', 'plain', 'prekeys', 'meta'], 'readwrite', async t => {
+        // 鍵の確認を待つ間に、同じセッションの前の1通が開かれているかもしれない
+        const again = await tryExisting(t);
+        if (!again.needNew) return again.out;
+        const ns = nsOf(my), metaS = t.objectStore('meta'), pks = t.objectStore('prekeys');
         const ekB64 = b64e(h.pre.ek);
-        if (await idbReq(t.objectStore('meta').get('ek:' + ekB64))) return null;   // 同じ最初の1通の再送は受けない
-        const pks = t.objectStore('prekeys');
-        const spk = await idbReq(pks.get('spk:' + h.pre.spkId));
+        if (await idbReq(metaS.get('ek:' + ns + ekB64))) return null;   // 同じ最初の1通の再送は受けない
+        const spk = await idbReq(pks.get(ns + 'spk:' + h.pre.spkId));
         if (!spk) return null;
         let otk = null;
         if (h.pre.otkId) {
-          otk = await idbReq(pks.get('otk:' + h.pre.otkId));
+          otk = await idbReq(pks.get(ns + 'otk:' + h.pre.otkId));
           if (!otk) return null;     // 使用済みのOTK = 再送か、もう開けないもの
         }
         let state, out = null;
@@ -434,64 +647,92 @@
           out = ratchetDecrypt(state, body);
         } catch (e) { return null; }
         if (!out) return null;
-        if (h.pre.otkId) pks.delete('otk:' + h.pre.otkId);   // 前方秘匿性のために使ったら消す
-        t.objectStore('meta').put(Date.now(), 'ek:' + ekB64);
-        t.objectStore('meta').put(true, 'peer:' + p.senderPub);
+        const bytes = finish(t, out);
+        if (!bytes) return null;
+        if (h.pre.otkId) pks.delete(ns + 'otk:' + h.pre.otkId);   // 前方秘匿性のために使ったら消す
+        metaS.put(Date.now(), 'ek:' + ns + ekB64);
+        metaS.put(true, 'peer:' + p.senderPub);
+        const sessions = t.objectStore('sessions');
+        const list = pruneList((await idbReq(sessions.get(sKey))) || [], Date.now());
         list.unshift(state);
         list.splice(MAX_SESSIONS_PER_PEER);
-        sessions.put(list, p.senderPub);
-        t.objectStore('plain').put({ b: out, at: Date.now() }, k);
-        return out;
+        sessions.put(list, sKey);
+        return bytes;
       });
     }
 
     // プリキーを用意してサーバーへ。古いSPKは回転し、OTKは減ったら足す
-    async function ensurePrekeys() {
+    async function ensurePrekeysLocked() {
       const my = me();
-      const myB64 = b64e(my.pub);
+      const myB64 = b64e(my.pub), ns = nsOf(my);
       const now = Date.now();
-      const state = await tx(['prekeys', 'meta'], 'readonly', async t => {
-        const metaS = t.objectStore('meta');
-        return { spkId: await idbReq(metaS.get('spkId')), spkAt: await idbReq(metaS.get('spkAt')), otkNext: await idbReq(metaS.get('otkNext')) };
-      });
       const cnt = await opts.http('GET', '/api/ratchet/prekeys/count?deviceKey=' + encodeURIComponent(myB64));
       const remote = cnt && typeof cnt.otks === 'number' ? cnt.otks : 0;
-      const needSpk = !state.spkId || !state.spkAt || now - state.spkAt > SPK_ROTATE_MS || !(cnt && cnt.spkId === state.spkId);
-      const needOtk = remote < OTK_LOW;
-      if (!needSpk && !needOtk) return false;
-      let spkId = state.spkId || 0, spkPub = null, otkNext = state.otkNext || 1;
+      let spkId = 0, spkPub = null, spkSig = null, replace = false, needed = false;
       const otksOut = [];
       await tx(['prekeys', 'meta'], 'readwrite', async t => {
         const pks = t.objectStore('prekeys'), metaS = t.objectStore('meta');
+        // 読むのもここで(同時に動く別のタブと番号がぶつからないように)
+        const curId = await idbReq(metaS.get(ns + 'spkId'));
+        const curAt = await idbReq(metaS.get(ns + 'spkAt'));
+        let otkNext = await idbReq(metaS.get(ns + 'otkNext'));
+        // 端末の中の状態が無いのにサーバーに古いOTKが残っていると、その秘密鍵はもう無い。全部置き換える
+        replace = !otkNext;
+        const needSpk = !curId || !curAt || now - curAt > SPK_ROTATE_MS || !(cnt && cnt.spkId === curId);
+        const needOtk = replace || remote < OTK_LOW;
+        if (!needSpk && !needOtk) return;
+        needed = true;
+        spkId = curId || 0;
         if (needSpk) {
           const k = genDH();
-          spkId = (spkId % 0x7fffffff) + 1;
-          pks.put({ pub: k.pub, sec: k.sec, at: now }, 'spk:' + spkId);
-          metaS.put(spkId, 'spkId'); metaS.put(now, 'spkAt');
+          spkId = (spkId % 0x7ffffffe) + 1;
+          pks.put({ pub: k.pub, sec: k.sec, at: now }, ns + 'spk:' + spkId);
+          metaS.put(spkId, ns + 'spkId'); metaS.put(now, ns + 'spkAt');
           spkPub = k.pub;
         } else {
-          const cur = await idbReq(pks.get('spk:' + spkId));
+          const cur = await idbReq(pks.get(ns + 'spk:' + spkId));
           spkPub = cur ? cur.pub : null;
         }
-        // 回転して時間が経ったSPKの秘密鍵は消す
+        // 回転して時間が経ったSPKの秘密鍵は消す。OTKも増えすぎたら古いものから消す
         const keys = await idbReq(pks.getAllKeys());
+        const otkKeys = [];
         for (const key of keys) {
-          if (!String(key).startsWith('spk:') || key === 'spk:' + spkId) continue;
+          const ks = String(key);
+          if (!ks.startsWith(ns)) continue;
+          if (ks.startsWith(ns + 'otk:')) { otkKeys.push(ks); continue; }
+          if (ks === ns + 'spk:' + spkId) continue;
           const v = await idbReq(pks.get(key));
           if (v && now - v.at > SPK_KEEP_MS) pks.delete(key);
         }
+        otkNext = otkNext || 1;
         if (needOtk) {
-          for (let i = remote; i < OTK_TARGET; i++) {
+          const start = replace ? 0 : remote;
+          for (let i = start; i < OTK_TARGET; i++) {
             const k = genDH(), id = otkNext++;
-            pks.put({ pub: k.pub, sec: k.sec, at: now }, 'otk:' + id);
+            pks.put({ pub: k.pub, sec: k.sec, at: now }, ns + 'otk:' + id);
             otksOut.push({ id, pub: b64e(k.pub) });
           }
-          metaS.put(otkNext, 'otkNext');
+          metaS.put(otkNext, ns + 'otkNext');
+          const over = otkKeys.length + otksOut.length - OTK_LOCAL_MAX;
+          if (over > 0) otkKeys.sort((a, b) => Number(a.split('otk:')[1]) - Number(b.split('otk:')[1])).slice(0, over).forEach(x => pks.delete(x));
         }
       });
-      if (!spkPub) return false;
-      await opts.http('POST', '/api/ratchet/prekeys', { deviceKey: myB64, spk: { id: spkId, pub: b64e(spkPub) }, otks: otksOut });
+      if (!needed || !spkPub) return false;
+      spkSig = xeddsaSign(my.sec, spkMessage(spkPub));
+      // この鍵を本当に持っていることを見せる(他人の端末鍵にプリキーを置かれないように)
+      const c = await opts.http('POST', '/api/devices/challenge', { publicKey: myB64 });
+      if (!c || !c.id) return false;
+      const answer = nacl().box.open(b64d(c.box), b64d(c.nonce), b64d(c.serverPublicKey), my.sec);
+      if (!answer) return false;
+      await opts.http('POST', '/api/ratchet/prekeys', {
+        deviceKey: myB64, spk: { id: spkId, pub: b64e(spkPub), sig: b64e(spkSig) }, otks: otksOut, replace,
+        challengeId: c.id, answer: b64e(answer),
+      });
       return true;
+    }
+    function ensurePrekeys() {
+      const locks = typeof navigator !== 'undefined' && navigator.locks;
+      return locks ? locks.request('bc_e5_prekeys_' + opts.uid, ensurePrekeysLocked) : ensurePrekeysLocked();
     }
 
     // 端末の中の本文を全部取り出す / 取り込む(履歴の書き出し用)。鍵やセッションは含めない。
@@ -518,11 +759,11 @@
       return added;
     }
 
-    return { seal, open, recall, remember, ensurePrekeys, exportPlain, importPlain };
+    return { seal, open, recall, forget, bindMessage, forgetMessage, sweepExpired, isPinned, pinnedAt, ensurePrekeys, exportPlain, importPlain };
   }
 
   g.E2ERatchet = {
     PREFIX, isRatchet, parse, cacheKey, makeClient,
-    core: { x3dhInitiate, x3dhRespond, ratchetEncrypt, ratchetDecrypt, cloneState, genDH, hmac, hkdf, dh, encHeader, decHeader, MAX_SKIP },
+    core: { x3dhInitiate, x3dhRespond, ratchetEncrypt, ratchetDecrypt, cloneState, genDH, hmac, hkdf, dh, encHeader, decHeader, MAX_SKIP, xeddsaSign, xeddsaVerify, canonicalKey },
   };
 })(typeof self !== 'undefined' ? self : globalThis);

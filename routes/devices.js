@@ -48,13 +48,14 @@ router.post('/challenge', prekeyLimiter, asyncHandler(async (req, res) => {
 }));
 
 // 1回限り。使ったら(失敗でも)消すので、総当たりできない
-function proved(req) {
+function proved(req, requiredKey) {
   const { challengeId, answer } = req.body || {};
   if (typeof challengeId !== 'string' || typeof answer !== 'string') return false;
   const c = challenges.get(challengeId);
   if (!c) return false;
   challenges.delete(challengeId);
   if (c.userId !== req.user.userId || c.exp < Date.now()) return false;
+  if (requiredKey && c.publicKey !== requiredKey) return false;
   const got = Buffer.from(answer, 'base64');
   return got.length === c.answer.length && crypto.timingSafeEqual(got, c.answer);
 }
@@ -92,3 +93,4 @@ async function mailPending(userId, publicKey) {
 
 module.exports = router;
 module.exports.mailPending = mailPending;
+module.exports.proved = proved;

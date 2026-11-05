@@ -102,6 +102,7 @@ async function initDB() {
       last_seen_at INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       approve_after INTEGER,
+      pending_sid TEXT,
       PRIMARY KEY (user_id, public_key)
     );
 
@@ -110,6 +111,7 @@ async function initDB() {
       device_key TEXT NOT NULL,
       spk_id INTEGER NOT NULL,
       spk_pub TEXT NOT NULL,
+      spk_sig TEXT NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, device_key)
     );

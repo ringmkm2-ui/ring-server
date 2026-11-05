@@ -40,7 +40,7 @@ function idbGetKv(name) {
     } catch (e) { resolve(null); }
   });
 }
-async function swDecrypt(cipher, senderPubB64) {
+async function swDecrypt(cipher, senderPubB64, senderId) {
   try {
     if (!cipher || !self.nacl || !nacl.util) return null;
     const ring = await idbGetKeyring();
@@ -56,7 +56,7 @@ async function swDecrypt(cipher, senderPubB64) {
         identity: () => ({ pub: new Uint8Array(mine.publicKey), sec: new Uint8Array(mine.secretKey) }),
         http: async () => null,
       });
-      const out = await client.open(cipher);
+      const out = await client.open(cipher, { from: senderId, to: uid });
       if (!out) return null;
       let t = nacl.util.encodeUTF8(out);
       if (t.trim().startsWith('{')) { try { const o = JSON.parse(t); if (o && typeof o.text === 'string') t = o.text; } catch (e) {} }
@@ -253,7 +253,7 @@ self.addEventListener('push', event => {
       const { senderId, senderName, senderPic, preview, cipher, senderPub } = data;
       const title = senderName || 'メッセージ';
       event.waitUntil((async () => {
-      const text = (await swDecrypt(cipher, senderPub)) || preview || 'メッセージ';
+      const text = (await swDecrypt(cipher, senderPub, senderId)) || preview || 'メッセージ';
       const options = {
         body: text,
         icon: notifIcon(senderPic),
