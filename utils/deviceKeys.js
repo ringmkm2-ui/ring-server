@@ -53,6 +53,8 @@ async function touch(userId, publicKey, sid) {
     }
     // inactive は「全端末ログアウト」等で止めた鍵。ログインし直した本人の端末なので戻す(トークンはその時に失効済み)
     await activate(userId, publicKey, now);
+    // 同じセッションで元の鍵を復元した本人を、承認待ちのまま止めない
+    if (sid) await db.run("UPDATE user_pubkeys SET pending_sid = NULL WHERE user_id = ? AND pending_sid = ?", [userId, sid]);
     return { status: 'active', isNew: false, activated: false };
   }
   // pending は数えない(盗んだ人が先に鍵を置いて、本人の次の端末を待たせることはできない)
@@ -94,6 +96,15 @@ async function isPendingSession(userId, sid) {
     [userId, sid, Date.now()]
   );
   return !!r;
+}
+// グループとコミュニティの送信にも同じ確認を入れるための部品
+async function requireApprovedSession(req, res, next) {
+  try {
+    if (await isPendingSession(req.user && req.user.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
+    next();
+  } catch (e) { next(e); }
 }
 async function listPending(userId) {
   const rows = await db.all(
@@ -178,4 +189,4 @@ async function announce(userId) {
   } catch (e) { console.error('[deviceKeys] announce failed:', e.message); }
 }
 
-module.exports = { touch, activeKeys, activeKeysMany, clearAll, newestKeyAt, statusOf, isPending, isPendingSession, listPending, approve, reject, announce, codeFor, enabled };
+module.exports = { touch, activeKeys, activeKeysMany, clearAll, newestKeyAt, statusOf, isPending, isPendingSession, requireApprovedSession, listPending, approve, reject, announce, codeFor, enabled };

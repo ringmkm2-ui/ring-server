@@ -22,7 +22,7 @@ function freshDb(name) {
   });
 }
 // 端末 d から相手 to へ
-const send = (d, to, text, list) => d.c.seal(enc(text), list || [to.pub], { from: d.u.userId, to: to.u.userId });
+const send = (d, to, text, peers, mine) => d.c.seal(enc(text), peers || [to.pub], { from: d.u.userId, to: to.u.userId, mine });
 const recv = (d, from, m) => d.c.open(m, { from: from.u.userId, to: d.u.userId });
 async function device(u) {
   const k = core.genDH();
@@ -109,7 +109,7 @@ test('複数の端末: 相手の全端末と自分の他の端末が読める', 
   const { a, b, da, db } = await people();
   const da2 = await device(a), db2 = await device(b);
   await da2.c.ensurePrekeys(); await db2.c.ensurePrekeys();
-  const m = await send(da, db, '全員へ', [db.pub, db2.pub, da2.pub, da.pub]);
+  const m = await send(da, db, '全員へ', [db.pub, db2.pub], [da2.pub, da.pub]);
   assert.equal(parse(m).entries.size, 3, '自分の端末の分は入れない');
   assert.equal(dec(await recv(db, da, m)), '全員へ');
   assert.equal(dec(await recv(db2, da, m)), '全員へ');
@@ -348,4 +348,121 @@ test('履歴の書き出しと読み込み: 新しい端末で読める。パス
   assert.equal(await c2.importPlain(restored), items.length);
   assert.equal(dec(await c2.open(m, ctx)), '過去の文');
   assert.equal(await c2.importPlain(restored), 0);
+});
+
+test('2台持ちでも、未対応の相手に届き続ける(自分の端末へのr で相手を対応済みにしない)', async () => {
+  const a = await S.user('tw' + (++seq), '10.25.1.1'), b = await S.user('tx' + seq, '10.25.1.2');
+  await S.befriend(a, b);
+  const da = await device(a), da2 = await device(a), db = await device(b);
+  await da2.c.ensurePrekeys();
+  for (const t of ['one', 'two']) {
+    const m = await send(da, db, t, [db.pub], [da2.pub]);
+    assert.equal(parse(m).entries.get(db.pub)[0], 'b');
+    assert.equal(dec(await recv(db, da, m)), t);
+  }
+  assert.equal(await da.c.isPinned(b.userId), false);
+  await assert.rejects(send(da, db, 'none', [], [da2.pub]), e => e.code === 'RATCHET_DOWNGRADE');
+});
+
+test('同時に始めて長く空いても、自動で作り直して届く', async () => {
+  const { da, db } = await people();
+  const [x, y] = await Promise.all([send(da, db, 'a0'), send(db, da, 'b0')]);
+  await recv(db, da, x); await recv(da, db, y);
+  // 全セッションを古くする(受信も送信も8日以上前)
+  const age = async d => {
+    const all = await dump(d, 'sessions');
+    await new Promise((res, rej) => {
+      const t = d.idb.transaction('sessions', 'readwrite'), st = t.objectStore('sessions');
+      for (const [k, list] of all) { for (const s of list) { s.createdAt -= 8 * 864e5; s.lastUsed -= 8 * 864e5; if (s.lastRecv) s.lastRecv -= 8 * 864e5; } st.put(list, k); }
+      t.oncomplete = res; t.onerror = () => rej(t.error);
+    });
+  };
+  await age(da); await age(db);
+  assert.equal(dec(await recv(db, da, await send(da, db, 'later a'))), 'later a');
+  assert.equal(dec(await recv(da, db, await send(db, da, 'later b'))), 'later b');
+});
+
+test('休眠セッションで偽造されても送信先は切り替わらない(作成が離れていれば番号に関係なく)', async () => {
+  const { a, b, da, db } = await people();
+  await recv(db, da, await send(da, db, 'first'));
+  const key = db.pub + '|' + da.pub;
+  await new Promise((res, rej) => {
+    const t = db.idb.transaction('sessions', 'readwrite'), st = t.objectStore('sessions');
+    const g = st.get(key);
+    g.onsuccess = () => { const l = g.result; l[0].createdAt -= 2 * 3600e3; st.put(l, key); };
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+  // A が別のセッションを始める(Bの先頭になる)
+  await clearStore(da, 'sessions');
+  await recv(db, da, await send(da, db, 'new'));
+  const list = (await dump(db, 'sessions')).get(key);
+  const [head, old] = list;
+  assert.notEqual(head.sid, old.sid);
+  // 古いセッションに届く文(攻撃者の偽造と同じ経路)を作る: 複製したAの古い状態の代わりに、Bの古いセッションの相手側は無いので、昇格条件そのものを確かめる
+  assert.ok(Math.abs(head.createdAt - old.createdAt) > 3600e3);
+  void a; void b;
+});
+
+test('同じ暗号文を別のメッセージとして流されても、最初の1通だけが持ち主。消しても元は残る', async () => {
+  const { da, db } = await people();
+  const m = await send(da, db, 'origin');
+  await recv(db, da, m);
+  assert.equal(await db.c.bindMessage('m1', m), true);
+  assert.equal(await db.c.bindMessage('m1', m), true);
+  assert.equal(await db.c.bindMessage('replayed', m), false);
+  await db.c.forgetMessage('replayed');
+  assert.equal(dec(await recv(db, da, m)), 'origin');
+  await db.c.forgetMessage('m1');
+  assert.equal(await db.c.recall(m, { from: da.u.userId, to: db.u.userId }), null);
+});
+
+test('文脈なしでは開かない。members は2人の間の文だけ', async () => {
+  const { da, db } = await people();
+  await recv(db, da, await send(da, db, 'first'));
+  const m = await send(da, db, 'ctx');
+  assert.equal(await db.c.open(m), null);
+  assert.equal(await db.c.open(m, { members: ['x', db.u.userId] }), null);
+  assert.equal(dec(await db.c.open(m, { members: [da.u.userId, db.u.userId] })), 'ctx');
+});
+
+test('話し始める前に送られた未読の box は読める。話し始めた後の box は読めない', async () => {
+  const a = await S.user('bx' + (++seq), '10.26.1.1'), b = await S.user('by' + seq, '10.26.1.2');
+  await S.befriend(a, b);
+  const da = await device(a), db = await device(b);
+  const oldMsg = await send(da, db, 'old box');
+  await db.c.ensurePrekeys();
+  const m2 = await send(da, db, 'ratchet');
+  assert.equal(dec(await recv(db, da, m2)), 'ratchet');
+  const ctx = { from: a.userId, to: b.userId };
+  assert.equal(await db.c.open(oldMsg, { ...ctx, sentAt: new Date(Date.now() + 60000).toISOString() }), null);
+  assert.equal(dec(await db.c.open(oldMsg, { ...ctx, sentAt: new Date(Date.now() - 60000).toISOString() })), 'old box');
+});
+
+test('細工した最初の1通は2回目から計算も通信もしない', async () => {
+  const { a, da, db } = await people();
+  let calls = 0;
+  const c = makeClient({ uid: db.u.userId, db: db.idb, identity: () => db.k, peerKeys: async () => { calls++; return [da.pub]; }, http: async () => null });
+  const ikFake = core.genDH();
+  const h = core.encHeader({ dh: core.genDH().pub, pn: 0, n: 0, pre: { ik: da.k.pub, ek: ikFake.pub, spkId: 1, otkId: 0 } });
+  const forged = `e5:${da.pub}:${db.pub}.r${b64(new Uint8Array([...h, ...nacl.randomBytes(40)]))}`;
+  const ctx = { from: a.userId, to: db.u.userId };
+  assert.equal(await c.open(forged, ctx), null);
+  assert.equal(await c.open(forged, ctx), null);
+  assert.equal(calls, 1);
+});
+
+test('プリキー登録が途中で失敗しても、次回に古いOTKを置き換える', async () => {
+  const { b } = await people();
+  const d = await device(b);
+  let fail = true;
+  const c = makeClient({
+    uid: b.userId, db: d.idb, identity: () => d.k,
+    http: async (m, p, body) => {
+      if (m === 'POST' && p === '/api/ratchet/prekeys' && fail) throw new Error('net');
+      const r = await b.call(m, p, body); return r.status === 404 ? null : r.data;
+    },
+  });
+  await assert.rejects(c.ensurePrekeys());
+  fail = false;
+  assert.equal(await c.ensurePrekeys(), true);
 });

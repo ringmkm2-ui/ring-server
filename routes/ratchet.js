@@ -46,7 +46,10 @@ async function enabledFor(userId) {
 router.use(verifyToken);
 
 router.get('/config', asyncHandler(async (req, res) => {
-  res.json({ enabled: await enabledFor(req.user.userId) });
+  const enabled = await enabledFor(req.user.userId);
+  // 一度プリキーを出した人は、送信を無効に戻しても出し続ける(相手がもうe5でしか送ってこないので、新しい端末にも要る)
+  const had = enabled ? null : await db.get('SELECT 1 AS ok FROM device_prekeys WHERE user_id = ? LIMIT 1', [req.user.userId]);
+  res.json({ enabled, publish: enabled || !!had });
 }));
 
 router.get('/prekeys/count', asyncHandler(async (req, res) => {

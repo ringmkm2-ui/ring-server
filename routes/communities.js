@@ -254,7 +254,7 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
 }));
 
 // --- チャンネルにメッセージ送信 ---
-router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
+router.post('/:id/channels/:channelId/messages', verifyToken, require('../utils/deviceKeys').requireApprovedSession, messageSendLimiter, asyncHandler(async (req, res) => {
   const member = await db.get(
     'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ?',
     [req.params.id, req.user.userId]
@@ -298,7 +298,7 @@ router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter
 }));
 
 // --- 自分のメッセージの編集 ---
-router.post('/:id/messages/:messageId/edit', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
+router.post('/:id/messages/:messageId/edit', verifyToken, require('../utils/deviceKeys').requireApprovedSession, messageSendLimiter, asyncHandler(async (req, res) => {
   const m = await db.get(
     `SELECT m.id, m.sender_id FROM community_messages m
      JOIN community_channels c ON c.id = m.channel_id
