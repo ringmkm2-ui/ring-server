@@ -373,7 +373,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.29.23 beta</div>
+  <div class="version-badge">Bro Chat v1.29.24 beta</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -839,6 +839,7 @@ function refreshHdr(){
 document.addEventListener('DOMContentLoaded', () => {
   const pcEl = document.querySelector('.pc');
   if (pcEl) pcEl.classList.add('lg-page-push-in');
+  if (window.LiquidGlass && window.LiquidGlass.armChatBack && groupId) window.LiquidGlass.armChatBack('g:' + groupId, document.getElementById('gavEl'));
 });
 refreshHdr();
 window.GroupCall.init({
@@ -2607,8 +2608,9 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
     if (window.parent !== window) { window.parent.postMessage({ type: 'pc-close-chat' }, location.origin); return; }
     let fromList = false;
     try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
-    if (fromList && history.length > 1) history.back();
-    else location.replace('/talklist.html');
+    const go = () => { if (fromList && history.length > 1) history.back(); else location.replace('/talklist.html'); };
+    if (window.LiquidGlass && window.LiquidGlass.leaveChat) window.LiquidGlass.leaveChat(document.querySelector('.pc'), document.getElementById('gavEl'), go);
+    else go();
   });
 });
 </script>

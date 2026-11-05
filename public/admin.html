@@ -504,7 +504,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v1.29.23 beta</div>
+  <div class="version-badge">Bro Chat v1.29.24 beta</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1316,6 +1316,7 @@ document.getElementById('partnerName').textContent = partnerName;
 document.addEventListener('DOMContentLoaded', () => {
   if (window.LiquidGlass && window.LiquidGlass.consumeAvatarFlight) {
     window.LiquidGlass.consumeAvatarFlight(pAv);
+    if (otherId) window.LiquidGlass.armChatBack('u:' + otherId, pAv);
   }
 });
 // チャット画面全体を右から差し込むように表示する(iOSのpush遷移風)
@@ -5247,8 +5248,9 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
     if (window.parent !== window) { window.parent.postMessage({ type: 'pc-close-chat' }, location.origin); return; }
     let fromList = false;
     try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
-    if (fromList && history.length > 1) history.back();
-    else location.replace('/talklist.html');
+    const go = () => { if (fromList && history.length > 1) history.back(); else location.replace('/talklist.html'); };
+    if (window.LiquidGlass && window.LiquidGlass.leaveChat) window.LiquidGlass.leaveChat(document.querySelector('.phone-container'), document.getElementById('partnerAv'), go);
+    else go();
   });
 });
 </script>
