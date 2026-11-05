@@ -618,7 +618,9 @@ router.post('/react', auth, async (req, res) => {
       } catch (e) {
         // 同時に2回押された時は片方が重複で弾かれる。付いた状態になっていれば成功として扱う
         const again = await db.get('SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [messageId, req.userId, emoji]);
-        if (!again) throw e;
+        // 別の押下が直後に取り消していれば、もう行は無い。それでも重複で弾かれただけなら失敗ではない
+        const dup = e && (e.code === '23505' || /UNIQUE|unique/.test(String(e.message)));
+        if (!again && !dup) throw e;
       }
       action = 'added';
     }
