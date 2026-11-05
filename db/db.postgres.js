@@ -220,6 +220,26 @@ async function initDB() {
         PRIMARY KEY (user_id, public_key)
       )
     `);
+    // 個人チャットのラチェット(e5)用。端末ごとのプリキー。秘密鍵は端末にだけある
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_prekeys (
+        user_id TEXT NOT NULL,
+        device_key TEXT NOT NULL,
+        spk_id BIGINT NOT NULL,
+        spk_pub TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (user_id, device_key)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_otks (
+        user_id TEXT NOT NULL,
+        device_key TEXT NOT NULL,
+        otk_id BIGINT NOT NULL,
+        pub TEXT NOT NULL,
+        PRIMARY KEY (device_key, otk_id)
+      )
+    `);
     // 端末の承認: 既存の鍵はそのまま active。新しい端末は pending から始まる(utils/deviceKeys.js)
     await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`);
     await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS approve_after BIGINT`);
