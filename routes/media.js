@@ -37,6 +37,13 @@ function generateCloudinarySig(params) {
 // 今は、置き場所がその人の会話・グループ・投稿かを確かめてから、サーバーが1件ずつ署名を出す。
 // Cloudinaryの管理画面で brochat_upload を無効(Signed)にすれば、署名の無いアップロードは通らなくなる。
 const { canUploadTo } = require('../utils/uploadScope');
+const { consume } = require('../utils/attemptLimit');
+const { isGuestUser } = require('../utils/guest');
+// 1人が1日にもらえる署名の数。Cloudinaryへは端末から直接送るので、サーバーは容量を見られず、回数で絞るしかない。
+// ふつうの人は写真1枚に1回使うので広く。ゲストは使い捨てで何人でも作れるので、投稿と報告の添付は少しだけ。
+const SIGN_DAY_MS = 24 * 3600 * 1000;
+const SIGN_LIMITS = { member: { all: 1000, reports: 30 }, guest: { all: 200, posts: 5, reports: 3 } };
+const signKind = folder => (folder === 'brochat/reports' ? 'reports' : /^brochat\/posts(\/|$)/.test(folder) ? 'posts' : null);
 const signLimiter = require('express-rate-limit')({
   windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
   ...require('../utils/rateLimits').perUser,
@@ -46,7 +53,16 @@ router.post('/sign', signLimiter, verifyToken, asyncHandler(async (req, res) => 
   if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return res.status(503).json({ error: 'not configured' });
   const folder = req.body && req.body.folder;
   if (!(await canUploadTo(req.user.userId, folder))) return res.status(403).json({ error: 'この場所には置けません' });
+  const uid = req.user.userId;
+  const lim = SIGN_LIMITS[(await isGuestUser(uid)) ? 'guest' : 'member'];
+  const kind = signKind(folder);
+  const OVER = { error: '今日アップロードできる量を超えました。明日またお試しください' };
+  if (kind && lim[kind] && !(await consume(`sign:${kind}:${uid}`, lim[kind], SIGN_DAY_MS))) return res.status(429).json(OVER);
+  if (!(await consume(`sign:all:${uid}`, lim.all, SIGN_DAY_MS))) return res.status(429).json(OVER);
   const timestamp = Math.floor(Date.now() / 1000);
+  // allowed_formats は署名に入れない。Cloudinaryは送られた項目すべてで署名を確かめるので、ここで足すと
+  // 端末側(public/js/cloudinarySign.js)が同じ値を送るまで全部のアップロードが 401 になる。
+  // しかもトークの添付は暗号文を raw で置いており、形式で絞る対象にならない。
   const signature = generateCloudinarySig({ folder, timestamp });
   res.json({ cloudName: CLOUDINARY_CLOUD_NAME || 'a6rxinoz', apiKey: CLOUDINARY_API_KEY, timestamp, folder, signature, signatureAlgorithm: 'sha256' });
 }));

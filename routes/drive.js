@@ -10,6 +10,8 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
 const { canUploadTo } = require('../utils/uploadScope');
+const { reserve } = require('../utils/uploadQuota');
+const { isGuestUser } = require('../utils/guest');
 
 const router = express.Router();
 const MAX_BYTES = 610 * 1024 * 1024; // 端末側の上限(600MB)+暗号化の分
@@ -97,6 +99,14 @@ async function usedToday(userId) {
   const r = await db.get('SELECT COALESCE(SUM(size), 0) AS total FROM drive_files WHERE owner_id = ? AND created_at > ?', [userId, since]);
   return Number((r && r.total) || 0);
 }
+// ゲストの投稿の1日の上限。ゲストは使い捨てで何人でも作れ、投稿はログインなしで誰でも見られるので、
+// ここを広くすると公式アカウントのドライブが無料のファイル置き場にされる。トークの分は絞らない(招待してくれた人と話すため)
+const GUEST_POST_DAILY_BYTES = Number(process.env.GUEST_POST_DAILY_BYTES) || 100 * 1024 * 1024;
+async function postsUsedToday(userId) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  const r = await db.get('SELECT COALESCE(SUM(size), 0) AS total FROM drive_files WHERE owner_id = ? AND scope = ? AND created_at > ?', [userId, 'brochat/posts/' + userId, since]);
+  return Number((r && r.total) || 0);
+}
 router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req, res) => {
   if (!(await gd.isConnected())) return res.status(503).json({ error: 'drive not connected' });
   const scope = String(req.get('x-scope') || '');
@@ -104,9 +114,6 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
   const size = Number(req.get('content-length'));
   if (!Number.isFinite(size) || size <= 0) return res.status(411).json({ error: 'Content-Lengthが必要です' });
   if (size > MAX_BYTES) return res.status(413).json({ error: 'ファイルが大きすぎます' });
-  if (!(await isStaff(req.userId)) && (await usedToday(req.userId)) + size > DAILY_BYTES) {
-    return res.status(429).json({ error: '今日アップロードできる量を超えました。明日またお試しください' });
-  }
   // 投稿は暗号化しないので、ブラウザがそのまま再生できるよう本当の種類で置く。トークは暗号文なので中身不明のまま
   const post = isPostScope(scope);
   let mime = 'application/octet-stream';
@@ -114,17 +121,35 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
     mime = String(req.get('x-content-type') || '').toLowerCase();
     if (!/^(image\/(jpeg|png|gif|webp|heic|heif|avif)|video\/(mp4|quicktime|webm|x-matroska|3gpp))$/.test(mime)) return res.status(415).json({ error: 'この種類のファイルは投稿できません' });
   }
-  let out;
+  // 容量を始める前に予約する。保存済みの合計だけを見ると、同時に送られた分がどれも上限の手前に見えて全部通ってしまう
+  const staff = await isStaff(req.userId);
+  const guestPost = !staff && post && (await isGuestUser(req.userId));
+  const OVER = '今日アップロードできる量を超えました。明日またお試しください';
+  const slot = await reserve(req.userId, size, post, async (cur) => {
+    if (staff) return null;
+    if ((await usedToday(req.userId)) + cur.bytes + size > DAILY_BYTES) return OVER;
+    if (guestPost && (await postsUsedToday(req.userId)) + cur.postBytes + size > GUEST_POST_DAILY_BYTES) return OVER;
+    return null;
+  });
+  if (slot.error) return res.status(429).json({ error: slot.error });
+  // 相手が途中で切った時にも返す(Googleの応答を待ち続けて、予約が残ったままにならないように)
+  res.once('close', slot.release);
   try {
-    out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}${post ? '' : '.bin'}`, mime);
-  } catch (e) {
-    console.error('[drive] upload failed:', e.message);
-    return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
+    let out;
+    try {
+      out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}${post ? '' : '.bin'}`, mime);
+    } catch (e) {
+      console.error('[drive] upload failed:', e.message);
+      return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
+    }
+    await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
+    console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
+    const base = (require('../utils/siteHosts').knownBase(req) || process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
+  } finally {
+    // drive_files に載せた後で返す(その間に割り込まれても、合計から漏れない)
+    slot.release();
   }
-  await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
-  console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
-  const base = (require('../utils/siteHosts').knownBase(req) || process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
 }));
 
 // ファイルIDごとの置き場所を少しの間だけ覚える。

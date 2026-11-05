@@ -117,6 +117,22 @@ async function initDB() {
       since_ms INTEGER NOT NULL
     );
 
+    -- 招待コードの持ち主が友だちから外した相手(コードで黙って戻れないように)
+    CREATE TABLE IF NOT EXISTS invite_removals (
+      owner_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      removed_ms INTEGER NOT NULL,
+      PRIMARY KEY (owner_id, user_id)
+    );
+
+    -- 字幕(Deepgram)を人ごと・日ごとに使った秒数。再起動で消えないようにDBに置く
+    CREATE TABLE IF NOT EXISTS call_assist_usage (
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day)
+    );
+
     CREATE TABLE IF NOT EXISTS user_sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,

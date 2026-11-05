@@ -10,6 +10,7 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { isAcquainted } = require('../utils/relations');
 const { prekeyLimiter } = require('../utils/rateLimits');
+const { consume } = require('../utils/attemptLimit');
 const { broadcastToUser } = require('../ws/wsServer');
 
 const router = express.Router();
@@ -133,6 +134,9 @@ router.get('/identity/:userId', verifyToken, asyncHandler(async (req, res) => {
 }));
 
 const OTK_PER_PAIR_PER_HOUR = 10;
+// 取られる側ごとの1時間の総量。組み合わせごとの上限だけだと、コミュニティにアカウントを何個も入れれば
+// 相手の鍵を使い切れた。再起動しても効くようDBで数える。超えても鍵なしのバンドルは返すので、会話は始められる
+const OTK_PER_TARGET_PER_HOUR = 30;
 const otkPairs = new Map(); // 'from>to' -> { n, since }
 // --- 相手の鍵バンドルを取得 (X3DHのために1回使い捨て鍵を1個消費する) ---
 router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
@@ -172,8 +176,10 @@ router.get('/bundle/:userId', verifyToken, asyncHandler(async (req, res) => {
   let pc = otkPairs.get(pairKey);
   if (!pc || now - pc.since > 3600 * 1000) { pc = { n: 0, since: now }; otkPairs.set(pairKey, pc); }
   if (otkPairs.size > 20000) { for (const [k, v] of otkPairs) if (now - v.since > 3600 * 1000) otkPairs.delete(k); }
-  const allowOtk = targetId === req.user.userId || pc.n < OTK_PER_PAIR_PER_HOUR;
+  const self = targetId === req.user.userId;
+  let allowOtk = self || pc.n < OTK_PER_PAIR_PER_HOUR;
   if (allowOtk) pc.n++;
+  if (allowOtk && !self) allowOtk = await consume('otk:' + targetId, OTK_PER_TARGET_PER_HOUR, 3600 * 1000);
   const otk = !allowOtk ? null : await db.get(
     `UPDATE one_time_prekeys SET used = 1
      WHERE id = (SELECT id FROM one_time_prekeys WHERE user_id = ? AND used = 0 LIMIT 1)

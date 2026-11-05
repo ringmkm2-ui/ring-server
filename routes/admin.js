@@ -6,7 +6,6 @@
 // -----------------------------------------------------------------------
 const crypto = require('crypto');
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const db = require('../db/db');
 const { asyncHandler } = require('../utils/asyncHandler');
@@ -69,10 +68,13 @@ router.get('/users', asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT id, user_id, username, display_name, created_at, failed_login_count, locked_until, token_revoked_at, banned_until, ban_reason
        FROM users
-      WHERE username NOT LIKE 'deleted%' AND (? = '' OR username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR user_id LIKE ? ESCAPE '\\')
+      WHERE substr(username, 1, 8) != 'deleted_' AND (? = '' OR username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR user_id LIKE ? ESCAPE '\\')
       ORDER BY created_at DESC LIMIT 200`,
     [q, like, like, like]
   );
+  // ログインのロックは users ではなくアドレスごとに数えている(utils/attemptLimit.js)
+  const { LOGIN_POLICY, accountFailCount } = require('../utils/attemptLimit');
+  const fails = await accountFailCount(LOGIN_POLICY, rows.map(u => u.username));
   let isOnline = () => false;
   try { isOnline = require('../ws/wsServer').isUserOnline; } catch (e) {}
   res.json({
@@ -82,8 +84,8 @@ router.get('/users', asyncHandler(async (req, res) => {
       username: u.username,
       displayName: u.display_name,
       createdAt: u.created_at,
-      locked: Number(u.locked_until || 0) > Date.now(),
-      failedLogins: Number(u.failed_login_count || 0),
+      locked: (fails.get(u.username) || 0) >= LOGIN_POLICY.perAccount,
+      failedLogins: fails.get(u.username) || 0,
       banned: Number(u.banned_until || 0) > Date.now(),
       bannedUntil: Number(u.banned_until || 0) > Date.now() ? Number(u.banned_until) : null,
       banReason: u.ban_reason || null,
@@ -94,7 +96,7 @@ router.get('/users', asyncHandler(async (req, res) => {
 
 async function findUser(id) {
   // (Googleログインのアカウントはパスワードが空なので、以前は一覧にも出ず操作もできなかった。退会済みだけ除く)
-  return db.get("SELECT id, username FROM users WHERE id = ? AND username NOT LIKE 'deleted%'", [String(id).slice(0, 100)]);
+  return db.get("SELECT id, username FROM users WHERE id = ? AND substr(username, 1, 8) != 'deleted_'", [String(id).slice(0, 100)]);
 }
 
 // 全端末からログアウトさせる
@@ -112,6 +114,8 @@ router.post('/users/:id/unlock', asyncHandler(async (req, res) => {
   const u = await findUser(req.params.id);
   if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
   await db.run('UPDATE users SET failed_login_count = 0, locked_until = 0 WHERE id = ?', [u.id]);
+  const { LOGIN_POLICY, clearAccount } = require('../utils/attemptLimit');
+  await clearAccount(LOGIN_POLICY, u.username);
   res.json({ ok: true });
 }));
 
@@ -130,7 +134,7 @@ router.post('/users/:id/password', asyncHandler(async (req, res) => {
   const password = req.body && req.body.password;
   const bad = validatePassword(password, u.username);
   if (bad) return res.status(400).json({ error: bad });
-  const hash = await bcrypt.hash(password, 12);
+  const hash = await require('../utils/passwordHash').hash(password, 12);
   await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0 WHERE id = ?', [hash, u.id]);
   await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
   try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}

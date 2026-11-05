@@ -87,6 +87,23 @@ async function makeFriends(meId, ownerId) {
   );
 }
 
+// 持ち主が友だちから外した相手を覚える。覚えておかないと、外された人が持っているコード(無制限のものや、
+// 人数に空きのあるもの)を入れるだけで、承認なしに黙って友だちに戻れてしまう
+async function markRemoved(ownerId, userId) {
+  await db.run(
+    `INSERT INTO invite_removals (owner_id, user_id, removed_ms) VALUES (?, ?, ?)
+     ON CONFLICT(owner_id, user_id) DO UPDATE SET removed_ms = excluded.removed_ms`,
+    [ownerId, userId, Date.now()]
+  );
+}
+// 持ち主が自分から友だちになり直した(IDで申請した・承認した・相手のコードを使った)ら、記録を消す
+async function clearRemoved(ownerId, userId) {
+  await db.run('DELETE FROM invite_removals WHERE owner_id = ? AND user_id = ?', [ownerId, userId]);
+}
+async function wasRemoved(ownerId, userId) {
+  return !!(await db.get('SELECT 1 AS x FROM invite_removals WHERE owner_id = ? AND user_id = ?', [ownerId, userId]));
+}
+
 // 友だちの関係が変わったことを両方の開いている画面に知らせる(friends.js と同じ)
 function notifyFriendChange(a, b) {
   try {
@@ -97,4 +114,4 @@ function notifyFriendChange(a, b) {
   } catch (_) {}
 }
 
-module.exports = { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange };
+module.exports = { INVALID, normalizeCode, loadInvite, claimInvite, releaseInvite, makeFriends, notifyFriendChange, markRemoved, clearRemoved, wasRemoved };
