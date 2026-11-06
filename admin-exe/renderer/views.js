@@ -529,10 +529,10 @@
     }));
 
     const body = h('div', { class: 'dr-body' });
-    body.append(
+    BC.add(body, [
       h('div', { class: 'tags dr-tags' }, tags.length ? tags : tag('通常', 'mute')),
       banBox,
-      h('section', { class: 'sec' }, h('h4', null, '操作'), h('div', { class: 'ops' }, ops)));
+      h('section', { class: 'sec' }, h('h4', null, '操作'), h('div', { class: 'ops' }, ops))]);
 
     // 情報
     const dl = h('dl', { class: 'kvs' },
@@ -581,7 +581,7 @@
 
     const prev = drawer.querySelector('.dr-body');
     const top = prev && !first ? prev.scrollTop : 0;
-    clear(drawer).append(header, body);
+    clear(drawer); drawer.appendChild(header); drawer.appendChild(body);
     body.scrollTop = top;
     if (first) { const x = header.querySelector('.iconbtn'); if (x) x.focus(); }
   }
