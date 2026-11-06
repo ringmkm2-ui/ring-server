@@ -8,8 +8,6 @@
 //   darkBlack     : '1' なら、ダークの時に背景を真っ黒にする(有機EL向け)
 //   darkMode      : 旧設定 '1'/'0'。themeMode が無い端末だけ参照する。
 //                   他のページや古い画面が読むので、切替時は同じ意味で書き戻す。
-// 通知などでチャットを先に開いたセッションでは、後でトーク一覧に戻っても起動演出を出さない(broIntro.js)
-try { if (!/^\/(talklist\.html|splash\.html|welcome\.html|auth\.html|google-callback\.html)?$/.test(location.pathname)) sessionStorage.setItem('bro_intro_done', '1'); } catch (e) {}
 (function () {
   var d = document.documentElement;
   var DEF_FROM = '20:00', DEF_TO = '07:00';

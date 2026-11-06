@@ -1,12 +1,8 @@
-// 起動演出。トーク一覧の上に全画面で重ねて再生し、最後は「Bro」の o の穴に飛び込んで本物の一覧へ抜ける。
-//
-// 待たせないために:
-//  - 一覧は裏でいつも通り読み込む(演出の下にもう出来ている)。画面を触ればすぐ飛ばせる
-//  - 描画はWorker(OffscreenCanvas)で回す。一覧の読み込みでメインが詰まってもカクつかない
-//    友だちのアイコンと文字はWeb Animations(合成スレッド)で動かすので同じ理由で止まらない
-//  - 再生はアプリを起動した時の1回だけ。チャットから戻った時・再読み込み・通知からの起動では出さない
-//  - 省アニメ設定 / 端末の「視差効果を減らす」/ 設定オフ / アプリロック中は出さない
-//  - WebGLが無い・遅い・何か失敗した時は黙って消す(起動を止めない)
+// Welcome画面を開いた時の演出。全画面で重ねて再生し、最後は「Bro」の o の穴に飛び込んで本物のWelcome画面へ抜ける。
+//  - 描画はWorker(OffscreenCanvas)で回す。メインが詰まってもカクつかない
+//  - 再生はセッションで1回だけ。再読み込みや戻るでは出さない。画面を触れば飛ばせる
+//  - 端末の「視差効果を減らす」では出さない。ログイン済みでも出さない
+//  - WebGLが無い・遅い・何か失敗した時は黙って消す
 (function () {
   var isWorker = typeof document === 'undefined';
 
@@ -23,7 +19,7 @@
   function smooth(a, b, x) { var s = clamp01((x - a) / (b - a)); return s * s * (3 - 2 * s); }
   function spring(t, w, k) { return t <= 0 ? 0 : 1 - Math.exp(-k * t) * Math.cos(w * t); }
 
-  // しずく i の位置と半径。描画と友だちのアイコンの両方がこれを使う
+  // しずく i の位置と半径
   function dropAt(i, t, far) {
     var arrive = 0.5 + i * 0.1, win = 0.72, s = clamp01((t - (arrive - win)) / win);
     if (s <= 0 || s >= 1) return null;
@@ -248,43 +244,20 @@
   // ---------- ページ側 ----------
   var S_DONE = 'bro_intro_done';
   var ACCENT = { green: '#1fd655', blue: '#2f8df0', orange: '#f5793a', pink: '#ee4fa6', purple: '#8a4ff0', mono: '#8e8e93', dark: '#3d4656' };
-  var WELCOME = { ja: 'おかえり', en: 'Welcome back', zh: '欢迎回来', ko: '다시 오셨네요' };
   var doc = document, root = doc.documentElement;
 
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function rgb(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
-  function enabled() {
-    if (ls('bro_intro') === '0' || ls('batterySaverAnimations') === '1') return false;
-    return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }
-  // 起動時だけ true。チャット等の他のページを先に開いたセッションでは themeBoot.js が S_DONE を立てるので出ない
+  function enabled() { return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
   function isColdStart() {
     try {
       if (sessionStorage.getItem(S_DONE)) return false;
       sessionStorage.setItem(S_DONE, '1');
     } catch (e) { return false; }
-    if (location.search || location.hash) return false;
     var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
     if (nav && (nav.type === 'reload' || nav.type === 'back_forward')) return false;
     return true;
   }
-  function baseColor() {
-    var dark = root.classList.contains('dark-mode');
-    return rgb(dark ? (root.classList.contains('dark-black') ? '#000000' : '#0e1014') : '#e0f2fe');
-  }
-  function friendPics() {
-    var out = [];
-    try {
-      var c = JSON.parse(ls('talk_cache_' + (ls('ring_userId') || '')) || 'null');
-      var a = c && Array.isArray(c.merged) ? c.merged : [];
-      for (var i = 0; i < a.length && out.length < DROPS; i++) {
-        var p = a[i] && a[i].profilePic;
-        if (typeof p === 'string' && (/^https:\/\//.test(p) || /^data:image\/(png|jpe?g|webp);base64,/.test(p))) out.push(p);
-      }
-    } catch (e) {}
-    return out;
-  }
-
   var active = null;
 
   function play(opts) {
@@ -297,10 +270,8 @@
     st.textContent =
       '#broIntro{position:fixed;inset:0;z-index:2147482000;overflow:hidden;contain:strict;touch-action:none;-webkit-user-select:none;user-select:none;transition:opacity .2s ease}' +
       '#broIntro canvas{position:absolute;inset:0;width:100%;height:100%;display:block}' +
-      '#broIntro .bi-cover{position:absolute;inset:0}' +
-      '#broIntro img{position:absolute;left:0;top:0;border-radius:50%;object-fit:cover;opacity:0;will-change:transform,opacity;pointer-events:none}' +
-      '#broIntro .bi-hi{position:absolute;left:0;right:0;text-align:center;color:#fff;font:600 17px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP",sans-serif;letter-spacing:.04em;opacity:0;pointer-events:none;text-shadow:0 1px 10px rgba(0,0,0,.18);padding:0 24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
-    var base = baseColor();
+      '#broIntro .bi-cover{position:absolute;inset:0}';
+    var base = [1, 1, 1]; // Welcome画面の背景と同じ白
     var box = doc.createElement('div'); box.id = 'broIntro'; box.setAttribute('aria-hidden', 'true');
     var cv = doc.createElement('canvas');
     var cover = doc.createElement('div'); cover.className = 'bi-cover';
@@ -322,51 +293,20 @@
       if (stopMain) stopMain();
       if (worker) { try { worker.postMessage({ type: 'stop' }); } catch (e) {} later2(function () { worker.terminate(); }, 300); }
       if (rd) rd.lose();
-      if (!natural) anims.forEach(function (an) { try { an.cancel(); } catch (e) {} }); // 途中で終わる時は一覧を縮めたまま残さない
+      if (!natural) anims.forEach(function (an) { try { an.cancel(); } catch (e) {} }); // 途中で終わる時は画面を縮めたまま残さない
       var rm = function () { box.remove(); st.remove(); active = null; };
       if (fade) { box.style.opacity = '0'; box.style.pointerEvents = 'none'; later2(rm, 220); } else rm();
     }
     function later2(fn, ms) { setTimeout(fn, ms); }
 
-    // pointerdownで消すと、指を離した時のclickが下の一覧に抜けてトークが開いてしまう
+    // pointerdownで消すと、指を離した時のclickが下のボタンに抜ける
     box.addEventListener('click', function (e) { e.stopPropagation(); finish(true); });
 
     // 友だちのアイコン。描画と同じ軌道を合成スレッドで動かす
     function startDom(startAt) {
       var delay = startAt - (performance.timeOrigin + performance.now()); // 遅れて呼ばれたら負になり、その分だけ先から始まる
-      var S = Math.min(Math.min(w, h) / 2, 240), far = Math.sqrt(w * w + h * h) / 2 / S;
-      var pics = opts.noPics ? [] : friendPics();
-      pics.forEach(function (src, i) {
-        var img = doc.createElement('img'); img.alt = ''; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
-        var size = 0.185 * S * 2 * 0.86;
-        img.style.width = img.style.height = size + 'px';
-        img.onerror = function () { img.remove(); };
-        img.src = src;
-        var kf = [], t0 = 0.5 + i * 0.1 - 0.72, t1 = 0.5 + i * 0.1, N = 22;
-        for (var j = 0; j <= N; j++) {
-          var t = t0 + 0.0001 + (t1 - t0 - 0.0002) * j / N, dd = dropAt(i, t, far);
-          var sc = dd ? dd.r / 0.185 : 0;
-          var x = w / 2 + (dd ? dd.x : 0) * S - size / 2, y = h / 2 - (dd ? dd.y : 0) * S - size / 2;
-          kf.push({ transform: 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) scale(' + sc.toFixed(3) + ')', opacity: j / N > 0.86 ? 1 - (j / N - 0.86) / 0.14 : 1, offset: j / N });
-        }
-        box.appendChild(img);
-        anims.push(img.animate(kf, { duration: (t1 - t0) * 1000, delay: delay + t0 * 1000, easing: 'linear', fill: 'both' }));
-      });
-      var name = ls('myName');
-      var lang = (ls('ring_language') || navigator.language || 'ja').slice(0, 2);
-      var hi = doc.createElement('div'); hi.className = 'bi-hi';
-      hi.textContent = (WELCOME[lang] || WELCOME.en) + (name && !opts.noName ? (lang === 'ja' ? '、' : ', ') + name : '');
-      hi.style.top = (h / 2 + 0.805 * LOGO_R * S + 26) + 'px';
-      box.appendChild(hi);
-      anims.push(hi.animate([
-        { opacity: 0, transform: 'translateY(8px)', offset: 0 },
-        { opacity: 1, transform: 'none', offset: 0.45 },
-        { opacity: 1, transform: 'none', offset: 0.8 },
-        { opacity: 0, transform: 'scale(1.5)', offset: 1 }
-      ], { duration: (T.dive + 0.12 - T.text) * 1000, delay: delay + T.text * 1000, easing: 'ease-out', fill: 'both' }));
-      // 下の一覧: 穴の向こうで少し遠くにあり、抜ける時に手前へ来る
-      var pc = opts.noPage ? null : doc.querySelector('.pc');
-      if (pc) anims.push(pc.animate([
+      // 下のWelcome画面: 穴の向こうで少し遠くにあり、抜ける時に手前へ来る
+      if (doc.body) anims.push(doc.body.animate([
         { transform: 'scale(.86)', offset: 0 },
         { transform: 'scale(.86)', offset: 0.42 },
         { transform: 'scale(1.015)', offset: 0.9 },
@@ -441,9 +381,8 @@
 
   window.BroIntro = { play: play, enabled: enabled };
 
-  // 自動再生の判定。アプリロックの解除待ちの間は友だちのアイコンを見せない
   var cold = isColdStart();
-  if (cold && enabled() && ls('ring_token') && !(window.BroAppLock && window.BroAppLock.isLocked())) {
+  if (cold && enabled() && !ls('ring_token')) {
     try { play({}); } catch (e) { var b = doc.getElementById('broIntro'); if (b) b.remove(); }
   }
 })();

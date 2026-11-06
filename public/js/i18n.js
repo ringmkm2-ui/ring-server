@@ -26,8 +26,6 @@
     kb_err_me: { ja: "自分の名前・ID・メールアドレスは入れないでください", en: "Don't include your name, ID or email", "zh-CN": "请不要包含你的名字、ID或邮箱", ko: "이름, ID, 이메일은 넣지 마세요" },
     kb_err_classes: { ja: "16文字未満なら、英字・数字・記号を混ぜてください", en: "Under 16 characters, mix letters, numbers and symbols", "zh-CN": "少于16个字符时，请混合字母、数字和符号", ko: "16자 미만이면 영문, 숫자, 기호를 섞어 주세요" },
     report_attach_failed: { ja: "添付のアップロードに失敗しました", en: "Couldn't upload the attachment", "zh-CN": "附件上传失败", ko: "첨부 파일 업로드 실패" },
-    intro_anim: { ja: "起動アニメーション", en: "Launch animation", "zh-CN": "启动动画", ko: "시작 애니메이션" },
-    intro_replay: { ja: "起動アニメーションをもう一度見る", en: "Replay launch animation", "zh-CN": "再看一次启动动画", ko: "시작 애니메이션 다시 보기" },
     school_title: { ja: "学校モード", en: "School mode", "zh-CN": "学校模式", ko: "학교 모드" },
     setSchool_t: { ja: "学校モード", en: "School mode", "zh-CN": "学校模式", ko: "학교 모드" },
     setSchool_d: { ja: "通話・ライブ・投稿・コミュニティを使えなくします。解除にはパスワードが必要です。", en: "Turns off calls, live streams, posts and communities. A password is needed to turn it off.", "zh-CN": "关闭通话、直播、帖子和社群。关闭时需要密码。", ko: "통화, 라이브, 게시물, 커뮤니티를 사용할 수 없게 합니다. 해제하려면 비밀번호가 필요합니다." },
