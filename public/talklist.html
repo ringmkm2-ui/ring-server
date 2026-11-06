@@ -6,6 +6,7 @@
 <script src="/js/themeBoot.js"></script>
 <script src="/js/appLock.js"></script>
 <script src="/js/schoolMode.js"></script>
+<script src="/js/broIntro.js"></script>
 <script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
@@ -1014,7 +1015,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v1.29.27 beta</div>
+  <div class="version-badge">Bro Chat v1.29.28 beta</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -1149,6 +1150,8 @@ window.ensureGroupCrypto = (function () {
       <label class="set-row"><span data-i18n="enter_to_send">Enterで送信</span>
         <select id="setEnterToSend"><option value="auto" data-i18n="enter_auto">自動(PCのみ)</option><option value="on" data-i18n="on">オン</option><option value="off" data-i18n="off">オフ</option></select></label>
       <label class="set-row"><span data-i18n="haptics">触覚フィードバック</span><input type="checkbox" class="ios-switch" id="setHaptics"></label>
+      <label class="set-row"><span data-i18n="intro_anim">起動アニメーション</span><input type="checkbox" class="ios-switch" id="setIntro"></label>
+      <button type="button" class="set-row set-btn" id="setIntroReplay"><span data-i18n="intro_replay">起動アニメーションをもう一度見る</span></button>
       <button type="button" class="set-row set-btn" id="setNotif"><span data-i18n="notifications">通知</span><span class="set-val" id="setNotifVal"></span></button>
     </div>
     <div class="set-section-title" data-i18n="privacy">プライバシー</div>
@@ -4082,6 +4085,12 @@ document.getElementById('toggleChatBgBlur').addEventListener('change', e=>{
 document.getElementById('langSelectSettings').onchange=e=>{
   if (window.i18n) i18n.setLang(e.target.value);
 };
+(function(){
+  const sw=document.getElementById('setIntro');
+  sw.checked=localStorage.getItem('bro_intro')!=='0';
+  sw.addEventListener('change',e=>localStorage.setItem('bro_intro',e.target.checked?'1':'0'));
+  document.getElementById('setIntroReplay').addEventListener('click',()=>{ if(window.BroIntro) window.BroIntro.play({}); });
+})();
 document.getElementById('toggleBatterySaver').addEventListener('change', e=>{
   localStorage.setItem('batterySaverAnimations', e.target.checked ? '1' : '0');
   window.dispatchEvent(new Event('settings-changed'));
