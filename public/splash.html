@@ -150,6 +150,10 @@
     .logo-item img{height:16px;width:auto;opacity:.4}
 
     /* 遷移アニメーション */
+    /* 起動演出の間は下のsplashを隠して、行き先の背景色だけにする */
+    html.bi-on body{background:transparent}
+    html.bi-on body>*{visibility:hidden}
+
     .transition-overlay{
       position:fixed;top:0;left:0;width:100%;height:100%;
       z-index:100;opacity:0;pointer-events:none;
@@ -170,29 +174,53 @@
     }
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="/js/broIntro.js"></script>
   <script>
-    // トークンがあればsplashを描画せず即遷移（チラつき防止）
-    // 隠している間は、次に出るトーク一覧と同じ色で塗っておく(黒や白が一瞬挟まらないように)
-    if (localStorage.getItem('ring_token')) {
-      window.location.replace('/talklist.html');
-      // 次に出るトーク一覧と同じ判定(システム/時間指定/真っ黒)で色を決める
-      var bg = '#e0f2fe';
-      try {
-        var m = localStorage.getItem('themeMode') || (localStorage.getItem('darkMode') === '1' ? 'dark' : localStorage.getItem('darkMode') === '0' ? 'light' : 'system');
-        var isDark = m === 'dark';
-        if (m === 'system') isDark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-        if (m === 'schedule') {
-          var tm = function (s, df) { var x = /^(\d{1,2}):(\d{2})$/.exec(s || '') || /^(\d{1,2}):(\d{2})$/.exec(df); return +x[1] * 60 + +x[2]; };
-          var a = tm(localStorage.getItem('darkSchedFrom'), '20:00'), b = tm(localStorage.getItem('darkSchedTo'), '07:00'), n = new Date(); n = n.getHours() * 60 + n.getMinutes();
-          isDark = a === b ? false : (a < b ? (n >= a && n < b) : (n >= a || n < b));
-        }
-        if (isDark) bg = localStorage.getItem('darkBlack') === '1' ? '#000' : '#0e1014';
-      } catch (e) {}
-      document.documentElement.style.background = bg;
-      var hide = document.createElement('style');
-      hide.textContent = 'body{display:none!important}';
-      document.head.appendChild(hide);
-    }
+    // 行き先と、その画面の背景色(演出の最初と最後はこの色になるので、つなぎ目で色が変わらない)
+    (function () {
+      var token = null;
+      try { token = localStorage.getItem('ring_token'); } catch (e) {}
+      var dest = token ? '/talklist.html' : '/welcome.html';
+      var bg = '#ffffff';
+      if (token) {
+        // トーク一覧と同じ判定(システム/時間指定/真っ黒)
+        bg = '#e0f2fe';
+        try {
+          var m = localStorage.getItem('themeMode') || (localStorage.getItem('darkMode') === '1' ? 'dark' : localStorage.getItem('darkMode') === '0' ? 'light' : 'system');
+          var isDark = m === 'dark';
+          if (m === 'system') isDark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+          if (m === 'schedule') {
+            var tm = function (s, df) { var x = /^(\d{1,2}):(\d{2})$/.exec(s || '') || /^(\d{1,2}):(\d{2})$/.exec(df); return +x[1] * 60 + +x[2]; };
+            var a = tm(localStorage.getItem('darkSchedFrom'), '20:00'), b = tm(localStorage.getItem('darkSchedTo'), '07:00'), n = new Date(); n = n.getHours() * 60 + n.getMinutes();
+            isDark = a === b ? false : (a < b ? (n >= a && n < b) : (n >= a || n < b));
+          }
+          if (isDark) bg = localStorage.getItem('darkBlack') === '1' ? '#000000' : '#0e1014';
+        } catch (e) {}
+      }
+      window.__bro = { token: token, dest: dest, bg: bg, intro: null };
+      var root = document.documentElement;
+      // 起動演出(セッションで1回)。終わったら行き先へ
+      if (window.BroIntro && BroIntro.shouldPlay()) {
+        root.classList.add('bi-on');
+        root.style.background = bg;
+        var meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', bg);
+        window.__bro.intro = new Promise(function (ok) {
+          var a = null;
+          try { a = BroIntro.play({ base: bg, onDone: ok }); } catch (e) {}
+          if (!a) ok();
+        });
+        var l = document.createElement('link'); l.rel = 'prefetch'; l.href = dest; document.head.appendChild(l);
+        return;
+      }
+      // 演出なし: ログイン済みならsplashを描画せず即遷移(チラつき防止)
+      if (token) {
+        window.location.replace(dest);
+        root.style.background = bg;
+        var hide = document.createElement('style');
+        hide.textContent = 'body{display:none!important}';
+        document.head.appendChild(hide);
+      }
+    })();
   </script>
 </head>
 <body>
@@ -234,9 +262,9 @@
       // ロゴ表示後にリング開始
       setTimeout(() => ring.classList.add('active'), 600);
 
-      // トークンチェック
-      const token = localStorage.getItem('ring_token');
-      const destination = token ? '/talklist.html' : '/welcome.html';
+      const token = window.__bro.token;
+      const destination = window.__bro.dest;
+      const intro = window.__bro.intro;
 
       // 表示言語(splash は i18n.js を読まないので、ここで出す文言だけ持つ)
       const L = (localStorage.getItem('ring_language') || navigator.language || 'ja').slice(0, 2);
@@ -274,6 +302,8 @@
       }
 
       function onServerReady() {
+        // 演出中なら、演出が終わった時にそのまま行く(演出の最後が行き先の背景色なので遷移アニメは要らない)
+        if (intro) { intro.then(() => window.location.replace(destination)); return; }
         const elapsed = Date.now() - startTime;
         const wait = Math.max(0, MIN_SPLASH - elapsed);
 
@@ -306,9 +336,17 @@
       // ログイン済みならサーバーの起床を待たずに即トーク一覧へ(一覧は前回の内容を即表示し、
       // 裏で最新化する)。以前は最低2秒+サーバー応答待ちで毎回待たされていた。
       if (token) {
-        window.location.replace(destination);
+        if (intro) intro.then(() => window.location.replace(destination));
+        // 演出なしの時は<head>で遷移済み
       } else {
         checkServer();
+        // 演出が終わってもサーバーが起きていなければ、いつもの「サーバー起動中」を見せる
+        if (intro) intro.then(() => {
+          if (serverReady) return;
+          const r = document.documentElement;
+          r.classList.remove('bi-on'); r.style.background = '';
+          const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', '#0a0a0f');
+        });
       }
 
       // Service Worker
