@@ -166,6 +166,7 @@
       } catch (e) {
         if (my !== seq) return;
         if (!silent || !loaded) { clear(body).appendChild(errorState(e, () => load())); pager.el.hidden = true; count.textContent = ''; }
+        else if (!e.network) toast(errMsg(e), 'err');
       } finally { if (my === seq) root.classList.remove('busy'); }
     }
     function stateTags(u) {
@@ -250,6 +251,7 @@
       } catch (e) {
         if (my !== seq) return;
         if (!silent || !loaded) clear(body).appendChild(errorState(e, () => load()));
+        else if (!e.network) toast(errMsg(e), 'err');
       }
     }
     return { id: 'online', label: 'オンライン', icon: 'online', el: root, v2only: true, auto: true, activate() { if (!loaded) load(); }, refresh(s) { return load(s); }, invalidate() { loaded = false; } };
@@ -292,6 +294,7 @@
       } catch (e) {
         if (my !== seq) return;
         if (!silent || !loaded) clear(body).appendChild(errorState(e, () => load()));
+        else if (!e.network) toast(errMsg(e), 'err');
       }
     }
     return { id: 'reports', label: '報告', icon: 'flag', el: root, badge: true, activate() { if (!loaded) load(); }, refresh(s) { return load(s); }, invalidate() { loaded = false; } };
@@ -364,6 +367,7 @@
       } catch (e) {
         if (my !== seq) return;
         if (!silent || !loaded) { clear(body).appendChild(errorState(e, () => load())); pager.el.hidden = true; }
+        else if (!e.network) toast(errMsg(e), 'err');
       } finally { if (my === seq) root.classList.remove('busy'); }
     }
     return { id: 'posts', label: '投稿', icon: 'posts', el: root, v2only: true, activate() { if (!loaded) load(); }, refresh(s) { return load(s); }, invalidate() { loaded = false; }, focusSearch() { search.input.focus(); search.input.select(); } };
@@ -416,6 +420,7 @@
       } catch (e) {
         if (my !== seq) return;
         if (!silent || !loaded) { clear(body).appendChild(errorState(e, () => load())); pager.el.hidden = true; }
+        else if (!e.network) toast(errMsg(e), 'err');
       } finally { if (my === seq) root.classList.remove('busy'); }
     }
     return { id: 'audit', label: '操作ログ', icon: 'audit', el: root, v2only: true, activate() { if (!loaded) load(); }, refresh(s) { return load(s); }, invalidate() { loaded = false; } };
@@ -508,7 +513,7 @@
     const tags = BC.stateTags(u);
     const banBox = u.banned ? h('div', { class: 'note danger' },
       h('strong', null, '利用停止中 ' + fmt.until(u.bannedUntil)),
-      h('span', null, (u.banReason ? '理由: ' + u.banReason + ' / ' : '') + '解除予定 ' + (u.bannedUntil >= Date.now() + 3650 * 86400000 ? '無期限' : fmt.dt(u.bannedUntil)))) : null;
+      h('span', null, (u.banReason ? '理由: ' + u.banReason + ' / ' : '') + '解除予定 ' + (fmt.until(u.bannedUntil) === '無期限' ? '無期限' : fmt.dt(u.bannedUntil)))) : null;
 
     // 操作
     const mk = (ic, text, cls, fn) => { const b = h('button', { class: 'btn ' + (cls || ''), type: 'button' }, icon(ic, 15), text); b.addEventListener('click', () => fn(b)); return b; };

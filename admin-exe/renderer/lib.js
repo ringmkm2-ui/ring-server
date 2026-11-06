@@ -138,7 +138,7 @@
     until: ms => {
       if (ms == null) return '';
       const t = Number(ms) - Date.now();
-      if (t > 3650 * 86400000) return '無期限';
+      if (t > 3000 * 86400000) return '無期限';
       const hh = Math.max(1, Math.ceil(t / 36e5));
       return 'あと' + (hh >= 24 ? Math.floor(hh / 24) + '日' + (hh % 24 ? (hh % 24) + '時間' : '') : hh + '時間');
     },
