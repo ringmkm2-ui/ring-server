@@ -308,3 +308,6 @@ button.card:hover .card-go { color: var(--actx); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.danger-zone { border-top: 1px solid rgba(239, 91, 91, .25); padding-top: 14px; }
+.dz-text { margin: 0 0 10px; font-size: 12.5px; line-height: 1.6; }

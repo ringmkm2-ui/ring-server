@@ -13,7 +13,7 @@ let portSeq = 0;
 // opts.dbFile: 前のサーバーと同じSQLiteファイルを使う(環境変数を変えて再起動するテスト用)
 async function startServer(extraEnv = {}, opts = {}) {
   // 同じテスト内で何台も立てるので、毎回違うポートを使う(乱数だとたまにぶつかってテストが落ちた)
-  const port = 4100 + (process.pid % 300) * 3 + (portSeq++ % 3);
+  const port = 4100 + (process.pid % 300) * 6 + (portSeq++ % 6);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brochat-test-'));
   const dbFile = opts.dbFile || path.join(tmp, 'test.sqlite');
   const env = {

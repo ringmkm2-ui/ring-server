@@ -323,6 +323,31 @@
     return form;
   });
 
+  // アカウント削除。IDコードを打たないと押せない。submit() は Promise (失敗は throw)
+  BC.deleteDialog = (user, submit) => openDialog('', api => {
+    const code = String(user.userId || '');
+    const input = h('input', { class: 'inp mono', type: 'text', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'IDコード', placeholder: code });
+    const err = h('p', { class: 'form-err', role: 'alert' });
+    const ok = h('button', { class: 'btn danger', type: 'submit', disabled: true }, '削除する');
+    const same = () => input.value.trim().toUpperCase() === code.toUpperCase() && code !== '';
+    input.addEventListener('input', () => { ok.disabled = !same(); err.textContent = ''; });
+    const form = h('form', { class: 'dlg-body', onsubmit: async e => {
+      e.preventDefault();
+      if (!same()) return;
+      ok.disabled = true; ok.textContent = '削除中...'; err.textContent = '';
+      try { await submit(); api.done(true); }
+      catch (e2) { err.textContent = e2.message || '失敗した'; ok.textContent = '削除する'; ok.disabled = !same(); }
+    } },
+      h('h3', null, 'アカウントを削除'),
+      h('p', { class: 'dlg-msg' }, (user.displayName || user.username) + ' を削除する。元に戻せない。'),
+      h('p', { class: 'dlg-detail' }, 'メッセージの中身、投稿、鍵、グループの所属が消え、全端末がログアウトされる。相手の画面には「退会済みユーザー」と出る。'),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, '確認のため IDコード ' + code + ' を入力'), input),
+      err,
+      h('div', { class: 'dlg-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => api.done(false) }, 'やめる'), ok));
+    api.focus = () => input.focus();
+    return form;
+  });
+
   // パスワード生成: 紛らわしい文字を除いた英数字+記号
   BC.genPassword = (len) => {
     const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789', '-_!@#%+='];

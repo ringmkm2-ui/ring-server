@@ -81,7 +81,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   const now = Date.now();
   res.json({
     version: pkg.version,
-    adminApi: 2,
+    adminApi: 3,
     uptimeSec: Math.floor(process.uptime()),
     memoryMB: Math.round(process.memoryUsage().rss / 1048576),
     users: await count("SELECT COUNT(*) AS n FROM users WHERE password_hash <> ''"),
@@ -313,6 +313,27 @@ router.post('/users/:id/password', asyncHandler(async (req, res) => {
   await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
   try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}
   await audit(req, 'user.password', userTarget(u), 'パスワードを再設定');
+  res.json({ ok: true });
+}));
+
+// アカウントを削除する(元に戻せない)。本人の退会と同じ後始末(utils/accountRemoval.js)を使う。
+// 誤操作を防ぐため、body.confirm にそのユーザーのIDコードを入れさせる。運営アカウントは削除できない。
+router.post('/users/:id/delete', asyncHandler(async (req, res) => {
+  const u = await findUser(req.params.id);
+  if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  const confirm = req.body && req.body.confirm;
+  if (typeof confirm !== 'string' || confirm.trim().toUpperCase() !== String(u.user_id).toUpperCase()) {
+    return res.status(400).json({ error: 'IDコードが一致しません' });
+  }
+  const { adminUserIds, DEFAULT_ADMINS, DEFAULT_STAFF } = require('../utils/adminNotify');
+  const protectedIds = new Set([
+    ...await adminUserIds('ADMIN_NOTIFY', DEFAULT_ADMINS),
+    ...await adminUserIds('STAFF_USERS', DEFAULT_STAFF),
+  ]);
+  if (protectedIds.has(u.id)) return res.status(400).json({ error: '運営アカウントは削除できません' });
+  const target = userTarget(u); // 匿名化される前に名前を控える
+  await require('../utils/accountRemoval').removeAccount(u.id);
+  await audit(req, 'user.delete', target, 'アカウントを削除(元に戻せない)');
   res.json({ ok: true });
 }));
 
