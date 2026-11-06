@@ -17,6 +17,7 @@ jobs:
     defaults:
       run:
         working-directory: admin-exe
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -27,13 +28,23 @@ jobs:
       - name: Install
         run: npm install --no-audit --no-fund
 
+      - name: Check
+        run: npm run check
+
       - name: Build exe
         run: npm run dist
+
+      - name: Checksum
+        run: |
+          cd dist
+          sha256sum BroChatAdmin.exe | tee BroChatAdmin.exe.sha256
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: admin-v1.0.${{ github.run_number }}
-          name: Bro Chat Admin v1.0.${{ github.run_number }}
-          files: admin-exe/dist/BroChatAdmin.exe
+          tag_name: admin-v2.0.${{ github.run_number }}
+          name: Bro Chat Admin v2.0.${{ github.run_number }}
+          files: |
+            admin-exe/dist/BroChatAdmin.exe
+            admin-exe/dist/BroChatAdmin.exe.sha256
           prerelease: true

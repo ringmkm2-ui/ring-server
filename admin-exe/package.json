@@ -1,11 +1,13 @@
 {
   "name": "brochat-admin",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Bro Chat 管理者用ツール",
+  "author": "Bro Chat",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
+    "check": "node check.js",
     "dist": "electron-builder --win portable --x64 --publish never"
   },
   "devDependencies": {
@@ -15,8 +17,8 @@
   "build": {
     "appId": "com.brochat.admin",
     "productName": "BroChatAdmin",
-    "files": ["main.js", "preload.js", "renderer/**"],
-    "directories": { "output": "dist" },
-    "win": { "target": "portable", "artifactName": "BroChatAdmin.exe" }
+    "files": ["main.js", "preload.js", "renderer/**", "assets/icon.png"],
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "win": { "target": "portable", "artifactName": "BroChatAdmin.exe", "icon": "assets/icon.png" }
   }
 }

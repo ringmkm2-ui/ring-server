@@ -244,6 +244,19 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
 
+-- 管理Exeの操作ログ(パスワードや鍵は入れない)
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id TEXT PRIMARY KEY,
+  at TIMESTAMP DEFAULT now(),
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  target_label TEXT,
+  detail TEXT,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_recipient ON offline_queue(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);

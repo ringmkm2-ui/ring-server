@@ -525,6 +525,25 @@ async function initDB() {
     console.log('[db] icon migration skip:', e.message);
   }
 
+  // 管理Exeの操作ログ
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_audit (
+        id TEXT PRIMARY KEY,
+        at TIMESTAMP DEFAULT now(),
+        action TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        target_label TEXT,
+        detail TEXT,
+        ip TEXT
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC)');
+  } catch (e) {
+    console.log('[db] admin_audit migration skip:', e.message);
+  }
+
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 
