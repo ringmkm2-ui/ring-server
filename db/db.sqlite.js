@@ -445,6 +445,18 @@ async function initDB() {
       resolved_at TEXT
     );
 
+    -- 管理Exeの操作ログ(誰が何をしたか。パスワードや鍵は入れない)
+    CREATE TABLE IF NOT EXISTS admin_audit (
+      id TEXT PRIMARY KEY,
+      at TEXT DEFAULT CURRENT_TIMESTAMP,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      target_label TEXT,
+      detail TEXT,
+      ip TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS fcm_tokens (
       user_id TEXT NOT NULL,
       token TEXT NOT NULL,

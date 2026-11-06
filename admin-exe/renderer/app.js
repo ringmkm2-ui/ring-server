@@ -1,239 +1,240 @@
-(() => {
+'use strict';
+/* 接続・画面切り替え・自動更新・キーボード */
+(function () {
+  const { h, icon, fmt, toast, clear } = BC;
   const $ = id => document.getElementById(id);
-  let cfg = { url: '', key: '' };
-  let timer = null, searchTimer = null;
+  const POLL_MS = 15000, STALE_MS = 20000;
 
-  const ICON = {
-    logout: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z"/><line x1="9" y1="15" x2="15" y2="15"/></svg>',
-    unlock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
-    unban: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9.5"/></svg>',
-    key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2"/><path d="M17 6l3 3"/></svg>'
+  let active = null, ticking = false, lastTick = 0, pollTimer = null;
+  let connectToken = 0, wakeTimer = null;
+  const navBtns = {}, lastLoad = {};
+  const down = { on: false, probing: false, next: 0, probeStart: 0, tmr: null };
+
+  /* ---------- 画面の組み立て ---------- */
+  function buildShell() {
+    const nav = $('nav'), host = $('views');
+    BC.viewOrder.forEach(id => {
+      const v = BC.views[id];
+      const badge = v.badge ? h('span', { class: 'badge', id: 'repBadge', hidden: true }) : null;
+      const b = h('button', { class: 'nav-item', type: 'button', title: v.label, 'data-view': id, onclick: () => BC.go(id) },
+        icon(v.icon, 18), h('span', { class: 'nav-label' }, v.label), badge);
+      navBtns[id] = b; nav.appendChild(b);
+      v.host = h('section', { class: 'view-host', hidden: true, 'aria-label': v.label }, v.el);
+      host.appendChild(v.host);
+    });
+  }
+
+  BC.go = (id, opts) => {
+    let v = BC.views[id];
+    if (!v || (v.v2only && !BC.S.v2)) { id = 'dashboard'; v = BC.views[id]; }
+    if (active && active !== v && active.host) active.host.hidden = true;
+    active = v; v.host.hidden = false;
+    Object.keys(navBtns).forEach(k => { if (k === id) navBtns[k].setAttribute('aria-current', 'page'); else navBtns[k].removeAttribute('aria-current'); });
+    $('viewTitle').textContent = v.label;
+    v.activate(opts);
+    const stale = Date.now() - (lastLoad[id] || 0) > STALE_MS;
+    if (stale && lastLoad[id] && v.id !== 'dashboard') v.refresh(true);
+    lastLoad[id] = Date.now();
   };
 
-  function toast(msg) {
-    const t = $('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+  /* ---------- stats ---------- */
+  function setBadge(n) {
+    const b = $('repBadge'); if (!b) return;
+    b.textContent = n > 99 ? '99+' : String(n);
+    b.hidden = !(n > 0);
+    navBtns.reports.setAttribute('aria-label', '報告' + (n > 0 ? ' 未対応 ' + n + ' 件' : ''));
   }
-
-  async function call(method, path, body) {
-    const r = await window.admin.api({ url: cfg.url, key: cfg.key, method, path, body });
-    if (r.error) throw new Error(r.error);
-    if (r.status === 401) throw new Error('管理キーが違います');
-    if (r.status === 404 && path === '/api/admin/stats') throw new Error('サーバー側で管理APIが有効になっていません(ADMIN_API_KEY未設定、または未デプロイ)');
-    if (r.status === 429) throw new Error('試行が多すぎます。しばらく待ってください');
-    if (r.status >= 400) throw new Error((r.data && r.data.error) || ('エラー ' + r.status));
-    return r.data;
+  function applyServerMode(v2) {
+    const changed = BC.S.v2 !== v2;
+    BC.S.v2 = v2;
+    $('bannerOld').hidden = v2;
+    BC.viewOrder.forEach(id => { const v = BC.views[id]; if (v.v2only) navBtns[id].hidden = !v2; });
+    if (changed && active && active.v2only && !v2) BC.go('dashboard');
+    paintServer();
   }
-
-  function fmtUptime(s) {
-    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-    return d ? d + '日' + h + '時間' : h ? h + '時間' + m + '分' : m + '分';
+  function paintServer() {
+    const s = BC.S.stats;
+    $('srvText').textContent = s ? 'サーバー v' + s.version : '-';
+    const dot = $('srvDot');
+    dot.className = 'srv-dot ' + (down.on ? 'err' : BC.S.v2 ? 'ok' : 'warn');
   }
-
-  function renderStats(s) {
-    $('ver').textContent = 'サーバー v' + s.version;
-    const items = [
-      ['ユーザー', s.users], ['オンライン', s.online], ['個人メッセージ', s.messages],
-      ['グループメッセージ', s.groupMessages], ['グループ', s.groups], ['投稿', s.posts],
-      ['ログイン中の端末', s.activeSessions], ['メモリ', s.memoryMB + ' MB'], ['稼働時間', fmtUptime(s.uptimeSec)]
-    ];
-    const box = $('stats');
-    box.textContent = '';
-    items.forEach(([label, v]) => {
-      const d = document.createElement('div'); d.className = 'stat';
-      const b = document.createElement('b'); b.textContent = v == null ? '-' : v;
-      const sp = document.createElement('span'); sp.textContent = label;
-      d.append(b, sp); box.appendChild(d);
-    });
+  async function onStats(s) {
+    BC.S.stats = s;
+    applyServerMode(Number(s.adminApi) >= 2);
+    paintServer();
+    if (BC.S.v2) setBadge(Number(s.openReports) || 0);
+    else {
+      try { const r = await BC.api('GET', '/api/admin/reports?status=open', null, { quiet: true }); setBadge((r.reports || []).length); } catch (e) {}
+    }
+    $('updated').textContent = '更新 ' + fmt.time(new Date());
   }
-
-  function actBtn(icon, title, fn) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.title = title; b.innerHTML = icon;
-    b.onclick = fn;
-    return b;
+  async function refreshStats() {
+    const s = await BC.api('GET', '/api/admin/stats');
+    await onStats(s);
+    return s;
   }
-
-  function renderUsers(list) {
-    $('count').textContent = list.length + ' 件';
-    const tb = $('rows');
-    tb.textContent = '';
-    list.forEach(u => {
-      const tr = document.createElement('tr');
-      const c0 = document.createElement('td'); const dot = document.createElement('span');
-      dot.className = 'dot' + (u.online ? ' on' : ''); dot.title = u.online ? 'オンライン' : 'オフライン'; c0.appendChild(dot);
-      const c1 = document.createElement('td'); c1.textContent = u.displayName || '';
-      const c2 = document.createElement('td'); c2.textContent = u.username;
-      const c3 = document.createElement('td'); c3.textContent = u.createdAt ? new Date(u.createdAt).toLocaleDateString('ja-JP') : '';
-      const c4 = document.createElement('td');
-      if (u.locked) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'ロック中'; c4.appendChild(t); }
-      if (u.banned) {
-        const t = document.createElement('span'); t.className = 'tag'; t.style.marginLeft = '4px';
-        const h = Math.max(1, Math.ceil((u.bannedUntil - Date.now()) / 36e5));
-        t.textContent = '停止中 あと' + (h >= 24 ? Math.floor(h / 24) + '日' + (h % 24) + '時間' : h + '時間');
-        t.title = u.banReason || '';
-        c4.appendChild(t);
-      }
-      const c5 = document.createElement('td'); c5.className = 'r';
-      const act = document.createElement('div'); act.className = 'act';
-      act.append(
-        actBtn(ICON.logout, '全端末からログアウトさせる', () => forceLogout(u)),
-        actBtn(ICON.unlock, 'ログインロックを解除', () => unlock(u)),
-        ...(u.banned ? [actBtn(ICON.unban, '利用停止を解除', () => unban(u))] : []),
-        actBtn(ICON.key, 'パスワードを再設定', () => openPw(u))
-      );
-      c5.appendChild(act);
-      tr.append(c0, c1, c2, c3, c4, c5);
-      tb.appendChild(tr);
-    });
-  }
-
-  async function loadStats() { renderStats(await call('GET', '/api/admin/stats')); }
-  async function loadUsers() {
-    const q = $('search').value.trim();
-    const r = await call('GET', '/api/admin/users?q=' + encodeURIComponent(q));
-    renderUsers(r.users || []);
-  }
-  const CAT = { spam: 'スパム・迷惑行為', harassment: '嫌がらせ・脅し', impersonation: 'なりすまし', inappropriate: '不適切な内容', other: 'その他' };
-
-  function renderReports(list) {
-    $('repCount').textContent = list.length + ' 件';
-    const box = $('repList');
-    box.textContent = '';
-    list.forEach(r => {
-      const card = document.createElement('div');
-      card.className = 'rep' + (r.status === 'resolved' ? ' done' : '');
-      const top = document.createElement('div'); top.className = 'top';
-      const kind = document.createElement('span'); kind.className = 'kind' + (r.kind === 'user' ? ' user' : '');
-      kind.textContent = r.kind === 'user' ? '通報' : 'バグ';
-      top.appendChild(kind);
-      if (r.category) { const c = document.createElement('span'); c.textContent = CAT[r.category] || r.category; top.appendChild(c); }
-      const t = document.createElement('span'); t.textContent = r.createdAt ? new Date(String(r.createdAt).replace(' ', 'T') + (String(r.createdAt).includes('Z') || String(r.createdAt).includes('+') ? '' : 'Z')).toLocaleString('ja-JP') : '';
-      top.appendChild(t);
-      if (r.appVersion) { const v = document.createElement('span'); v.textContent = 'v' + r.appVersion; top.appendChild(v); }
-      const msg = document.createElement('div'); msg.className = 'msg'; msg.textContent = r.message;
-      // Claudeが調べた結果(PRの番号や、直せなかった理由)
-      const cn = r.claudeNote ? Object.assign(document.createElement('div'), { className: 'who', textContent: 'Claude: ' + r.claudeNote }) : null;
-      const who = document.createElement('div'); who.className = 'who';
-      const nm = x => x ? ((x.displayName || '') + ' <' + (x.username || '') + '>') : '(削除済み)';
-      who.textContent = '報告者: ' + nm(r.reporter) + (r.target ? '  /  対象: ' + nm(r.target) : '');
-      const foot = document.createElement('div'); foot.className = 'foot';
-      const done = r.status === 'resolved';
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn';
-      b.textContent = done ? '未対応に戻す' : '対応済みにする';
-      b.onclick = async () => {
-        try { await call('POST', '/api/admin/reports/' + encodeURIComponent(r.id) + '/status', { status: done ? 'open' : 'resolved' }); await loadReports(); }
-        catch (e) { toast(e.message); }
-      };
-      foot.appendChild(b);
-      card.append(top, msg, ...(cn ? [cn] : []), who, foot);
-      box.appendChild(card);
-    });
-    if (!list.length) { const e = document.createElement('div'); e.className = 'count'; e.style.padding = '12px 2px'; e.textContent = '報告はありません'; box.appendChild(e); }
-  }
-
-  async function loadReports() {
-    const r = await call('GET', '/api/admin/reports?status=' + encodeURIComponent($('repFilter').value));
-    renderReports(r.reports || []);
-    refreshBadge().catch(() => {});
-  }
-  async function refreshBadge() {
-    const r = await call('GET', '/api/admin/reports?status=open');
-    const n = (r.reports || []).length;
-    $('repBadge').textContent = n > 99 ? '99+' : n;
-    $('repBadge').hidden = n === 0;
-  }
-
-  function showTab(name) {
-    const reports = name === 'reports';
-    $('usersPane').hidden = reports; $('reportsPane').hidden = !reports;
-    $('tabUsers').classList.toggle('active', !reports); $('tabReports').classList.toggle('active', reports);
-    if (reports) loadReports().catch(e => toast(e.message));
-  }
-  $('tabUsers').onclick = () => showTab('users');
-  $('tabReports').onclick = () => showTab('reports');
-  $('repFilter').onchange = () => loadReports().catch(e => toast(e.message));
 
   async function reload() {
+    if (!BC.S.connected) return;
+    const btn = $('btnRefresh'); btn.classList.add('spinning');
+    try { await refreshStats(); } catch (e) { if (!e.network && !e.auth) toast(e.message, 'err'); }
+    try { if (active) await active.refresh(false); lastLoad[active.id] = Date.now(); } catch (e) {}
+    btn.classList.remove('spinning');
+  }
+
+  /* ---------- 変更後の連動更新 ---------- */
+  function touch(ids) {
+    ids.forEach(id => {
+      const v = BC.views[id]; if (!v) return;
+      if (active === v) v.refresh(true); else v.invalidate();
+    });
+  }
+  BC.afterUserChange = () => { refreshStats().catch(() => {}); touch(['users', 'online']); BC.views.audit.invalidate(); if (active === BC.views.audit) active.refresh(true); };
+  BC.afterReportChange = () => { refreshStats().catch(() => {}); BC.refreshOpenUser(); };
+  BC.afterPostChange = () => { refreshStats().catch(() => {}); BC.views.audit.invalidate(); };
+
+  /* ---------- 自動更新 ---------- */
+  async function tick() {
+    if (!BC.S.connected || document.hidden || down.on || ticking) return;
+    ticking = true; lastTick = Date.now();
     try {
-      await Promise.all([loadStats(), loadUsers(), refreshBadge()]);
-      if (!$('reportsPane').hidden) await loadReports();
-    } catch (e) { toast(e.message); }
+      await refreshStats();
+      if (active && active.auto) { await active.refresh(true); lastLoad[active.id] = Date.now(); }
+    } catch (e) {} finally { ticking = false; }
   }
-
-  async function forceLogout(u) {
-    if (!confirm((u.displayName || u.username) + ' を全端末からログアウトさせます。よろしいですか?')) return;
-    try { await call('POST', '/api/admin/users/' + encodeURIComponent(u.id) + '/logout'); toast('ログアウトさせました'); loadStats().catch(() => {}); }
-    catch (e) { toast(e.message); }
-  }
-  async function unlock(u) {
-    try { await call('POST', '/api/admin/users/' + encodeURIComponent(u.id) + '/unlock'); toast('ロックを解除しました'); loadUsers().catch(() => {}); }
-    catch (e) { toast(e.message); }
-  }
-
-  async function unban(u) {
-    try { await call('POST', '/api/admin/users/' + encodeURIComponent(u.id) + '/unban'); toast('利用停止を解除しました'); loadUsers().catch(() => {}); }
-    catch (e) { toast(e.message); }
-  }
-
-  let pwUser = null;
-  function openPw(u) {
-    pwUser = u;
-    $('pwTitle').textContent = (u.displayName || u.username) + ' のパスワード再設定';
-    $('pwInput').value = ''; $('pwErr').textContent = '';
-    $('pwDlg').showModal(); $('pwInput').focus();
-  }
-  $('pwCancel').onclick = () => $('pwDlg').close();
-  $('pwForm').addEventListener('submit', async ev => {
-    ev.preventDefault();
-    $('pwOk').disabled = true;
-    try {
-      await call('POST', '/api/admin/users/' + encodeURIComponent(pwUser.id) + '/password', { password: $('pwInput').value });
-      $('pwDlg').close(); toast('パスワードを変更しました。全端末はログアウトされます');
-    } catch (e) { $('pwErr').textContent = e.message; }
-    $('pwOk').disabled = false;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !BC.S.connected) return;
+    if (down.on) { probe(); return; }
+    if (Date.now() - lastTick > POLL_MS - 1000) tick();
   });
 
-  function showMain() {
-    $('login').hidden = true; $('main').hidden = false;
-    reload();
-    clearInterval(timer);
-    timer = setInterval(() => { loadStats().catch(() => {}); refreshBadge().catch(() => {}); }, 15000);
+  /* ---------- 接続断 ---------- */
+  function renderDown() {
+    if (!down.on) return;
+    if (down.probing) {
+      const sec = Math.floor((Date.now() - down.probeStart) / 1000);
+      $('downTitle').textContent = sec >= 3 ? 'サーバーを起こしています(最大60秒)' : 'サーバーに接続できない';
+      $('downSub').textContent = '再接続中 ' + sec + '秒';
+    } else {
+      $('downTitle').textContent = 'サーバーに接続できない';
+      $('downSub').textContent = Math.max(0, Math.ceil((down.next - Date.now()) / 1000)) + '秒後に自動で再試行する';
+    }
   }
-  function showLogin() {
-    clearInterval(timer);
-    $('main').hidden = true; $('login').hidden = false;
+  async function probe() {
+    if (!down.on || down.probing) return;
+    down.probing = true; down.probeStart = Date.now(); renderDown();
+    try { await onStats(await BC.api('GET', '/api/admin/stats', null, { quiet: true })); }
+    catch (e) { if (e.auth) { BC.hooks.auth(e); return; } }
+    down.probing = false; down.next = Date.now() + 5000; renderDown();
   }
+  BC.hooks.down = () => {
+    if (!BC.S.connected || down.on) return;
+    down.on = true; down.next = Date.now() + 5000; down.probing = false;
+    $('bannerDown').hidden = false; paintServer(); renderDown();
+    down.tmr = setInterval(() => { if (!document.hidden && !down.probing && Date.now() >= down.next) probe(); renderDown(); }, 1000);
+  };
+  BC.hooks.up = () => {
+    if (!down.on) return;
+    down.on = false; down.probing = false; clearInterval(down.tmr);
+    $('bannerDown').hidden = true; paintServer();
+    toast('再接続した');
+    setTimeout(reload, 0);
+  };
+  function resetDown() { down.on = false; down.probing = false; clearInterval(down.tmr); $('bannerDown').hidden = true; }
+  $('downRetry').addEventListener('click', () => probe());
 
-  $('loginForm').addEventListener('submit', async ev => {
-    ev.preventDefault();
+  /* ---------- ログイン ---------- */
+  function stopWake() { clearInterval(wakeTimer); wakeTimer = null; $('wake').hidden = true; }
+  function setBusy(on) {
+    $('loginBtn').disabled = on; $('loginBtnText').textContent = on ? '接続中...' : '接続';
+    $('url').disabled = on; $('key').disabled = on;
+  }
+  async function connect() {
     const url = $('url').value.trim().replace(/\/+$/, '');
     const key = $('key').value;
     $('loginErr').textContent = '';
-    if (!url || !key) { $('loginErr').textContent = 'URLと管理キーを入れてください'; return; }
-    cfg = { url, key };
-    $('loginBtn').disabled = true; $('loginBtn').textContent = '接続中...';
+    if (!url || !key) { $('loginErr').textContent = 'URLと管理キーを入れる'; return; }
+    const token = ++connectToken;
+    BC.cfg = { url, key };
+    setBusy(true);
+    const t0 = Date.now();
+    stopWake();
+    wakeTimer = setInterval(() => {
+      const sec = Math.floor((Date.now() - t0) / 1000);
+      if (sec >= 3) {
+        $('wake').hidden = false;
+        $('wakeSec').textContent = String(sec);
+        $('wakeBar').style.width = Math.min(100, sec / 60 * 100) + '%';
+      }
+    }, 500);
+    let stats;
+    try { stats = await BC.api('GET', '/api/admin/stats', null, { quiet: true }); }
+    catch (e) {
+      if (token !== connectToken) return;
+      stopWake(); setBusy(false);
+      $('loginErr').textContent = e.message; return;
+    }
+    if (token !== connectToken) return;
+    stopWake(); setBusy(false);
+    try { await window.admin.saveCfg({ url, key, remember: $('remember').checked }); } catch (e) {}
+    enterApp(stats);
+  }
+  $('loginForm').addEventListener('submit', e => { e.preventDefault(); connect(); });
+  $('wakeCancel').addEventListener('click', () => { connectToken++; stopWake(); setBusy(false); $('loginErr').textContent = '中止した'; });
+  $('keyToggle').addEventListener('click', () => {
+    const k = $('key'), show = k.type === 'password';
+    k.type = show ? 'text' : 'password';
+    const b = $('keyToggle'); clear(b).appendChild(icon(show ? 'eyeoff' : 'eye', 16));
+  });
+
+  let built = false;
+  async function enterApp(stats) {
+    if (!built) { buildShell(); built = true; }
+    BC.S.connected = true; lastTick = Date.now();
+    Object.keys(lastLoad).forEach(k => delete lastLoad[k]);
+    BC.viewOrder.forEach(id => BC.views[id].invalidate());
+    $('login').hidden = true; $('app').hidden = false;
+    await onStats(stats);
+    BC.go('dashboard');
+    clearInterval(pollTimer); pollTimer = setInterval(tick, POLL_MS);
     try {
-      await loadStats();
-      await window.admin.saveCfg({ url, key, remember: $('remember').checked });
-      showMain();
-    } catch (e) { $('loginErr').textContent = e.message; }
-    $('loginBtn').disabled = false; $('loginBtn').textContent = '接続';
+      if (window.admin.getInfo) { const i = await window.admin.getInfo(); if (i && i.version) $('srvInfo').title = '管理アプリ v' + i.version; }
+    } catch (e) {}
+  }
+  function leave(msg) {
+    BC.S.connected = false; BC.S.stats = null; BC.S.v2 = false;
+    clearInterval(pollTimer); resetDown();
+    BC.closeUser();
+    BC.cfg.key = ''; $('key').value = '';
+    $('app').hidden = true; $('login').hidden = false;
+    $('loginErr').textContent = msg || '';
+    $('key').focus();
+  }
+  $('btnDisconnect').addEventListener('click', () => leave(''));
+  BC.hooks.auth = () => { if (BC.S.connected) leave('管理キーが違う'); };
+  $('btnRefresh').addEventListener('click', reload);
+
+  /* ---------- キーボード ---------- */
+  function typing(t) { return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); }
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'r') { e.preventDefault(); reload(); return; }
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target)) {
+      if (!BC.S.connected || BC.drawerOpen() || document.querySelector('dialog[open]')) return;
+      if (active && active.focusSearch) { e.preventDefault(); active.focusSearch(); }
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (document.querySelector('dialog[open]')) return;   // ダイアログは自分で閉じる
+      if (BC.drawerOpen()) { e.preventDefault(); BC.closeUser(); }
+    }
   });
 
-  $('refresh').onclick = reload;
-  $('logout').onclick = () => { cfg.key = ''; $('key').value = ''; showLogin(); };
-  $('search').addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => loadUsers().catch(e => toast(e.message)), 250);
-  });
-
+  /* ---------- 起動 ---------- */
   (async () => {
-    const c = await window.admin.getCfg();
-    $('url').value = c.url; $('key').value = c.key; $('remember').checked = c.remember;
-    if (c.key) $('loginForm').requestSubmit();
+    BC.hydrateIcons();
+    let c = {};
+    try { c = (await window.admin.getCfg()) || {}; } catch (e) {}
+    $('url').value = c.url || ''; $('key').value = c.key || ''; $('remember').checked = !!c.remember;
+    if (c.url && c.key) connect(); else $((c.url ? 'key' : 'url')).focus();
   })();
 })();
