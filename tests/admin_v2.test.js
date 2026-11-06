@@ -59,7 +59,7 @@ test('stats: 追加項目が入っていて、既存の項目も残っている'
     const r = await adm('GET', '/stats');
     assert.equal(r.status, 200);
     const d = r.data;
-    assert.equal(d.adminApi, 2);
+    assert.equal(d.adminApi, 3);
     for (const k of ['version', 'uptimeSec', 'memoryMB', 'users', 'online', 'messages', 'groupMessages', 'groups', 'posts', 'activeSessions']) assert.ok(k in d, k);
     assert.ok(d.newUsers24h >= 3, 'newUsers24h=' + d.newUsers24h);
     assert.ok(d.newUsers7d >= d.newUsers24h);
@@ -452,4 +452,56 @@ test('鍵の総当たり対策: 鍵違いだけ数える。入力ミスや対象
   for (let i = 0; i < 10; i++) assert.equal((await adm('GET', '/stats', undefined, { key: 'wrong-key-' + i, ip: '7.7.7.8' })).status, 401);
   assert.equal((await adm('GET', '/stats', undefined, { key: 'wrong-key-x', ip: '7.7.7.8' })).status, 429);
   assert.equal((await adm('GET', '/stats', undefined, { ip: '7.7.7.8' })).status, 429, '締め出し中は正しい鍵でも通らない');
+});
+
+test('アカウント削除: 鍵なしは401、IDコードが合わない時は消えない', async () => {
+  const none = await adm('POST', '/users/x/delete', {}, { key: null, ip: '8.9.0.1' });
+  assert.equal(none.status, 401);
+  const dave = await S.user(`Del ${TAG} Dave`);
+  assert.equal((await adm('POST', '/users/' + dave.userId + '/delete', {})).status, 400);
+  assert.equal((await adm('POST', '/users/' + dave.userId + '/delete', { confirm: 'ZZZZZZZ' })).status, 400);
+  assert.equal((await adm('POST', '/users/' + dave.userId + '/delete', { confirm: 123 })).status, 400);
+  assert.equal((await adm('GET', '/users/' + dave.userId)).status, 200, '消えていない');
+  assert.equal((await adm('POST', '/users/nope/delete', { confirm: 'X' })).status, 404);
+});
+
+test('アカウント削除: 一覧・詳細から消え、ログインできず、投稿は非表示、操作ログに残る。もう一度は404', async () => {
+  const erin = await S.user(`Del ${TAG} Erin`);
+  const friend = await S.user(`Del ${TAG} Frank`);
+  assert.equal((await erin.call('POST', '/api/posts', { text: 'さよなら投稿' })).status, 200);
+  const token = erin.token;
+  const r = await adm('POST', '/users/' + erin.userId + '/delete', { confirm: ' ' + erin.userIdCode.toLowerCase() + ' ' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await adm('GET', '/users/' + erin.userId)).status, 404);
+  const list = await adm('GET', '/users?q=' + encodeURIComponent(erin.username));
+  assert.equal(list.data.users.length, 0);
+  const lg = await S.req('POST', '/api/auth/login', { ip: erin.ip, body: { username: erin.username, password: erin.password } });
+  assert.notEqual(lg.status, 200, '削除後はログインできない');
+  assert.notEqual((await S.req('GET', '/api/friends', { token, ip: erin.ip })).status, 200, '古いトークンも使えない');
+  const posts = await adm('GET', '/posts?q=' + encodeURIComponent('さよなら'));
+  assert.equal(posts.data.posts.length, 0, '投稿は一覧から消える');
+  const audit = (await adm('GET', '/audit?limit=5')).data.entries.find(e => e.action === 'user.delete');
+  assert.ok(audit && audit.targetLabel.includes('Erin'), JSON.stringify(audit));
+  assert.ok(!JSON.stringify(audit).includes(erin.password));
+  assert.equal((await adm('POST', '/users/' + erin.userId + '/delete', { confirm: erin.userIdCode })).status, 404);
+  assert.equal((await adm('GET', '/users/' + friend.userId)).status, 200, '他の人は消えない');
+});
+
+test('アカウント削除: 運営アカウントは削除できない', async () => {
+  const S3 = await startServer({ ADMIN_API_KEY: KEY });
+  const boss = await S3.user('Boss');
+  const dbFile = S3.dbFile;
+  await S3.stop(true);
+  const S4 = await startServer({ ADMIN_API_KEY: KEY, ADMIN_NOTIFY: boss.userIdCode }, { dbFile });
+  try {
+    const x = await fetch(S4.base + '/api/admin/users/' + boss.userId + '/delete', {
+      method: 'POST', headers: { 'x-admin-key': KEY, 'content-type': 'application/json', 'x-forwarded-for': '7.7.7.7' },
+      body: JSON.stringify({ confirm: boss.userIdCode }),
+    });
+    const d = await x.json();
+    assert.equal(x.status, 400, JSON.stringify(d));
+    assert.match(d.error, /運営/);
+    const g = await fetch(S4.base + '/api/admin/users/' + boss.userId, { headers: { 'x-admin-key': KEY, 'x-forwarded-for': '7.7.7.7' } });
+    assert.equal(g.status, 200, '消えていない');
+  } finally { await S4.stop(); }
 });

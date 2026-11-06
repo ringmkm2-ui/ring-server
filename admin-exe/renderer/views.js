@@ -379,7 +379,7 @@
   const ACTIONS = {
     'user.ban': ['BAN', 'danger'], 'user.unban': ['BAN解除', 'ok'], 'user.logout': ['全端末ログアウト', 'info'],
     'user.unlock': ['ロック解除', 'info'], 'user.password': ['パスワード再設定', 'warn'], 'user.session_revoke': ['セッション失効', 'info'],
-    'post.delete': ['投稿削除', 'danger'], 'post.restore': ['投稿復元', 'ok'], 'report.status': ['報告の状態', 'mute'],
+    'user.delete': ['アカウント削除', 'danger'], 'post.delete': ['投稿削除', 'danger'], 'post.restore': ['投稿復元', 'ok'], 'report.status': ['報告の状態', 'mute'],
   };
   const TARGETS = { user: 'ユーザー', post: '投稿', report: '報告' };
   function auditView() {
@@ -538,6 +538,16 @@
       h('div', { class: 'tags dr-tags' }, tags.length ? tags : tag('通常', 'mute')),
       banBox,
       h('section', { class: 'sec' }, h('h4', null, '操作'), h('div', { class: 'ops' }, ops))]);
+    // 危険な操作(元に戻せない)。削除に対応したサーバーで、IDコードが分かる時だけ出す
+    if (BC.S.v3 && u.userId) {
+      body.appendChild(h('section', { class: 'sec danger-zone' }, h('h4', null, '危険な操作'),
+        h('p', { class: 'muted dz-text' }, 'アカウントを削除すると、メッセージの中身・投稿・鍵・グループの所属が消える。元に戻せない。'),
+        h('div', { class: 'ops' }, mk('trash', 'アカウントを削除', 'danger-o', async () => {
+          const done = await BC.deleteDialog(u, () => BC.api('POST', '/api/admin/users/' + encodeURIComponent(id) + '/delete', { confirm: u.userId }));
+          if (!done) return;
+          BC.closeUser(); BC.afterUserChange(); toast('アカウントを削除した');
+        }))));
+    }
 
     // 情報
     const dl = h('dl', { class: 'kvs' },

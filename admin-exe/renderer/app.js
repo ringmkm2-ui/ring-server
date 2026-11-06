@@ -60,6 +60,7 @@
   }
   async function onStats(s) {
     BC.S.stats = s;
+    BC.S.v3 = Number(s.adminApi) >= 3; // アカウント削除が使えるサーバーか
     applyServerMode(Number(s.adminApi) >= 2);
     paintServer();
     if (BC.S.v2) setBadge(Number(s.openReports) || 0);

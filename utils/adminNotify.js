@@ -68,4 +68,4 @@ async function notifyAdminsOfReport(report) {
   }
 }
 
-module.exports = { adminUserIds, notifyAdminsOfReport, DEFAULT_STAFF };
+module.exports = { adminUserIds, notifyAdminsOfReport, DEFAULT_STAFF, DEFAULT_ADMINS };
