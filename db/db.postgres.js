@@ -525,17 +525,6 @@ async function initDB() {
     console.log('[db] icon migration skip:', e.message);
   }
 
-  // 公開前の投稿を非表示にする(消さない。詳細と元に戻し方は db/hideOldPosts.js)
-  try {
-    await pool.query('ALTER TABLE posts ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMP');
-    const r = await pool.query(
-      'UPDATE posts SET deleted_at = now(), hidden_at = now() WHERE deleted_at IS NULL AND hidden_at IS NULL AND created_at <= $1',
-      [require('./hideOldPosts').HIDE_POSTS_BEFORE]);
-    if (r.rowCount) console.log('[db] 公開前の投稿を非表示にしました:', r.rowCount);
-  } catch (e) {
-    console.log('[db] hide old posts skip:', e.message);
-  }
-
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
 }
 

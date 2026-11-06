@@ -513,7 +513,7 @@ async function initDB() {
   const addCols = {
     users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT'], ['banner_url', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
-    posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER'], ['hidden_at', 'TEXT']],
+    posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],
     group_messages: [['replied_to_id', 'TEXT'], ['expires_at', 'TEXT']],
     messages: [['expires_at', 'TEXT']],
@@ -527,11 +527,6 @@ async function initDB() {
     const have = new Set(info.length ? info[0].values.map(r => r[1]) : []);
     for (const [col, type] of cols) if (!have.has(col)) db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
   }
-
-  // 公開前の投稿を非表示にする(消さない。詳細と元に戻し方は db/hideOldPosts.js)
-  db.run(
-    'UPDATE posts SET deleted_at = CURRENT_TIMESTAMP, hidden_at = CURRENT_TIMESTAMP WHERE deleted_at IS NULL AND hidden_at IS NULL AND created_at <= ?',
-    [require('./hideOldPosts').HIDE_POSTS_BEFORE]);
 
   // 期限つきの行だけを見る部分索引(掃除用)。列は上の addCols で足したあとに作る
   db.run('CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(expires_at) WHERE expires_at IS NOT NULL');
