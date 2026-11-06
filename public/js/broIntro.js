@@ -1,7 +1,7 @@
 // 起動演出(splash.html = / から呼ぶ)。しずくが集まって吹き出しになり「Bro」が出る →
 // o の穴に飛び込むと向こうに地球があり、世界中が線でつながる → 地球ごと閉じて次の画面へ。
 //  - 描画はWorker(OffscreenCanvas)で回す。メインが詰まってもカクつかない
-//  - 再生はセッションで1回だけ。再読み込みや戻るでは出さない。画面を触れば飛ばせる
+//  - 既定はこの端末で最初の1回だけ。設定(bro_intro: once/always/off)で毎回にもできる。画面を触れば飛ばせる
 //  - 端末の「視差効果を減らす」/ 省アニメ設定では出さない
 //  - WebGLが無い・遅い・何か失敗した時は黙って消す(起動は止めない)
 (function () {
@@ -507,7 +507,15 @@
     return active;
   }
 
-  // splash.html が呼ぶ。true を返したらこのセッションでは二度と true にならない
-  function shouldPlay() { return enabled() && isColdStart(); }
-  window.BroIntro = { play: play, enabled: enabled, shouldPlay: shouldPlay };
+  // splash.html が呼ぶ。起動時(セッションの最初)だけ判定し、true を返したら見た印を付ける
+  var SEEN = 'bro_intro_seen';
+  function mode() { var m = ls('bro_intro'); return m === 'always' || m === 'off' ? m : 'once'; }
+  function shouldPlay() {
+    if (!isColdStart() || !enabled()) return false;
+    var m = mode();
+    if (m === 'off' || (m === 'once' && ls(SEEN))) return false;
+    try { localStorage.setItem(SEEN, '1'); } catch (e) {}
+    return true;
+  }
+  window.BroIntro = { play: play, enabled: enabled, shouldPlay: shouldPlay, mode: mode };
 })();
