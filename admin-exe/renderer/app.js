@@ -78,7 +78,7 @@
     if (!BC.S.connected) return;
     const btn = $('btnRefresh'); btn.classList.add('spinning');
     try { await refreshStats(); } catch (e) { if (!e.network && !e.auth) toast(e.message, 'err'); }
-    try { if (active) await active.refresh(false); lastLoad[active.id] = Date.now(); } catch (e) {}
+    try { if (active) await active.refresh(true); lastLoad[active.id] = Date.now(); } catch (e) {}
     btn.classList.remove('spinning');
   }
 

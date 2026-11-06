@@ -280,7 +280,7 @@ button.card:hover .card-go { color: var(--actx); }
 .light-close { position: absolute; top: -40px; right: 0; background: rgba(0, 0, 0, .6); color: #fff; }
 
 /* ---------- トースト ---------- */
-#toasts { position: fixed; inset: auto 16px 16px auto; margin: 0; padding: 0; border: 0; background: none; overflow: visible; width: auto; height: auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; color: var(--tx); }
+#toasts { position: fixed; inset: auto auto 18px 50%; transform: translateX(-50%); margin: 0; padding: 0; border: 0; background: none; overflow: visible; width: auto; height: auto; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; color: var(--tx); }
 .toast { display: flex; align-items: center; gap: 10px; max-width: 380px; padding: 10px 14px; background: #202533; border: 1px solid var(--line2); border-left: 3px solid var(--ok); border-radius: 8px; font-size: 13px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); animation: tin .18s ease; overflow-wrap: anywhere; }
 .toast .ic { color: var(--ok); }
 .toast.err { border-left-color: var(--dg); }
