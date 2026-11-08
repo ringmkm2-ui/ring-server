@@ -515,3 +515,16 @@ test('アカウント削除: 運営アカウントは削除できない', async 
     assert.equal(g.status, 200, '消えていない');
   } finally { await S4.stop(); }
 });
+
+test('招待コードで登録した人は guest として返り、Google・メール確認済みと誤表示されない', async () => {
+  const code = (await U.alice.call('POST', '/api/invites', {})).data.invite.code;
+  const r = await S.req('POST', '/api/auth/register-invite', { body: { code, displayName: `Inv ${TAG}`, realName: '田中 太郎' } });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const d = (await adm('GET', '/users/' + r.data.userId)).data.user || (await adm('GET', '/users/' + r.data.userId)).data;
+  assert.equal(d.guest, true);
+  assert.equal(d.googleOnly, false);
+  assert.equal(d.emailVerified, false);
+  // 普通の登録は guest ではない
+  const n = (await adm('GET', '/users/' + U.bob.userId)).data;
+  assert.equal((n.user || n).guest, false);
+});

@@ -174,14 +174,15 @@
       if (u.online) t.push(tag('オンライン', 'ok'));
       if (u.banned) t.push(tag('停止中 ' + fmt.until(u.bannedUntil), 'danger', u.banReason || ''));
       if (u.locked) t.push(tag('ロック中', 'warn'));
-      if (u.googleOnly) t.push(tag('Google', 'mute', 'Googleログインのみ'));
+      if (u.guest) t.push(tag('ゲスト', 'mute', '招待コードで登録。メール未登録'));
+      else if (u.googleOnly) t.push(tag('Google', 'mute', 'Googleログインのみ'));
       return t;
     }
     BC.userCell = (u) => h('div', { class: 'ucell' },
       h('span', { class: 'av-wrap' }, avatar(u.displayName || u.username), u.online ? h('i', { class: 'av-dot', title: 'オンライン' }) : null),
       h('div', { class: 'utext' },
         h('span', { class: 'uname' }, u.displayName || u.username || '(名前なし)'),
-        h('span', { class: 'usub muted' }, [u.username ? '@' + u.username : null, u.userId].filter(Boolean).join(' · '))));
+        h('span', { class: 'usub muted' }, [u.username && !u.guest ? '@' + u.username : null, u.userId].filter(Boolean).join(' · '))));
     BC.stateTags = stateTags;
     function render(d) {
       count.textContent = fmt.num(d.total) + ' 人';
@@ -506,7 +507,7 @@
       avatar(u.displayName || u.username, 'lg'),
       h('div', { class: 'dr-title' },
         h('h3', null, name),
-        h('span', { class: 'muted' }, (u.username ? '@' + u.username : '') + (u.userId ? ' · ' + u.userId : ''))),
+        h('span', { class: 'muted' }, (u.username && !u.guest ? '@' + u.username : '') + (u.userId ? ' · ' + u.userId : ''))),
       h('span', { class: 'grow' }),
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': '閉じる (Esc)', title: '閉じる (Esc)', onclick: () => BC.closeUser() }, icon('x', 18)));
 
@@ -556,8 +557,8 @@
       field('本名', u.realName),
       field('登録', u.createdAt ? fmt.dt(u.createdAt) : null),
       field('最終ログイン', u.lastSeen ? fmt.dt(u.lastSeen) + ' (' + fmt.rel(u.lastSeen) + ')' : (v2 && cur.detail ? 'なし' : null)),
-      field('ログイン方法', u.googleOnly === undefined ? null : (u.googleOnly ? 'Googleのみ' : 'パスワード')),
-      field('メール', u.emailVerified === undefined ? null : (u.emailVerified ? '確認済み' : '未確認')),
+      field('ログイン方法', u.guest ? 'ゲスト(招待コードで登録・パスワード未設定)' : u.googleOnly === undefined ? null : (u.googleOnly ? 'Googleのみ' : 'パスワード')),
+      field('メール', u.guest ? '未登録' : u.emailVerified === undefined ? null : (u.emailVerified ? '確認済み' : '未確認')),
       field('2段階認証', u.totp === undefined ? null : (u.totp ? '有効' : '無効')),
       field('ログイン失敗', u.failedLogins ? u.failedLogins + ' 回' : null),
       field('自己紹介', u.bio));

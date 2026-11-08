@@ -28,6 +28,8 @@ const failLimiter = rateLimit({
   message: { error: '試行が多すぎます。しばらくしてから再度お試しください。' },
 });
 
+const isGuestName = n => /^guest_/i.test(String(n || ''));
+
 function sha(s) { return crypto.createHash('sha256').update(String(s)).digest(); }
 
 function requireAdmin(req, res, next) {
@@ -135,8 +137,10 @@ function toUser(u, fails, isOnline) {
     bannedUntil: banned ? bu : null,
     banReason: u.ban_reason || null,
     online: !!isOnline(u.id),
-    emailVerified: !!u.email_verified_at,
-    googleOnly: !u.password_hash,
+    // 招待コードで登録した人は guest_xxxx という仮の名前で、メールもパスワードも持たない(後から設定できる)
+    guest: isGuestName(u.username),
+    emailVerified: !isGuestName(u.username) && !!u.email_verified_at,
+    googleOnly: !u.password_hash && !isGuestName(u.username),
     totp: !!u.totp_enabled,
   };
 }
