@@ -574,13 +574,20 @@
       body.appendChild(h('section', { class: 'sec' }, h('h4', null, '件数'),
         h('div', { class: 'mini' }, [['投稿', c.posts], ['グループ', c.groups], ['フレンド', c.friends], ['送信メッセージ', c.sentMessages]].map(([l, v]) =>
           h('div', { class: 'mini-item' }, h('b', null, fmt.num(v)), h('span', null, l))))));
+      const REVOKE_WHY = {
+        logout: '本人がその端末でログアウト', user_revoke: '本人が別の端末から失効', logout_all: '本人が全端末ログアウト',
+        password_change: '本人がパスワード変更', password_reset: 'パスワード再設定(メール)', guest_upgrade: 'ゲストから正規アカウントに切り替え',
+        google_verify: 'Googleログインでメール確認', admin_revoke: '管理者が失効', admin_logout: '管理者が全端末ログアウト',
+        admin_password: '管理者がパスワード再設定', account_delete: 'アカウント削除',
+      };
       const ses = d.sessions || [];
       body.appendChild(h('section', { class: 'sec' }, h('h4', null, 'セッション', h('span', { class: 'muted' }, ' ' + ses.length)),
         ses.length ? h('ul', { class: 'sessions' }, ses.map(s => h('li', { class: 'ses' + (s.revoked ? ' off' : '') },
           h('span', { class: 'ses-ic' }, icon('device', 16)),
           h('div', { class: 'ses-text' },
             h('span', { class: 'ses-dev' }, s.device || '(不明な端末)'),
-            h('span', { class: 'muted' }, [s.ip, '作成 ' + fmt.dt(s.createdAt), '最終 ' + fmt.rel(s.lastSeenAt)].filter(Boolean).join(' · '))),
+            h('span', { class: 'muted' }, [s.ip, '作成 ' + fmt.dt(s.createdAt), '最終 ' + fmt.rel(s.lastSeenAt)].filter(Boolean).join(' · ')),
+            s.revoked ? h('span', { class: 'muted' }, '失効 ' + (s.revokedAt ? fmt.dt(s.revokedAt) : '') + ' · 理由: ' + (REVOKE_WHY[s.revokedReason] || '記録なし(この機能より前に失効)')) : null),
           s.revoked ? tag('失効済み', 'mute')
             : h('button', { class: 'btn sm danger-o', type: 'button', onclick: ev => {
               const b = ev.currentTarget;

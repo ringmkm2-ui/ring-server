@@ -116,9 +116,11 @@ async function initDB() {
         ip TEXT,
         created_at TIMESTAMP DEFAULT now(),
         last_seen_at TIMESTAMP DEFAULT now(),
-        revoked_at TIMESTAMP
+        revoked_at TIMESTAMP,
+        revoked_reason TEXT
       )
     `);
+    await pool.query('ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS revoked_reason TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
     // 端末をまたいで同じになるユーザー設定(プライバシー・通話・セキュリティ)。
     // 中身はJSON1本。キーの増減でマイグレーションが要らないようにしている。

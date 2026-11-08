@@ -70,7 +70,12 @@ const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex'
 const truthy = (v) => v === true || v === 1 || v === '1' || v === 't' || v === 'true';
 
 // リクエストから端末情報(User-Agent / IP)を取り出す
-const reqMeta = (req) => ({ ua: req.headers['user-agent'], ip: req.ip });
+// セッション一覧に出す接続元。Render + Cloudflare の裏では req.ip が内部の 10.x になるので、
+// Cloudflare が付ける CF-Connecting-IP を優先する(表示用だけ。レート制限などには使わない)
+const reqMeta = (req) => {
+  const cf = String(req.headers['cf-connecting-ip'] || '').trim();
+  return { ua: req.headers['user-agent'], ip: /^[0-9a-fA-F:.]{3,45}$/.test(cf) ? cf : req.ip };
+};
 
 // 端末ごとのセッションを作ってJWTに sid を入れる(端末単位のサインアウトのため)
 async function issueToken(user, meta) {
@@ -540,7 +545,7 @@ router.post('/guest/upgrade/confirm', verifyToken, guestUpgradeLimiter, async (r
     // (今の端末は、いま返す新しいトークンで続けられる)
     try {
       const sid = (jwt.decode(out.token) || {}).sid;
-      if (sid) await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id <> ? AND revoked_at IS NULL', [userId, sid]);
+      if (sid) await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'guest_upgrade' WHERE user_id = ? AND id <> ? AND revoked_at IS NULL", [userId, sid]);
       // 開いたままのWebSocketも切る(DBで失効させただけだと、接続し直すまで通知を受け取り続ける)。
       // ただし昇格した今の端末(req.user.sid)は外す。画面は session_revoked を受けると強制ログアウトし、
       // 新しいトークンを保存する前に端末の情報を消してしまう。この端末は「閉じる」で読み込み直して新しいトークンに変わる
@@ -835,7 +840,7 @@ router.post('/reset-password', loginLimiter, async (req, res) => {
       'UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP) WHERE id = ?',
       [newHash, user.id]
     );
-    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+    await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'password_reset' WHERE user_id = ? AND revoked_at IS NULL", [user.id]);
     await db.run('DELETE FROM password_resets WHERE username = ?', [username]);
     // 盗まれた時の再設定なら、盗んだ人が足した端末の鍵に送り続けないようにする。本人の端末は開いた時に戻る
     await require('../utils/deviceKeys').clearAll(user.id);
@@ -911,7 +916,7 @@ async function googleLoginFromIdToken(idToken, expectedNonce, meta) {
           "UPDATE users SET password_hash = '', email_verified_at = CURRENT_TIMESTAMP, token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?",
           [user.id]
         );
-        await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [user.id]);
+        await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'google_verify' WHERE user_id = ? AND revoked_at IS NULL", [user.id]);
         sessionEvents.emit('revoked', { userId: user.id });
         user.password_hash = '';
       } else if (!user.email_verified_at) {
@@ -1139,7 +1144,7 @@ router.post('/change-password', passwordActionLimiter, verifyToken, async (req, 
     const newHash = await bcrypt.hash(newPassword, 12);
     await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0 WHERE id = ?',
       [newHash, req.user.userId]);
-    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [req.user.userId]);
+    await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'password_change' WHERE user_id = ? AND revoked_at IS NULL", [req.user.userId]);
 
     // 新しいトークンを発行(変更直後に再ログインさせないため)。
     // token_revoked_at とiatが同じ秒だと失効扱いになるので、sid付き(セッション有効判定)で発行する。
@@ -1158,7 +1163,7 @@ router.post('/change-password', passwordActionLimiter, verifyToken, async (req, 
 router.post('/revoke-all-sessions', verifyToken, async (req, res) => {
   try {
     await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [req.user.userId]);
-    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [req.user.userId]);
+    await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'logout_all' WHERE user_id = ? AND revoked_at IS NULL", [req.user.userId]);
     // ほかの端末の暗号鍵にも、これからは送らない(次に開いた端末が自分の鍵を登録し直す)
     await require('../utils/deviceKeys').clearAll(req.user.userId);
     sessionEvents.emit('revoked', { userId: req.user.userId });
@@ -1269,7 +1274,7 @@ router.post('/sessions/revoke', verifyToken, async (req, res) => {
   try {
     const id = req.body && req.body.id;
     if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'id が必要です' });
-    await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND revoked_at IS NULL', [id, req.user.userId]);
+    await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL", [id === req.user.sid ? 'logout' : 'user_revoke', id, req.user.userId]);
     sessionEvents.emit('revoked', { userId: req.user.userId, sid: id });
     res.json({ ok: true });
   } catch (e) {
@@ -1287,7 +1292,7 @@ router.post('/logout', verifyToken, async (req, res) => {
       try { await require('../utils/fcm').removeToken(req.user.userId, fcmToken); } catch (e) { console.error('[auth] fcm removeToken:', e.message); }
     }
     if (req.user.sid) {
-      await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.user.sid, req.user.userId]);
+      await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'logout' WHERE id = ? AND user_id = ? AND revoked_at IS NULL", [req.user.sid, req.user.userId]);
       sessionEvents.emit('revoked', { userId: req.user.userId, sid: req.user.sid });
     }
     res.json({ ok: true });

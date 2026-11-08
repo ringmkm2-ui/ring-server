@@ -305,6 +305,16 @@ test('session revoke: 指定した端末だけ失効する。他人のsidは404'
   const ss = (await adm('GET', '/users/' + alice.userId)).data.sessions;
   assert.equal(ss.find(s => s.id === sid2).revoked, true);
   assert.ok(ss.some(s => !s.revoked));
+  const rv = ss.find(s => s.id === sid2);
+  assert.equal(rv.revokedReason, 'admin_revoke', '失効の理由が記録される');
+  assert.ok(rv.revokedAt, '失効の時刻が記録される');
+  assert.equal(ss.find(s => !s.revoked).revokedReason, null);
+
+  // 本人のログアウトは logout として残る(あとのテストが使う alice の既定トークンは切らず、別に作った端末で試す)
+  const t3 = await login(alice);
+  assert.equal((await callWith(alice, t3)('POST', '/api/auth/logout', {})).status, 200);
+  const ss2 = (await adm('GET', '/users/' + alice.userId)).data.sessions;
+  assert.ok(ss2.some(s => s.revokedReason === 'logout'), '本人ログアウトの理由が logout で残る');
 });
 
 test('posts: 一覧・検索・delete・restore', async () => {

@@ -20,7 +20,7 @@ async function removeAccount(userId) {
   await db.run('DELETE FROM call_notes WHERE owner_id = ?', [userId]);
   await db.run('DELETE FROM call_summaries WHERE owner_id = ?', [userId]);
   // ログイン関連の残り(2FA秘密鍵・予備コード・認証コード・端末セッション・プッシュ宛先)も消す
-  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [userId]);
+  await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'account_delete' WHERE user_id = ? AND revoked_at IS NULL", [userId]);
   await db.run('DELETE FROM email_codes WHERE username = (SELECT username FROM users WHERE id = ?)', [userId]);
   try { await db.run('DELETE FROM fcm_tokens WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] fcm_tokens cleanup:', e.message); }
   try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
