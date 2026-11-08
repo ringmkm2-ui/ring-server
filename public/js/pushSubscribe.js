@@ -27,7 +27,7 @@
       if (!Array.isArray(ring)) ring = [ring];
       const req = indexedDB.open('brochat-e2e', 1);
       req.onupgradeneeded = () => req.result.createObjectStore('kv');
-      req.onsuccess = () => { try { req.result.transaction('kv', 'readwrite').objectStore('kv').put(ring, 'keyring'); } catch (e) {} };
+      req.onsuccess = () => { try { const st = req.result.transaction('kv', 'readwrite').objectStore('kv'); st.put(uid, 'uid'); st.put(ring, 'keyring'); } catch (e) {} };
     } catch (e) {}
   }
   setTimeout(copyKeyringForSW, 1500);

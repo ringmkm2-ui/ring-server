@@ -301,6 +301,7 @@ async function main() {
   app.use('/api/claude-feed', require('./routes/claudeFeed'));
   app.use('/api/settings', settingsRouter);
   app.use('/api/devices', require('./routes/devices'));
+  app.use('/api/ratchet', require('./routes/ratchet'));
   app.use('/api/link-preview', require('./routes/linkPreview'));
   app.use('/api/moderation', require('./routes/moderation'));
   app.use('/api/staff', require('./routes/staff'));

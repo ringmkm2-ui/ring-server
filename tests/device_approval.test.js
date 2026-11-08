@@ -28,7 +28,11 @@ test('1台目はそのまま有効。2台目は承認待ちで相手に配られ
   assert.notEqual(r1.status, 'pending');
   assert.deepEqual(await keysOf(B, A), [d1.pk]);
   const thief = dev(); A.thief = thief;
-  const r2 = await reg(A, thief);
+  // 盗んだ人は別のログイン(別セッション)から鍵を登録する
+  const lg = await S.req('POST', '/api/auth/login', { ip: A.ip, body: { username: A.username, password: A.password } });
+  assert.ok(lg.data && lg.data.token, 'login');
+  A.thiefCall = (m, p, b) => S.req(m, p, { token: lg.data.token, body: b, ip: A.ip });
+  const r2 = (await A.thiefCall('POST', '/api/friends/publickey', { publicKey: thief.pk })).data;
   assert.equal(r2.status, 'pending');
   assert.match(r2.code, /^\d{3} \d{3}$/);
   assert.deepEqual(await keysOf(B, A), [d1.pk], '承認前の鍵は相手に渡らない');
@@ -43,7 +47,7 @@ test('プロフィール更新の経路でも承認を素通りできない', as
 
 test('承認待ちの端末からは暗号文を送れない。有効な端末からは送れる', async () => {
   const body = pk => ({ recipientId: B.userId, content: `e3:${pk}:${'A'.repeat(44)}.abcd`, encrypted: true });
-  const bad = await A.call('POST', '/api/messages/send', body(A.thief.pk));
+  const bad = await A.thiefCall('POST', '/api/messages/send', body(A.thief.pk));
   assert.equal(bad.status, 403);
   assert.equal(bad.data.code, 'DEVICE_PENDING');
   const ok = await A.call('POST', '/api/messages/send', body(A.d1.pk));

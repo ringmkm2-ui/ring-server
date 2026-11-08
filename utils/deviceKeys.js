@@ -37,14 +37,15 @@ async function activate(userId, publicKey, now) {
 }
 
 // 戻り値: { status: 'active'|'pending', isNew: 今回初めて登録された, activated: 今回新しく有効になった, approveAfter }
-async function touch(userId, publicKey) {
+async function touch(userId, publicKey, sid) {
   const now = Date.now();
   const row = await db.get('SELECT status, approve_after FROM user_pubkeys WHERE user_id = ? AND public_key = ?', [userId, publicKey]);
   if (row) {
     if (row.status === 'pending') {
       const at = Number(row.approve_after) || 0;
       if (enabled() && at > now) {
-        await db.run('UPDATE user_pubkeys SET last_seen_at = ? WHERE user_id = ? AND public_key = ?', [now, userId, publicKey]);
+        // ログインし直しても承認待ちのセッションとして止められるよう、今のセッションを覚え直す
+        await db.run('UPDATE user_pubkeys SET last_seen_at = ?, pending_sid = COALESCE(?, pending_sid) WHERE user_id = ? AND public_key = ?', [now, sid || null, userId, publicKey]);
         return { status: 'pending', isNew: false, activated: false, approveAfter: at };
       }
       await activate(userId, publicKey, now);
@@ -52,6 +53,8 @@ async function touch(userId, publicKey) {
     }
     // inactive は「全端末ログアウト」等で止めた鍵。ログインし直した本人の端末なので戻す(トークンはその時に失効済み)
     await activate(userId, publicKey, now);
+    // 同じセッションで元の鍵を復元した本人を、承認待ちのまま止めない
+    if (sid) await db.run("UPDATE user_pubkeys SET pending_sid = NULL WHERE user_id = ? AND pending_sid = ?", [userId, sid]);
     return { status: 'active', isNew: false, activated: false };
   }
   // pending は数えない(盗んだ人が先に鍵を置いて、本人の次の端末を待たせることはできない)
@@ -62,8 +65,8 @@ async function touch(userId, publicKey) {
   if (recent) {
     const at = now + WAIT_MS();
     await db.run(
-      "INSERT INTO user_pubkeys (user_id, public_key, created_at, last_seen_at, status, approve_after) VALUES (?, ?, ?, ?, 'pending', ?)",
-      [userId, publicKey, now, now, at]
+      "INSERT INTO user_pubkeys (user_id, public_key, created_at, last_seen_at, status, approve_after, pending_sid) VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+      [userId, publicKey, now, now, at, sid || null]
     );
     await trim(userId);
     return { status: 'pending', isNew: true, activated: false, approveAfter: at };
@@ -84,6 +87,24 @@ async function statusOf(userId, publicKey) {
 async function isPending(userId, publicKey) {
   const r = await statusOf(userId, publicKey);
   return enabled() && r.status === 'pending' && (r.approveAfter || 0) > Date.now();
+}
+// 承認待ちの端末でログインしたセッションか。暗号文の形式に関係なく、送信と編集をここで止める
+async function isPendingSession(userId, sid) {
+  if (!sid || !enabled()) return false;
+  const r = await db.get(
+    "SELECT 1 AS ok FROM user_pubkeys WHERE user_id = ? AND pending_sid = ? AND status = 'pending' AND approve_after > ? LIMIT 1",
+    [userId, sid, Date.now()]
+  );
+  return !!r;
+}
+// グループとコミュニティの送信にも同じ確認を入れるための部品
+async function requireApprovedSession(req, res, next) {
+  try {
+    if (await isPendingSession(req.user && req.user.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
+    next();
+  } catch (e) { next(e); }
 }
 async function listPending(userId) {
   const rows = await db.all(
@@ -168,4 +189,4 @@ async function announce(userId) {
   } catch (e) { console.error('[deviceKeys] announce failed:', e.message); }
 }
 
-module.exports = { touch, activeKeys, activeKeysMany, clearAll, newestKeyAt, statusOf, isPending, listPending, approve, reject, announce, codeFor, enabled };
+module.exports = { touch, activeKeys, activeKeysMany, clearAll, newestKeyAt, statusOf, isPending, isPendingSession, requireApprovedSession, listPending, approve, reject, announce, codeFor, enabled };

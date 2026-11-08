@@ -485,6 +485,8 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/nacl-util.min.js"></script>
 <script src="/js/e2eMulti.js"></script>
 <script src="/js/lineImport.js"></script>
+<script src="/js/ratchet.js"></script>
+<script src="/js/ratchetClient.js"></script>
 <script src="/js/qrcode.min.js"></script>
 <script src="/js/safetyNumber.js"></script>
 <script src="/js/session.js"></script>
@@ -1033,9 +1035,9 @@ async function multiRecipients(recipientId) {
     if (recipientId === otherId) refreshSnUi(peers);
     if (r.hold) throw SafetyNumber.holdError();
   }
-  if (!peers.length) return { peers, all: null };
-  if (peers.length === 1 && !mineOthers.length) return { peers, all: null };
-  return { peers, all: [...peers, ...mineOthers] };
+  if (!peers.length) return { peers, all: null, mine: mineOthers };
+  if (peers.length === 1 && !mineOthers.length) return { peers, all: null, mine: mineOthers };
+  return { peers, all: [...peers, ...mineOthers], mine: mineOthers };
 }
 
 // ---- 安全番号(鍵の照合) ----
@@ -1121,7 +1123,18 @@ async function encryptMessage(plaintext, recipientId) {
   const myKeys = await getOrCreateMyKeyPair();
   // 送信時は毎回サーバーの最新鍵を取りに行く。古いキャッシュで暗号化すると
   // 相手が鍵を作り直していた場合に相手側で絶対に開けない
-  const { peers, all } = await multiRecipients(recipientId);
+  const { peers, all, mine } = await multiRecipients(recipientId);
+  // 前方秘匿性のある形式(e5)。使える人は常にこちら。相手の端末がまだ対応していなければ、その端末の分だけ旧方式になる
+  if (window.bcE5 && bcE5.get()) {
+    const c = bcE5.get();
+    // 一度e5で話した相手には、サーバーの設定が無効と言っても旧方式へ落とさない
+    const pinnedPeer = await c.isPinned(recipientId);
+    if (pinnedPeer || (peers.length && await bcE5.enabled())) {
+      const sealedR = await c.seal(nacl.util.decodeUTF8(plaintext), peers, { from: myUserId, to: recipientId, mine });
+      if (sealedR) return { encrypted: true, content: sealedR };
+      if (pinnedPeer) { const e = new Error('相手の端末の暗号鍵を確かめられないため送りませんでした'); e.code = 'RATCHET_DOWNGRADE'; throw e; }
+    }
+  }
   if (all && window.E2EMulti) {
     const sealed = E2EMulti.seal(nacl.util.decodeUTF8(plaintext), myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
     if (sealed) return { encrypted: true, content: sealed };
@@ -1179,16 +1192,49 @@ function senderVerdict(peerId, senderPub, text) {
 
 // メッセージ内容を復号化
 // senderId が自分なら「自分が送ったメッセージ」なので、相手の公開鍵で開く
-async function decryptMessage(encryptedString, senderId) {
+// 画像・動画・ファイルの鍵を開く(e5 と e3 の両方)
+async function openMediaKey(mk, senderId) {
+  await getOrCreateMyKeyPair();
+  const k = window.bcE5 && bcE5.isRatchet(mk)
+    ? await bcE5.get().open(mk, senderId != null ? { from: senderId, to: String(senderId) === String(myUserId) ? otherId : myUserId } : { members: [myUserId, otherId] })
+    : (window.E2EMulti ? E2EMulti.open(mk, ringForMulti()) : null);
+  if (!k) throw new Error('この端末あての鍵がありません');
+  return k;
+}
+
+async function decryptMessage(encryptedString, senderId, sentAt) {
+  // 友だちなら誰でも不正なバイト列を送れる。文字に戻せない時の例外で履歴の読み込みごと止めない
+  try { return await decryptMessageInner(encryptedString, senderId, sentAt); }
+  catch (e) { if (e instanceof URIError) return null; throw e; }
+}
+async function decryptMessageInner(encryptedString, senderId, sentAt) {
   await getOrCreateMyKeyPair();
   const iAmSender = String(senderId) === String(myUserId);
   const peerId = iAmSender ? otherId : senderId;
+  if (window.bcE5 && bcE5.isRatchet(encryptedString)) {
+    const c = bcE5.get();
+    const out = c ? await c.open(encryptedString, { from: senderId, to: iAmSender ? otherId : myUserId, sentAt }) : null;
+    if (!out) return null;
+    let text;
+    // 友だちなら誰でも不正なバイト列を送れる。ここで例外にすると履歴の読み込みごと止まる
+    try { text = nacl.util.encodeUTF8(out); } catch (e) { return null; }
+    if (!iAmSender) { const p = E2ERatchet.parse(encryptedString); return senderVerdict(peerId, p && p.senderPub, text); }
+    return text;
+  }
+  // e5で話すようになった後に届いた旧方式の文には印を付ける(サーバーが弱い方式の文を混ぜても気づけるように)
+  let oldMark = '';
+  if (!iAmSender && sentAt && window.bcE5 && bcE5.get()) {
+    try {
+      const pin = await bcE5.get().pinnedAt(peerId);
+      if (pin && Date.parse(sentAt) > pin) oldMark = (window.i18n && i18n.t('e5_old_format', '[古い暗号方式で届きました] ')) || '[古い暗号方式で届きました] ';
+    } catch (e) {}
+  }
   if (window.E2EMulti && E2EMulti.isMulti(encryptedString)) {
     const out = E2EMulti.open(encryptedString, ringForMulti());
     if (!out) console.warn('復号化に失敗しました(e3: この端末あての分がありません)');
     if (!out) return null;
     const text = nacl.util.encodeUTF8(out);
-    if (!iAmSender) { const p = E2EMulti.parse(encryptedString); return senderVerdict(peerId, p && p.senderPub, text); }
+    if (!iAmSender) { const p = E2EMulti.parse(encryptedString); return oldMark + senderVerdict(peerId, p && p.senderPub, text); }
     return text;
   }
   const parsed = parseCipher(encryptedString);
@@ -1274,7 +1320,17 @@ async function candidateSharedKeys() {
 //   画像は暗号化バイナリがそのままsrcに渡り表示できない、という形でバグが起きる）。
 // 戻り値: 表示用にそのままrenderできる文字列（テキストは平文、メディアは
 //   {text, media: 復号済みBase64, mediaType} を再JSON化した文字列）。
-async function decryptMessageContent(rawContent, senderId) {
+// メッセージの行を開く。e5 はメッセージIDと結びつける(後で取り消された時に端末の中からも消すため)
+async function decryptFor(msg, senderId) {
+  const out = await decryptMessageContent(msg.content, senderId, msg.createdAt);
+  if (out !== null && window.bcE5 && bcE5.isRatchet(msg.content) && msg.id) {
+    // 同じ暗号文が別のメッセージとして届いたら再送なので見せない
+    const first = await bcE5.get().bindMessage(msg.id, msg.content, msg.expiresAt).catch(() => true);
+    if (first === false) return null;
+  }
+  return out;
+}
+async function decryptMessageContent(rawContent, senderId, sentAt) {
   let parsed = null;
   try {
     parsed = JSON.parse(rawContent);
@@ -1290,7 +1346,7 @@ async function decryptMessageContent(rawContent, senderId) {
     }
     if (parsed.media && parsed.mediaType) {
       // Base64直送り方式: media フィールドだけを復号する
-      const decryptedMedia = await decryptMessage(parsed.media, senderId);
+      const decryptedMedia = await decryptMessage(parsed.media, senderId, sentAt);
       if (decryptedMedia === null) {
         return null;
       }
@@ -1299,7 +1355,7 @@ async function decryptMessageContent(rawContent, senderId) {
   }
 
   // 通常のテキストメッセージ
-  return await decryptMessage(rawContent, senderId);
+  return await decryptMessage(rawContent, senderId, sentAt);
 }
 
 // パートナーアバター（ヘッダー）
@@ -1446,7 +1502,7 @@ async function sendMediaViaCloudinary(f, t) {
     // 対称鍵(secretbox)として cloudinaryE2EUpload.js にそのまま渡せる。
     const myKeys = await getOrCreateMyKeyPair();
     // 相手か自分が複数の端末を使っている時は、ファイル用の鍵を新しく作って、その鍵を全端末あてに包む(mediaKeys)
-    const { peers, all } = await multiRecipients(otherId);
+    const { peers, all, mine } = await multiRecipients(otherId);
     const recipientPublicKey = peers.length ? nacl.util.decodeBase64(peers[0]) : await getRecipientPublicKey(otherId);
     if (!recipientPublicKey) {
       alert(i18n.t('err_encryption_not_ready'));
@@ -1454,7 +1510,11 @@ async function sendMediaViaCloudinary(f, t) {
       return;
     }
     let sharedKey, mediaKeys = null;
-    if (all && window.E2EMulti) {
+    const e5Peer = window.bcE5 && bcE5.get() && await bcE5.get().isPinned(otherId);
+    if (window.bcE5 && bcE5.get() && (e5Peer || (peers.length && await bcE5.enabled()))) {
+      sharedKey = nacl.randomBytes(32);
+      mediaKeys = await bcE5.get().seal(sharedKey, peers, { from: myUserId, to: otherId, mine });
+    } else if (all && window.E2EMulti) {
       sharedKey = nacl.randomBytes(32);
       mediaKeys = E2EMulti.seal(sharedKey, myKeys.secretKey, nacl.util.encodeBase64(myKeys.publicKey), all);
     }
@@ -1746,12 +1806,7 @@ async function loadLazyMedia(placeholder) {
       localFile: window.__localFiles && window.__localFiles.get(cm.mediaUrl),
       getKeys: async () => {
         const mk = cm.mediaKeys;
-        if (mk && window.E2EMulti) {
-          await getOrCreateMyKeyPair();
-          const k = E2EMulti.open(mk, ringForMulti());
-          if (!k) throw new Error('この端末あての鍵がありません');
-          return [k];
-        }
+        if (mk) return [await openMediaKey(mk, cm.senderId)];
         return await candidateSharedKeys();
       },
     });
@@ -1765,12 +1820,8 @@ async function loadLazyMedia(placeholder) {
     try {
       let keys;
       const mk = placeholder._cloudinaryMedia.mediaKeys;
-      if (mk && window.E2EMulti) {
-        await getOrCreateMyKeyPair();
-        const k = E2EMulti.open(mk, ringForMulti());
-        if (!k) throw new Error('この端末あての鍵がありません');
-        keys = [k];
-      } else keys = await candidateSharedKeys();
+      if (mk) keys = [await openMediaKey(mk, placeholder._cloudinaryMedia.senderId)];
+      else keys = await candidateSharedKeys();
       if (!keys.length) throw new Error('相手の公開鍵が見つかりません');
 
       // ぼかしプレビュー: 本体のダウンロード・復号を待たず、暗号化メタデータだけ先に開いて色合いと縦横比を出す
@@ -2104,6 +2155,7 @@ function parseMsgContent(content, msg) {
           mediaUrl: parsed.mediaUrl,
           encryptedMetadata: parsed.encryptedMetadata,
           mediaKeys: parsed.mediaKeys || null,
+          senderId: msg && msg.senderId,
         },
       };
     } else if (parsed && parsed.media && parsed.mediaType) {
@@ -2374,7 +2426,9 @@ function attachDmLinkPreview(msgDiv, bubble, meta, text, msg) {
   });
 }
 
+const _e5Forgotten = new Set();
 function renderMessageImpl(msg) {
+  if (msg.deletedAt && !_e5Forgotten.has(msg.id) && window.bcE5 && bcE5.get()) { _e5Forgotten.add(msg.id); bcE5.get().forgetMessage(msg.id).catch(() => {}); }
   if (!msg || !msg.id) return null;
   // 送信の応答が先に返って正式なメッセージに置き換わった仮メッセージは、もう描かない(二重表示防止)
   if (String(msg.id).startsWith('temp-') && !realMessages.some(m => m.id === msg.id)) return null;
@@ -2624,10 +2678,10 @@ async function syncMessages() {
       if (msg.encrypted && !msg.deletedAt) {
         if (msg.senderId === myUserId) {
           const cached = getOwnPlaintext(msg.id);
-          const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+          const own = cached !== null ? cached : await decryptFor(msg, myUserId);
           displayContent = own !== null ? own : '(このデバイスでは表示できません)';
         } else {
-          const decrypted = await decryptMessageContent(msg.content, msg.senderId);
+          const decrypted = await decryptFor(msg, msg.senderId);
           displayContent = decrypted !== null ? decrypted : '(復号化に失敗しました)';
         }
       }
@@ -2733,7 +2787,7 @@ function connectRealWS() {
             // 相手からのメッセージは復号化してから表示
             let displayContent = msg.content;
             if (msg.encrypted) {
-              const decrypted = await decryptMessageContent(msg.content, msg.senderId);
+              const decrypted = await decryptFor(msg, msg.senderId);
               if (decrypted !== null) displayContent = decrypted;
               else displayContent = '(復号化に失敗しました)';
             }
@@ -2783,7 +2837,7 @@ function connectRealWS() {
             let own = msg.content;
             if (msg.encrypted) {
               const cached = getOwnPlaintext(msg.id);
-              const dec = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+              const dec = cached !== null ? cached : await decryptFor(msg, myUserId);
               own = dec !== null ? dec : '(このデバイスでは表示できません)';
             }
             const displayMsg = { ...msg, content: own };
@@ -2797,6 +2851,8 @@ function connectRealWS() {
         // 編集されたメッセージのみローカル更新（全体同期ではなく差分更新）
         const msg = realMessages.find(m => m.id === data.messageId);
         if (msg) {
+          // 編集前の文は端末の中からも消す
+          if (window.bcE5 && bcE5.get()) bcE5.get().forgetMessage(data.messageId).catch(() => {});
           let newContent = data.content;
           if (data.encrypted && msg.senderId !== myUserId) {
             const decrypted = await decryptMessageContent(data.content, msg.senderId);
@@ -2820,6 +2876,7 @@ function connectRealWS() {
         }
       } else if (data.type === 'message_deleted') {
         // 削除されたメッセージのみローカル更新
+        if (window.bcE5 && bcE5.get()) bcE5.get().forgetMessage(data.messageId).catch(() => {});
         const msg = realMessages.find(m => m.id === data.messageId);
         if (msg) {
           msg.deletedAt = new Date().toISOString();
@@ -2874,6 +2931,7 @@ function connectRealWS() {
         if (data.scope === 'dm' && String(data.peerId) === String(otherId) && window.bcSetDmTtl) bcSetDmTtl(Number(data.ttlSeconds) || 0);
       } else if (data.type === 'messages_expired') {
         // 期限が来て消えたメッセージ
+        if (data.scope === 'dm' && Array.isArray(data.messageIds) && window.bcE5 && bcE5.get()) data.messageIds.forEach(id => bcE5.get().forgetMessage(id).catch(() => {}));
         if (data.scope === 'dm' && String(data.peerId) === String(otherId) && Array.isArray(data.messageIds)) removeExpiredMessages(data.messageIds);
       } else if (data.type === 'call_offer') {
         onCallOffer(data);
@@ -3081,14 +3139,14 @@ function clearRenderedMessages() {
 async function toDisplayMsg(msg) {
   let displayContent = msg.content;
   if (msg.encrypted && msg.senderId !== myUserId && !msg.deletedAt) {
-    const decrypted = await decryptMessageContent(msg.content, msg.senderId);
+    const decrypted = await decryptFor(msg, msg.senderId);
     if (decrypted !== null) displayContent = decrypted;
     else displayContent = '(復号化に失敗しました)';
   } else if (msg.encrypted && msg.senderId === myUserId && !msg.deletedAt) {
     // 自分が送った暗号化メッセージはローカルキャッシュから復元
     // (取り消したものは中身が空なので開かない。以前は空の暗号文を開こうとしてエラーを出していた)
     const cached = getOwnPlaintext(msg.id);
-    const own = cached !== null ? cached : await decryptMessageContent(msg.content, myUserId);
+    const own = cached !== null ? cached : await decryptFor(msg, myUserId);
     displayContent = own !== null ? own : '(このデバイスでは表示できません)';
   }
   return { ...msg, content: displayContent };

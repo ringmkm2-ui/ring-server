@@ -48,8 +48,16 @@ async function startServer(extraEnv = {}, opts = {}) {
   let ipSeq = 1;
   const nextIp = () => `10.${Math.floor(Math.random() * 200)}.${(ipSeq >> 8) & 255}.${ipSeq++ & 255}`;
 
-  async function req(method, p, { token, body, ip } = {}) {
+  // 待ちが長いテストの後、サーバーが閉じた keep-alive の接続を使い回して落ちることがある。その時だけ1回やり直す
+  async function req(method, p, opts = {}) {
+    try { return await req0(method, p, opts); } catch (e) {
+      if (e && e.cause && e.cause.code === 'UND_ERR_SOCKET') return req0(method, p, opts);
+      throw e;
+    }
+  }
+  async function req0(method, p, { token, body, ip } = {}) {
     const res = await fetch(base + p, {
+
       method,
       headers: {
         'content-type': 'application/json',

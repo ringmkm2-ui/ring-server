@@ -10,7 +10,7 @@ const CACHE_VERSION = 'v2.0.0';
 const CACHE_NAME = `bro-chat-${CACHE_VERSION}`;
 
 // 通知の本文をこの端末の中でだけ復号するため(サーバーは本文を読めないまま)
-try { importScripts('/js/nacl.min.js', '/js/nacl-util.min.js', '/js/e2eMulti.js'); } catch (e) {}
+try { importScripts('/js/nacl.min.js', '/js/nacl-util.min.js', '/js/e2eMulti.js', '/js/ratchet.js'); } catch (e) {}
 function idbGetKeyring() {
   return new Promise(resolve => {
     try {
@@ -26,11 +26,42 @@ function idbGetKeyring() {
     } catch (e) { resolve(null); }
   });
 }
-async function swDecrypt(cipher, senderPubB64) {
+function idbGetKv(name) {
+  return new Promise(resolve => {
+    try {
+      const req = indexedDB.open('brochat-e2e', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => {
+        const g = req.result.transaction('kv', 'readonly').objectStore('kv').get(name);
+        g.onsuccess = () => resolve(g.result || null);
+        g.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+}
+async function swDecrypt(cipher, senderPubB64, senderId) {
   try {
     if (!cipher || !self.nacl || !nacl.util) return null;
     const ring = await idbGetKeyring();
     if (!Array.isArray(ring) || !ring.length) return null;
+    if (self.E2ERatchet && E2ERatchet.isRatchet(cipher)) {
+      // 通知で開いた分も端末の中に保存される(鍵は進むが、後でトークを開いた時に同じ本文が読める)
+      const p = E2ERatchet.parse(cipher);
+      const uid = await idbGetKv('uid');
+      const mine = p && ring.find(k => { try { return p.entries.has(nacl.util.encodeBase64(new Uint8Array(k.publicKey))); } catch (e) { return false; } });
+      if (!uid || !mine || !senderId) return null;
+      const client = E2ERatchet.makeClient({
+        uid,
+        identity: () => ({ pub: new Uint8Array(mine.publicKey), sec: new Uint8Array(mine.secretKey) }),
+        http: async () => null,
+      });
+      const out = await client.open(cipher, { from: senderId, to: uid });
+      if (!out) return null;
+      let t = nacl.util.encodeUTF8(out);
+      if (t.trim().startsWith('{')) { try { const o = JSON.parse(t); if (o && typeof o.text === 'string') t = o.text; } catch (e) {} }
+      return t.length > 200 ? t.slice(0, 200) + '…' : t;
+    }
     let body = cipher, embS = null, embR = null;
     if (self.E2EMulti && E2EMulti.isMulti(cipher)) {
       const out = E2EMulti.open(cipher, ring.map(k => { try { return { pk: nacl.util.encodeBase64(new Uint8Array(k.publicKey)), sk: new Uint8Array(k.secretKey) }; } catch (e) { return null; } }).filter(Boolean));
@@ -75,6 +106,9 @@ const urlsToCache = [
   '/js/nacl-util.min.js',
   '/js/e2eMulti.js',
   '/js/lineImport.js',
+  '/js/ratchet.js',
+  '/js/ratchetClient.js',
+  '/js/historyBackup.js',
   '/js/qrcode.min.js',
   '/js/safetyNumber.js',
   '/js/cloudinarySign.js',
@@ -221,7 +255,7 @@ self.addEventListener('push', event => {
       const { senderId, senderName, senderPic, preview, cipher, senderPub } = data;
       const title = senderName || 'メッセージ';
       event.waitUntil((async () => {
-      const text = (await swDecrypt(cipher, senderPub)) || preview || 'メッセージ';
+      const text = (await swDecrypt(cipher, senderPub, senderId)) || preview || 'メッセージ';
       const options = {
         body: text,
         icon: notifIcon(senderPic),

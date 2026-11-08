@@ -102,7 +102,26 @@ async function initDB() {
       last_seen_at INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       approve_after INTEGER,
+      pending_sid TEXT,
       PRIMARY KEY (user_id, public_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS device_prekeys (
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL,
+      spk_id INTEGER NOT NULL,
+      spk_pub TEXT NOT NULL,
+      spk_sig TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, device_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS device_otks (
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL,
+      otk_id INTEGER NOT NULL,
+      pub TEXT NOT NULL,
+      PRIMARY KEY (device_key, otk_id)
     );
 
     CREATE TABLE IF NOT EXISTS password_resets (
