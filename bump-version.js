@@ -43,13 +43,13 @@ const htmlFiles = [
   'public/talklist.html'
 ];
 
-const htmlVersion = `v${newVersion} beta`;
+const htmlVersion = `v${newVersion}`;
 
 htmlFiles.forEach(file => {
   const filePath = path.join(__dirname, file);
   let content = fs.readFileSync(filePath, 'utf8');
   
-  // Match: <div class="version-badge">Bro Chat vX.Y beta</div>
+  // Match: <div class="version-badge">Bro Chat vX.Y</div> (2026-11-08 公式リリースで beta を外した)
   const oldBadge = content.match(/<div class="version-badge">Bro Chat v[\d.]+.*?<\/div>/);
   if (oldBadge) {
     const newBadge = `<div class="version-badge">Bro Chat ${htmlVersion}</div>`;
