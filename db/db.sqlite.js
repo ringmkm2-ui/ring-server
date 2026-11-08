@@ -142,7 +142,8 @@ async function initDB() {
       ip TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      revoked_at TEXT
+      revoked_at TEXT,
+      revoked_reason TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -531,6 +532,7 @@ async function initDB() {
     messages: [['expires_at', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
+    user_sessions: [['revoked_reason', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
     community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],
   };

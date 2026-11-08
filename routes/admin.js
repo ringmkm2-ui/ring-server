@@ -217,7 +217,7 @@ router.get('/users/:id', asyncHandler(async (req, res) => {
   if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
   const fails = await failsFor([u.username]);
   const sessions = await db.all(
-    'SELECT id, device, ip, created_at, last_seen_at, revoked_at FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+    'SELECT id, device, ip, created_at, last_seen_at, revoked_at, revoked_reason FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
     [u.id]
   );
   const n = async (sql, p) => (await count(sql, p)) || 0;
@@ -232,7 +232,7 @@ router.get('/users/:id', asyncHandler(async (req, res) => {
   const by = await db.all(`${REPORT_SELECT} WHERE r.reporter_id = ? ORDER BY r.created_at DESC LIMIT 20`, [u.id]);
   res.json({
     user: { ...toUser(u, fails, getOnlineFn()), bio: u.bio || '', profilePic: u.profile_pic || null },
-    sessions: sessions.map(x => ({ id: x.id, device: x.device, ip: x.ip, createdAt: x.created_at, lastSeenAt: x.last_seen_at, revoked: !!x.revoked_at })),
+    sessions: sessions.map(x => ({ id: x.id, device: x.device, ip: x.ip, createdAt: x.created_at, lastSeenAt: x.last_seen_at, revoked: !!x.revoked_at, revokedAt: x.revoked_at || null, revokedReason: x.revoked_reason || null })),
     counts,
     reportsAgainst: against.map(toReport),
     reportsBy: by.map(toReport),
@@ -244,7 +244,7 @@ router.post('/users/:id/logout', asyncHandler(async (req, res) => {
   const u = await findUser(req.params.id);
   if (!u) return res.status(404).json({ error: 'ユーザーが見つかりません' });
   await db.run('UPDATE users SET token_revoked_at = CURRENT_TIMESTAMP WHERE id = ?', [u.id]);
-  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
+  await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'admin_logout' WHERE user_id = ? AND revoked_at IS NULL", [u.id]);
   try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}
   await audit(req, 'user.logout', userTarget(u), '全端末ログアウト');
   res.json({ ok: true });
@@ -295,7 +295,7 @@ router.post('/users/:id/sessions/:sid/revoke', asyncHandler(async (req, res) => 
   const sid = String(req.params.sid).slice(0, 100);
   const s = await db.get('SELECT id, device FROM user_sessions WHERE id = ? AND user_id = ?', [sid, u.id]);
   if (!s) return res.status(404).json({ error: 'セッションが見つかりません' });
-  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL', [s.id]);
+  await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'admin_revoke' WHERE id = ? AND revoked_at IS NULL", [s.id]);
   try { sessionEvents.emit('revoked', { userId: u.id, sid: s.id }); } catch (e) {}
   await audit(req, 'user.session_revoke', userTarget(u), s.device ? `端末: ${String(s.device).slice(0, 80)}` : 'セッション失効');
   res.json({ ok: true });
@@ -310,7 +310,7 @@ router.post('/users/:id/password', asyncHandler(async (req, res) => {
   if (bad) return res.status(400).json({ error: bad });
   const hash = await require('../utils/passwordHash').hash(password, 12);
   await db.run('UPDATE users SET password_hash = ?, token_revoked_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = 0 WHERE id = ?', [hash, u.id]);
-  await db.run('UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL', [u.id]);
+  await db.run("UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'admin_password' WHERE user_id = ? AND revoked_at IS NULL", [u.id]);
   try { sessionEvents.emit('revoked', { userId: u.id }); } catch (e) {}
   await audit(req, 'user.password', userTarget(u), 'パスワードを再設定');
   res.json({ ok: true });
