@@ -526,6 +526,13 @@ async function initDB() {
   } catch (e) {
     console.log('[db] fcm_tokens migration skip:', e.message);
   }
+  // 端末ごとのFCM暗号鍵(32バイト, Base64)。これがある端末には、FCMの data を暗号化して送る
+  // (Googleのサーバーに送信者名などを読ませない)。古いAPKの行は NULL のままで、今まで通り平文。
+  try {
+    await pool.query('ALTER TABLE fcm_tokens ADD COLUMN IF NOT EXISTS push_key TEXT');
+  } catch (e) {
+    console.log('[db] fcm_tokens push_key migration skip:', e.message);
+  }
   // 同じFCMトークンが複数アカウントに紐づいている行を整理する(最後に登録したアカウントだけ残す)。
   // 残っていると、別アカウントでの着信・通知がこの端末にも届く
   try {

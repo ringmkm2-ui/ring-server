@@ -554,6 +554,7 @@ async function initDB() {
     user_sessions: [['revoked_reason', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
     community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],
+    fcm_tokens: [['push_key', 'TEXT']], // 端末ごとのFCM暗号鍵(db.postgres.js と同じ)
   };
   for (const [table, cols] of Object.entries(addCols)) {
     const info = db.exec(`PRAGMA table_info(${table})`);
