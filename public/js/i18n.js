@@ -577,6 +577,8 @@
     setPrivacyScreen_d: { ja: "アプリ切替やバックグラウンドで、画面の中身を見せません。", en: "Hides the contents when you switch apps or the app goes to the background.", "zh-CN": "切换应用或转入后台时，不显示屏幕内容。", ko: "앱을 전환하거나 백그라운드로 갈 때 화면 내용을 보여주지 않습니다." },
     setBlockShots_t: { ja: "スクショ・画面録画を禁止", en: "Block screenshots and screen recording", "zh-CN": "禁止截屏和录屏", ko: "스크린샷·화면 녹화 금지" },
     setBlockShots_d: { ja: "この端末でのスクリーンショットと画面録画を止めます。", en: "Stops screenshots and screen recording on this device.", "zh-CN": "禁止在此设备上截屏和录屏。", ko: "이 기기에서 스크린샷과 화면 녹화를 막습니다." },
+    setIncogKb_t: { ja: "シークレットキーボード", en: "Incognito keyboard", "zh-CN": "无痕键盘", ko: "시크릿 키보드" },
+    setIncogKb_d: { ja: "キーボードに入力を覚えさせません(対応するキーボードのみ)。", en: "Asks the keyboard not to learn what you type (only on keyboards that support it).", "zh-CN": "要求键盘不学习你输入的内容（仅限支持的键盘）。", ko: "키보드가 입력 내용을 학습하지 않도록 합니다(지원하는 키보드만)." },
     blockshots_note: { ja: "対応した新しいアプリ版が必要です", en: "Needs a newer app version that supports this", "zh-CN": "需要支持此功能的新版应用", ko: "이 기능을 지원하는 새 버전 앱이 필요합니다" },
     sx_notif: { ja: "通知とリンク", en: "Notifications and links", "zh-CN": "通知和链接", ko: "알림과 링크" },
     setHideNotifBody_t: { ja: "通知の本文を隠す", en: "Hide notification text", "zh-CN": "隐藏通知内容", ko: "알림 내용 숨기기" },

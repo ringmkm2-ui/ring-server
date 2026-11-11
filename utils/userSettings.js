@@ -21,6 +21,7 @@ const DEFAULTS = Object.freeze({
   loginAlertEmail: true,        // 新しい端末でログインされたらメールで知らせる
   privacyScreen: false,         // アプリ切り替え画面・バックグラウンドで中身を隠す
   blockScreenshots: false,      // スクリーンショット・画面録画を止める(端末側が対応している範囲で)
+  incognitoKeyboard: false,     // キーボードに入力を学習させない(AndroidアプリのIME_FLAG_NO_PERSONALIZED_LEARNING。対応キーボードのみ)
   // --- 通知 ---
   hideNotificationBody: false,  // ロック画面の通知に本文を出さず「新しいメッセージ」とだけ出す(送信者名は残す)
   // --- 便利機能 ---

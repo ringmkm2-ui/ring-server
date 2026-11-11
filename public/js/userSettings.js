@@ -14,6 +14,7 @@
     loginAlertEmail: true,
     privacyScreen: false,
     blockScreenshots: false,
+    incognitoKeyboard: false,
     hideNotificationBody: false,
     linkPreview: false,
     saveDrafts: true,

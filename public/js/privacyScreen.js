@@ -5,6 +5,8 @@
 //  privacyScreen   : ページが隠れている間、不透明のカバーで全面を覆う(アプリ切替の縮小画像に中身を出さない)
 //  blockScreenshots: Capacitor の BroCall.setSecure({enabled}) を呼ぶ(Android の FLAG_SECURE)。
 //                    ネイティブ側が未対応なら何も起きない(Web版では効かない)。
+//  incognitoKeyboard: BroCall.setIncognitoKeyboard({enabled}) を呼ぶ(Android の IME_FLAG_NO_PERSONALIZED_LEARNING)。
+//                    キーボードに入力を学習させない。これも新しいアプリ版だけで、無い環境では何もしない。
 //
 //  設定は window.bcSettings(userSettings.js)から読む。無いページでは localStorage の写しを読む。
 //  設定が変わったら apply() を呼び直す(bcSettings.update をラップして検知する)。
@@ -83,12 +85,27 @@
       } catch (e) { secureState = false; resolve(false); }
     });
   }
+  // シークレットキーボード。setSecure と同じく「呼んで通るか」で対応済みかを判定する
+  var incogState = null;
+  function applyIncognito() {
+    return new Promise(function (resolve) {
+      try {
+        var enable = getSetting('incognitoKeyboard', false);
+        var P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall;
+        if (!P || typeof P.setIncognitoKeyboard !== 'function') { incogState = false; return resolve(false); }
+        var r = P.setIncognitoKeyboard({ enabled: enable });
+        if (r && typeof r.then === 'function') r.then(function () { incogState = true; resolve(true); }, function () { incogState = false; resolve(false); });
+        else { incogState = true; resolve(true); }
+      } catch (e) { incogState = false; resolve(false); }
+    });
+  }
   function apply() {
     try {
       if (!enabled()) hide();
       else if (doc.visibilityState === 'hidden') show();
     } catch (e) {}
     applySecure();
+    applyIncognito();
   }
 
   function wrapSettings() {
@@ -123,7 +140,7 @@
   wrapSettings();
   apply();
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', function () { wrapSettings(); apply(); });
-  window.addEventListener('load', function () { wrapSettings(); apply(); setTimeout(function () { applySecure(); }, 1500); });
+  window.addEventListener('load', function () { wrapSettings(); apply(); setTimeout(function () { applySecure(); applyIncognito(); }, 1500); });
 
-  window.BroPrivacyScreen = { apply: apply, probeSecure: applySecure, secureSupported: function () { return secureState; }, show: show, hide: hide, isCovering: function () { return !!cover; } };
+  window.BroPrivacyScreen = { apply: apply, probeSecure: applySecure, secureSupported: function () { return secureState; }, probeIncognito: applyIncognito, incognitoSupported: function () { return incogState; }, show: show, hide: hide, isCovering: function () { return !!cover; } };
 })();

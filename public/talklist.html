@@ -1187,6 +1187,7 @@ window.ensureGroupCrypto = (function () {
       <button type="button" class="set-row set-btn sr-danger" id="setAppLockOff" hidden><span data-k="applock_off">オフにする(PIN確認)</span></button>
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setPrivacyScreen_t">画面を隠す</span><span class="sr-s"><span data-k="setPrivacyScreen_d">アプリ切替やバックグラウンドで、画面の中身を見せません。</span></span></span><input type="checkbox" class="ios-switch" id="setPrivacyScreen" role="switch"></label>
       <label class="set-row sr-d"><span><span class="sr-t" data-k="setBlockShots_t">スクショ・画面録画を禁止</span><span class="sr-s"><span data-k="setBlockShots_d">この端末でのスクリーンショットと画面録画を止めます。</span><span class="sr-warn" id="setBlockShotsNote" data-k="blockshots_note" hidden>対応した新しいアプリ版が必要です</span></span></span><input type="checkbox" class="ios-switch" id="setBlockShots" role="switch"></label>
+      <label class="set-row sr-d"><span><span class="sr-t" data-k="setIncogKb_t">シークレットキーボード</span><span class="sr-s"><span data-k="setIncogKb_d">キーボードに入力を覚えさせません(対応するキーボードのみ)。</span><span class="sr-warn" id="setIncogKbNote" data-k="blockshots_note" hidden>対応した新しいアプリ版が必要です</span></span></span><input type="checkbox" class="ios-switch" id="setIncogKb" role="switch"></label>
     </div>
     <div class="set-section-title" data-k="sx_notif">通知とリンク</div>
     <div class="set-group">
@@ -3104,7 +3105,7 @@ document.getElementById('openSettings').onclick=()=>{
   refreshSecRow();
   refreshGuestRow();
   applyServerSettingsToUI();
-  if (typeof refreshAppLockRows === 'function') { refreshAppLockRows(); refreshSecureNote(); }
+  if (typeof refreshAppLockRows === 'function') { refreshAppLockRows(); refreshSecureNote(); refreshIncogNote(); }
   if (window.bcSettings) bcSettings.refresh().then(applyServerSettingsToUI).catch(() => {});
   settingsMov.classList.add('open');
   history.pushState({ settings: 1 }, '');
@@ -3474,6 +3475,7 @@ const SERVER_SWITCHES = {
   setLoginAlert: 'loginAlertEmail',
   setPrivacyScreen: 'privacyScreen',
   setBlockShots: 'blockScreenshots',
+  setIncogKb: 'incognitoKeyboard',
   setHideNotifBody: 'hideNotificationBody',
   setLinkPreview: 'linkPreview',
   setSaveDrafts: 'saveDrafts',
@@ -3539,6 +3541,17 @@ function refreshSecureNote() {
   if (P && P.secureSupported() === true) { note.hidden = true; return; }
   note.hidden = false;
   if (P && P.probeSecure) P.probeSecure().then(ok => { note.hidden = !!ok; });
+}
+// シークレットキーボードも同じ(ネイティブに setIncognitoKeyboard がある新しいアプリ版でだけ効く)
+function refreshIncogNote() {
+  const note = document.getElementById('setIncogKbNote');
+  if (!note) return;
+  const P = window.BroPrivacyScreen;
+  const native = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall);
+  if (!native || !P || !P.probeIncognito) { note.hidden = false; return; }
+  if (P.incognitoSupported() === true) { note.hidden = true; return; }
+  note.hidden = false;
+  P.probeIncognito().then(ok => { note.hidden = !!ok; });
 }
 function alPinField(label, autofill) {
   const wrap = secNode('div', null, 'margin-bottom:10px');
@@ -3651,7 +3664,7 @@ function openAppLockDelay() {
   document.getElementById('setAppLockOff')?.addEventListener('click', openAppLockOff);
   if (window.BroAppLock) BroAppLock.onChange(refreshAppLockRows);
   refreshAppLockRows();
-  refreshSecureNote();
+  refreshSecureNote(); refreshIncogNote();
 }
 
 // --- 学校モード(通話・ライブ・投稿・コミュニティを止める。解除はパスワード) ---
