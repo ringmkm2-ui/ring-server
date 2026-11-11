@@ -131,3 +131,14 @@ test('この通話で初めて見た端末の鍵なら「確認済み」にし�
   const v = await sess.verifyRemote(s, seal, 'offer');
   assert.strictEqual(v.ok, true); assert.strictEqual(v.state, 'new_key');
 });
+
+test('初めての相手(記録なし)も「確認済み」にしない。古い封(10分より前)は拒否', async () => {
+  const { A, B, alice, bob } = people();
+  const s = sdp(fp());
+  const seal = offerSeal(A, alice, [bob.pk], { sdp: s, callId: 'c1', me: 'A', peer: 'B' });
+  const sess = B.CallAuth.createSession({ callId: 'c1', me: 'B', peer: 'A', ring: [bob], peerKeys: async () => [alice.pk], store: B.CallAuth.memStore(), checkSender: () => ({ ok: true, added: false, first: true }) });
+  assert.strictEqual((await sess.verifyRemote(s, seal, 'offer')).state, 'new_key');
+  const old = A.CallAuth.seal({ sdp: s, callId: 'c1', me: 'A', peer: 'B', dir: 'offer', secretKey: alice.sk, publicKeyB64: alice.pk, recipientKeys: [bob.pk], now: Date.now() - 11 * 60 * 1000 });
+  const v = await bobSession(B, bob, [alice.pk], B.CallAuth.memStore()).verifyRemote(s, old, 'offer');
+  assert.strictEqual(v.ok, false); assert.strictEqual(v.reason, 'wrong_call');
+});

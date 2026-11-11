@@ -70,7 +70,7 @@ test('攻撃: サーバーが相手になりすましてDMを差し込む(送り
   const server = nacl.box.keyPair();
   const A = b64(bob, alice.publicKey), S = b64(bob, server.publicKey);
   // 初めての相手は覚えるだけ
-  assert.deepStrictEqual({ ...bob.SafetyNumber.checkSender('bob', 'alice', A) }, { ok: true, added: false });
+  assert.deepStrictEqual({ ...bob.SafetyNumber.checkSender('bob', 'alice', A) }, { ok: true, added: false, first: true });
   assert.strictEqual(bob.SafetyNumber.checkSender('bob', 'alice', A).ok, true);
   // 確認済みにした後、知らない鍵で届いたら「確認できない」
   bob.SafetyNumber.setVerified('bob', 'alice', [A], true);

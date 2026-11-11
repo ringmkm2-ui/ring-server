@@ -104,6 +104,11 @@ async function initDB() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS real_name TEXT'); // 本名(本人と運営だけが見る)
     await pool.query('ALTER TABLE key_backups ADD COLUMN IF NOT EXISTS strong BOOLEAN DEFAULT false').catch(() => {}); // 今の基準のパスフレーズで預けたか
+    // バックアップを取り出す・書き換えるための合言葉(パスフレーズ/回復コードから端末で作った値)の SHA-256。
+    // これが入っている行は、合言葉を知らないとトークンだけでは中身を取れない(総当たりはサーバーで回数制限)
+    for (const c of ['access_pass TEXT', 'access_code TEXT', 'fail_count INTEGER DEFAULT 0', 'fail_since BIGINT DEFAULT 0']) {
+      await pool.query('ALTER TABLE key_backups ADD COLUMN IF NOT EXISTS ' + c).catch(() => {});
+    }
     // パスワード総当たり対策(アカウント単位): 連続失敗回数とロック解除時刻(ms)
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count INTEGER DEFAULT 0');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until BIGINT DEFAULT 0');

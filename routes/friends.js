@@ -63,6 +63,10 @@ router.post('/me', auth, async (req, res) => {
     if (displayName && displayName.length > 50) {
       return res.status(400).json({ error: '表示名は50文字以内にしてください' });
     }
+    // 登録時(routes/auth.js の cleanDisplayName)と同じく、HTML や向きを変える制御文字は名前に入れさせない
+    if (displayName && /[<>"'`\u0000-\u001f\u202a-\u202e\u2066-\u2069]/.test(displayName)) {
+      return res.status(400).json({ error: '表示名に使えない文字が含まれています' });
+    }
     if (bio && bio.length > 500) {
       return res.status(400).json({ error: '自己紹介は500文字以内にしてください' });
     }
@@ -163,19 +167,68 @@ router.post('/publickey', auth, async (req, res) => {
 
 // --- E2E鍵のバックアップ(端末の乗り換え・複数端末のため) ---
 // 中身はクライアントがパスフレーズ由来の鍵で暗号化済みの塊。サーバーは読めないし、読まない。
-// GET: 有無だけ返す(?full=1 で本体も返す)。PUT: 保存。
+// 取り出しと書き換えには「合言葉」(パスフレーズ/回復コードから端末で作った値。x-backup-access ヘッダー)が要る。
+// トークンだけで中身を渡すと、パスワードを盗んだ人が手元で好きなだけパスフレーズを総当たりできてしまうため。
+// ここでは間違いを1日10回までにするので、総当たりはできない。合言葉の無い古いバックアップは今まで通り(次の保存で合言葉が付く)。
+const crypto = require('crypto');
+const ACCESS_RE = /^[A-Za-z0-9+/]{43}=$/;
+const BK_FAIL_MAX = 10;
+const BK_FAIL_WINDOW = 24 * 60 * 60 * 1000;
+const sha = v => crypto.createHash('sha256').update(String(v)).digest('hex');
+const eqHex = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// 端末側の鍵導出に必要な塩(秘密ではない)を塊から取り出す。bk1.<pub>.<salt>.… / bk2.<pub>.<idpub>.<psalt>.<…>.<…>.<rsalt>.<…>
+function backupSalts(blob) {
+  const p = String(blob || '').split('.');
+  // pub/idpub(公開鍵)も秘密ではない。どの端末の鍵のバックアップかを、中身を取らずに比べるために返す
+  const k = x => (x && x !== '-' ? x : null);
+  if (p[0] === 'bk2') return { v: 2, pub: k(p[1]), idpub: k(p[2]), psalt: p[3] || null, rsalt: k(p[6]) };
+  if (p[0] === 'bk1') return { v: 1, pub: k(p[1]), idpub: k(p[4]), psalt: p[2] || null, rsalt: null };
+  return { v: 0, pub: null, idpub: null, psalt: null, rsalt: null };
+}
+function isProtected(row) { return !!(row && (row.access_pass || row.access_code)); }
+function accessOk(row, access) {
+  if (typeof access !== 'string' || !ACCESS_RE.test(access)) return false;
+  const h = sha(access);
+  return eqHex(h, row.access_pass) || eqHex(h, row.access_code);
+}
+function lockedOut(row) {
+  return Number(row.fail_count || 0) >= BK_FAIL_MAX && Date.now() - Number(row.fail_since || 0) < BK_FAIL_WINDOW;
+}
+async function noteFail(row, userId) {
+  const fresh = Date.now() - Number(row.fail_since || 0) >= BK_FAIL_WINDOW;
+  await db.run('UPDATE key_backups SET fail_count = ?, fail_since = ? WHERE user_id = ?',
+    [fresh ? 1 : Number(row.fail_count || 0) + 1, fresh ? Date.now() : Number(row.fail_since || 0), userId]);
+}
+async function clearFails(row, userId) {
+  if (Number(row.fail_count || 0)) await db.run('UPDATE key_backups SET fail_count = 0, fail_since = 0 WHERE user_id = ?', [userId]);
+}
+
+// GET: 有無と塩だけ返す(?full=1 で本体も返す。合言葉付きの行は x-backup-access が必要)
 router.get('/key-backup', auth, async (req, res) => {
   try {
-    const row = await db.get('SELECT blob, updated_at, strong FROM key_backups WHERE user_id = ?', [req.userId]);
+    const row = await db.get('SELECT blob, updated_at, strong, access_pass, access_code, fail_count, fail_since FROM key_backups WHERE user_id = ?', [req.userId]);
     if (!row) return res.json({ exists: false });
     const strong = !!(row.strong === true || Number(row.strong) === 1);
-    if (req.query.full === '1') return res.json({ exists: true, blob: row.blob, updatedAt: row.updated_at, strong });
-    res.json({ exists: true, updatedAt: row.updated_at, strong });
+    const info = { exists: true, updatedAt: row.updated_at, strong, protected: isProtected(row), ...backupSalts(row.blob) };
+    if (req.query.full !== '1') return res.json(info);
+    if (isProtected(row)) {
+      if (lockedOut(row)) return res.status(429).json({ error: '間違いが多すぎます。しばらくしてからやり直してください', code: 'LOCKED' });
+      const acc = req.get('x-backup-access');
+      if (!accessOk(row, acc)) {
+        if (acc) await noteFail(row, req.userId); // 合言葉を付けずに来たもの(画面の確認など)は数えない
+        return res.status(403).json({ error: 'パスフレーズが違います', code: acc ? 'WRONG' : 'NEED_ACCESS' });
+      }
+      await clearFails(row, req.userId);
+    }
+    res.json({ ...info, blob: row.blob });
   } catch (e) {
     sendServerError(res, e);
   }
 });
 
+// PUT: 保存。body: { blob, strong?, newAccess?: { pass?: <合言葉>|null, code?: <合言葉>|null } }
+// 合言葉付きの行を書き換えるには、今の合言葉(x-backup-access)か、有効な端末の鍵を持っている証明
+// (/api/devices/challenge の challengeId と answer)が要る。パスワードを盗んだ人に壊されないように
 router.put('/key-backup', auth, async (req, res) => {
   try {
     const blob = req.body && req.body.blob;
@@ -185,10 +238,31 @@ router.put('/key-backup', auth, async (req, res) => {
     if (!/^[A-Za-z0-9+/=_.:-]+$/.test(blob)) {
       return res.status(400).json({ error: 'バックアップの形式が不正です' });
     }
+    const na = (req.body && req.body.newAccess) || {};
+    const okNew = v => v === undefined || v === null || (typeof v === 'string' && ACCESS_RE.test(v));
+    if (typeof na !== 'object' || !okNew(na.pass) || !okNew(na.code)) return res.status(400).json({ error: '形式が不正です' });
+
+    const row = await db.get('SELECT access_pass, access_code, fail_count, fail_since FROM key_backups WHERE user_id = ?', [req.userId]);
+    if (row && isProtected(row)) {
+      const byDevice = !!(req.body && req.body.challengeId) && require('./devices').proved(req);
+      if (!byDevice) {
+        if (lockedOut(row)) return res.status(429).json({ error: '間違いが多すぎます。しばらくしてからやり直してください', code: 'LOCKED' });
+        const acc = req.get('x-backup-access');
+        if (!accessOk(row, acc)) {
+          if (acc) await noteFail(row, req.userId);
+          return res.status(403).json({ error: 'この端末ではバックアップを書き換えられません', code: 'DENIED' });
+        }
+      }
+      await clearFails(row, req.userId);
+    }
+    const pick = (v, old) => (v === undefined ? (old || null) : v === null ? null : sha(v));
+    const accPass = pick(na.pass, row && row.access_pass);
+    const accCode = pick(na.code, row && row.access_code);
     await db.run(
-      `INSERT INTO key_backups (user_id, blob, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = CURRENT_TIMESTAMP`,
-      [req.userId, blob]
+      `INSERT INTO key_backups (user_id, blob, updated_at, access_pass, access_code) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET blob = excluded.blob, updated_at = CURRENT_TIMESTAMP,
+         access_pass = excluded.access_pass, access_code = excluded.access_code`,
+      [req.userId, blob, accPass, accCode]
     );
     // 新しいパスフレーズで預け直した時だけ、強さの印を付け直す(鍵が増えた時の自動の更新では変えない)
     if (typeof req.body.strong === 'boolean') {

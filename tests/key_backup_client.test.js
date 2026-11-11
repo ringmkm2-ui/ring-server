@@ -29,21 +29,41 @@ function makeEnv({ withKeyFactory = true } = {}) {
     key: (i) => Array.from(store.keys())[i] ?? null,
     get length() { return store.size; },
   };
-  // 偽のサーバー(key-backup と公開鍵登録だけ)
-  const server = { blob: null, strong: null, failPut: false, puts: 0 };
+  // 偽のサーバー(key-backup と公開鍵登録だけ)。合言葉の扱いは routes/friends.js と同じ
+  const sha = v => require('crypto').createHash('sha256').update(String(v)).digest('hex');
+  const server = { blob: null, strong: null, failPut: false, puts: 0, accPass: null, accCode: null, fails: 0, lastAccess: null };
+  const salts = (blob) => {
+    const p = String(blob || '').split('.'); const k = x => (x && x !== '-' ? x : null);
+    if (p[0] === 'bk2') return { v: 2, pub: k(p[1]), idpub: k(p[2]), psalt: p[3], rsalt: k(p[6]) };
+    if (p[0] === 'bk1') return { v: 1, pub: k(p[1]), idpub: k(p[4]), psalt: p[2], rsalt: null };
+    return {};
+  };
+  const accessOk = (a) => !!a && (sha(a) === server.accPass || sha(a) === server.accCode);
   const fetch = async (url, opts = {}) => {
     const method = (opts.method || 'GET').toUpperCase();
+    const acc = (opts.headers || {})['x-backup-access'];
+    if (acc) server.sawAccess = true;
     let body = {};
     if (url.startsWith('/api/friends/key-backup')) {
+      const prot = !!(server.blob && (server.accPass || server.accCode));
       if (method === 'PUT') {
         server.puts++;
         if (server.failPut) return { json: async () => ({ ok: false, error: 'down' }) };
         const b = JSON.parse(opts.body);
+        if (prot && !accessOk(acc)) { if (acc) server.fails++; return { json: async () => ({ error: 'denied', code: 'DENIED' }) }; }
         server.blob = b.blob;
+        const na = b.newAccess || {};
+        const pick = (v, old) => (v === undefined ? old : v === null ? null : sha(v));
+        server.accPass = pick(na.pass, server.accPass); server.accCode = pick(na.code, server.accCode);
         if (typeof b.strong === 'boolean') server.strong = b.strong;
         body = { ok: true };
       } else if (!server.blob) body = { exists: false };
-      else body = url.includes('full=1') ? { exists: true, blob: server.blob, strong: !!server.strong } : { exists: true, strong: !!server.strong };
+      else {
+        const info = { exists: true, strong: !!server.strong, protected: prot, ...salts(server.blob) };
+        if (!url.includes('full=1')) body = info;
+        else if (prot && !accessOk(acc)) { if (acc) server.fails++; body = { error: 'wrong', code: acc ? 'WRONG' : 'NEED_ACCESS' }; }
+        else body = { ...info, blob: server.blob };
+      }
     } else body = { ok: true };
     return { json: async () => body };
   };
@@ -314,6 +334,8 @@ function otherDevice(from) {
   const env2 = makeEnv();
   env2.server.blob = from.server.blob;
   env2.server.strong = from.server.strong;
+  env2.server.accPass = from.server.accPass;
+  env2.server.accCode = from.server.accCode;
   return env2;
 }
 
@@ -457,4 +479,45 @@ test('「必ず」は赤い太字で出す', async () => {
   assert.match(warn[warn.length - 1].html, /<strong style="color:#ef4444;font-weight:800;white-space:nowrap">必ず<\/strong>/);
   latest(env, 'kbwSkip').onclick();
   await p;
+});
+
+test('合言葉: 預けると合言葉が付き、別の端末はパスフレーズを知らないと中身を取れない', async () => {
+  const env = makeEnv();
+  env.setPersonalKey(env.newPair());
+  await env.kb._internal.upload(PASS, null, true);
+  assert.ok(env.server.accPass, '合言葉のハッシュが保存された');
+  const d2 = otherDevice(env);
+  await assert.rejects(() => d2.kb._internal.restore('wrong passphrase here!!', false), (e) => e.code === 'WRONG');
+  assert.equal(d2.server.fails, 1, '間違いはサーバーで数えられる');
+  assert.ok(await d2.kb._internal.restore(PASS, false));
+  assert.ok(d2.server.sawAccess, '合言葉はヘッダーで送られる');
+});
+
+test('合言葉: 回復コードでも取り出せて、そのあと新しいパスフレーズで預け直せる', async () => {
+  const { env, code } = await backedUp();
+  const d2 = otherDevice(env);
+  assert.ok(await d2.kb._internal.restore(code, true));
+  await d2.kb._internal.upload('a brand new passphrase 123', null, true);
+  const d3 = otherDevice(d2);
+  assert.ok(await d3.kb._internal.restore('a brand new passphrase 123', false));
+});
+
+test('合言葉: 合言葉の無い古いバックアップは、信頼済みの端末の同期で合言葉が付く', async () => {
+  const env = makeEnv();
+  env.setPersonalKey(env.newPair());
+  await env.kb._internal.upload(PASS, null, true);
+  env.server.accPass = null; env.server.accCode = null; // 古いサーバーで預けた状態
+  assert.ok(await env.kb._internal.syncIfNeeded());
+  assert.ok(env.server.accPass);
+});
+
+test('合言葉: 知らない人(合言葉なし)は上書きできない', async () => {
+  const env = makeEnv();
+  env.setPersonalKey(env.newPair());
+  await env.kb._internal.upload(PASS, null, true);
+  const before = env.server.blob;
+  const thief = otherDevice(env);
+  thief.setPersonalKey(thief.newPair());
+  await assert.rejects(() => thief.kb._internal.upload('thief passphrase 12345', null, true));
+  assert.equal(thief.server.blob, before);
 });

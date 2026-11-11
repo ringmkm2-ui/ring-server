@@ -98,8 +98,9 @@
     if (st && (st.known || []).includes(pub)) return { ok: true };
     const wasVerified = !!(st && Array.isArray(st.verified));
     observe(me, peer, [...((st && st.known) || []), pub]);
-    // 記録が無い相手(初めて)は覚えるだけ(TOFU)。記録があるのに知らない鍵なら知らせる
-    return { ok: !wasVerified, added: !!st };
+    // 記録が無い相手(初めて)は覚えるだけ(TOFU)。記録があるのに知らない鍵なら知らせる。
+    // first: 初めての相手(通話の自動確認では、これも「確認済み」にしない)
+    return { ok: !wasVerified, added: !!st, first: !st };
   }
   // 確認済みの相手で、まだ確認していない(増えた)鍵。確認済みの相手には、この鍵へは送らない
   function unconfirmedKeys(me, peer) {

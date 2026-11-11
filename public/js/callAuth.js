@@ -132,6 +132,8 @@
     if (m.callId !== o.callId) return { ok: false, reason: 'wrong_call' };
     if (m.from !== String(o.peer) || m.to !== String(o.me)) return { ok: false, reason: 'wrong_call' };
     if (m.dir !== o.dir) return { ok: false, reason: 'wrong_call' };
+    // 古い封の使い回し対策(グループ通話は通話IDが毎回同じなので、時刻で絞る)。端末の時計のずれを見て10分
+    if (typeof m.ts !== 'number' || Math.abs(Date.now() - m.ts) > 10 * 60 * 1000) return { ok: false, reason: 'wrong_call' };
     const fpOk = l => Array.isArray(l) && l.length > 0 && l.length <= MAX_FP && l.every(f => typeof f === 'string' && FP_ITEM.test(f));
     if (!fpOk(m.fp)) return { ok: false, reason: 'malformed' };
     if (m.dir === 'answer') {
@@ -148,7 +150,7 @@
       try { r = o.checkSender(p.senderPub); } catch (e) { r = { ok: true }; }
       // 安全番号で確認済みの相手なのに、確認していない端末からの封
       if (r && r.ok === false) return { ok: false, reason: 'unverified_device' };
-      newKey = !!(r && r.added);
+      newKey = !!(r && (r.added || r.first)); // 初めての相手も、サーバーの鍵を信じるしかないので「確認済み」にしない
     }
     return { ok: true, fp: uniq(m.fp).sort(), senderPub: p.senderPub, newKey };
   }

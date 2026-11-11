@@ -549,7 +549,7 @@ async function initDB() {
     groups: [['avatar_url', 'TEXT']],
     group_messages: [['replied_to_id', 'TEXT'], ['expires_at', 'TEXT']],
     messages: [['expires_at', 'TEXT']],
-    key_backups: [['strong', 'INTEGER DEFAULT 0']],
+    key_backups: [['strong', 'INTEGER DEFAULT 0'], ['access_pass', 'TEXT'], ['access_code', 'TEXT'], ['fail_count', 'INTEGER DEFAULT 0'], ['fail_since', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
     user_sessions: [['revoked_reason', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],

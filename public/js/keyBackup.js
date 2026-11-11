@@ -23,12 +23,46 @@
   var b64e = function (u8) { return nacl().util.encodeBase64(u8); };
   var b64d = function (s) { return nacl().util.decodeBase64(s); };
 
-  function http(method, path, body) {
+  function http(method, path, body, access) {
+    var h = { 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' };
+    if (access) h['x-backup-access'] = access; // URL に載せるとログに残るのでヘッダーで送る
     return fetch(path, {
       method: method,
-      headers: { 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' },
+      headers: h,
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) { return r.json().catch(function () { return null; }); });
+  }
+
+  // バックアップの「合言葉」。パスフレーズ/回復コードから作った鍵を、用途の印と一緒にハッシュしたもの。
+  // サーバーはこの値のハッシュだけを持ち、合わなければ中身を渡さない(間違いは1日10回まで)。
+  // 暗号化の鍵そのものは送らない(合言葉から鍵は戻せない)
+  async function accessOf(key, tag) {
+    var t = new TextEncoder().encode('bro-kb-access:' + tag + ':');
+    var m = new Uint8Array(t.length + key.length); m.set(t, 0); m.set(key, t.length);
+    return b64e(new Uint8Array(await crypto.subtle.digest('SHA-256', m)));
+  }
+  // 回復コードで戻した直後だけ覚えておく合言葉(新しいパスフレーズで預け直す時に使う)
+  var pendingCodeAccess = null;
+  // 合言葉が無い・合わない時の最後の手段: この端末の鍵を持っている証明(有効な端末なら書き換えられる)
+  async function deviceProof() {
+    try {
+      var kp = readJson(kpName(), null);
+      if (!kp || !kp.secretKey) return null;
+      var pk = b64e(new Uint8Array(kp.publicKey));
+      var c = await http('POST', '/api/devices/challenge', { publicKey: pk });
+      if (!c || !c.id) return null;
+      var ans = nacl().box.open(b64d(c.box), b64d(c.nonce), b64d(c.serverPublicKey), new Uint8Array(kp.secretKey));
+      return ans ? { challengeId: c.id, answer: b64e(ans) } : null;
+    } catch (e) { return null; }
+  }
+  // 保存。まず合言葉で、断られたら端末の証明で、もう一度だけ試す
+  async function putBackup(body, access) {
+    var r = await http('PUT', '/api/friends/key-backup', body, access);
+    if (r && r.code === 'DENIED') {
+      var pr = await deviceProof();
+      if (pr) r = await http('PUT', '/api/friends/key-backup', Object.assign({}, body, pr));
+    }
+    return r;
   }
 
   // ---------- ローカルの鍵 ----------
@@ -167,9 +201,10 @@
   }
 
   // ---------- 公開API(ロジック) ----------
-  async function serverInfo(full) {
+  async function serverInfo(full, access) {
     try {
-      var r = await http('GET', '/api/friends/key-backup' + (full ? '?full=1' : ''));
+      var r = await http('GET', '/api/friends/key-backup' + (full ? '?full=1' : ''), null, access);
+      if (r && (r.code === 'WRONG' || r.code === 'LOCKED' || r.code === 'NEED_ACCESS')) return { exists: true, denied: r.code };
       return r && r.exists ? r : { exists: false };
     } catch (e) { return { exists: null }; } // 取得失敗(オフライン等)は「不明」
   }
@@ -179,8 +214,8 @@
     try {
       var trust = readJson(trustName(), null);
       if (!trust) return null;
-      var cur = await serverInfo(true);
-      var cu = cur && cur.exists ? unpack(cur.blob) : null;
+      var cur = await serverInfo(true, await accessOf(b64d(trust.key), 'pass'));
+      var cu = cur && cur.exists && cur.blob ? unpack(cur.blob) : null;
       if (!cu || cu.saltB64 !== trust.salt) return null;
       var key = b64d(trust.key);
       var data = openPayload(cu, key);
@@ -212,7 +247,7 @@
     if (!keep && !cur && pendingMk) {
       // 回復コードで戻した直後。元鍵は今のバックアップと同じなので、そのコードは引き続き使える
       try {
-        var cu2 = unpack((await serverInfo(true)).blob);
+        var cu2 = unpack((await serverInfo(true, pendingCodeAccess)).blob);
         if (cu2 && cu2.v === 2 && cu2.wrapCode) keep = cu2;
       } catch (e) {}
     }
@@ -225,9 +260,16 @@
       rsalt: keep ? keep.rsalt : null,
       wrapCode: keep ? keep.wrapCode : null
     });
-    var r = await http('PUT', '/api/friends/key-backup', { blob: blob, strong: !!strong });
+    // 今の合言葉: この端末が信頼済みならそのパスフレーズの、回復コードで戻した直後ならそのコードの
+    var trust0 = readJson(trustName(), null);
+    var curAccess = trust0 ? await accessOf(b64d(trust0.key), 'pass') : pendingCodeAccess;
+    var r = await putBackup({
+      blob: blob, strong: !!strong,
+      // 回復コードを引き継がない時は、その合言葉も消す
+      newAccess: { pass: await accessOf(key, 'pass'), code: keep ? undefined : null }
+    }, curAccess);
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
-    pendingMk = null;
+    pendingMk = null; pendingCodeAccess = null;
     // この端末を「信頼済み」にして、以後は鍵が増えたら黙って更新できるようにする
     localStorage.setItem(trustName(), JSON.stringify({ salt: b64e(salt), key: b64e(key) }));
     return true;
@@ -271,7 +313,8 @@
       rsalt: rsalt,
       wrapCode: seal({ mk: b64e(mk) }, rkey)
     });
-    var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
+    var r = await putBackup({ blob: blob, newAccess: { pass: await accessOf(b64d(trust.key), 'pass'), code: await accessOf(rkey, 'code') } },
+      await accessOf(b64d(trust.key), 'pass'));
     if (!r || !r.ok) throw new Error((r && r.error) || 'upload failed');
     return code;
   }
@@ -295,18 +338,29 @@
 
   // byCode=true なら、パスフレーズではなく回復コードで開く
   async function restore(secret, byCode) {
-    var info = await serverInfo(true);
-    if (!info.exists) throw new Error('no backup');
+    // まず塩だけもらって端末で鍵を作り、その合言葉を見せて中身をもらう
+    var head = await serverInfo(false);
+    if (!head.exists) throw new Error('no backup');
+    var access = null, preKey = null;
+    if (head.protected) {
+      var saltB64 = byCode ? head.rsalt : head.psalt;
+      if (!saltB64) { var e1 = new Error('no recovery code'); e1.code = byCode ? 'NOCODE' : 'WRONG'; throw e1; }
+      preKey = await deriveKey(byCode ? normCode(secret) : secret, b64d(saltB64));
+      access = await accessOf(preKey, byCode ? 'code' : 'pass');
+    }
+    var info = await serverInfo(true, access);
+    if (info.denied) { var e2 = new Error(info.denied === 'LOCKED' ? 'locked' : 'wrong passphrase'); e2.code = info.denied === 'LOCKED' ? 'LOCKED' : 'WRONG'; throw e2; }
+    if (!info.exists || !info.blob) throw new Error('no backup');
     var u = unpack(info.blob);
     if (!u) throw new Error('bad backup');
     var key = null, data = null, mk = null;
     if (byCode) {
       if (u.v !== 2 || !u.wrapCode) { var e0 = new Error('no recovery code'); e0.code = 'NOCODE'; throw e0; }
-      key = await deriveKey(normCode(secret), u.rsalt);
+      key = preKey || await deriveKey(normCode(secret), u.rsalt);
       var got = openWithCode(u, key);
       if (got) { data = got.data; mk = got.mk; }
     } else {
-      key = await deriveKey(secret, u.salt);
+      key = preKey || await deriveKey(secret, u.salt);
       data = openPayload(u, key);
     }
     if (!data || (!data.keypair && !data.identity)) { var e = new Error('wrong passphrase'); e.code = 'WRONG'; throw e; }
@@ -316,9 +370,12 @@
       // パスフレーズは分からないので、この端末はまだ信頼済みにしない。
       // 元鍵だけ覚えておき、このあと新しいパスフレーズで預け直してもらう
       pendingMk = mk;
+      pendingCodeAccess = await accessOf(key, 'code');
       localStorage.removeItem(trustName());
     } else {
       localStorage.setItem(trustName(), JSON.stringify({ salt: u.saltB64, key: b64e(key) }));
+      // 合言葉がまだ付いていない古いバックアップなら、ここで付ける(以後はトークンだけでは取り出せない)
+      if (!head.protected) syncSoon(true);
     }
     return true;
   }
@@ -352,8 +409,9 @@
   async function syncIfNeeded() {
     var trust = readJson(trustName(), null);
     if (!trust || !hasLocalKey() || !nacl()) return false;
-    var info = await serverInfo(true);
-    if (!info.exists) return false;
+    var myAccess = await accessOf(b64d(trust.key), 'pass');
+    var info = await serverInfo(true, myAccess);
+    if (!info.exists || !info.blob) { if (info.denied === 'WRONG') localStorage.removeItem(trustName()); return false; }
     var u = unpack(info.blob);
     if (!u) return false;
     if (u.saltB64 !== trust.salt) { localStorage.removeItem(trustName()); return false; } // 別の端末でパスフレーズが変えられた
@@ -372,7 +430,8 @@
     var sameKeys = (canon ? pubOf(canon) : null) === (u.pub || null) && merged.length === (data.keyring || []).length;
     var sameId = identityPub(identity) === (u.idpub || null);
     var sameGroups = Object.keys(groupKeys).length === Object.keys(data.groupKeys || {}).length;
-    if (sameKeys && sameId && sameGroups) return false;
+    // 合言葉がまだ付いていない古いバックアップは、中身が同じでも1回だけ預け直して合言葉を付ける
+    if (sameKeys && sameId && sameGroups && info.protected) return false;
 
     var payload = { keypair: canon, keyring: merged, identity: identity, groupKeys: groupKeys };
     // 元鍵は変えない。変えると、ほかの端末で作った回復コードが使えなくなる
@@ -382,7 +441,7 @@
       sealed: seal(payload, mk),
       rsalt: u.rsalt || null, wrapCode: u.wrapCode || null
     });
-    var r = await http('PUT', '/api/friends/key-backup', { blob: blob });
+    var r = await putBackup({ blob: blob, newAccess: { pass: myAccess } }, myAccess);
     if (r && r.ok && canon) localStorage.setItem(ringName(), JSON.stringify(merged));
     return !!(r && r.ok);
   }
@@ -961,8 +1020,8 @@
     var trust = readJson(trustName(), null);
     if (!trust) return false;
     try { await syncIfNeeded(); } catch (e) {}
-    var info = await serverInfo(true);
-    if (!info.exists) return false;
+    var info = await serverInfo(true, await accessOf(b64d(trust.key), 'pass'));
+    if (!info.exists || !info.blob) return false;
     var u = unpack(info.blob);
     if (!u || u.saltB64 !== trust.salt) return false;
     var data = openPayload(u, b64d(trust.key));
@@ -1054,8 +1113,9 @@
           return;
         }
         // 鍵はあるが、バックアップの鍵と違う端末(別端末で作った鍵)
-        var full = await serverInfo(true);
-        var u = full.exists ? unpack(full.blob) : null;
+        // 公開鍵だけ比べればよいので、中身は取らない(合言葉の無い端末でも見られる)
+        var full = await serverInfo(false);
+        var u = full.exists ? { pub: full.pub || null, idpub: full.idpub || null } : null;
         var snooze = Number(localStorage.getItem('e2e_bk_snooze_' + uid()) || 0);
         var s0 = localState();
         var personalDiff = u && u.pub && s0.keypair && u.pub !== currentPub();
@@ -1097,10 +1157,10 @@
     status: async function () {
       var i = await serverInfo(false);
       var out = { server: i.exists, local: hasLocalKey(), trusted: !!readJson(trustName(), null), code: false };
-      if (i.exists) { try { var u = unpack((await serverInfo(true)).blob); out.code = !!(u && u.wrapCode); } catch (e) {} }
+      if (i.exists) out.code = !!i.rsalt;
       return out;
     },
     // テスト用
-    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack2: pack2, unpack: unpack, deriveKey: deriveKey, backupCoversLocal: backupCoversLocal, makeRecoveryCode: makeRecoveryCode, genCode: genCode, normCode: normCode }
+    _internal: { upload: upload, restore: restore, mergeRing: mergeRing, pack2: pack2, unpack: unpack, deriveKey: deriveKey, backupCoversLocal: backupCoversLocal, makeRecoveryCode: makeRecoveryCode, genCode: genCode, normCode: normCode, syncIfNeeded: syncIfNeeded }
   };
 })();
