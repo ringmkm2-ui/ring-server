@@ -13,6 +13,11 @@
 const INTERVAL_MS = 10 * 60 * 1000;
 
 function startKeepAlive() {
+  // テスト用のサーバーでは止める(Renderの無料枠は全サービス合わせての時間なので、本番の分を食わないように)
+  if (String(process.env.KEEPALIVE || '').toLowerCase() === 'off') {
+    console.log('[keepAlive] KEEPALIVE=off のため無効');
+    return;
+  }
   const base = process.env.KEEPALIVE_URL || process.env.RENDER_EXTERNAL_URL;
   if (!base) {
     console.log('[keepAlive] RENDER_EXTERNAL_URL 未設定のため無効(ローカル実行)');

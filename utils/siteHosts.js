@@ -6,7 +6,9 @@
 //
 // どのホストで開いても同じサーバー・同じDBに繋がる。ホストが変わると localStorage が別物になる
 // (= 端末に置いた暗号鍵やログインは引き継がれない)ので、既存ユーザーは元のURLのままにしておく。
-const SITE_HOSTS = ['ring-server-50sy.onrender.com', 'brochat.org', 'www.brochat.org'];
+// テスト用のサーバーは EXTRA_SITE_HOSTS(カンマ区切り)で自分のホスト名を足す。本番では設定しない
+const SITE_HOSTS = ['ring-server-50sy.onrender.com', 'brochat.org', 'www.brochat.org']
+  .concat(String(process.env.EXTRA_SITE_HOSTS || '').split(',').map(s => s.trim().toLowerCase()).filter(h => /^[a-z0-9.-]+$/.test(h)));
 const SITE_ORIGINS = SITE_HOSTS.map(h => 'https://' + h);
 
 // リクエストが届いたホストが上の一覧にあれば、そのホストのURLを返す。無ければ null。
