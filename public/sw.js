@@ -111,6 +111,7 @@ const urlsToCache = [
   '/js/historyBackup.js',
   '/js/qrcode.min.js',
   '/js/safetyNumber.js',
+  '/js/callAuth.js',
   '/js/cloudinarySign.js',
   '/js/e2eKeys.js',
   '/js/globalBg.js',
