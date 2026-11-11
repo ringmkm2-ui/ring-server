@@ -517,7 +517,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v2.1.0</div>
+  <div class="version-badge">Bro Chat v2.1.1</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1242,7 +1242,14 @@ async function decryptMessageInner(encryptedString, senderId, sentAt) {
     } catch (e) {}
   }
   if (window.E2EMulti && E2EMulti.isMulti(encryptedString)) {
-    const out = E2EMulti.open(encryptedString, ringForMulti());
+    const ring = ringForMulti();
+    // 相手から届いた文なのに、送り主が自分の端末の鍵なら受け付けない。
+    // 自分が送った文をサーバーが「相手の発言」として送り返してきた(跳ね返し)場合にあたる
+    if (!iAmSender) {
+      const pp = E2EMulti.parse(encryptedString);
+      if (pp && pp.senderPub && ring.some(k => k.pk === pp.senderPub)) { console.warn('e3: 自分の鍵で送られた文が相手の発言として届いたので捨てた'); return null; }
+    }
+    const out = E2EMulti.open(encryptedString, ring);
     if (!out) console.warn('復号化に失敗しました(e3: この端末あての分がありません)');
     if (!out) return null;
     const text = nacl.util.encodeUTF8(out);

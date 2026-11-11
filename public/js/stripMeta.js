@@ -7,7 +7,10 @@
 //          色の情報(ICC)と JFIF/Adobe は表示に必要なので残す。
 //  - PNG : tEXt/zTXt/iTXt/eXIf/tIME を消す。
 //  - WebP: EXIF/XMP を消して VP8X のフラグと RIFF の長さを直す。
-//  - GIF・HEIC・動画などは扱わない(そのまま返す)。
+//  - HEIC/AVIF/TIFF/BMP など上で扱えない画像は、描き直して JPEG にする(撮影情報は描き直しで全部落ちる)。
+//  - 動画(MP4/MOV): 位置情報(ISO 6709 の座標文字列。©xyz と Apple の location.ISO6709)を、
+//    長さを変えずに 0 の座標で上書きする。moov(目次)だけを読み、映像本体(mdat)には触らないので大きい動画でも軽い。
+//  - GIF はそのまま(撮影情報を持たない)。
 // 形式が壊れていて読めない時は、Canvas で描き直して情報を全部落とす(位置情報を残したまま送るよりまし)。
 (function (root) {
   'use strict';
@@ -183,12 +186,59 @@
     if (bmp.close) bmp.close();
     const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
     const blob = await new Promise(r => c.toBlob(r, type, 0.92));
-    return blob ? new File([blob], file.name || 'image', { type, lastModified: Date.now() }) : null;
+    const name = (file.name || 'image').replace(/\.(heic|heif|avif|tiff?|bmp)$/i, type === 'image/png' ? '.png' : '.jpg');
+    return blob ? new File([blob], name, { type, lastModified: Date.now() }) : null;
   }
 
-  // File/Blob → 撮影情報を消した File。画像以外・GIF・HEIC はそのまま返す
+  // ---- 動画(MP4/MOV) ----
+  // ISO 6709 の座標(例 +35.6895+139.6917+040.000/)。数字だけを 0 にするので長さも構造も変わらない
+  const ISO6709 = /[+-]\d{2}(?:\.\d+)?[+-]\d{3}(?:\.\d+)?(?:[+-]\d+(?:\.\d+)?)?(?:CRS[^/]*)?\//g;
+  function zeroLocation(u8) {
+    // latin1 として文字列にして探す(1バイト=1文字なので位置がそのまま使える)
+    let s = '';
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    let n = 0;
+    s.replace(ISO6709, (m, off) => {
+      for (let k = 0; k < m.length; k++) { const c = m.charCodeAt(k); if (c >= 48 && c <= 57) u8[off + k] = 48; }
+      n++;
+      return m;
+    });
+    return n;
+  }
+  async function readAt(blob, start, len) { return new Uint8Array(await blob.slice(start, start + len).arrayBuffer()); }
+  const MOOV_MAX = 64 * 1024 * 1024; // 目次がこれより大きい動画は普通は無い
+  async function stripVideo(file) {
+    let pos = 0;
+    while (pos + 8 <= file.size) {
+      const h = await readAt(file, pos, 16);
+      let size = u32be(h, 0);
+      const type = String.fromCharCode(h[4], h[5], h[6], h[7]);
+      let head = 8;
+      if (size === 1) { size = u32be(h, 8) * 4294967296 + u32be(h, 12); head = 16; }
+      else if (size === 0) size = file.size - pos;
+      if (size < head || pos + size > file.size) return file; // 読めない形。触らない
+      if (type === 'moov') {
+        if (size > MOOV_MAX) return file;
+        const moov = await readAt(file, pos, size);
+        if (!zeroLocation(moov)) return file;
+        return new File([file.slice(0, pos), moov, file.slice(pos + size)], file.name || 'video', { type: file.type, lastModified: Date.now() });
+      }
+      pos += size;
+    }
+    return file;
+  }
+
+  // File/Blob → 撮影情報を消した File。画像・動画以外と GIF はそのまま返す
   async function stripFile(file) {
-    if (!file || !file.type || !/^image\/(jpeg|jpg|pjpeg|png|webp)$/i.test(file.type)) return file;
+    if (!file || !file.type) return file;
+    if (/^video\/(mp4|quicktime|3gpp|x-m4v)$/i.test(file.type)) {
+      try { return await stripVideo(file); } catch (e) { console.warn('[stripMeta] video', e && e.message); return file; }
+    }
+    if (!/^image\//i.test(file.type) || /^image\/(gif|svg\+xml)$/i.test(file.type)) return file;
+    if (!/^image\/(jpeg|jpg|pjpeg|png|webp)$/i.test(file.type)) {
+      // HEIC/AVIF など。描き直せない(この端末で表示できない)時だけそのまま送る
+      return (await redraw(file)) || file;
+    }
     try {
       const b = new Uint8Array(await file.arrayBuffer());
       const out = stripBytes(b);

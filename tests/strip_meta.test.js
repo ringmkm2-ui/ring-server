@@ -112,3 +112,16 @@ test('stripFile: 画像以外・GIF はそのまま、JPEG は消した File を
   assert.equal(f.type, 'image/jpeg');
   assert.ok(!has(new Uint8Array(await f.arrayBuffer()), 'GPSSECRET'));
 });
+
+test('動画: moov の位置情報(©xyz と Apple の ISO6709)が 0 になり、長さと mdat は変わらない', async () => {
+  const box = (type, ...parts) => { const body = Buffer.concat(parts.map(p => Buffer.isBuffer(p) ? p : Buffer.from(p, 'latin1'))); const h = Buffer.alloc(8); h.writeUInt32BE(body.length + 8); h.write(type, 4, 'latin1'); return Buffer.concat([h, body]); };
+  const xyz = box('\xA9xyz', Buffer.from([0, 18, 0x15, 0xC7]), '+35.6895+139.6917/');
+  const apple = box('meta', box('keys', 'com.apple.quicktime.location.ISO6709'), box('ilst', box('data', '+35.6895+139.6917+040.000/')));
+  const mdat = box('mdat', '+12.3456+123.4567/VIDEODATA');
+  const mp4 = Buffer.concat([box('ftyp', 'isom\0\0\0\0'), box('moov', box('mvhd', Buffer.alloc(20)), box('udta', xyz, apple)), mdat]);
+  const out = Buffer.from(await (await stripFile(new File([mp4], 'v.mp4', { type: 'video/mp4' }))).arrayBuffer());
+  assert.equal(out.length, mp4.length);
+  assert.ok(!out.includes('35.6895') && !out.includes('139.6917'));
+  assert.ok(out.includes('+00.0000+000.0000/'));
+  assert.ok(out.includes('+12.3456+123.4567/VIDEODATA'), 'mdat は触らない');
+});

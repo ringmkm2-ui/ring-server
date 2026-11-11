@@ -9,7 +9,7 @@
 // そこで、通話を始める側も応答する側も、自分の SDP に書いた指紋を
 //   { 通話ID, 自分のID, 相手のID, 向き(offer/answer), 指紋の一覧, (応答の時は)受け取った offer の指紋 }
 // にまとめて、メッセージと同じ e3(E2EMulti.seal: 自分の端末の秘密鍵 × 相手の各端末の公開鍵)で封をして
-// SDP と一緒に送る(fpSeal)。サーバーには開けないし、作り直すこともできない。
+// SDP と一緒に送る(fpSeal)。サーバーには開けない。作り直せないのは、相手の鍵を前から知っている(安全番号で確認した、または以前のやり取りで見た)時だけ。
 // 受け取った側は
 //   1. 自分の端末の鍵で開ける(開けなければ受け付けない)
 //   2. 封をした端末の鍵が、相手の承認済み端末の鍵(サーバーの一覧。安全番号で確認済みなら確認した鍵)にある
@@ -199,10 +199,13 @@
         const c = checkSdp(sdp, r.fp);
         if (!c.ok) return fail(c.reason);
         s.pinned = r.fp;
-        s.state = 'verified';
         s.newKey = s.newKey || r.newKey;
+        // この通話で初めて見た端末の鍵なら「確認済み」にはしない。鍵の一覧はサーバーが返すので、
+        // サーバーが自分の鍵を混ぜれば封も作れてしまう。前から知っている鍵(安全番号で確認済み、または
+        // 以前のやり取りで見た鍵)の時だけ緑にし、初めての鍵は確認コードの読み合わせを促す
+        s.state = s.newKey ? 'new_key' : 'verified';
         markCapable(store, o.me, o.peer);
-        return { ok: true, state: 'verified', newKey: s.newKey };
+        return { ok: true, state: s.state, newKey: s.newKey };
       }
       // 封が無い: 前に確かめた指紋があれば、それと同じかだけ見る(作り直しの SDP)
       if (s.pinned) {

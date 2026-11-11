@@ -255,7 +255,7 @@
     updateStatus();
   }
   function applyAuthState(uid, v) {
-    if (v.state === 'legacy') markTile(uid, 'unverified', tr('gcall_auth_unverified', '自動で確認できていません'));
+    if (v.state !== 'verified') markTile(uid, 'unverified', tr('gcall_auth_unverified', '自動で確認できていません'));
     else markTile(uid, null);
   }
 

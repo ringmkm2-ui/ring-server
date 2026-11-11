@@ -122,3 +122,12 @@ test('サーバーは形の合う封だけ中継する', () => {
   assert.strictEqual(cleanFpSeal('e3:' + 'A'.repeat(30000)), undefined);
   assert.strictEqual(cleanFpSeal(123), undefined);
 });
+
+test('この通話で初めて見た端末の鍵なら「確認済み」にしない(サーバーが鍵を混ぜた場合)', async () => {
+  const { A, B, alice, bob, mallory } = people();
+  const s = sdp(fp());
+  const seal = offerSeal(A, mallory, [bob.pk], { sdp: s, callId: 'c1', me: 'A', peer: 'B' });
+  const sess = B.CallAuth.createSession({ callId: 'c1', me: 'B', peer: 'A', ring: [bob], peerKeys: async () => [alice.pk, mallory.pk], store: B.CallAuth.memStore(), checkSender: () => ({ ok: true, added: true }) });
+  const v = await sess.verifyRemote(s, seal, 'offer');
+  assert.strictEqual(v.ok, true); assert.strictEqual(v.state, 'new_key');
+});

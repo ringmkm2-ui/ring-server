@@ -75,6 +75,8 @@ class CloudinaryE2EUploader {
     // Cloudinaryの上限(10MB)を超える画像は、暗号化・送信前に圧縮しておく。
     // 動画や既に上限内のファイルはそのまま(compressImageIfNeeded内で判定)。
     file = await compressImageIfNeeded(file);
+    // 動画の位置情報も送る前に消す(画像は compressImageIfNeeded の中で消している)
+    if (window.bcStripMeta && /^video\//.test(file.type || '')) file = await window.bcStripMeta.stripFile(file);
 
     const fileId = this.generateFileId();
     const chunks = Math.ceil(file.size / CHUNK_SIZE);

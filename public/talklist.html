@@ -1019,7 +1019,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v2.1.0</div>
+  <div class="version-badge">Bro Chat v2.1.1</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -5736,8 +5736,7 @@ async function openWatch(p) {
     const lk = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', i18n.t('acct_likers'));
     lk.addEventListener('click', () => window.ytShowLikers(p)); actions.appendChild(lk);
   }
-  const shareBtn = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', i18n.t('share'));
-  shareBtn.addEventListener('click', () => sharePost(p)); actions.appendChild(shareBtn);
+  // 投稿は暗号化していないので、外のアプリへ共有するボタンは置かない
   if (p.mediaUrl) {
     const dl = mkAct('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>', i18n.t('download'));
     dl.addEventListener('click', () => downloadPost(p)); actions.appendChild(dl);
@@ -5928,16 +5927,6 @@ function renderWatchComment(c, p) {
   return row;
 }
 
-async function sharePost(p) {
-  const url = location.origin + '/talklist.html';
-  const title = postTitle(p);
-  try {
-    if (navigator.share) { await navigator.share({ title: 'Bro Chat', text: title + ' - ' + (p.authorName || ''), url }); return; }
-    if (navigator.clipboard) { await navigator.clipboard.writeText(title + '\n' + url); }
-    ytToast(i18n.t('link_copied'));
-  } catch (e) { /* ユーザーがキャンセルしただけのこともある */ }
-}
-
 function downloadPost(p) {
   if (!p.mediaUrl) return;
   if (p.mediaType === 'image' && window.openTalklistMedia) { window.openTalklistMedia(p.mediaUrl, false, p.mediaUrl); return; }
@@ -5981,9 +5970,9 @@ function openPostMenu(p) {
     b.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;padding:15px 22px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#ef4444' : 'var(--yt-fg)');
     b.textContent = label; b.addEventListener('click', () => { closeMenu(); fn(); }); sheet.appendChild(b);
   };
-  add(i18n.t('share'), false, () => sharePost(p));
   if (p.mediaUrl) add(i18n.t('download'), false, () => downloadPost(p));
   if (p.authorId === myUserId) add(i18n.getLang && i18n.getLang() === 'ja' ? '削除' : 'Delete', true, () => deletePost(p.id));
+  if (!sheet.childElementCount) return; // 出せる項目が無い
   ov.appendChild(sheet);
   ov.addEventListener('click', e => { if (e.target === ov) closeMenu(); });
   document.body.appendChild(ov);
