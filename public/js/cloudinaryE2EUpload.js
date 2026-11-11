@@ -16,6 +16,8 @@ const CLOUDINARY_IMAGE_LIMIT = 9.5 * 1024 * 1024; // 少し余裕を持たせて
  */
 async function compressImageIfNeeded(file) {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  // 送る前に撮影情報(位置情報など)を必ず消す。縮める時も、元の写真の情報が残らないよう先に消しておく
+  if (window.bcStripMeta) file = await window.bcStripMeta.stripFile(file);
   // Googleドライブに置く時は10MBの壁が無いので、25MBまでは撮ったままの画質で送る
   const onDrive = window.cloudinaryE2EUploader && window.cloudinaryE2EUploader._drive && window.cloudinaryE2EUploader._drive.on;
   if (file.size <= (onDrive ? 25 * 1024 * 1024 : CLOUDINARY_IMAGE_LIMIT)) return file;

@@ -109,6 +109,7 @@ const urlsToCache = [
   '/js/ratchet.js',
   '/js/ratchetClient.js',
   '/js/historyBackup.js',
+  '/js/stripMeta.js',
   '/js/qrcode.min.js',
   '/js/safetyNumber.js',
   '/js/cloudinarySign.js',
