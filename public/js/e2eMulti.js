@@ -77,4 +77,4 @@
   }
 
   g.E2EMulti = { PREFIX, seal, parse, open, isMulti: s => typeof s === 'string' && s.startsWith(PREFIX) };
-})(typeof self !== 'undefined' ? self : window);
+})(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : globalThis));

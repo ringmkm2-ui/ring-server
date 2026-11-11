@@ -244,6 +244,14 @@ html.dark-mode .version-badge{color:rgba(148,163,184,.5)}
 .call-av{width:128px;height:128px;min-width:128px;min-height:128px;max-width:128px;max-height:128px;flex-shrink:0;border-radius:50%;margin:20px auto 4px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:700;color:#fff;background-size:cover;background-position:center}
 .call-name{font-size:26px;font-weight:700;color:#fff;margin-bottom:6px;text-shadow:0 2px 12px rgba(0,0,0,.4)}
 .call-status{font-size:15px;font-weight:600;color:rgba(255,255,255,.82);text-shadow:0 1px 8px rgba(0,0,0,.4)}
+/* 通話の相手の自動確認(js/callAuth.js)。確認できていない時は確認コードを大きく、注意の色で出す */
+#callSas.ca-strong{font-size:22px!important;font-weight:700;opacity:1!important;color:#fde68a;margin-top:10px!important}
+#callAuthNote{display:inline-flex;align-items:center;gap:6px;max-width:300px;margin:8px auto 0;padding:5px 12px;border-radius:999px;font-size:12px;line-height:1.4;font-weight:600;text-align:left;background:rgba(0,0,0,.35);color:rgba(255,255,255,.9)}
+#callAuthNote[hidden]{display:none}
+#callAuthNote .ca-ic{display:inline-flex;flex:none}
+#callAuthNote.ca-ok{color:#bbf7d0}
+#callAuthNote.ca-warn{color:#fde68a;border-radius:14px}
+#callAuthNote.ca-bad{color:#fecaca;background:rgba(127,29,29,.6);border-radius:14px}
 /* 下部のドッキングされたコントロールパネル(glass-regularで質感を出す)。
    ネイティブの通話アプリのように、丸背景のアイコンボタンをグリッド状に収める。 */
 .call-controls-panel{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;width:calc(100% - 48px);max-width:340px;padding:26px 22px;border-radius:32px;z-index:1;margin-bottom:14px}
@@ -490,6 +498,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/ratchetClient.js"></script>
 <script src="/js/qrcode.min.js"></script>
 <script src="/js/safetyNumber.js"></script>
+<script src="/js/callAuth.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
@@ -620,6 +629,8 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
       <div class="call-name" id="callName">ユーザー名</div>
       <div class="call-status" id="callStatus" data-i18n="calling" data-bd="wow">呼び出し中...</div>
       <div id="callSas" hidden style="margin-top:6px;font-size:13px;letter-spacing:.14em;opacity:.85"></div>
+      <!-- 通話の相手を自動で確かめた結果(js/callAuth.js)。確かめられなかった時は理由を出す -->
+      <div id="callAuthNote" hidden></div>
     </div>
 
     <!-- リアルタイム字幕表示(Live Translateパネルを開いていない間の簡易表示) -->
@@ -3876,10 +3887,89 @@ function sdpFingerprint(sdp) {
   const m = /^a=fingerprint:\S+ ([0-9A-Fa-f:]+)/m.exec(sdp || '');
   return m ? m[1].toUpperCase() : '';
 }
+// --- 通話の相手の自動確認(js/callAuth.js) ---
+// 自分の DTLS 指紋を端末の暗号鍵(e3)で封をして SDP と一緒に送り、受け取った側は相手の SDP の指紋が
+// 封の中身と同じかを setRemoteDescription の前に確かめる。合わなければ通話を切る。
+// 相手が古いアプリで封が無い時だけ、下の確認コードを強調して出す。
+let callAuth = null;        // 今の通話の確認の状態(CallAuth.createSession)
+let callAuthKeys = null;    // 相手の端末の鍵(通話1本につき1回だけ取りに行く)
+const CALL_AUTH_ICON = {
+  ok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>',
+  warn: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+function callAuthT(k, d) { return window.i18n ? i18n.t(k, d) : d; }
+// kind: 'ok' | 'warn' | 'bad' | null(消す)。文言は固定のものだけ(相手が決められる文字は入れない)
+function setCallAuthNote(kind, text) {
+  const el = document.getElementById('callAuthNote');
+  if (!el) return;
+  el.textContent = '';
+  el.className = kind ? 'ca-' + kind : '';
+  if (!kind) { el.hidden = true; return; }
+  const ic = document.createElement('span');
+  ic.className = 'ca-ic';
+  ic.innerHTML = kind === 'ok' ? CALL_AUTH_ICON.ok : CALL_AUTH_ICON.warn;
+  const tx = document.createElement('span');
+  tx.textContent = text;
+  el.append(ic, tx);
+  el.hidden = false;
+}
+function beginCallAuth(callId, peerId) {
+  if (!window.CallAuth) { callAuth = null; return; }
+  const keys = CallAuth.fetchPeerKeys(peerId, token, myUserId);
+  callAuthKeys = keys;
+  callAuth = CallAuth.createSession({
+    callId, me: myUserId, peer: peerId,
+    ring: () => CallAuth.localRing(myUserId),
+    peerKeys: () => keys,
+    // 安全番号で確認済みの相手なら、確認した端末の封だけ受け付ける(メッセージと同じ判定)
+    checkSender: pub => (window.SafetyNumber ? SafetyNumber.checkSender(myUserId, peerId, pub) : { ok: true }),
+  });
+  callAuth.callId = callId;
+}
+// 自分の SDP の指紋に封をする。鍵が無い・相手の鍵が取れない時は null(封無しで送る。
+// 相手が以前こちらの封を受け取っていれば、相手側で通話が切れる = 安全側)
+async function sealCallFp(localDesc, dir, remoteDesc) {
+  if (!window.CallAuth || !callAuth) return null;
+  try {
+    await getOrCreateMyKeyPair();
+    const me = CallAuth.myKey(myUserId);
+    if (!me) return null;
+    return CallAuth.seal({
+      sdp: localDesc, remoteSdp: remoteDesc, callId: callAuth.callId, me: myUserId, peer: callPartnerId || otherId, dir,
+      secretKey: me.sk, publicKeyB64: me.pk, recipientKeys: await callAuthKeys,
+    });
+  } catch (e) { console.warn('[callAuth] seal failed', e); return null; }
+}
+// 相手を確かめられなかった: すぐに接続を閉じてマイク・カメラを止め、理由を出してから画面を閉じる
+function abortCallAuth(reason) {
+  const id = currentCallId;
+  console.warn('[callAuth] 通話を切りました: ' + reason);
+  // 着信側は応答する前に切るので「拒否」として伝える(call_end だと発信側に不在着信の通知が飛ぶ)
+  if (id) sendSignal(callRole === 'callee' ? 'call_reject' : 'call_end', callRole === 'callee' ? { reason: 'declined' } : {});
+  logCall('cancelled');
+  if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+  stopAllCallMedia();
+  if (localStream) { try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {} localStream = null; }
+  stopCallTimer();
+  acceptInProgress = false;
+  document.getElementById('incomingBtnRow').style.display = 'none';
+  setCallStatus(callAuthT('call_auth_cut', '安全のため通話を切りました'));
+  const sas = document.getElementById('callSas'); if (sas) sas.hidden = true;
+  setCallAuthNote('bad', callAuthT(CallAuth.reasonKey(reason), '相手を確認できませんでした'));
+  if (window.LiquidGlass) window.LiquidGlass.haptic('error');
+  // 理由を読めるよう少し残す。その間に別の着信が来ていたら、そちらを消さない
+  setTimeout(() => { if (currentCallId === id) cleanupCall(); }, 4500);
+}
 async function showCallSas(conn, callId) {
   const el = document.getElementById('callSas');
   if (!el) return;
-  if (!(window.bcSettings && bcSettings.get('showCallCode'))) { el.hidden = true; return; }
+  // 自動で確認できた通話は、設定に従って今まで通り小さく出す。
+  // 確認できていない通話(相手が古いアプリ)は、設定で消していても必ず強調して出す
+  const legacy = !callAuth || callAuth.state !== 'verified';
+  el.classList.toggle('ca-strong', legacy);
+  if (legacy) setCallAuthNote('warn', callAuthT('call_auth_unverified', 'この通話は自動で確認できていません。確認コードを声で読み合わせてください'));
+  else setCallAuthNote('ok', callAuthT('call_auth_verified', '相手の端末を確認しました'));
+  if (!legacy && !(window.bcSettings && bcSettings.get('showCallCode'))) { el.hidden = true; return; }
   try {
     const a = sdpFingerprint(conn.localDescription && conn.localDescription.sdp);
     const b = sdpFingerprint(conn.remoteDescription && conn.remoteDescription.sdp);
@@ -4026,7 +4116,8 @@ function showCallOverlay() {
   cancelCallExitFx();
   const _cc = document.getElementById('callCard'); if (_cc) _cc.classList.remove('burst');
   const sasEl = document.getElementById('callSas');
-  if (sasEl) { sasEl.hidden = true; sasEl.textContent = ''; }
+  if (sasEl) { sasEl.hidden = true; sasEl.textContent = ''; sasEl.classList.remove('ca-strong'); }
+  setCallAuthNote(null);
   document.getElementById('callOv').classList.add('show');
   // 下部のコントロールパネルがガラスとして凝縮しながら現れる演出 + 軽い触感フィードバック
   if (window.LiquidGlass) {
@@ -4298,6 +4389,11 @@ function cleanupCall() {
   currentCallId = null;
   callRole = null;
   callPartnerId = null;
+  callAuth = null;
+  callAuthKeys = null;
+  window.__incomingOffer = null;
+  window.__incomingOffer_callId = null;
+  window.__incomingOffer_seal = null;
   callConnected = false;
   isMuted = false;
   isVideoCall = false;
@@ -4342,6 +4438,7 @@ async function startOutgoingCall(isVideo = false) {
   callRole = 'caller';
   callPartnerId = otherId;
   isVideoCall = isVideo;
+  beginCallAuth(myCallId, otherId); // 相手の端末の鍵は、マイクの準備と並行して取りに行く
   showCallOverlay();
   // 発信時は必ず「着信ボタン(応答/拒否)」を隠し、「通話終了ボタン」のみ表示する
   document.getElementById('incomingBtnRow').style.display = 'none';
@@ -4392,7 +4489,10 @@ async function startOutgoingCall(isVideo = false) {
   if (currentCallId !== myCallId) return;
   await pc.setLocalDescription(offer);
   if (currentCallId !== myCallId) return; // キャンセル済みならofferを送らない
-  sendSignal('call_offer', { sdp: offer, isVideo });
+  // 自分の指紋に封をして一緒に送る(古いアプリの相手は fpSeal を読まないだけで、通話はそのまま出来る)
+  const fpSeal = await sealCallFp(offer, 'offer');
+  if (currentCallId !== myCallId || !pc) return;
+  sendSignal('call_offer', { sdp: offer, isVideo, fpSeal: fpSeal || undefined });
   setCallStatus('呼び出し中...');
 }
 
@@ -4426,6 +4526,8 @@ function onCallOffer(data) {
   isVideoCall = !!data.isVideo;
   window.__incomingOffer = data.sdp;
   window.__incomingOffer_callId = data.callId;
+  window.__incomingOffer_seal = data.fpSeal;
+  beginCallAuth(data.callId, data.fromUserId);
 
   // SW通知タップ経由で既にaccept/declineが指定されていれば、即座に実行して待たせない
   // action が無い(=通知タップで開いただけ)場合は普通に着信画面を出す。
@@ -4468,8 +4570,19 @@ async function acceptIncomingCall() {
   document.getElementById('callBtnRow').style.display = 'flex';
   setCallStatus('接続中...');
 
+  // 相手の指紋を確かめる(マイクを取る前に。確かめられない相手にはマイクもカメラも渡さない)。
+  // ブラウザ・通知からの応答・APKのネイティブ着信からの応答、どの経路もここを通る
+  const acceptCallId = currentCallId;
+  const offerSdp = window.__incomingOffer;
+  if (callAuth) {
+    const v = await callAuth.verifyRemote(offerSdp, window.__incomingOffer_seal, 'offer');
+    if (currentCallId !== acceptCallId) { acceptInProgress = false; return; } // 確かめている間に相手が切った
+    if (!v.ok) { abortCallAuth(v.reason); return; }
+  }
+
   // 通話応答のたびに一時的なICE認証情報を取得し直す
   await refreshIceServers();
+  if (currentCallId !== acceptCallId) { acceptInProgress = false; return; }
   if (relayRequiredButMissing()) {
     setCallStatus('中継サーバーが使えないため応答できません(設定でIPを隠す指定)');
     sendSignal('call_reject', { reason: 'declined' });
@@ -4497,7 +4610,8 @@ async function acceptIncomingCall() {
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   if (isVideoCall) { if (pc.__applyVideoBitrate) pc.__applyVideoBitrate(); }
 
-  await pc.setRemoteDescription(new RTCSessionDescription(window.__incomingOffer));
+  // 上で確かめたのと同じ SDP を渡す(確かめた後に差し替えられた物を使わない)
+  await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
   for (const c of pendingRemoteIce) {
     try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
   }
@@ -4505,7 +4619,9 @@ async function acceptIncomingCall() {
 
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  sendSignal('call_answer', { sdp: answer });
+  const fpSeal = await sealCallFp(answer, 'answer', offerSdp);
+  if (currentCallId !== acceptCallId || !pc) return;
+  sendSignal('call_answer', { sdp: answer, fpSeal: fpSeal || undefined });
   if (pc && pc.__armWatchdog) pc.__armWatchdog();
 }
 
@@ -4518,6 +4634,17 @@ function declineIncomingCall() {
 // --- 相手からの応答受信（発信者側） ---
 async function onCallAnswer(data) {
   if (!pc || !currentCallId || data.callId !== currentCallId) return;
+  // 応答を待っている時だけ受け付ける(相手の2台目の端末からの2つ目の応答や、後から差し込まれた応答は捨てる)
+  if (pc.signalingState !== 'have-local-offer' || pc.__answerBusy) return;
+  const conn = pc;
+  if (callAuth) {
+    conn.__answerBusy = true;
+    let v;
+    try { v = await callAuth.verifyRemote(data.sdp, data.fpSeal, 'answer', conn.localDescription); }
+    finally { conn.__answerBusy = false; }
+    if (pc !== conn || data.callId !== currentCallId) return;
+    if (!v.ok) { abortCallAuth(v.reason); return; }
+  }
   await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
   for (const c of pendingRemoteIce) {
     try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}

@@ -36,6 +36,18 @@ setInterval(() => {
 }, 10 * 60 * 1000).unref();
 const CALL_ID_RE = /^[A-Za-z0-9_.:-]{1,100}$/;
 
+// 通話の指紋の封(fpSeal)。端末同士が E2E の鍵(e3)で封をした「自分の DTLS 指紋」で、サーバーには開けない
+// (public/js/callAuth.js)。サーバーは形と大きさだけ確かめて、そのまま相手に渡す。
+//   e3:<送信端末の公開鍵>:<宛先の公開鍵>.<nonce+box>,... (宛先は16台まで)
+// 形が合わないものは渡さない(封だけ落として、SDP は今まで通り中継する。受け取る側は「封が無い」として扱い、
+// 以前に封を受け取ったことのある相手なら自分で通話を切る)。呼び出し中はメモリに置くので大きさも絞る
+const FP_SEAL_MAX = 20000;
+const FP_SEAL_RE = /^e3:[A-Za-z0-9+/]{43}=:[A-Za-z0-9+/]{43}=\.[A-Za-z0-9+/]{56,3000}={0,2}(?:,[A-Za-z0-9+/]{43}=\.[A-Za-z0-9+/]{56,3000}={0,2}){0,15}$/;
+function cleanFpSeal(v) {
+  if (typeof v !== 'string' || v.length > FP_SEAL_MAX) return undefined;
+  return FP_SEAL_RE.test(v) ? v : undefined;
+}
+
 // 通知の連打よけ。グループ通話・ライブを「始める→やめる」を繰り返すと、そのたびに全員の端末へ
 // プッシュ/FCMが飛び、1秒に何回でも鳴らせた。画面上の表示(WS)はそのまま、端末を鳴らすのは間隔を空ける
 const notifyLast = new Map(); // key -> 最後に鳴らした時刻
@@ -611,7 +623,7 @@ function initWebSocketServer(server) {
         // 呼び出し中の着信があれば offer と ICE をこの接続に再配送する
         pendingCalls.forEach((p, callId) => {
           if (p.to !== userId) return;
-          ws.send(JSON.stringify({ type: 'call_offer', callId, fromUserId: p.from, sdp: p.sdp, isVideo: p.isVideo, redelivered: true }));
+          ws.send(JSON.stringify({ type: 'call_offer', callId, fromUserId: p.from, sdp: p.sdp, isVideo: p.isVideo, fpSeal: p.fpSeal, redelivered: true }));
           p.ice.forEach(candidate => ws.send(JSON.stringify({ type: 'call_ice', callId, fromUserId: p.from, candidate })));
         });
         // WS接続だけではオンラインにしない（chat_openイベントで明示的にオンラインにする）
@@ -782,12 +794,14 @@ function initWebSocketServer(server) {
           return;
         }
         rememberCall(data.callId, userId, data.recipientId);
+        const offerSeal = cleanFpSeal(data.fpSeal);
         const delivered = broadcastToUser(data.recipientId, {
           type: 'call_offer',
           callId: data.callId,
           fromUserId: userId,
           sdp: data.sdp,
           isVideo: !!data.isVideo,
+          fpSeal: offerSeal,
         });
 
         // 相手がWS未接続でも即「不在」にはしない。プッシュで相手の端末を鳴らし、
@@ -795,6 +809,7 @@ function initWebSocketServer(server) {
         clearPendingCall(data.callId);
         const pending = {
           from: userId, to: data.recipientId, sdp: data.sdp, isVideo: !!data.isVideo,
+          fpSeal: offerSeal, // 相手が後からアプリを開いた時の再配送でも、封を付けて渡す
           ice: [], ts: Date.now(), timer: null, delivered: false, // 相手の画面から call_ringing が来たら true
         };
         pending.timer = setTimeout(() => {
@@ -889,6 +904,7 @@ function initWebSocketServer(server) {
           callId: data.callId,
           fromUserId: userId,
           sdp: data.sdp,
+          fpSeal: cleanFpSeal(data.fpSeal),
         });
         return;
       }
@@ -1037,6 +1053,8 @@ function initWebSocketServer(server) {
         target.send(JSON.stringify({
           type: 'gcall_signal', groupId: data.groupId, from: userId, kind: data.kind,
           sdp: data.sdp, candidate: data.candidate,
+          // 指紋の封は offer / answer にだけ付く
+          fpSeal: data.kind === 'ice' ? undefined : cleanFpSeal(data.fpSeal),
         }));
         return;
       }
@@ -1308,4 +1326,4 @@ function disconnectBanned(userId, until) {
 
 function forgetPresenceContacts(userId) { contactCache.delete(userId); }
 
-module.exports = { forgetPresenceContacts, initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, listFeedLives, rejectPendingCall, disconnectBanned };
+module.exports = { cleanFpSeal, forgetPresenceContacts, initWebSocketServer, broadcastToUser, isUserOnline, onlineUsers, kickFromGroupCall, kickFromLive, listFeedLives, rejectPendingCall, disconnectBanned };

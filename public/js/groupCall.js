@@ -1,6 +1,10 @@
 // groupCall.js
 // グループ通話(メッシュ型WebRTC)。入った人が、既に入っている全員へofferを送る。
 // サーバー(ws/wsServer.js)は名簿とSDP/ICEの中継だけ。映像・音声は端末同士で直接流れる。
+//
+// 相手の確認(js/callAuth.js): 接続は相手1人ごとに1本なので、1本ごとに自分の DTLS 指紋へ端末の鍵で封をして送り、
+// 受け取った SDP の指紋が相手の封と同じかを setRemoteDescription の前に確かめる。
+// 合わない相手とだけ繋がない(ほかの人との通話はそのまま続く)。古いアプリの相手は繋ぐが「未確認」と出す。
 (function () {
   const ICE_FALLBACK = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.miwifi.com:3478' }, { urls: 'stun:stun.chat.bilibili.com:3478' }];
 
@@ -10,6 +14,7 @@
     cam: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
     camOff: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
     end: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(135deg)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    shieldWarn: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
     phone: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
   };
 
@@ -19,7 +24,10 @@
   let micOn = true, camOn = true;
   let timerId = null, seconds = 0;
   let active = false, activeVideo = false;
-  const peers = new Map(); // userId -> { pc, stream, pendingIce: [], hasRemote: false }
+  const peers = new Map(); // userId -> { pc, stream, pendingIce: [], hasRemote: false, auth }
+  // 指紋が合わずに切った相手。その人が入り直す(gcall_left / gcall_joined)まで、その人からの合図は受け付けない
+  const blocked = new Set();
+  const tr = (k, d) => (window.i18n ? window.i18n.t(k, d) : d);
   const els = {};
 
   function css() {
@@ -48,6 +56,11 @@
 .gct .nm{position:absolute;left:10px;bottom:8px;font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(0,0,0,.5)}
 .gct .st{position:absolute;right:10px;top:8px;font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(0,0,0,.5);display:none}
 .gct.connecting .st{display:block}
+.gct .vf{position:absolute;left:10px;top:8px;display:none;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.55);color:#fde68a}
+.gct.unverified .vf{display:inline-flex}
+.gct.authfail .vf{display:inline-flex;color:#fecaca;background:rgba(127,29,29,.75)}
+.gct.authfail .st{display:none}
+.gct.authfail video{display:none}
 #gcallCtl{display:flex;justify-content:center;gap:18px;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
 #gcallCtl button{width:58px;height:58px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
 #gcallCtl button.off{background:#fff;color:#111}
@@ -118,7 +131,12 @@
     else { av.style.background = m.color; av.textContent = m.initials; }
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = uid === cfg.myUserId ? '自分' : m.name;
     const st = document.createElement('div'); st.className = 'st'; st.textContent = '接続中';
-    t.append(v, av, nm, st);
+    // 相手を自動で確認できなかった時の印(文言は固定。アイコンは固定のSVG)
+    const vf = document.createElement('div'); vf.className = 'vf';
+    const vfi = document.createElement('span'); vfi.style.display = 'inline-flex'; vfi.innerHTML = SVG.shieldWarn;
+    const vft = document.createElement('span'); vft.className = 'vft';
+    vf.append(vfi, vft);
+    t.append(v, av, nm, st, vf);
     els.grid.appendChild(t);
     layout();
     return t;
@@ -188,10 +206,63 @@
     return !!(window.bcSettings && window.bcSettings.get('hideIpInCalls')) && !relayOnly;
   }
 
+  // ---- 相手の確認 ----
+  const authCallId = () => 'g:' + cfg.groupId; // グループ通話には通話IDが無いので、グループごとに決まる値を使う
+  function newAuth(uid) {
+    if (!window.CallAuth) return null;
+    const keys = CallAuth.fetchPeerKeys(uid, cfg.token, cfg.myUserId);
+    const a = CallAuth.createSession({
+      callId: authCallId(), me: cfg.myUserId, peer: uid,
+      ring: () => CallAuth.localRing(cfg.myUserId),
+      peerKeys: () => keys,
+      checkSender: pub => (window.SafetyNumber ? SafetyNumber.checkSender(cfg.myUserId, uid, pub) : { ok: true }),
+    });
+    a.keys = keys;
+    return a;
+  }
+  // 自分の指紋に封をする。出来なければ null(封無しで送る。相手が以前こちらの封を見ていれば相手側で切れる = 安全側)
+  async function sealFor(p, uid, dir, localDesc, remoteDesc) {
+    if (!window.CallAuth || !p.auth) return null;
+    try {
+      if (typeof window.getOrCreateMyKeyPair === 'function') await window.getOrCreateMyKeyPair();
+      const me = CallAuth.myKey(cfg.myUserId);
+      if (!me) return null;
+      return CallAuth.seal({
+        sdp: localDesc, remoteSdp: remoteDesc, callId: authCallId(), me: cfg.myUserId, peer: uid, dir,
+        secretKey: me.sk, publicKeyB64: me.pk, recipientKeys: await p.auth.keys,
+      });
+    } catch (e) { console.warn('[gcall] seal failed', e); return null; }
+  }
+  function markTile(uid, cls, text) {
+    const t = els.grid && els.grid.querySelector('[data-uid="' + uid + '"]');
+    if (!t) return;
+    t.classList.remove('unverified', 'authfail');
+    if (!cls) return;
+    t.classList.add(cls);
+    const x = t.querySelector('.vft'); if (x) x.textContent = text;
+  }
+  // 指紋が合わない相手: その人との接続だけ閉じて、枠に理由を出す。ほかの人とはそのまま話せる
+  function failPeer(uid, reason) {
+    console.warn('[gcall] 相手を確認できないので繋ぎません: ' + uid + ' ' + reason);
+    blocked.add(uid);
+    const p = peers.get(uid);
+    if (p) { try { p.pc.close(); } catch (e) {} peers.delete(uid); }
+    const t = tileFor(uid);
+    const v = t.querySelector('video'); if (v) v.srcObject = null;
+    t.classList.remove('connecting');
+    t.classList.add('novid');
+    markTile(uid, 'authfail', tr('gcall_auth_cut', '確認できないため切りました'));
+    updateStatus();
+  }
+  function applyAuthState(uid, v) {
+    if (v.state === 'legacy') markTile(uid, 'unverified', tr('gcall_auth_unverified', '自動で確認できていません'));
+    else markTile(uid, null);
+  }
+
   function makePeer(uid) {
     if (peers.has(uid)) return peers.get(uid);
     const pc = new RTCPeerConnection(relayOnly ? { iceServers, iceTransportPolicy: 'relay' } : { iceServers });
-    const p = { pc, pendingIce: [], hasRemote: false };
+    const p = { pc, pendingIce: [], hasRemote: false, auth: newAuth(uid) };
     peers.set(uid, p);
     localStream.getTracks().forEach(tr => {
       const sender = pc.addTrack(tr, localStream);
@@ -246,7 +317,9 @@
     const p = makePeer(uid);
     const offer = await p.pc.createOffer();
     await p.pc.setLocalDescription(offer);
-    send({ type: 'gcall_signal', groupId: cfg.groupId, to: uid, kind: 'offer', sdp: p.pc.localDescription });
+    const fpSeal = await sealFor(p, uid, 'offer', p.pc.localDescription);
+    if (peers.get(uid) !== p) return; // 封をしている間に相手が抜けた
+    send({ type: 'gcall_signal', groupId: cfg.groupId, to: uid, kind: 'offer', sdp: p.pc.localDescription, fpSeal: fpSeal || undefined });
   }
 
   async function flushIce(p) {
@@ -259,17 +332,42 @@
   async function onSignal(d) {
     if (!inCall) return;
     const uid = d.from;
+    if (blocked.has(uid)) return;
     try {
       if (d.kind === 'offer') {
+        // 既に繋いだ相手からもう一度 offer が来るのは、相手が別の端末などで入り直した時。
+        // 古い接続に重ねず(証明書が違うので指紋も変わる)、新しい接続として最初から確かめ直す
+        const old = peers.get(uid);
+        if (old && (old.hasRemote || old.busy)) { try { old.pc.close(); } catch (e) {} peers.delete(uid); }
         const p = makePeer(uid);
+        p.busy = true;
+        if (p.auth) {
+          const v = await p.auth.verifyRemote(d.sdp, d.fpSeal, 'offer');
+          if (peers.get(uid) !== p) return;
+          if (!v.ok) { failPeer(uid, v.reason); return; }
+          applyAuthState(uid, v);
+        }
         await p.pc.setRemoteDescription(d.sdp);
         await flushIce(p);
         const ans = await p.pc.createAnswer();
         await p.pc.setLocalDescription(ans);
-        send({ type: 'gcall_signal', groupId: cfg.groupId, to: uid, kind: 'answer', sdp: p.pc.localDescription });
+        const fpSeal = await sealFor(p, uid, 'answer', p.pc.localDescription, d.sdp);
+        if (peers.get(uid) !== p) return;
+        send({ type: 'gcall_signal', groupId: cfg.groupId, to: uid, kind: 'answer', sdp: p.pc.localDescription, fpSeal: fpSeal || undefined });
       } else if (d.kind === 'answer') {
         const p = peers.get(uid);
         if (!p) return;
+        // こちらが offer を出して応答を待っている時だけ受け付ける(2つ目の応答・差し込まれた応答は捨てる)
+        if (p.pc.signalingState !== 'have-local-offer' || p.busy) return;
+        if (p.auth) {
+          p.busy = true;
+          let v;
+          try { v = await p.auth.verifyRemote(d.sdp, d.fpSeal, 'answer', p.pc.localDescription); }
+          finally { p.busy = false; }
+          if (peers.get(uid) !== p) return;
+          if (!v.ok) { failPeer(uid, v.reason); return; }
+          applyAuthState(uid, v);
+        }
         await p.pc.setRemoteDescription(d.sdp);
         await flushIce(p);
       } else if (d.kind === 'ice') {
@@ -342,6 +440,7 @@
     clearInterval(timerId); timerId = null;
     peers.forEach(p => { try { p.pc.close(); } catch (e) {} });
     peers.clear();
+    blocked.clear();
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     inCall = false;
     try { const bc = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BroCall; if (bc && bc.callEnded) bc.callEnded(); } catch (e) {}
@@ -392,10 +491,11 @@
         renderBanner();
         return true;
       case 'gcall_joined':
-        if (inCall) tileFor(d.userId); // 相手からofferが来るまで枠だけ出す
+        // 入り直した人は、もう一度最初から確かめる
+        if (inCall) { blocked.delete(d.userId); tileFor(d.userId); markTile(d.userId, null); } // 相手からofferが来るまで枠だけ出す
         return true;
       case 'gcall_left':
-        if (inCall) dropPeer(d.userId);
+        if (inCall) { blocked.delete(d.userId); dropPeer(d.userId); }
         return true;
       case 'gcall_signal':
         onSignal(d);
