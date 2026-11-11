@@ -14,6 +14,11 @@
     spk: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>',
     spkOff: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>',
     gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    full: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4a1 1 0 0 0-1 1v5M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5M15 21h5a1 1 0 0 0 1-1v-5"/></svg>',
+    exitFull: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></svg>',
+    wipe: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><rect x="12.5" y="11.5" width="8" height="7" rx="1.5" fill="currentColor" stroke="none" opacity=".9"/></svg>',
+    wipeOff: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><line x1="3" y1="21" x2="21" y2="3"/></svg>',
+    hostBadge: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M3 7l4.5 3.5L12 4l4.5 6.5L21 7l-1.8 11H4.8L3 7z"/></svg>',
     eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   };
 
@@ -24,6 +29,7 @@
   let screen = null; // { stream, video, mix: AudioContext|null, audio: MediaStreamTrack|null }
   const canShare = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   let hostId = null, hostName = '', startedAt = 0, tick = null, hostReady = false;
+  let wipeOn = true;   // 画面共有中にカメラをワイプで一緒に送るか
   // 配信の設定(タイトル・フレームレート・コメント)。つなぎ直した時にも送り直す
   let meta = { title: '', comments: true, fps: 30 };
   let roster = { host: null, viewers: [] }; // 「誰が見ているか」(サーバーから)
@@ -69,49 +75,66 @@
 #liveBanner.on{display:flex}
 #liveBanner .lb-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #liveBanner button{border:0;border-radius:12px;padding:7px 14px;background:#fff;color:#e11d48;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
-#liveOv{position:fixed;inset:0;z-index:30000;background:#000;display:none;color:#fff;font-family:inherit}
+#liveOv{position:fixed;inset:0;z-index:30000;background:#000;display:none;color:#fff;font-family:inherit;overscroll-behavior:contain;--lo-kb:0px}
 #liveOv.on{display:block}
-#liveOv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#liveOv .lo-stage{position:absolute;inset:0;overflow:hidden;background:#000}
+#liveOv video.lo-main{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#liveOv video.lo-main.wide{object-fit:contain}
 #liveOv video.mirror{transform:scaleX(-1)}
-#liveOv video.wide{object-fit:contain}
-#liveOv .lo-btn[disabled]{opacity:.35;cursor:default}
-#liveOv .lo-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 30px;display:flex;align-items:center;gap:8px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
-#liveOv .lo-badge{background:#e11d48;border-radius:6px;padding:3px 8px;font-weight:800;font-size:12px;letter-spacing:.06em}
-#liveOv .lo-cnt{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.45);border-radius:6px;padding:3px 8px;font-size:12px}
-#liveOv .lo-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:15px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
-#liveOv .lo-x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
-#liveOv .lo-bot{position:absolute;left:0;right:0;bottom:0;padding:30px 20px calc(env(safe-area-inset-bottom,0px) + 22px);display:flex;justify-content:center;gap:22px;background:linear-gradient(transparent,rgba(0,0,0,.55))}
-#liveOv .lo-btn{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
-#liveOv .lo-btn.off{background:#fff;color:#111}
-#liveOv .lo-end{width:auto;padding:0 24px;border-radius:28px;background:#e11d48;font-weight:700;font-size:15px;font-family:inherit}
-#liveOv .lo-msg{position:absolute;left:0;right:0;top:45%;text-align:center;font-size:15px;opacity:.85;padding:0 24px;pointer-events:none}
-#liveOv .lo-cnt{cursor:pointer;border:0;color:#fff;font:inherit;font-size:12px}
-#liveOv .lo-ttl{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-#liveOv .lo-ttl b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.5)}
-#liveOv .lo-ttl small{font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.5)}
-#liveOv .lo-fps{background:rgba(0,0,0,.45);border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;letter-spacing:.02em;display:none}
+#liveOv video.lo-pip{position:absolute;left:4%;top:5%;width:28%;min-width:72px;max-width:54%;aspect-ratio:3/4;object-fit:cover;border-radius:14px;border:1.5px solid rgba(255,255,255,.22);box-shadow:0 8px 28px rgba(0,0,0,.55);background:#111;display:none;z-index:4;touch-action:none;cursor:grab;transition:width .18s ease}
+#liveOv video.lo-pip.wide{aspect-ratio:16/9}
+#liveOv video.lo-pip.drag{cursor:grabbing;transition:none}
+#liveOv.pip video.lo-pip{display:block}
+#liveOv .lo-msg{position:absolute;left:0;right:0;top:46%;text-align:center;font-size:15px;opacity:.9;padding:0 24px;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.85);z-index:6}
+#liveOv .lo-ui{position:absolute;inset:0;z-index:5;pointer-events:none}
+#liveOv .lo-ui>*{pointer-events:auto}
+#liveOv .lo-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 26px;display:flex;align-items:center;gap:8px;background:linear-gradient(rgba(0,0,0,.6),transparent);transition:opacity .25s,transform .25s}
+#liveOv .lo-in,#liveOv .lo-bot{transition:opacity .25s}
+#liveOv.idle .lo-top{opacity:0;transform:translateY(-8px);pointer-events:none}
+#liveOv.idle .lo-in,#liveOv.idle .lo-bot{opacity:0;pointer-events:none}
+#liveOv .lo-badge{background:#e11d48;border-radius:6px;padding:4px 8px;font-weight:800;font-size:12px;letter-spacing:.06em;display:flex;align-items:center;gap:5px;flex:none}
+#liveOv .lo-badge i{width:6px;height:6px;border-radius:50%;background:#fff;display:block;animation:loPulse 1.5s ease-in-out infinite}
+@keyframes loPulse{0%,100%{opacity:1}50%{opacity:.2}}
+#liveOv .lo-cnt{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.45);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;border:0;color:#fff;cursor:pointer;flex:none}
+#liveOv .lo-fps{background:rgba(0,0,0,.45);border-radius:6px;padding:4px 7px;font-size:11px;font-weight:700;display:none;flex:none}
 #liveOv .lo-fps.on{display:block}
-#liveOv .lo-stack{position:absolute;left:0;right:0;bottom:var(--lo-kb,0px);display:flex;flex-direction:column;background:linear-gradient(transparent,rgba(0,0,0,.55) 40%);padding-top:24px}
-#liveOv .lo-chat{max-height:34vh;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:7px;padding:0 14px;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 40%);mask-image:linear-gradient(transparent,#000 40%)}
-#liveOv .lo-c{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.75);word-break:break-word;animation:loIn .18s ease-out}
+#liveOv .lo-ttl{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#liveOv .lo-ttl b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#liveOv .lo-ttl small{font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#liveOv .lo-x,#liveOv .lo-full{width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
+#liveOv .lo-stack{position:absolute;left:0;right:0;bottom:var(--lo-kb,0px);display:flex;flex-direction:column;justify-content:flex-end;padding-top:40px;background:linear-gradient(transparent,rgba(0,0,0,.5) 55%)}
+#liveOv .lo-chat{max-height:36vh;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:0 12px;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 38%);mask-image:linear-gradient(transparent,#000 38%)}
+#liveOv .lo-c{display:flex;gap:7px;align-items:flex-start;font-size:14px;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.9);word-break:break-word;animation:loIn .18s ease-out}
 @keyframes loIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-#liveOv .lo-c .av{width:26px;height:26px;border-radius:50%;background:#475569 center/cover no-repeat;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
-#liveOv .lo-c b{font-weight:700;opacity:.8;margin-right:6px}
-#liveOv .lo-c.host b{color:#fda4af;opacity:1}
-#liveOv .lo-c.sys{font-size:12px;opacity:.7;padding-left:34px}
+#liveOv .lo-c .av{width:22px;height:22px;border-radius:50%;background:#475569 center/cover no-repeat;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px}
+#liveOv .lo-c b{font-weight:700;margin-right:6px;color:var(--nc,#cbd5e1)}
+#liveOv .lo-c .hb{display:inline-flex;vertical-align:-3px;margin-right:4px;color:#fda4af}
+#liveOv .lo-c.host b{color:#fda4af}
+#liveOv .lo-c.sys{font-size:12px;opacity:.72;padding-left:29px}
 #liveOv .lo-in{display:flex;gap:8px;align-items:center;padding:8px 12px 4px}
-#liveOv .lo-in input{flex:1;min-width:0;height:42px;border-radius:21px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;padding:0 16px;font:inherit;font-size:16px;outline:none}
+#liveOv .lo-in input{flex:1;min-width:0;height:42px;border-radius:21px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.4);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;padding:0 16px;font:inherit;font-size:16px;outline:none}
 #liveOv .lo-in input::placeholder{color:rgba(255,255,255,.6)}
 #liveOv .lo-in input:disabled{opacity:.5}
 #liveOv .lo-in .lo-btn{width:42px;height:42px;flex:none}
 #liveOv .lo-in .lo-btn.on{background:#fff;color:#111}
 #liveOv .lo-in .lo-send{background:#e11d48}
 #liveOv .lo-in .lo-send[disabled]{background:rgba(255,255,255,.18)}
-#liveOv .lo-bot{position:static;background:none;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 14px);gap:10px;align-items:center}
-#liveOv .lo-bot .lo-btn{width:48px;height:48px;flex:none}
-#liveOv .lo-bot .lo-end{width:auto;height:48px;padding:0 18px;font-size:14px;white-space:nowrap;flex:none}
+#liveOv .lo-bot{display:flex;justify-content:center;gap:10px;align-items:center;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 14px)}
+#liveOv .lo-btn{width:48px;height:48px;border-radius:50%;border:0;background:rgba(255,255,255,.18);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
+#liveOv .lo-btn.off{background:#fff;color:#111}
+#liveOv .lo-btn[disabled]{opacity:.35;cursor:default}
+#liveOv .lo-end{width:auto;height:48px;padding:0 18px;border-radius:24px;background:#e11d48;color:#fff;font:inherit;font-weight:700;font-size:14px;white-space:nowrap}
 #liveOv.viewer .lo-bot{display:none}
 #liveOv.viewer .lo-in{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}
+@media (orientation:landscape) and (max-height:600px){
+#liveOv .lo-stack{right:auto;width:38%;min-width:240px;max-width:430px;top:calc(env(safe-area-inset-top,0px) + 58px);background:none;padding-top:0}
+#liveOv .lo-chat{flex:1;max-height:none;-webkit-mask-image:linear-gradient(transparent,#000 20%);mask-image:linear-gradient(transparent,#000 20%)}
+#liveOv .lo-bot{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:auto;width:auto;padding:0;gap:8px}
+#liveOv .lo-bot .lo-btn{width:44px;height:44px}
+#liveOv .lo-bot .lo-end{height:44px}
+#liveOv .lo-in{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+#liveOv.viewer .lo-stack,#liveOv .lo-stack{width:38%}
+}
 #liveOv .lo-panel{position:absolute;left:0;right:0;bottom:0;max-height:70%;overflow:auto;z-index:100;background:rgba(24,24,27,.96);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-radius:20px 20px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);z-index:5;animation:loUp .22s ease-out}
 @keyframes loUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
 #liveOv .lo-ph{display:flex;align-items:center;margin-bottom:10px}
@@ -164,13 +187,18 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
 
     el.ov = document.createElement('div');
     el.ov.id = 'liveOv';
-    el.ov.innerHTML = `<video playsinline autoplay></video><div class="lo-msg"></div>
-      <div class="lo-top"><span class="lo-badge">LIVE</span><button type="button" class="lo-cnt" aria-label="視聴者">${I.eye}<b>0</b></button><span class="lo-fps"></span><span class="lo-ttl"><b></b><small></small></span><button type="button" class="lo-x" aria-label="閉じる">${I.close}</button></div>
+    el.ov.innerHTML = `<div class="lo-stage"><video class="lo-main" playsinline autoplay></video><video class="lo-pip" playsinline autoplay muted></video><div class="lo-msg"></div></div>
+      <div class="lo-ui">
+      <div class="lo-top"><span class="lo-badge"><i></i>LIVE</span><button type="button" class="lo-cnt" aria-label="視聴者">${I.eye}<b>0</b></button><span class="lo-fps"></span><span class="lo-ttl"><b></b><small></small></span><button type="button" class="lo-full" aria-label="全画面">${I.full}</button><button type="button" class="lo-x" aria-label="閉じる">${I.close}</button></div>
       <div class="lo-stack"><div class="lo-chat"></div>
         <div class="lo-in"><input type="text" maxlength="200" enterkeyhint="send" autocomplete="off"><button type="button" class="lo-btn lo-tts" aria-label="読み上げ">${I.spkOff}</button><button type="button" class="lo-btn lo-send" aria-label="送信" disabled>${I.send}</button></div>
-        <div class="lo-bot"></div></div>`;
+        <div class="lo-bot"></div></div>
+      </div>`;
     document.body.appendChild(el.ov);
-    el.video = el.ov.querySelector('video');
+    el.video = el.ov.querySelector('video.lo-main');
+    el.pip = el.ov.querySelector('video.lo-pip');
+    el.stage = el.ov.querySelector('.lo-stage');
+    el.fullBtn = el.ov.querySelector('.lo-full');
     el.msg = el.ov.querySelector('.lo-msg');
     el.cnt = el.ov.querySelector('.lo-cnt b');
     el.cntBtn = el.ov.querySelector('.lo-cnt');
@@ -183,6 +211,11 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     el.ttsBtn = el.ov.querySelector('.lo-tts');
     el.bot = el.ov.querySelector('.lo-bot');
     el.ov.querySelector('.lo-x').addEventListener('click', () => (role === 'host' ? confirmEnd() : stop()));
+    if (el.ov.requestFullscreen) el.fullBtn.addEventListener('click', toggleFull);
+    else el.fullBtn.style.display = 'none';
+    document.addEventListener('fullscreenchange', paintFull);
+    pipDrag();
+    ['pointerdown', 'pointermove', 'keydown'].forEach(ev => el.ov.addEventListener(ev, wake, { passive: true }));
     el.cntBtn.addEventListener('click', openRoster);
     el.input.addEventListener('input', () => { el.sendBtn.disabled = !el.input.value.trim(); });
     el.input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendComment(); } });
@@ -190,6 +223,86 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     el.ttsBtn.addEventListener('click', toggleTts);
     ttsOn = lsGet('liveTts') === '1' && 'speechSynthesis' in window;
     paintTts();
+  }
+
+  // ---- 画面の出し入れ(操作がないとボタンを隠す / 全画面 / ワイプ) ----
+  let idleT = null;
+  function wake() {
+    if (!el.ov) return;
+    el.ov.classList.remove('idle');
+    clearTimeout(idleT);
+    idleT = setTimeout(() => {
+      if (!role) return;
+      if (el.ov.querySelector('.lo-panel')) return;          // 名簿や設定を開いている時は消さない
+      if (document.activeElement === el.input) return;        // 入力中も消さない
+      const wide = window.innerWidth > window.innerHeight || document.fullscreenElement === el.ov;
+      if (wide) el.ov.classList.add('idle');                   // 縦のままの時は隠さない
+    }, 3500);
+  }
+  function paintFull() {
+    if (!el.fullBtn) return;
+    const on = document.fullscreenElement === el.ov;
+    el.fullBtn.innerHTML = on ? I.exitFull : I.full;
+    el.fullBtn.setAttribute('aria-label', on ? T('live_full_exit', '全画面をやめる') : T('live_full', '全画面'));
+  }
+  function toggleFull() {
+    try {
+      if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+      const pr = el.ov.requestFullscreen();
+      if (pr && pr.then) pr.then(() => { try { window.screen.orientation.lock('landscape'); } catch (_) {} }).catch(() => {});
+    } catch (_) {}
+  }
+
+  // ワイプ(カメラの小窓)。位置は画面の割合で持っておき、画面の向きが変わっても同じ所に出す
+  const PIP_SZ = [26, 34, 44];
+  let pipPos = { x: 0.04, y: 0.05, size: 0 };
+  function layoutPip() {
+    if (!el.pip || !el.stage) return;
+    const st = el.stage.getBoundingClientRect();
+    // 横画面では高さを基準にする(幅で決めると小窓が縦に画面からはみ出す)
+    if (st.width > st.height) { el.pip.style.height = PIP_SZ[pipPos.size] + '%'; el.pip.style.width = 'auto'; }
+    else { el.pip.style.width = PIP_SZ[pipPos.size] + '%'; el.pip.style.height = 'auto'; }
+    el.pip.style.left = (pipPos.x * 100).toFixed(2) + '%';
+    el.pip.style.top = (pipPos.y * 100).toFixed(2) + '%';
+  }
+  function pipDrag() {
+    let id = null, moved = false, dx = 0, dy = 0;
+    el.pip.addEventListener('pointerdown', e => {
+      if (id !== null) return;
+      id = e.pointerId; moved = false;
+      const r = el.pip.getBoundingClientRect();
+      dx = e.clientX - r.left; dy = e.clientY - r.top;
+      el.pip.classList.add('drag');
+      try { el.pip.setPointerCapture(id); } catch (_) {}
+      e.preventDefault();
+    });
+    el.pip.addEventListener('pointermove', e => {
+      if (e.pointerId !== id) return;
+      const st = el.stage.getBoundingClientRect(), r = el.pip.getBoundingClientRect();
+      if (Math.abs(e.movementX) + Math.abs(e.movementY) > 1) moved = true;
+      const x = Math.min(Math.max(0, e.clientX - st.left - dx), Math.max(0, st.width - r.width));
+      const y = Math.min(Math.max(0, e.clientY - st.top - dy), Math.max(0, st.height - r.height));
+      pipPos.x = st.width ? x / st.width : 0; pipPos.y = st.height ? y / st.height : 0;
+      layoutPip();
+    });
+    const end = e => {
+      if (e.pointerId !== id) return;
+      id = null; el.pip.classList.remove('drag');
+      if (!moved) { pipPos.size = (pipPos.size + 1) % PIP_SZ.length; layoutPip(); }  // 動かさずに押しただけなら大きさを変える
+      wake();
+    };
+    el.pip.addEventListener('pointerup', end);
+    el.pip.addEventListener('pointercancel', end);
+  }
+  function showPip(on) {
+    el.ov.classList.toggle('pip', !!on);
+    if (on) layoutPip();
+  }
+  // 名前の色(同じ人はいつも同じ色)。配信の画面は暗いので明るめに固定
+  function nameColor(key) {
+    let h = 0; const t = String(key || '');
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 360;
+    return 'hsl(' + h + ',85%,72%)';
   }
 
   // ---- コメント ----
@@ -212,6 +325,8 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
       const av = document.createElement('div'); av.className = 'av'; paintAvatar(av, c.name, c.pic);
       const body = document.createElement('div');
       const nm = document.createElement('b'); nm.textContent = c.name;
+      nm.style.setProperty('--nc', c.host ? '#fda4af' : nameColor(c.userId || c.name));
+      if (c.host) { const hb = document.createElement('span'); hb.className = 'hb'; hb.innerHTML = I.hostBadge; nm.prepend(hb); }
       body.append(nm, document.createTextNode(c.text));
       row.append(av, body);
       row.dataset.id = c.id;
@@ -399,6 +514,11 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
       const rep = await pc.getStats();
       let v = null; rep.forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'video') v = r; });
       if (v && typeof v.framesPerSecond === 'number') showFps(v.framesPerSecond);
+      // 端末によっては mute/unmute が飛んでこないので、実際に絵が来ているかで出し入れする
+      if (el.pip.srcObject) {
+        const t = el.pip.srcObject.getVideoTracks()[0];
+        showPip(!!t && !t.muted && el.pip.videoWidth > 0);
+      }
     } catch (_) {}
   }
 
@@ -408,17 +528,22 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     const n = Math.max(1, pcs.size);
     const fps = meta.fps || 30;
     const per = Math.round(Math.max(600000, Math.min(BITRATE[fps] || BITRATE[30], (TOTAL_CAP[fps] || TOTAL_CAP[30]) / n)));
-    pcs.forEach(pc => pc.getSenders().forEach(snd => {
-      if (!snd.track || snd.track.kind !== 'video') return;
+    const setEnc = (snd, bps, f) => {
+      if (!snd || !snd.track || snd.track.kind !== 'video') return;
       try {
         const prm = snd.getParameters();
         if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
-        prm.encodings[0].maxBitrate = per;
-        prm.encodings[0].maxFramerate = fps;
+        prm.encodings[0].maxBitrate = bps;
+        prm.encodings[0].maxFramerate = f;
         prm.degradationPreference = 'maintain-framerate';
         snd.setParameters(prm).catch(() => {});
       } catch (_) {}
-    }));
+    };
+    pcs.forEach(pc => {
+      // 古いつなぎ方(senderを直接持っていない)にも効くように、分からなければ全部の映像に同じ設定を入れる
+      if (pc._main || pc._cam) { setEnc(pc._main, per, fps); setEnc(pc._cam, Math.min(600000, Math.round(per / 3)), Math.min(30, fps)); }
+      else pc.getSenders().forEach(snd => setEnc(snd, per, fps));
+    });
   }
   function camConstraints() {
     const fps = meta.fps || 30;
@@ -447,9 +572,12 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     el.ov.classList.add('on');
     el.ov.classList.toggle('viewer', role !== 'host');
     el.bot.textContent = '';
+    el.flip = el.scr = el.wipeBtn = null;   // 前回のボタンの残りを持たない
     closePanel(); el.chat.textContent = ''; showFps(0); rosterReady = false;
     roster = { host: null, viewers: [] }; el.cnt.textContent = '0';
-    paintMeta();
+    showPip(false); el.pip.srcObject = null; el.pip.classList.remove('mirror', 'wide');
+    pipPos = { x: 0.04, y: 0.05, size: 0 }; layoutPip();
+    paintMeta(); paintFull(); wake();
     if (role === 'host') {
       const flip = btn(I.flip, 'カメラ切替', flipCam);
       const mic = btn(I.mic, 'マイク', () => {
@@ -464,9 +592,11 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
       const set = btn(I.gear, T('live_settings', '配信の設定'), openSettings);
       el.flip = flip;
       if (canShare()) {
-        const sc = btn(I.screen, '画面共有', () => (screen ? stopScreen() : startScreen()));
-        el.scr = sc;
-        el.bot.append(flip, sc, set, end, mic);
+        const sc = btn(I.screen, T('live_share', '画面共有'), () => (screen ? stopScreen() : startScreen()));
+        const wp = btn(I.wipe, T('live_wipe', 'ワイプ(カメラ)'), () => { wipeOn = !wipeOn; applyWipe(); });
+        wp.style.display = 'none';   // 画面共有を始めた時だけ出す
+        el.scr = sc; el.wipeBtn = wp;
+        el.bot.append(flip, sc, wp, set, end, mic);
       } else el.bot.append(flip, set, end, mic);
     }
   }
@@ -516,16 +646,17 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
   }
 
   async function flipCam() {
-    if (!stream || screen) return;
+    if (!stream) return;
     facing = facing === 'user' ? 'environment' : 'user';
     try {
       const ns = await navigator.mediaDevices.getUserMedia({ video: camConstraints() });
       const nt = ns.getVideoTracks()[0];
       try { nt.contentHint = 'motion'; } catch (_) {}
       const old = stream.getVideoTracks()[0];
-      pcs.forEach(pc => pc.getSenders().forEach(s => { if (s.track && s.track.kind === 'video') s.replaceTrack(nt); }));
       if (old) { stream.removeTrack(old); old.stop(); }
       stream.addTrack(nt);
+      if (screen) { applyWipe(); return; }   // 画面共有中はカメラはワイプ側
+      swapMain(nt);
       el.video.srcObject = stream; el.video.classList.toggle('mirror', facing === 'user');
       applyBitrate();
     } catch (e) { facing = facing === 'user' ? 'environment' : 'user'; }
@@ -535,7 +666,15 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     const old = pcs.get(viewerId); if (old) old.close();
     const pc = newPc(viewerId);
     pcs.set(viewerId, pc);
-    outTracks().forEach(t => pc.addTrack(t, stream));
+    // 順番を固定して3本用意する: 音声(mid 0) / メイン映像(mid 1) / ワイプのカメラ(mid 2)。
+    // ワイプは最初は空のまま送り、画面共有を始めた時に差し替える。
+    // 先に枠を作っておけば、後からカメラを足してもつなぎ直し(再交渉)が要らない。
+    const a = outAudio(), v = outVideo(), c = wipeTrack();
+    const ta = pc.addTransceiver(a || 'audio', { direction: 'sendonly', streams: [stream] });
+    const tv = pc.addTransceiver(v || 'video', { direction: 'sendonly', streams: [stream] });
+    const tc = pc.addTransceiver('video', { direction: 'sendonly', streams: [stream] });
+    pc._aud = ta.sender; pc._main = tv.sender; pc._cam = tc.sender;
+    if (c) { try { await tc.sender.replaceTrack(c); } catch (_) {} }
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { pc.close(); pcs.delete(viewerId); } };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -543,15 +682,14 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     applyBitrate();
   }
 
-  // 今見ている人に送るべきトラック(画面共有中は画面と、マイク+画面の音を混ぜたもの)
-  function outTracks() {
-    const v = screen ? screen.video : stream.getVideoTracks()[0];
-    const a = screen && screen.audio ? screen.audio : stream.getAudioTracks()[0];
-    return [a, v].filter(Boolean);
-  }
-  function swap(kind, track) {
-    pcs.forEach(pc => pc.getSenders().forEach(s => { if (s.track && s.track.kind === kind) s.replaceTrack(track).catch(() => {}); }));
-  }
+  // 今見ている人に送るもの(画面共有中はメイン=画面、音はマイク+画面の音を混ぜたもの)
+  function outVideo() { return screen ? screen.video : (stream && stream.getVideoTracks()[0]) || null; }
+  function outAudio() { return (screen && screen.audio) || (stream && stream.getAudioTracks()[0]) || null; }
+  // ワイプで送るカメラ映像(画面共有していない時はメインがカメラなので、ワイプは出さない)
+  function wipeTrack() { return screen && wipeOn ? (stream && stream.getVideoTracks()[0]) || null : null; }
+  function swapMain(track) { pcs.forEach(pc => { if (pc._main) pc._main.replaceTrack(track).catch(() => {}); }); }
+  function swapCam(track) { pcs.forEach(pc => { if (pc._cam) pc._cam.replaceTrack(track).catch(() => {}); }); }
+  function swapAudio(track) { pcs.forEach(pc => { if (pc._aud) pc._aud.replaceTrack(track).catch(() => {}); }); }
 
   async function startScreen() {
     if (!stream || screen) return;
@@ -591,33 +729,52 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
         ctx.createMediaStreamSource(new MediaStream([da])).connect(dest);
         if (mic) ctx.createMediaStreamSource(new MediaStream([mic])).connect(dest);
         screen.mix = ctx; screen.audio = dest.stream.getAudioTracks()[0];
-        swap('audio', screen.audio);
+        swapAudio(screen.audio);
       } catch (_) {}
     }
-    swap('video', v);
+    swapMain(v);
     v.addEventListener('ended', stopScreen); // ブラウザの「共有を停止」を押された時
     el.video.srcObject = new MediaStream([v]);
     el.video.classList.remove('mirror');
     if (el.scr) el.scr.classList.add('off');
-    if (el.flip) el.flip.disabled = true;
+    // カメラはワイプ(小窓)で一緒に流す。手元にも同じように出す
+    applyWipe();
+    if (el.wipeBtn) el.wipeBtn.style.display = '';
     // 差し替えた映像には、上限フレームレートと「なめらかさを守る」設定が付いていない。
     // 付け直さないと既定(balanced)のまま送られ、選んだfpsが効かない
+    applyBitrate();
+  }
+
+  // ワイプ(カメラの小窓)を出す/消す。見ている人にも同じトラックが行く
+  function applyWipe() {
+    const cam = wipeTrack();
+    swapCam(cam);
+    if (cam) {
+      if (!el.pip.srcObject || el.pip.srcObject.getVideoTracks()[0] !== cam) el.pip.srcObject = new MediaStream([cam]);
+      el.pip.classList.toggle('mirror', facing === 'user');
+      el.pip.play().catch(() => {});
+    } else el.pip.srcObject = null;
+    showPip(!!cam);
+    if (el.wipeBtn) { el.wipeBtn.innerHTML = wipeOn ? I.wipe : I.wipeOff; el.wipeBtn.classList.toggle('off', !wipeOn); }
     applyBitrate();
   }
 
   function stopScreen() {
     if (!screen) return;
     const s = screen; screen = null;
+    swapCam(null);
+    showPip(false);
+    el.pip.srcObject = null;
+    if (el.wipeBtn) el.wipeBtn.style.display = 'none';
     if (stream) {
       const cam = stream.getVideoTracks()[0], mic = stream.getAudioTracks()[0];
-      if (cam) swap('video', cam);
-      if (s.audio && mic) swap('audio', mic);
+      if (cam) swapMain(cam);
+      if (s.audio && mic) swapAudio(mic);
       el.video.srcObject = stream; el.video.classList.toggle('mirror', facing === 'user');
     }
     s.stream.getTracks().forEach(t => t.stop());
     if (s.mix) s.mix.close().catch(() => {});
     if (el.scr) el.scr.classList.remove('off');
-    if (el.flip) el.flip.disabled = false;
     applyBitrate(); // カメラに戻した映像にも設定を付け直す(画面共有を始めた時と同じ理由)
   }
 
@@ -644,8 +801,23 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     const old = pcs.get('host'); if (old) old.close();
     const pc = newPc(from);
     pcs.set('host', pc);
+    // 配信者は 音声(mid 0) / メイン映像(mid 1) / ワイプのカメラ(mid 2) の順で送ってくる。
+    // 古い配信者(1本だけ)の時は、最初に来た映像をメインにする。
+    const mainMs = new MediaStream(), camMs = new MediaStream();
     pc.ontrack = e => {
-      el.video.srcObject = e.streams[0];
+      const t = e.track, mid = e.transceiver && e.transceiver.mid;
+      const isCam = t.kind === 'video' && (mid === '2' || (mid == null && mainMs.getVideoTracks().length > 0));
+      if (isCam) {
+        camMs.addTrack(t);
+        el.pip.srcObject = camMs;
+        el.pip.play().catch(() => {});
+        const upd = () => { showPip(!t.muted); if (!t.muted) el.pip.play().catch(() => {}); };
+        t.addEventListener('mute', upd); t.addEventListener('unmute', upd);
+        upd();
+        return;
+      }
+      mainMs.addTrack(t);
+      el.video.srcObject = mainMs;
       el.msg.textContent = '';
       el.video.play().catch(() => { el.msg.textContent = T('live_tap', '画面をタップすると音が出ます'); el.video.muted = true; el.video.play().catch(() => {}); });
     };
@@ -665,7 +837,12 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     pcs.clear();
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     el.video.srcObject = null;
-    el.ov.classList.remove('on');
+    el.pip.srcObject = null;
+    wipeOn = true;
+    el.ov.classList.remove('on', 'idle', 'pip');
+    clearTimeout(idleT);
+    if (document.fullscreenElement === el.ov) { try { document.exitFullscreen(); } catch (_) {} }
+    try { window.screen.orientation.unlock(); } catch (_) {}
     closePanel(); el.chat.textContent = ''; showFps(0);
     if (statTimer) { clearInterval(statTimer); statTimer = null; }
     try { speechSynthesis.cancel(); } catch (_) {} ttsPending = 0;
@@ -757,6 +934,10 @@ html.dark-mode #liveSheet .ls{background:#1c1c1e;color:#f1f5f9}
     if (authedEarly) { authedEarly = false; onAuthed(); }
     // 横長(画面共有など)は切らずに全体を見せる。縦長のカメラは今まで通り画面いっぱい
     el.video.addEventListener('resize', () => { el.video.classList.toggle('wide', el.video.videoWidth > el.video.videoHeight * 1.1); });
+    el.pip.addEventListener('resize', () => { el.pip.classList.toggle('wide', el.pip.videoWidth > el.pip.videoHeight * 1.1); });
+    window.addEventListener('orientationchange', () => { setTimeout(layoutPip, 120); wake(); });
+    window.addEventListener('resize', () => { if (role) layoutPip(); });
+    document.addEventListener('fullscreenchange', () => { setTimeout(layoutPip, 120); });
     el.video.addEventListener('click', () => { if (role === 'viewer' && el.video.muted) { el.video.muted = false; el.msg.textContent = ''; } });
     window.addEventListener('pagehide', () => { if (role) stop(true); });
     // スマホのキーボードが出ても、入力欄とコメントが隠れないように持ち上げる
