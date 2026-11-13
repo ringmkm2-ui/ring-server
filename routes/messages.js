@@ -7,6 +7,7 @@ const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
 const disappearing = require('../utils/disappearing');
+const chatPrefs = require('../utils/chatPrefs');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
 // 上限なしだと50MB JSONで1リクエストでDB/メモリを食いつぶせる。
@@ -203,7 +204,9 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // 「メッセージが届いた」ことと送信者名だけを載せる(プライバシー配慮)。
     // APK(FCM)には常に送る。アプリが裏にいてもWebSocketが一時的に生きていることがあり、
     // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
-    if (!req.body.noPush) {
+    // 相手がこのトークをミュートしている時は、Push(Web Push / FCM)を送らない(画面のリアルタイム表示は今まで通り)
+    const muted = req.body.noPush ? false : await chatPrefs.isMuted(recipientId, 'dm', req.userId);
+    if (!req.body.noPush && !muted) {
       db.get('SELECT display_name, public_key, profile_pic FROM users WHERE id = ?', [req.userId]).then(sender => {
         const preview = mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージ';
         // 本文は暗号文のまま載せ、相手の端末の中でだけ復号して通知に出す(サーバーは読めないまま)。
@@ -214,7 +217,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
           .catch(err => console.error('[fcm] new_message failed:', err.message));
       }).catch(() => {});
     }
-    if (!isUserOnline(recipientId) && !req.body.noPush) {
+    if (!isUserOnline(recipientId) && !req.body.noPush && !muted) {
       const sender = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [req.userId]);
       const { sendPushToUser } = require('../utils/webPush');
       const wpCipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 2800) ? content : undefined;
@@ -239,6 +242,56 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
   }
 });
 
+// otherId から届いている未読を既読にし、相手へ read_receipt_bulk を流す(履歴を開いた時と、開かずに既読にする時で共通)。
+// 既読を送らない設定の人・ブロックしている/されている相手には、DBは既読にしても相手へは知らせない。
+// 戻り値: 既読にした件数
+async function markDmRead(readerId, otherId) {
+  const now = new Date().toISOString();
+  const { getSettings } = require('../utils/userSettings');
+  const { isBlockedEither } = require('../utils/relations');
+  const iShowRead = (await getSettings(readerId)).sendReadReceipts !== false && !(await isBlockedEither(readerId, otherId));
+  // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
+  // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
+  const newlyRead = await db.all(
+    "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND " + disappearing.notExpiredSql(),
+    [otherId, readerId, disappearing.nowParam()]
+  );
+  await db.run(
+    "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
+    [now, otherId, readerId]
+  );
+  // 履歴を開いただけ(WS経由のread_receiptイベントを個別に送っていないケース)でも
+  // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
+  // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
+  //  既読マークが付かないバグがあった)
+  if (newlyRead.length > 0 && iShowRead) {
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(otherId, {
+      type: 'read_receipt_bulk',
+      readerId,
+      messageIds: newlyRead.map(m => m.id),
+      readAt: now,
+    });
+  }
+  return newlyRead.length;
+}
+
+// トークを開かずに既読にする(トークリストの「既読にする」)
+// POST /api/messages/read/:userId  -> { ok: true, count }
+router.post('/read/:userId', auth, async (req, res) => {
+  try {
+    const otherId = req.params.userId;
+    if (!otherId || otherId.length > 64 || otherId === req.userId) {
+      return res.status(400).json({ error: '相手の指定が正しくありません' });
+    }
+    const count = await markDmRead(req.userId, otherId);
+    res.json({ ok: true, count });
+  } catch (e) {
+    console.error('Error marking read:', e.message);
+    sendServerError(res, e);
+  }
+});
+
 // 会話履歴取得
 // GET /api/messages/history/:userId?before=<timestamp>&limit=50
 router.get('/history/:userId', auth, async (req, res) => {
@@ -257,6 +310,13 @@ router.get('/history/:userId', auth, async (req, res) => {
     `;
     const params = [req.userId, otherId, otherId, req.userId, disappearing.nowParam()];
 
+    // 「トークを削除」(自分だけ)した時刻より前は、この人にだけ見せない
+    const { clearedAt } = await chatPrefs.getPref(req.userId, 'dm', otherId);
+    if (clearedAt > 0) {
+      sql += ' AND created_at > ?';
+      params.push(chatPrefs.tsParam(clearedAt));
+    }
+
     if (before) {
       sql += ' AND created_at < ?';
       params.push(before);
@@ -267,38 +327,12 @@ router.get('/history/:userId', auth, async (req, res) => {
 
     const rows = await db.all(sql, params);
 
-    const now = new Date().toISOString();
     const { getSettings } = require('../utils/userSettings');
-    const { isBlockedEither } = require('../utils/relations');
     // 裏で開いているだけ(タブが隠れている時の同期)なら既読にしない
     const markRead = req.query.markRead !== '0';
-    // 既読を知らせない設定の人には、既読を送らない/見せない
-    const iShowRead = (await getSettings(req.userId)).sendReadReceipts !== false && !(await isBlockedEither(req.userId, otherId));
+    // 既読を知らせない設定の人には、既読を見せない
     const peerShowsRead = (await getSettings(otherId)).sendReadReceipts !== false;
-    // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
-    // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
-    const newlyRead = !markRead ? [] : await db.all(
-      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND " + disappearing.notExpiredSql(),
-      [otherId, req.userId, disappearing.nowParam()]
-    );
-    if (markRead) await db.run(
-      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
-      [now, otherId, req.userId]
-    );
-
-    // 履歴を開いただけ(WS経由のread_receiptイベントを個別に送っていないケース)でも
-    // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
-    // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
-    //  既読マークが付かないバグがあった)
-    if (newlyRead.length > 0 && iShowRead) {
-      const { broadcastToUser } = require('../ws/wsServer');
-      broadcastToUser(otherId, {
-        type: 'read_receipt_bulk',
-        readerId: req.userId,
-        messageIds: newlyRead.map(m => m.id),
-        readAt: now,
-      });
-    }
+    if (markRead) await markDmRead(req.userId, otherId);
 
     // リアクションはまとめて1回で取る(以前は1通ごとに問い合わせていて、100通開くと100回DBを叩いていた)
     const reactBy = new Map();
@@ -375,6 +409,23 @@ router.get('/talks', auth, async (req, res) => {
     );
     const unreadBy = new Map(unreadRows.map(r => [r.sender_id, Number(r.cnt)]));
 
+    // チャットごとの設定(ピン留め・ミュート・非表示・トーク削除)は1回でまとめて読む
+    const prefs = await chatPrefs.loadPrefs(me);
+    // 「トークを削除」した相手の未読は、削除した時刻より後に届いた分だけ数え直す(その相手の分だけ追加で1回引く)
+    const clearedPeers = [...prefs.values()].filter(p => p.kind === 'dm' && p.clearedAt > 0).map(p => p.peerId);
+    if (clearedPeers.length) {
+      const ur = await db.all(
+        `SELECT sender_id, created_at FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND ${disappearing.notExpiredSql()} AND sender_id IN (${clearedPeers.map(() => '?').join(',')})`,
+        [me, disappearing.nowParam(), ...clearedPeers]
+      );
+      for (const id of clearedPeers) unreadBy.set(id, 0);
+      for (const r of ur) {
+        if (chatPrefs.toMs(r.created_at) > prefs.get(chatPrefs.key('dm', r.sender_id)).clearedAt) {
+          unreadBy.set(r.sender_id, (unreadBy.get(r.sender_id) || 0) + 1);
+        }
+      }
+    }
+
     // 3) メッセージのない友達
     const friendRows = await db.all(`
       SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END AS friend_id
@@ -387,6 +438,8 @@ router.get('/talks', auth, async (req, res) => {
     const rows = latest
       .map(m => ({ ...m, other_id: m.sender_id === me ? m.recipient_id : m.sender_id }))
       .filter(m => !myBlocks.has(m.other_id))
+      // 「トークを削除」した時刻より前が最新なら、その相手とは何も話していない扱いにする
+      .filter(m => chatPrefs.toMs(m.created_at) > chatPrefs.prefOf(prefs, 'dm', m.other_id).clearedAt)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const withMsg = new Set(rows.map(r => r.other_id));
     const ids = [...new Set([...rows.map(r => r.other_id), ...friendRows.map(f => f.friend_id)])];
@@ -423,6 +476,7 @@ router.get('/talks', auth, async (req, res) => {
         lastFromMe: row.sender_id === me,
         lastTime: row.created_at,
         unreadCount: unreadBy.get(row.other_id) || 0,
+        ...chatPrefs.listFields(chatPrefs.prefOf(prefs, 'dm', row.other_id), chatPrefs.toMs(row.created_at)),
       });
     }
     // メッセージのない友達も含める
@@ -439,6 +493,7 @@ router.get('/talks', auth, async (req, res) => {
         lastMessage: '',
         lastTime: null, // 以前は「今」を入れていて、話していない友だちが一番上に来て毎回点滅していた
         unreadCount: 0,
+        ...chatPrefs.listFields(chatPrefs.prefOf(prefs, 'dm', f.friend_id), 0),
       });
     }
 

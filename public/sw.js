@@ -106,6 +106,7 @@ const urlsToCache = [
   '/js/nacl-util.min.js',
   '/js/e2eMulti.js',
   '/js/lineImport.js',
+  '/js/chatPeek.js',
   '/js/ratchet.js',
   '/js/ratchetClient.js',
   '/js/historyBackup.js',

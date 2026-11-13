@@ -131,6 +131,23 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT now()
       )
     `);
+    // トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)をチャットごとに持つ。
+    // kind は 'dm'(peer_id は相手のユーザーID)か 'group'(peer_id はグループID)。
+    // 時刻は epoch ミリ秒(PG/SQLiteで日時の扱いが違うため、user_settings と違って数値にしている)。
+    // cleared_at より前のメッセージは、その人にだけ見えなくなる(0 = 消していない)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_prefs (
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        peer_id TEXT NOT NULL,
+        pinned_at BIGINT,
+        muted BOOLEAN NOT NULL DEFAULT false,
+        hidden_at BIGINT,
+        cleared_at BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (user_id, kind, peer_id)
+      )
+    `);
     // 友だち招待コード。1人が複数作れて、1つのコードを複数人が使える(人数・期限は作る時に決める)。
     // 期限は epoch ミリ秒で持つ(PG/SQLiteで日時の扱いが違うため、数値にしておく)
     await pool.query(`

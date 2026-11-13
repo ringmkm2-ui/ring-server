@@ -171,6 +171,19 @@ async function initDB() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)。db.postgres.js と同じ形
+    CREATE TABLE IF NOT EXISTS chat_prefs (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      peer_id TEXT NOT NULL,
+      pinned_at INTEGER,
+      muted INTEGER NOT NULL DEFAULT 0,
+      hidden_at INTEGER,
+      cleared_at INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, kind, peer_id)
+    );
+
     CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT);
 
     -- 友だち招待コード(1人が複数作れて、1つのコードを複数人が使える)

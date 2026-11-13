@@ -26,6 +26,8 @@ async function removeAccount(userId) {
   try { await db.run('DELETE FROM key_backups WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] key_backups cleanup:', e.message); }
   try { await db.run('DELETE FROM user_pubkeys WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] user_pubkeys cleanup:', e.message); }
   try { await db.run('DELETE FROM guest_upgrades WHERE user_id = ?', [userId]); } catch (e) { console.error('[auth] guest_upgrades cleanup:', e.message); }
+  // トークリストの設定(ピン留め・ミュート・非表示・トーク削除)。本人の分と、相手として指されている分
+  try { await db.run("DELETE FROM chat_prefs WHERE user_id = ? OR (kind = 'dm' AND peer_id = ?)", [userId, userId]); } catch (e) { console.error('[auth] chat_prefs cleanup:', e.message); }
   // 自分が作った招待コード(と、そのコードの使用記録)・自分が使った記録も消す
   try {
     await db.run('DELETE FROM invite_redemptions WHERE code IN (SELECT code FROM invite_codes WHERE owner_id = ?) OR user_id = ?', [userId, userId]);

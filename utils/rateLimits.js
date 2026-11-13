@@ -160,7 +160,19 @@ const passwordActionLimiter = rateLimit({
   message: { error: '試行が多すぎます。しばらくしてからお試しください' },
 });
 
+// トークリストの操作(ピン留め・ミュート・非表示・トーク削除): 人ごとに1分に60回まで。
+// 人の手で押す操作なので十分に余裕がある。連打でDBを書き換え続けるのを止める
+const chatPrefsLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '操作が多すぎます。しばらくしてからお試しください。' },
+});
+
 module.exports = {
+  chatPrefsLimiter,
   passwordActionLimiter,
   guestUpgradeLimiter,
   linkPreviewImageLimiter,

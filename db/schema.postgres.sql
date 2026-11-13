@@ -282,6 +282,19 @@ CREATE TABLE IF NOT EXISTS user_settings (
   updated_at TIMESTAMP DEFAULT now()
 );
 
+-- トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)。時刻は epoch ミリ秒
+CREATE TABLE IF NOT EXISTS chat_prefs (
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  peer_id TEXT NOT NULL,
+  pinned_at BIGINT,
+  muted BOOLEAN NOT NULL DEFAULT false,
+  hidden_at BIGINT,
+  cleared_at BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT now(),
+  PRIMARY KEY (user_id, kind, peer_id)
+);
+
 -- コミュニティのE2E暗号化(グループと同じ方式: 共有鍵をメンバーごとに暗号化して配る)
 CREATE TABLE IF NOT EXISTS community_key_distributions (
   id TEXT PRIMARY KEY,

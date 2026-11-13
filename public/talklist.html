@@ -335,6 +335,89 @@ html.dark-mode .acr{color:#f1f5f9;border-bottom-color:rgba(255,255,255,.08)}
 .search input{width:100%;padding:10px 14px;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.5);border-radius:999px;box-sizing:border-box;outline:none;font-size:14px;margin-bottom:12px}
 .ti{display:flex;align-items:center;text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(15,23,42,.05);cursor:pointer;color:inherit}
 .ti:last-child{border-bottom:none}
+.ti{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.ti.cp-pinned{background:rgba(59,130,246,.07);margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:14px}
+html.dark-mode .ti.cp-pinned{background:rgba(148,163,184,.1)}
+.tname .tl-mute{display:inline-block;vertical-align:-2px;margin-left:5px;color:#94a3b8}
+.tl-pin{flex-shrink:0;margin-left:8px;color:#64748b;display:flex;align-items:center}
+/* 長押しプレビュー(js/chatPeek.js) */
+.cp-ov{position:fixed;inset:0;z-index:10060;display:flex;justify-content:center;opacity:0;transition:opacity .16s ease}
+.cp-ov.on{opacity:1}
+.cp-dim{position:absolute;inset:0;background:rgba(15,23,42,.55)}
+.cp-stack{position:relative;width:100%;max-width:440px;box-sizing:border-box;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.cp-stack>*{pointer-events:auto}
+.cp-card{flex:1 1 0;min-height:180px;display:flex;flex-direction:column;border-radius:24px;overflow:hidden;background:#dce5f2;box-shadow:0 14px 40px rgba(0,0,0,.28);transform:scale(.94);opacity:0;transition:transform .3s cubic-bezier(.2,.9,.22,1),opacity .2s ease}
+.cp-ov.on .cp-card{transform:none;opacity:1}
+.cp-head{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;background:rgba(255,255,255,.55);flex-shrink:0}
+.cp-av{width:32px;height:32px;border-radius:50%;background:#94a3b8 center/cover;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cp-name{flex:1;min-width:0;font-size:15px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-icobtn{width:34px;height:34px;border-radius:50%;border:0;background:rgba(15,23,42,.08);color:#0f172a;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.cp-icobtn:active{background:rgba(15,23,42,.16)}
+.cp-closebtn{display:none}
+.cp-expanded .cp-closebtn{display:flex}
+.cp-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:6px 12px 14px;-webkit-user-select:text;user-select:text}
+.cp-row{display:flex;margin:6px 0}
+.cp-in{justify-content:flex-start}
+.cp-out{justify-content:flex-end}
+.cp-center{justify-content:center}
+.cp-col{max-width:80%;display:flex;flex-direction:column;min-width:0}
+.cp-out .cp-col{align-items:flex-end}
+.cp-who{font-size:11px;color:#475569;margin:0 0 2px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-line{display:flex;align-items:flex-end;gap:6px;min-width:0}
+.cp-bub{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border-radius:18px 18px 18px 5px;font-size:15px;line-height:1.45;background:#fff;color:#0f172a;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;min-width:0}
+.cp-out .cp-bub{border-radius:18px 18px 5px 18px;background:#3b82f6;color:#fff}
+.cp-bub.cp-dim{opacity:.62;font-style:italic}
+.cp-cap{opacity:.75;font-size:13px}
+.cp-time{font-size:10px;color:#64748b;white-space:nowrap;flex-shrink:0}
+.cp-day{text-align:center;margin:12px 0 6px}
+.cp-day span{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:rgba(15,23,42,.32);padding:3px 11px;border-radius:999px}
+.cp-unread{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:11px;font-weight:700;color:#475569}
+.cp-unread::before,.cp-unread::after{content:"";flex:1;height:1px;background:rgba(15,23,42,.22)}
+.cp-notice{font-size:11px;color:#fff;background:rgba(15,23,42,.32);padding:3px 11px;border-radius:999px;max-width:90%;text-align:center}
+.cp-empty{padding:40px 0;text-align:center;font-size:13px;color:#64748b}
+.cp-skel{display:flex;margin:10px 0}
+.cp-skel.cp-out{justify-content:flex-end}
+.cp-skel i{display:block;width:150px;height:36px;border-radius:18px;background:rgba(255,255,255,.7);animation:cpPulse 1.1s ease-in-out infinite}
+@keyframes cpPulse{50%{opacity:.45}}
+.cp-hint{display:flex;align-items:center;gap:8px;align-self:flex-start;max-width:100%;box-sizing:border-box;background:#fff;color:#0f172a;border-radius:999px;padding:8px 8px 8px 10px;font-size:14px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.cp-tag{background:#22c55e;color:#fff;font-size:11px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:999px;flex-shrink:0}
+.cp-ht{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-hx{border:0;background:none;color:#94a3b8;padding:4px;display:flex;cursor:pointer;flex-shrink:0}
+.cp-menu{align-self:flex-start;width:min(78%,330px);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.25);transform:translateY(22px);opacity:0;transition:transform .3s cubic-bezier(.2,.9,.22,1) .04s,opacity .2s ease .04s}
+.cp-ov.on .cp-menu{transform:none;opacity:1}
+.cp-item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;padding:15px 18px;border:0;border-bottom:1px solid rgba(15,23,42,.06);background:none;font:inherit;font-size:16px;color:#0f172a;text-align:left;cursor:pointer}
+.cp-item:last-child{border-bottom:0}
+.cp-item:active{background:rgba(15,23,42,.06)}
+.cp-item svg{opacity:.65;flex-shrink:0}
+.cp-item.cp-danger{color:#e11d48}
+.cp-confirm{padding:18px}
+.cp-ct{font-size:16px;font-weight:800;color:#0f172a;margin-bottom:6px}
+.cp-cb{font-size:13px;line-height:1.5;color:#64748b;margin-bottom:14px}
+.cp-crow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cp-cbtn{border:0;border-radius:12px;padding:11px 0;font:inherit;font-size:15px;font-weight:700;background:rgba(15,23,42,.07);color:#0f172a;cursor:pointer}
+.cp-cbtn.cp-danger{background:#e11d48;color:#fff}
+.cp-cbtn:disabled{opacity:.5}
+.cp-expanded .cp-hint,.cp-expanded .cp-menu{display:none}
+.cp-toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);transform:translate(-50%,12px);opacity:0;pointer-events:none;background:rgba(15,23,42,.92);color:#fff;font-size:13px;padding:10px 16px;border-radius:999px;z-index:10080;max-width:86vw;text-align:center;transition:opacity .2s ease,transform .25s ease}
+.cp-toast.on{opacity:1;transform:translate(-50%,0)}
+html.dark-mode .cp-card{background:#1a1f29}
+html.dark-mode .cp-head{background:rgba(255,255,255,.06)}
+html.dark-mode .cp-name,html.dark-mode .cp-icobtn{color:#f1f5f9}
+html.dark-mode .cp-icobtn{background:rgba(255,255,255,.1)}
+html.dark-mode .cp-bub{background:#2a303b;color:#f1f5f9}
+html.dark-mode .cp-out .cp-bub{background:#2563eb;color:#fff}
+html.dark-mode .cp-who,html.dark-mode .cp-time,html.dark-mode .cp-unread,html.dark-mode .cp-empty{color:#94a3b8}
+html.dark-mode .cp-unread::before,html.dark-mode .cp-unread::after{background:rgba(255,255,255,.2)}
+html.dark-mode .cp-skel i{background:rgba(255,255,255,.1)}
+html.dark-mode .cp-hint,html.dark-mode .cp-menu{background:#232a36;color:#f1f5f9}
+html.dark-mode .cp-item,html.dark-mode .cp-ct{color:#f1f5f9}
+html.dark-mode .cp-item{border-bottom-color:rgba(255,255,255,.08)}
+html.dark-mode .cp-item:active{background:rgba(255,255,255,.08)}
+html.dark-mode .cp-item.cp-danger{color:#fb7185}
+html.dark-mode .cp-cbtn{background:rgba(255,255,255,.1);color:#f1f5f9}
+html.dark-mode .cp-cbtn.cp-danger{background:#e11d48;color:#fff}
+html.reduce-motion .cp-ov,html.reduce-motion .cp-card,html.reduce-motion .cp-menu,html.reduce-motion .cp-toast{transition:none}
+html.reduce-motion .cp-skel i{animation:none}
 /* tav: トークリストのアバター。親の.cardが既にbackdrop-filter:blur(20px)を
    持つため、入れ子backdrop-filterを避ける。 */
 .tav{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.55);color:#0f172a;font-size:13px;font-weight:700;display:flex;justify-content:center;align-items:center;margin-right:12px;flex-shrink:0;background-size:cover;background-position:center;box-shadow:0 4px 10px rgba(0,0,0,.1)}
@@ -807,6 +890,7 @@ html.reduce-motion .inv-seg::before{transition:none}
 <script src="/js/ratchet.js"></script>
 <script src="/js/ratchetClient.js"></script>
 <script src="/js/historyBackup.js"></script>
+<script src="/js/chatPeek.js"></script>
 <script>
 // libsodium(1.8MB)はグループ作成の時しか使わないのに、トーク一覧を開くたびに同期で
 // 読み込み・解析していて、Galaxy A25クラスの端末だと表示が数百ms止まっていた。
@@ -1221,6 +1305,7 @@ window.ensureGroupCrypto = (function () {
       <button type="button" class="set-row set-btn" id="setBugReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 0 1 6 0"/><path d="M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2"/></svg><span data-i18n="bug_report">バグを報告</span></span></button>
       <button type="button" class="set-row set-btn" id="setStaffOnline" hidden><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="18.5" cy="7.5" r="2.5" fill="#22c55e" stroke="none"/></svg><span>オンラインのユーザー(運営)</span></span><span class="set-val" id="staffOnlineCount"></span></button>
       <a class="set-row set-btn" id="setStaffDrive" href="/drive-connect.html" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8l6 10-4 7H6l-4-7z"/><path d="M8 3l6 10H2M16 3l-6 10 4 7"/></svg><span>メディアの保存先(運営)</span></span><span class="set-val" id="staffDriveState"></span></a>
+      <button type="button" class="set-row set-btn" id="setHiddenChats"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.1 10.1 0 0 1 12 19c-6.4 0-10-7-10-7a18.6 18.6 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 5c6.4 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24M1 1l22 22"/></svg><span data-i18n="cp_hidden_chats">非表示のトーク</span></span></button>
       <button type="button" class="set-row set-btn" id="setBlocks"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span data-i18n="blocked_users">ブロックしたユーザー</span></span></button>
       <button type="button" class="set-row set-btn" id="setUserReport"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><span data-i18n="user_report">ユーザーを通報</span></span></button>
       <a class="set-row set-btn" id="setCoffee" href="#" target="_blank" rel="noopener noreferrer" hidden style="text-decoration:none;color:inherit"><span style="display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M9 3v2M13 3v2"/></svg><span data-i18n="buy_coffee">コーヒーをおごる</span></span></a>
@@ -1300,6 +1385,14 @@ window.ensureGroupCrypto = (function () {
 </div>
 
 <!-- ブロックしたユーザー -->
+<div class="mov" id="hiddenMov">
+  <div class="mc">
+    <h3 class="mtitle" data-i18n="cp_hidden_chats">非表示のトーク</h3>
+    <div id="hiddenList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 14px"></div>
+    <button class="cancelbtn btn-glass glass-clear glass-interactive" id="hiddenClose" type="button" data-i18n="close">閉じる</button>
+  </div>
+</div>
+
 <div class="mov" id="blockMov">
   <div class="mc">
     <h3 class="mtitle" data-i18n="blocked_users">ブロックしたユーザー</h3>
@@ -2248,7 +2341,18 @@ function updateTalkBadge() {
   }
   try { if (navigator.setAppBadge) (n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch (e) {}
 }
+// ピン留めを先頭に(新しくピンした順)。同じ状態の中は元の並びのまま
+function pinnedFirst(list) {
+  return list.map((x, i) => [x, i]).sort((a, b) => {
+    const pa = a[0].pinnedAt || 0, pb = b[0].pinnedAt || 0;
+    if (!!pa !== !!pb) return pa ? -1 : 1;
+    if (pa && pb && pa !== pb) return pb - pa;
+    return a[1] - b[1];
+  }).map(x => x[0]);
+}
 function renderTalkList(merged, animate) {
+  window.__chatData = Object.assign(window.__chatData || {}, { dm: merged || [] });
+  merged = pinnedFirst((merged || []).filter(t => !t.hidden)); // 非表示は出さない(新着が来るとサーバーが hidden を外す)
   _unread.dm = (merged || []).reduce((s, t) => s + (t.kind !== 'group' && t.unreadCount > 0 ? t.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('talkList');
@@ -2297,11 +2401,33 @@ function renderTalkList(merged, animate) {
   window.__prevTalkState = nextTalkState;
 }
 
+// ピン留め(行の色+ピンのアイコン)とミュート(名前の横のベル)の印
+function decorateRow(item, nameEl, pinned, muted) {
+  if (!window.ChatPeek) return;
+  if (muted) {
+    const ic = document.createElement('span');
+    ic.className = 'tl-mute';
+    ic.appendChild(ChatPeek.icon('bellOff', 13));
+    nameEl.appendChild(ic);
+  }
+  if (pinned) {
+    item.classList.add('cp-pinned');
+    const p = document.createElement('div');
+    p.className = 'tl-pin';
+    p.appendChild(ChatPeek.icon('pin', 15));
+    item.appendChild(p);
+  }
+}
+
 // 行を1本作る。作り直すのは「新しい行」か「中身が変わった行」だけ(変わっていない行は作り直さない)
 function buildTalkRow(t, prev, replacing) {
   const item = document.createElement('div');
   item.className = 'ti';
   if (t.userId) item.dataset.userId = t.userId;
+  // 長押しで未読のまま覗くメニュー。クリックの前に登録して、長押し後のクリックでトークが開かないようにする
+  if (window.ChatPeek) ChatPeek.bind(item, () => t.kind === 'group'
+    ? { kind: 'group', id: t.groupId, name: t.displayName, pic: t.avatarImg, unread: t.unreadCount || 0, pinned: !!t.pinnedAt, muted: !!t.muted, group: t }
+    : { kind: 'dm', id: t.userId, name: t.displayName, pic: t.profilePic, unread: t.unreadCount || 0, pinned: !!t.pinnedAt, muted: !!t.muted });
   // 一度光った後にクラスが残ると、並び替えで要素を動かした時に光が再生されてしまうので、終わったら外す
   const once = (el, cls) => { el.classList.add(cls); el.addEventListener('animationend', function f(e) { if (e.target !== el) return; el.removeEventListener('animationend', f); el.classList.remove(cls); }); };
 
@@ -2332,6 +2458,7 @@ function buildTalkRow(t, prev, replacing) {
 
     item.appendChild(av);
     item.appendChild(body);
+    decorateRow(item, nameEl, !!t.pinnedAt, !!t.muted);
     item.addEventListener('click', () => {
       // アバターをヘッダー位置へ飛ばしてから遷移する(Shared Element Transition)
       if (window.LiquidGlass && window.LiquidGlass.flyAvatarTo) {
@@ -2365,11 +2492,13 @@ function buildTalkRow(t, prev, replacing) {
 
     item.appendChild(av);
     item.appendChild(body);
+    decorateRow(item, nameEl, !!t.pinnedAt, !!t.muted);
 
     if (t.unreadCount > 0) {
       const badge = document.createElement('div');
       // 行ごとにbackdrop-filterを掛けると未読が多い時に重いので単色にする
       badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700';
+      if (t.muted) badge.style.background = 'rgba(148,163,184,.85)';
       badge.textContent = String(t.unreadCount);
       if (prev && t.unreadCount > (prev.unread || 0)) once(badge, 'bc-badge-pop');
       item.appendChild(badge);
@@ -2417,6 +2546,8 @@ function openGroupChat(groupId, name) {
 }
 
 function renderGroups(groups, enter) {
+  window.__chatData = Object.assign(window.__chatData || {}, { groups: Array.isArray(groups) ? groups : [] });
+  groups = pinnedFirst((Array.isArray(groups) ? groups : []).filter(g => !g.hidden));
   _unread.group = (groups || []).reduce((s, g) => s + (g.unreadCount > 0 ? g.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('groupList');
@@ -2438,6 +2569,7 @@ function buildGroupRow(g, prevU) {
     const item = document.createElement('div');
     item.className = 'ti';
     item.dataset.groupId = g.groupId || g.id;
+    if (window.ChatPeek) ChatPeek.bind(item, () => ({ kind: 'group', id: g.groupId || g.id, name: g.name, pic: g.avatarUrl || null, unread: g.unreadCount || 0, pinned: !!g.pinnedAt, muted: !!g.muted, group: g }));
 
     const av = document.createElement('div');
     av.className = 'tav group-default-av';
@@ -2472,9 +2604,11 @@ function buildGroupRow(g, prevU) {
 
     item.appendChild(av);
     item.appendChild(body);
+    decorateRow(item, nameEl, !!g.pinnedAt, !!g.muted);
     if (g.unreadCount > 0) {
       const badge = document.createElement('div');
       badge.style.cssText = 'background:rgba(255,255,255,.85);color:#0f172a;border:1px solid rgba(15,23,42,.08);border-radius:999px;min-width:20px;height:20px;padding:0 5px;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;box-sizing:border-box';
+      if (g.muted) badge.style.background = 'rgba(148,163,184,.85)';
       badge.textContent = g.unreadCount > 99 ? '99+' : String(g.unreadCount);
       // 未読が増えた時だけポンと跳ねる(終わったらクラスを外す)
       if (prevU && g.unreadCount > (prevU[g.groupId || g.id] || 0)) { badge.classList.add('bc-badge-pop'); badge.addEventListener('animationend', () => badge.classList.remove('bc-badge-pop'), { once: true }); }
@@ -3135,11 +3269,11 @@ function previewKeyring() {
   return out;
 }
 const _pvCache = new Map(); // 暗号文 -> 平文(同じものを何度も開かない)
-function openPreviewCipher(cipher, fromMe, peerId) {
+function openPreviewCipher(cipher, fromMe, peerId, wantFull) {
   if (!cipher || typeof nacl === 'undefined' || !nacl.util) return null;
-  if (_pvCache.has(cipher)) return _pvCache.get(cipher);
+  if (!wantFull && _pvCache.has(cipher)) return _pvCache.get(cipher);
   // e5 は開くと鍵が進むので非同期(IndexedDB)。開けたら行の文言だけ差し替える
-  if (window.bcE5 && bcE5.isRatchet(cipher)) { openPreviewRatchet(cipher, fromMe, peerId); return null; }
+  if (window.bcE5 && bcE5.isRatchet(cipher)) { if (!wantFull) openPreviewRatchet(cipher, fromMe, peerId); return null; }
   let text = null;
   try {
     const parts = cipher.slice(3).split(':');
@@ -3162,6 +3296,7 @@ function openPreviewCipher(cipher, fromMe, peerId) {
   if (text && text[0] === '{') {
     try { const j = JSON.parse(text); if (j && typeof j.text === 'string') text = j.text || (j.mediaType ? t2('preview_image', '画像が送信されました') : text); } catch (e) {}
   }
+  if (wantFull) return text;
   if (text !== null) {
     text = text.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (_pvCache.size > 300) _pvCache.clear();
@@ -3212,6 +3347,137 @@ function dmPreview(t) {
     default: return t.lastMessage || '';
   }
 }
+
+// --- 長押しプレビュー(js/chatPeek.js)用の復号 ---
+// どちらも「開くだけ」で既読にはしない。e5 は一度開くと本文が端末に保存され(同じ暗号文は何度でも同じ結果)、
+// あとでトークを開いた時も同じ本文が読めるので、ここで開いても壊れない。
+// 戻り値: { kind: text|image|video|audio|file|call|notice|unsent|locked, text }
+function peekMediaKind(type) {
+  const ty = String(type || '');
+  return ty.indexOf('image') === 0 ? 'image' : ty.indexOf('audio') === 0 ? 'audio' : ty === 'file' || ty.indexOf('application') === 0 ? 'file' : 'video';
+}
+async function peekOpenCipher(cipher, fromMe, peerId, sentAt) {
+  if (window.bcE5 && bcE5.isRatchet(cipher)) {
+    const c = bcE5.get();
+    if (!c) return null;
+    const out = await c.open(cipher, { from: fromMe ? myUserId : peerId, to: fromMe ? peerId : myUserId, sentAt });
+    if (!out) return null;
+    try { return nacl.util.encodeUTF8(out); } catch (e) { return null; }
+  }
+  return openPreviewCipher(cipher, fromMe, peerId, true);
+}
+async function peekDecryptDm(m, peerId) {
+  const mine = String(m.senderId) === String(myUserId);
+  const raw = m.content || '';
+  if (m.deletedAt || !raw) return { kind: 'unsent' };
+  let parsed = null;
+  if (raw.charAt(0) === '{') { try { parsed = JSON.parse(raw); } catch (e) {} }
+  if (parsed && typeof parsed === 'object') {
+    if ((parsed.media || parsed.mediaUrl) && parsed.mediaType) {
+      return { kind: peekMediaKind(parsed.mediaType), text: typeof parsed.text === 'string' ? parsed.text.slice(0, 60) : '' };
+    }
+    if (parsed.__call__) return { kind: 'call', text: callPreview(parsed.__call__, mine) };
+    if (m.msgType === 'notice' && parsed.__notice__) {
+      const n = parsed.__notice__;
+      if (n.kind === 'ttl') return { kind: 'notice', text: String(n.text || '').slice(0, 120) };
+      if (n.kind === 'ban') return { kind: 'notice', text: String(n.name || 'ユーザー').slice(0, 40) + 'がFワードを言ったためBanしました。' };
+      return { kind: 'notice', text: '' };
+    }
+  }
+  let text = raw;
+  if (m.encrypted) {
+    text = await peekOpenCipher(raw, mine, peerId, m.createdAt);
+    if (text == null || text === '') return { kind: 'locked' };
+  }
+  // 旧方式のメディアは {text, mediaType, media} が暗号の中に入っている
+  if (text.charAt(0) === '{') {
+    try {
+      const j = JSON.parse(text);
+      if (j && j.mediaType) return { kind: peekMediaKind(j.mediaType), text: typeof j.text === 'string' ? j.text.slice(0, 60) : '' };
+      if (j && typeof j.text === 'string') text = j.text;
+    } catch (e) {}
+  }
+  return { kind: 'text', text: text.slice(0, 4000) };
+}
+async function peekDecryptGroup(m, g) {
+  const gid = g.groupId || g.id;
+  const raw = m.content || '';
+  if (m.msg_type === 'notice') {
+    const txt = previewFromGroupContent(raw, 'notice');
+    return { kind: 'notice', text: txt && txt.charAt(0) !== '{' ? txt : '' };
+  }
+  let parsed = null;
+  if (raw.charAt(0) === '{') { try { parsed = JSON.parse(raw); } catch (e) {} }
+  if (parsed && parsed.mediaType) {
+    return { kind: peekMediaKind(parsed.mediaType), text: typeof parsed.text === 'string' && !parsed.ciphertext ? parsed.text.slice(0, 60) : '' };
+  }
+  if (!m.encrypted) return { kind: 'text', text: raw.slice(0, 4000) };
+  if (!parsed || !parsed.ciphertext || !parsed.nonce) return { kind: 'locked' };
+  const ver = m.key_version != null ? m.key_version : g.keyVersion;
+  const cached = ver != null ? localStorage.getItem('group_key_' + gid + '_v' + ver) : null;
+  if (!cached) return { kind: 'locked' };
+  await window.ensureGroupCrypto();
+  const text = await window.groupE2E.decryptGroupText(raw, new Uint8Array(JSON.parse(cached)));
+  return { kind: 'text', text: String(text).slice(0, 4000) };
+}
+if (window.ChatPeek) {
+  ChatPeek.init({
+    token: () => token,
+    myUserId: () => myUserId,
+    t: (k, fb) => t2(k, fb),
+    decryptDm: peekDecryptDm,
+    decryptGroup: peekDecryptGroup,
+    setAvatar: (el, pic, initial) => setAvatarBackground(el, pic, initial),
+    // 一覧を取り直す(同じ内容でも突き合わせ直すよう、前回の指紋を捨てる)
+    refresh: () => { window.__lastTalkListFingerprint = null; window.__lastGroupsFingerprint = null; loadTalks(false); },
+  });
+}
+
+// 非表示にしたトークの一覧(設定 > 非表示のトーク)。戻すと一覧に出る
+const hiddenMov = document.getElementById('hiddenMov');
+function loadHiddenChats() {
+  const box = document.getElementById('hiddenList');
+  box.textContent = '';
+  const d = window.__chatData || {};
+  const items = [];
+  (d.dm || []).forEach(x => { if (x.hidden) items.push({ kind: 'dm', id: x.userId, name: x.displayName, pic: x.profilePic }); });
+  (d.groups || []).forEach(g => { if (g.hidden) items.push({ kind: 'group', id: g.groupId || g.id, name: g.name, pic: g.avatarUrl || null }); });
+  if (!items.length) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:#94a3b8;font-size:14px;text-align:center;margin:18px 0';
+    p.textContent = t2('cp_hidden_none', '非表示のトークはありません');
+    box.appendChild(p);
+    return;
+  }
+  items.forEach(it => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(148,163,184,.12)';
+    const av = document.createElement('div');
+    av.style.cssText = 'width:36px;height:36px;border-radius:50%;flex-shrink:0;background:#94a3b8 center/cover;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700';
+    setAvatarBackground(av, it.pic, (it.name || '?').charAt(0));
+    const nm = document.createElement('div');
+    nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600';
+    nm.textContent = it.name || '?';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.cssText = 'flex-shrink:0;padding:8px 14px;border-radius:12px;border:0;background:#007aff;color:#fff;font-weight:700;font-size:14px;cursor:pointer';
+    b.textContent = t2('cp_unhide', '再表示');
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        const r = await fetch('/api/chat-prefs', { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: it.kind, peerId: it.id, hidden: false }) });
+        if (!r.ok) throw new Error();
+        row.remove();
+        if (!box.children.length) { await loadTalks(false); loadHiddenChats(); } else { loadTalks(false); }
+      } catch (_) { b.disabled = false; }
+    });
+    row.append(av, nm, b);
+    box.appendChild(row);
+  });
+}
+document.getElementById('setHiddenChats').addEventListener('click', () => { hiddenMov.classList.add('open'); loadHiddenChats(); });
+document.getElementById('hiddenClose').addEventListener('click', () => hiddenMov.classList.remove('open'));
+hiddenMov.addEventListener('click', e => { if (e.target === hiddenMov) hiddenMov.classList.remove('open'); });
 
 // --- 2段階認証(設定 > アカウントのセキュリティ) ---
 const secMov = document.getElementById('secMov');
@@ -3455,7 +3721,7 @@ document.getElementById('setSecurity').addEventListener('click', () => { setSecT
 secMov.onclick = e => { if (e.target === secMov) closeSec(); };
 // 設定はページなので、端末の「戻る」で閉じる
 window.addEventListener('popstate', () => { if (settingsMov.classList.contains('open')) settingsMov.classList.remove('open'); });
-window.__broHandleBack = () => { if (settingsMov.classList.contains('open')) { history.back(); return true; } return false; };
+window.__broHandleBack = () => { if (window.ChatPeek && ChatPeek.isOpen()) { ChatPeek.close(); return true; } if (settingsMov.classList.contains('open')) { history.back(); return true; } return false; };
 document.getElementById('settingsBack').addEventListener('click', () => history.back());
 document.getElementById('setFontScale').addEventListener('change', e => {
   localStorage.setItem('fontScale', e.target.value);
