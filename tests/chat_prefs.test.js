@@ -222,7 +222,7 @@ describe('トークを削除(自分だけ)', () => {
     let ga = await groupOf(a, g.groupId);
     assert.equal(ga.lastMessage, null); assert.equal(ga.unreadCount, 0);
     const gb = await groupOf(b, g.groupId);
-    assert.ok(gb.lastMessage); assert.equal(gb.lastMessage.content, 'g2');
+    assert.ok(gb.lastMessage); assert.ok(['g1', 'g2'].includes(gb.lastMessage.content)); // 同じ秒に送ったので、どちらが最新かは決まらない
 
     await sleep(1100);
     await gsend(b, g.groupId, 'g3');
