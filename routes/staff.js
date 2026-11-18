@@ -52,7 +52,7 @@ router.get('/users', auth, requireStaff, asyncHandler(async (req, res) => {
     `SELECT u.id, u.user_id, u.display_name, u.real_name, u.profile_pic, u.created_at, u.banned_until,
             (SELECT MAX(s.last_seen_at) FROM user_sessions s WHERE s.user_id = u.id) AS last_seen
        FROM users u
-      WHERE u.username NOT LIKE 'deleted%'
+      WHERE substr(u.username, 1, 8) != 'deleted_'
       LIMIT 2000`
   );
   const users = rows.map(r => ({
@@ -69,7 +69,7 @@ router.get('/blockers', auth, requireStaff, asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT u.id, u.user_id, u.display_name, u.real_name, u.profile_pic, b.created_at AS blocked_at
        FROM user_blocks b JOIN users u ON u.id = b.blocker_id
-      WHERE b.blocked_id = ? AND u.username NOT LIKE 'deleted%'
+      WHERE b.blocked_id = ? AND substr(u.username, 1, 8) != 'deleted_'
       ORDER BY b.created_at DESC LIMIT 500`,
     [req.userId]
   );
@@ -89,7 +89,7 @@ router.get('/blocks', auth, requireStaff, asyncHandler(async (req, res) => {
        FROM user_blocks b
        JOIN users a ON a.id = b.blocker_id
        JOIN users t ON t.id = b.blocked_id
-      WHERE a.username NOT LIKE 'deleted%' AND t.username NOT LIKE 'deleted%'
+      WHERE substr(a.username, 1, 8) != 'deleted_' AND substr(t.username, 1, 8) != 'deleted_'
       ORDER BY b.created_at DESC LIMIT 500`
   );
   const pick = (id, code, name, real) => ({ userId: id, userIdCode: code, displayName: name || '(名前なし)', realName: real || '' });

@@ -45,8 +45,10 @@ router.post('/', verifyToken, reportLimiter, asyncHandler(async (req, res) => {
     const byCode = clean(body.targetCode, 20).toUpperCase();
     let target = null;
     // (以前は password_hash が空のアカウント=Googleログインの人を通報できなかった。退会済みだけ除く)
-    if (byId) target = await db.get("SELECT id, display_name FROM users WHERE id = ? AND username NOT LIKE 'deleted%'", [byId]);
-    else if (byCode) target = await db.get("SELECT id, display_name FROM users WHERE user_id = ? AND username NOT LIKE 'deleted%'", [byCode]);
+    // 退会済みの判定は 'deleted_' で始まること。LIKE 'deleted%' だと deletedman@... で登録した人が
+    // 管理や通報から見えなくなっていた(LIKEの _ は1文字の意味なので、ここでは substr で比べる)
+    if (byId) target = await db.get("SELECT id, display_name FROM users WHERE id = ? AND substr(username, 1, 8) != 'deleted_'", [byId]);
+    else if (byCode) target = await db.get("SELECT id, display_name FROM users WHERE user_id = ? AND substr(username, 1, 8) != 'deleted_'", [byCode]);
     if (!target) return res.status(404).json({ error: '通報するユーザーが見つかりません' });
     if (target.id === req.userId) return res.status(400).json({ error: '自分自身は通報できません' });
     targetId = target.id;

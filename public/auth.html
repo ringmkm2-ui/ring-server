@@ -13,6 +13,9 @@
   <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/themeBoot.js"></script>
+<script src="/js/appLock.js"></script>
+<script src="/js/schoolMode.js"></script>
+  <script src="/js/loadingDots.js"></script>
   <script src="/js/i18n.js"></script>
   <style>
     * {
@@ -266,6 +269,32 @@
       display: block;
     }
 
+    /* ===== 動き: 画面の出現・フォーム切替・エラーの揺れ・成功の弾み(transform/opacityだけ) ===== */
+    @keyframes authRise { from { opacity: 0; transform: translate3d(0, 26px, 0) scale(.96); } to { opacity: 1; transform: none; } }
+    @keyframes authSection { from { opacity: 0; transform: translate3d(0, 14px, 0); } to { opacity: 1; transform: none; } }
+    @keyframes authField { from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.98); } to { opacity: 1; transform: none; } }
+    @keyframes authShake { 0%,100% { transform: none; } 15% { transform: translate3d(-8px,0,0); } 32% { transform: translate3d(7px,0,0); } 48% { transform: translate3d(-5px,0,0); } 64% { transform: translate3d(3px,0,0); } 80% { transform: translate3d(-1px,0,0); } }
+    @keyframes authPop { 0% { opacity: 0; transform: scale(.88); } 55% { opacity: 1; transform: scale(1.04); } 100% { transform: none; } }
+    .container { animation: authRise .62s cubic-bezier(.2,.9,.22,1) both; }
+    .form-section.active { animation: authSection .32s ease-out both; }
+    .form-section.active .form-group,
+    .form-section.active .btn,
+    .form-section.active .toggle-form { animation: authField .5s cubic-bezier(.2,.9,.22,1) both; }
+    .form-section.active > form > :nth-child(1), .form-section.active > :nth-child(1) { animation-delay: .04s; }
+    .form-section.active > form > :nth-child(2), .form-section.active > :nth-child(2) { animation-delay: .09s; }
+    .form-section.active > form > :nth-child(3), .form-section.active > :nth-child(3) { animation-delay: .14s; }
+    .form-section.active > form > :nth-child(4), .form-section.active > :nth-child(4) { animation-delay: .19s; }
+    .form-section.active > form > :nth-child(5), .form-section.active > :nth-child(5) { animation-delay: .24s; }
+    .form-section.active > form > :nth-child(6), .form-section.active > :nth-child(6) { animation-delay: .29s; }
+    .form-section.active > form > :nth-child(n+7), .form-section.active > :nth-child(n+7) { animation-delay: .33s; }
+    .error-message.shake { animation: authShake .5s cubic-bezier(.36,.07,.19,.97) both; }
+    .success-message.pop { animation: authPop .45s cubic-bezier(.2,.9,.22,1) both; }
+    .mode-btn { transition: border-color .3s, color .3s, background-color .3s, transform .28s cubic-bezier(.34,1.56,.64,1); }
+    .mode-btn:active { transform: scale(.96); }
+    .btn:active { filter: brightness(.94); }
+    html.reduce-motion .container, html.reduce-motion .form-section.active, html.reduce-motion .form-section.active * { animation: none !important; }
+    @media (prefers-reduced-motion: reduce) { .container, .form-section.active, .form-section.active * { animation: none !important; } }
+
     @media (max-width: 480px) {
       .container {
         padding: 30px 20px;
@@ -278,6 +307,8 @@
     .sec-title { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-align: center; }
     .sec-desc { font-size: 14px; color: #64748b; margin-bottom: 16px; text-align: center; line-height: 1.5; }
     .link-btn { display: block; width: 100%; margin-top: 12px; padding: 8px; background: none; border: none; color: #64748b; font-size: 14px; cursor: pointer; text-decoration: underline; }
+    #inviteCode { text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+    .btn-invite { margin-top: 14px; margin-bottom: 0; }
     .btn-glass{position:relative;padding:12px 24px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:0 8px 32px rgba(31,38,135,0.15)}
     .btn-glass:hover{background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);box-shadow:0 12px 40px rgba(31,38,135,0.25);transform:translateY(-2px)}
     .btn-glass:active{transform:translateY(0);box-shadow:0 4px 16px rgba(31,38,135,0.15)}
@@ -349,6 +380,7 @@
         <button type="submit" class="btn btn-login" data-i18n="login">ログイン</button>
       </form>
       <button type="button" class="link-btn" data-call="showForgot" data-i18n="forgot_link">パスワードを忘れましたか?</button>
+      <button type="button" class="btn btn-signup btn-invite" id="inviteOpenBtn" data-i18n="inv2_open">招待コードで始める</button>
     </div>
 
     <!-- 登録フォーム -->
@@ -380,6 +412,26 @@
         <button type="submit" class="btn btn-login" data-i18n="register">登録</button>
       </form>
       <p class="legal-note"><span data-i18n="agree_prefix">登録すると</span><a href="/terms.html" data-i18n="terms">利用規約</a><span data-i18n="legal_and">と</span><a href="/privacy.html" data-i18n="privacy_policy">プライバシーポリシー</a><span data-i18n="agree_suffix">に同意したことになります</span></p>
+    </div>
+
+    <!-- 招待コードで始める(メールもパスワードも不要) -->
+    <div id="inviteSection" class="form-section">
+      <h2 class="sec-title" data-i18n="inv2_open">招待コードで始める</h2>
+      <form id="inviteForm">
+        <div class="form-group">
+          <input type="text" id="inviteCode" name="invite-code" maxlength="120" placeholder="ABCD-EFGH" required autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next">
+        </div>
+        <div class="form-group">
+          <input type="text" id="inviteName" name="nickname" placeholder="表示名" data-i18n-placeholder="inv2_name_ph" required autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
+        </div>
+        <div class="form-group">
+          <input type="text" id="inviteRealName" placeholder="本名(フルネーム)" data-i18n-placeholder="real_name_ph" required maxlength="50" autocomplete="name" enterkeyhint="go">
+          <p class="field-note" data-i18n="real_name_note" style="font-size:12px;opacity:.65;margin:6px 4px 0">本名はほかの人には表示されません</p>
+        </div>
+        <button type="submit" class="btn btn-login" data-i18n="inv2_submit">はじめる</button>
+      </form>
+      <p class="legal-note" data-i18n="inv2_note">メールアドレスとパスワードは不要です。ただし、ログアウトするとこのアカウントには戻れません。</p>
+      <button type="button" class="link-btn" data-call="backToLogin" data-i18n="back_to_login">ログイン画面に戻る</button>
     </div>
 
     <!-- メール認証コード入力 -->
@@ -448,11 +500,14 @@
 
     // --- 共通: セッション保存 / 画面切替 ---
     let pendingVerifyEmail = null;
+    // メール認証はパスワードも一緒に送る(他人が同じメールで登録し直してパスワードを差し替える乗っ取りを防ぐため、サーバーが照合する)
+    let pendingVerifyPassword = null;
     let pendingTwoFaToken = null;
     // メールで新規登録が通った(確認コード待ちを含む)。最初のログインで、トーク一覧が暗号鍵の設定を案内する
     let pendingNewAccount = false;
 
     function storeSession(data) {
+      localStorage.removeItem('ring_guest');   // 通常のログインではゲスト印を外す(招待コードで始めた時だけ後で付ける)
       localStorage.setItem('ring_token', data.token);
       localStorage.setItem('ring_userId', data.userId);
       localStorage.setItem('ring_user_id', data.userId);
@@ -471,6 +526,7 @@
 
     function backToLogin() {
       pendingVerifyEmail = null;
+      pendingVerifyPassword = null;
       pendingTwoFaToken = null;
       pendingResetEmail = null;
       document.querySelector('.auth-mode-switch').style.display = '';
@@ -503,10 +559,15 @@
         const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: pendingVerifyEmail, code })
+          body: JSON.stringify({ username: pendingVerifyEmail, code, password: pendingVerifyPassword || '' })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '確認に失敗しました');
+        if (!res.ok) {
+          // パスワードが合わない(別の人が同じメールで登録し直した等)時は、最初からやり直してもらう
+          if (data.needsPassword) { backToLogin(); }
+          throw new Error(data.error || '確認に失敗しました');
+        }
+        pendingVerifyPassword = null;
         if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
         storeSession(data);
         if (pendingNewAccount) localStorage.setItem('bc_new_account', '1');
@@ -652,6 +713,7 @@
       const errorEl = document.getElementById('errorMsg');
       errorEl.textContent = message;
       errorEl.style.display = 'block';
+      errorEl.classList.remove('shake'); void errorEl.offsetWidth; errorEl.classList.add('shake');   // 連続でエラーが出ても毎回揺らす
       setTimeout(() => {
         errorEl.style.display = 'none';
       }, 5000);
@@ -659,8 +721,9 @@
 
     function showSuccess(message) {
       const successEl = document.getElementById('successMsg');
-      successEl.textContent = message;
+      BroDots.set(successEl, message);
       successEl.style.display = 'block';
+      successEl.classList.remove('pop'); void successEl.offsetWidth; successEl.classList.add('pop');
     }
 
     function clearMessages() {
@@ -682,12 +745,14 @@
 
         const data = await response.json();
 
+        if (data && data.needsVerification) pendingVerifyPassword = password;
         if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || 'ログインに失敗しました');
         }
 
         // ローカルストレージに保存
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
@@ -723,12 +788,14 @@
         const data = await response.json();
 
         if (response.ok) pendingNewAccount = true;
+        if (data && data.needsVerification) pendingVerifyPassword = password;
         if (handleAuthResult(response, data, email)) return;
         if (!response.ok) {
           throw new Error(data.error || '登録に失敗しました');
         }
 
         localStorage.setItem('bc_new_account', '1');
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_user_id', data.userId);
@@ -744,6 +811,51 @@
       } catch (error) {
         showError(error.message);
       }
+    }
+
+    // --- 招待コードで始める(メール・パスワードなし) ---
+    // 貼られたものが招待リンクでも読めるようにする(…/i/ABCD1234 や …?invite=ABCD1234)
+    function inviteCodeClean(v) {
+      const raw = String(v || '').normalize('NFKC');
+      const m = /\/i\/([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(raw) || /[?&]invite=([A-Za-z0-9-]{8,9})(?![A-Za-z0-9])/.exec(raw);
+      return (m ? m[1] : raw).replace(/[\s-]/g, '').toUpperCase();
+    }
+
+    function showInvite() {
+      showOnly('inviteSection');
+      const c = document.getElementById('inviteCode');
+      if (c) c.focus();
+    }
+
+    async function submitInvite(e) {
+      e.preventDefault();
+      const code = inviteCodeClean(document.getElementById('inviteCode').value);
+      const displayName = document.getElementById('inviteName').value;
+      const realName = document.getElementById('inviteRealName').value.trim();
+      if (!code) { showError(tr('inv2_code_required', '招待コードを入力してください')); return; }
+      if (!realName) { showError(window.i18n ? i18n.t('real_name_required', '本名を入力してください') : '本名を入力してください'); return; }
+
+      let response, data;
+      try {
+        response = await fetch(`${API_BASE}/api/auth/register-invite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, displayName, realName })
+        });
+        data = await response.json();
+      } catch (err) {
+        showError(tr('inv2_net_err', 'ネットワークエラー。接続を確認して、もう一度お試しください'));
+        return;
+      }
+      if (!response.ok || !data || !data.token) {
+        showError((data && typeof data.error === 'string' && data.error) || tr('inv2_fail', '始められませんでした。もう一度お試しください'));
+        return;
+      }
+      // 通常の新規登録と同じ保存・同じ遷移(トーク一覧が暗号鍵の設定を案内する)
+      storeSession(data);
+      localStorage.setItem('bc_new_account', '1');
+      localStorage.setItem('ring_guest', '1');
+      window.location.replace('/talklist.html');
     }
 
     function handleGoogleSignIn(response) {
@@ -765,6 +877,7 @@
     function handleGoogleResult(data) {
       if (data.needs2fa) { showTwoFa(data.twoFaToken); return; }
       if (data.token) {
+        localStorage.removeItem('ring_guest');
         localStorage.setItem('ring_token', data.token);
         localStorage.setItem('ring_userId', data.userId);
         localStorage.setItem('ring_username', data.username);
@@ -832,10 +945,22 @@
     // ページロード時にログイン状態をチェック
     window.addEventListener('load', () => {
       const token = localStorage.getItem('ring_token');
+      // 招待リンク(/i/コード)から来た時のコード。8文字の英数字だけ通す
+      const linkCode = inviteCodeClean(new URLSearchParams(location.search).get('invite') || '');
+      const validLinkCode = /^[A-Z0-9]{8}$/.test(linkCode) ? linkCode : '';
       if (token) {
-        // 既にログイン済み
-        window.location.replace('/talklist.html');
+        // 既にログイン済み。招待リンクなら、友だち追加の画面(コード入り)で開く
+        window.location.replace('/talklist.html' + (validLinkCode ? '?invite=' + validLinkCode : ''));
         return;
+      }
+      if (validLinkCode) {
+        // 未ログイン: コードを入れた状態で「招待コードで始める」を開く。押すのは本人
+        showInvite();
+        const ci = document.getElementById('inviteCode');
+        if (ci) ci.value = validLinkCode.slice(0, 4) + '-' + validLinkCode.slice(4);
+        history.replaceState(null, '', location.pathname);
+        const nm = document.getElementById('inviteName');
+        if (nm) nm.focus();
       }
 
       // アプリ内(WebView)はブラウザ経由のログインに切り替える
@@ -880,7 +1005,7 @@
       if (!btn) return () => {};
       const label = btn.textContent;
       btn.disabled = true;
-      btn.textContent = tr('busy', '処理中…');
+      BroDots.set(btn, tr('busy', '処理中…'));
       const hint = tr('slow_server', 'サーバーが混み合っているか、起動中です。1分ほどかかることがあります');
       let hinted = false;
       const timer = setTimeout(() => { hinted = true; showSuccess(hint); }, 6000);
@@ -894,13 +1019,24 @@
         }
       };
     }
-    ['emailLogin', 'emailSignup', 'submitVerify', 'submitTwoFa', 'submitForgot', 'submitReset'].forEach(name => {
+    ['emailLogin', 'emailSignup', 'submitVerify', 'submitTwoFa', 'submitForgot', 'submitReset', 'submitInvite'].forEach(name => {
       const orig = window[name];
       if (typeof orig !== 'function') return;
       window[name] = async function (ev) {
         const done = startBusy(ev);
         try { return await orig.apply(this, arguments); } finally { done(); }
       };
+    });
+
+    // 招待コードの画面(actions.js の許可リストには触れないので、ここで直接つなぐ)
+    document.getElementById('inviteOpenBtn').addEventListener('click', showInvite);
+    document.getElementById('inviteForm').addEventListener('submit', e => window.submitInvite(e));
+    document.getElementById('inviteCode').addEventListener('input', function () {
+      // リンクごと貼られたらコードだけにする。普通に打っている間は大文字にするだけ
+      const looksLong = this.value.length > 9 || /[\/?=:]/.test(this.value);
+      const p = this.selectionStart;
+      const u = looksLong ? inviteCodeClean(this.value).slice(0, 8) : this.value.normalize('NFKC').toUpperCase();
+      if (u !== this.value) { this.value = u; try { this.setSelectionRange(Math.min(p, u.length), Math.min(p, u.length)); } catch (_) {} }
     });
 </script>
 </body>

@@ -53,6 +53,17 @@ const registerLimiter = rateLimit({
   message: { error: '登録試行が多すぎます。しばらくしてから再度お試しください。' },
 });
 
+// 招待コードでの新規登録: コードの総当たり対策。失敗(400以上)だけを数えるので、
+// 教室など同じWi-Fiから大勢が正しいコードで登録しても止まらない。IP単位で15分に20回の失敗まで
+const inviteSignupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
 // API全体: 1分240req（端末ごと）。トークを開くたびに履歴・鍵・状態などで8〜10回呼ぶので、
 // 以前の120回だとトークを次々に切り替えただけで「多すぎます」になりえた。スクリプトの連打は今でも止まる
 const apiLimiter = rateLimit({
@@ -106,8 +117,68 @@ const searchLimiter = rateLimit({
   message: { error: '検索が多すぎます。しばらくしてからお試しください。' },
 });
 
+// リンクのプレビュー: サーバーが外のURLを取りに行く重い処理なので、1人1分に30回まで。
+const linkPreviewLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リンクのプレビューが多すぎます。しばらくしてからお試しください。' },
+});
+
+// プレビュー画像の中継: 画像は1枚ずつ別リクエストなので、プレビュー本体とは別枠で1人1分に60回まで。
+const linkPreviewImageLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リンクのプレビューが多すぎます。しばらくしてからお試しください。' },
+});
+
+// ゲストのメール・パスワード設定: 人ごとに15分で20回まで(コードの当てずっぽうと、メールの連打を止める)。
+// 1日あたりの送信数・失敗数は routes/auth.js でDBに数えている
+const guestUpgradeLimiter = rateLimit({
+  ...perUser,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
+// パスワード変更・退会(現在のパスワードの照合が走る): 人ごとに15分で20回まで。
+// トークンを持っているだけの人が、ここを使ってパスワードを当てに来る・bcryptを回し続けるのを止める。
+// 間違いの回数は routes/auth.js でDBに数えている
+const passwordActionLimiter = rateLimit({
+  ...perUser,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '試行が多すぎます。しばらくしてからお試しください' },
+});
+
+// トークリストの操作(ピン留め・ミュート・非表示・トーク削除): 人ごとに1分に60回まで。
+// 人の手で押す操作なので十分に余裕がある。連打でDBを書き換え続けるのを止める
+const chatPrefsLimiter = rateLimit({
+  ...perUser,
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '操作が多すぎます。しばらくしてからお試しください。' },
+});
+
 module.exports = {
+  chatPrefsLimiter,
+  passwordActionLimiter,
+  guestUpgradeLimiter,
+  linkPreviewImageLimiter,
+  inviteSignupLimiter,
   perUser,
+  linkPreviewLimiter,
   loginLimiter,
   registerLimiter,
   apiLimiter,

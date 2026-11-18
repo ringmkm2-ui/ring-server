@@ -8,14 +8,36 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+// 同じ箱に置いたPostgresはSSLを使わない。
+// 以前は接続URLに 'localhost' という文字が入っているかだけを見ていたため、
+// 127.0.0.1 や ::1、UNIXソケットで書くと「The server does not support SSL connections」で
+// 起動できなかった。DBを自分のサーバーに同居させる時(Oracle/VPS)に必ず踏む。
+// 外のDB(Neon等)は今まで通りSSLで繋ぐ。明示的に切りたい時は ?sslmode=disable を付ける。
+function localConnection(url) {
+  if (!url) return false;
+  if (/[?&]sslmode=disable(&|$)/.test(url)) return true;
+  // host=/var/run/postgresql のようなUNIXソケット指定(エンコード済みも見る)
+  if (/[?&]host=(%2[Ff]|\/)/.test(url)) return true;
+  let host;
+  try {
+    host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  } catch (e) {
+    return /localhost|127\.0\.0\.1/.test(url);
+  }
+  if (!host) return true; // ホスト無し = ソケット接続
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+  ssl: localConnection(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
+  // 使っていない接続は早めに閉じる。Neonは「接続が無い状態が続く」と自動で眠って課金が止まるので、
+  // 繋ぎっぱなしだと誰も使っていない時間もコンピュート時間を食う(無料枠は1か月100 CU時間)
+  idleTimeoutMillis: 10000,
   max: 20,
   statement_timeout: 30000,
-  keepAlive: true, // アイドル中の接続がDB側/中継で静かに切られるのを防ぐ
+  // keepAliveは付けない。すぐ閉じる前提なので要らず、付けるとDBを起こし続ける側に働く
 });
 // 待機中の接続がDBの再起動やネットワーク断で壊れた時に 'error' が出る。受け皿が無いとプロセスごと落ちる。
 // 壊れた接続はpgが捨てて次から作り直すので、ログだけ残す
@@ -94,9 +116,11 @@ async function initDB() {
         ip TEXT,
         created_at TIMESTAMP DEFAULT now(),
         last_seen_at TIMESTAMP DEFAULT now(),
-        revoked_at TIMESTAMP
+        revoked_at TIMESTAMP,
+        revoked_reason TEXT
       )
     `);
+    await pool.query('ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS revoked_reason TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)');
     // 端末をまたいで同じになるユーザー設定(プライバシー・通話・セキュリティ)。
     // 中身はJSON1本。キーの増減でマイグレーションが要らないようにしている。
@@ -105,6 +129,56 @@ async function initDB() {
         user_id TEXT PRIMARY KEY,
         data TEXT NOT NULL DEFAULT '{}',
         updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    // トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)をチャットごとに持つ。
+    // kind は 'dm'(peer_id は相手のユーザーID)か 'group'(peer_id はグループID)。
+    // 時刻は epoch ミリ秒(PG/SQLiteで日時の扱いが違うため、user_settings と違って数値にしている)。
+    // cleared_at より前のメッセージは、その人にだけ見えなくなる(0 = 消していない)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_prefs (
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        peer_id TEXT NOT NULL,
+        pinned_at BIGINT,
+        muted BOOLEAN NOT NULL DEFAULT false,
+        hidden_at BIGINT,
+        cleared_at BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT now(),
+        PRIMARY KEY (user_id, kind, peer_id)
+      )
+    `);
+    // 友だち招待コード。1人が複数作れて、1つのコードを複数人が使える(人数・期限は作る時に決める)。
+    // 期限は epoch ミリ秒で持つ(PG/SQLiteで日時の扱いが違うため、数値にしておく)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_codes (
+        code TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL REFERENCES users(id),
+        max_uses INTEGER,
+        uses INTEGER NOT NULL DEFAULT 0,
+        expires_ms BIGINT,
+        created_ms BIGINT NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_invite_codes_owner ON invite_codes(owner_id)');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_redemptions (
+        code TEXT NOT NULL REFERENCES invite_codes(code) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        redeemed_ms BIGINT NOT NULL,
+        PRIMARY KEY (code, user_id)
+      )
+    `);
+    // 招待コードで始めたゲストが、あとからメール+パスワードを付ける途中の状態(メールの持ち主だと確かめるコードを待っている間)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS guest_upgrades (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        expires_ms BIGINT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_sent_ms BIGINT NOT NULL DEFAULT 0
       )
     `);
     // 古いDBで joined_at が無い場合に備える(無ければ足すだけ。既存の行は空のまま=今まで通り全部見える)
@@ -165,6 +239,31 @@ async function initDB() {
         PRIMARY KEY (user_id, public_key)
       )
     `);
+    // 個人チャットのラチェット(e5)用。端末ごとのプリキー。秘密鍵は端末にだけある
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_prekeys (
+        user_id TEXT NOT NULL,
+        device_key TEXT NOT NULL,
+        spk_id BIGINT NOT NULL,
+        spk_pub TEXT NOT NULL,
+        spk_sig TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (user_id, device_key)
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_otks (
+        user_id TEXT NOT NULL,
+        device_key TEXT NOT NULL,
+        otk_id BIGINT NOT NULL,
+        pub TEXT NOT NULL,
+        PRIMARY KEY (device_key, otk_id)
+      )
+    `);
+    // 端末の承認: 既存の鍵はそのまま active。新しい端末は pending から始まる(utils/deviceKeys.js)
+    await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'`);
+    await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS approve_after BIGINT`);
+    await pool.query(`ALTER TABLE user_pubkeys ADD COLUMN IF NOT EXISTS pending_sid TEXT`);
     // パスワード再設定コード(メール認証コードとは別テーブル。同時に進行しても干渉しない)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_resets (
@@ -184,6 +283,32 @@ async function initDB() {
         last_sent_ms BIGINT DEFAULT 0
       )
     `);
+    // コードの外れ回数(アカウントごと24時間)。メモリだと再起動で消えて総当たりの上限が効かなくなるのでDBに置く
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS auth_misses (
+        key TEXT PRIMARY KEY,
+        n INTEGER NOT NULL DEFAULT 0,
+        since_ms BIGINT NOT NULL
+      )
+    `);
+    // 招待コードの持ち主が友だちから外した相手(コードで黙って戻れないように)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_removals (
+        owner_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        removed_ms BIGINT NOT NULL,
+        PRIMARY KEY (owner_id, user_id)
+      )
+    `);
+    // 字幕(Deepgram)を人ごと・日ごとに使った秒数。再起動で消えないようにDBに置く
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS call_assist_usage (
+        user_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        seconds INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, day)
+      )
+    `);
   } catch (e) {
     console.log('[db] email verify / totp migration skip:', e.message);
   }
@@ -193,6 +318,26 @@ async function initDB() {
     await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN DEFAULT false');
   } catch (e) {
     console.log('[db] encrypted migration skip:', e.message);
+  }
+
+  // 消えるメッセージ(会話ごとのタイマー)。expires_at を過ぎた行は履歴・未読から外れ、定期掃除で消える。
+  // conversation_ttl の conv_key は、1対1なら 'dm:<小さいID>:<大きいID>'、グループなら 'g:<groupId>'
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_ttl (
+        conv_key TEXT PRIMARY KEY,
+        ttl_seconds INTEGER NOT NULL DEFAULT 0,
+        updated_by TEXT,
+        updated_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    await pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP');
+    await pool.query('ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP');
+    // 掃除は「期限があるものだけ」を見ればよいので部分索引にする(大半の行は NULL)
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(expires_at) WHERE expires_at IS NOT NULL');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_group_messages_expires ON group_messages(expires_at) WHERE expires_at IS NOT NULL');
+  } catch (e) {
+    console.log('[db] disappearing messages migration skip:', e.message);
   }
 
   // グループの返信(どのメッセージへの返信か)。消された時に困らないよう外部キーは付けない
@@ -398,6 +543,13 @@ async function initDB() {
   } catch (e) {
     console.log('[db] fcm_tokens migration skip:', e.message);
   }
+  // 端末ごとのFCM暗号鍵(32バイト, Base64)。これがある端末には、FCMの data を暗号化して送る
+  // (Googleのサーバーに送信者名などを読ませない)。古いAPKの行は NULL のままで、今まで通り平文。
+  try {
+    await pool.query('ALTER TABLE fcm_tokens ADD COLUMN IF NOT EXISTS push_key TEXT');
+  } catch (e) {
+    console.log('[db] fcm_tokens push_key migration skip:', e.message);
+  }
   // 同じFCMトークンが複数アカウントに紐づいている行を整理する(最後に登録したアカウントだけ残す)。
   // 残っていると、別アカウントでの着信・通知がこの端末にも届く
   try {
@@ -416,8 +568,28 @@ async function initDB() {
     await pool.query(`CREATE TABLE IF NOT EXISTS icon_images (
       id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BYTEA NOT NULL, created_at TIMESTAMP DEFAULT now())`);
     await pool.query('ALTER TABLE groups ADD COLUMN IF NOT EXISTS avatar_url TEXT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT');
   } catch (e) {
     console.log('[db] icon migration skip:', e.message);
+  }
+
+  // 管理Exeの操作ログ
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_audit (
+        id TEXT PRIMARY KEY,
+        at TIMESTAMP DEFAULT now(),
+        action TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        target_label TEXT,
+        detail TEXT,
+        ip TEXT
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC)');
+  } catch (e) {
+    console.log('[db] admin_audit migration skip:', e.message);
   }
 
   console.log('[db] PostgreSQL に接続・スキーマ初期化しました');
@@ -439,4 +611,4 @@ async function all(sql, params = []) {
   return res.rows;
 }
 
-module.exports = { initDB, run, get, all };
+module.exports = { initDB, run, get, all, localConnection };

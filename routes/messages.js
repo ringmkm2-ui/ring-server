@@ -6,6 +6,8 @@ const { sendServerError } = require('../utils/errorResponse');
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation');
 const { messageSendLimiter } = require('../utils/rateLimits');
+const disappearing = require('../utils/disappearing');
+const chatPrefs = require('../utils/chatPrefs');
 
 // メッセージcontentの最大文字数。E2E暗号化後のBase64も含むため大きめだが
 // 上限なしだと50MB JSONで1リクエストでDB/メモリを食いつぶせる。
@@ -37,7 +39,9 @@ router.get('/presence/:userId', auth, async (req, res) => {
 // 暗号文のテキストは cipher に入れて返し、端末が自分の鍵で開いて一覧に本文を出す(LINEのように)。
 // メディアは content が {mediaUrl|media, mediaType} のJSONなので、暗号化フラグより先に中身を見る
 // (以前は暗号化フラグを先に見ていたため、画像も「暗号化されたメッセージ」になっていた)。
-function toPreview(content, encrypted) {
+// msgType: お知らせ(__notice__)はサーバーが msg_type='notice' で作るものだけ。以前は普通のメッセージに
+// {"__notice__":{...}} と書いて送るだけで、相手の一覧に「OOがFワードを言ったためBanしました。」を出せた
+function toPreview(content, encrypted, msgType) {
   if (!content) return { kind: 'empty', text: '' };
   let parsed = null;
   if (content[0] === '{') { try { parsed = JSON.parse(content); } catch (e) {} }
@@ -52,14 +56,19 @@ function toPreview(content, encrypted) {
       const call = { status: String(c.status || '').slice(0, 20), video: !!c.video, duration: Math.max(0, Math.min(86400, Number(c.duration) || 0)) };
       return { kind: 'call', text: '通話', call };
     }
-    if (parsed.__notice__ && parsed.__notice__.kind === 'ban') {
+    if (msgType === 'notice' && parsed.__notice__ && parsed.__notice__.kind === 'ttl') {
+      // 消えるメッセージの設定変更。文言はサーバーが作った text をそのまま一覧に出す
+      const text = String(parsed.__notice__.text || '').slice(0, 120);
+      return { kind: 'ttl', text };
+    }
+    if (msgType === 'notice' && parsed.__notice__ && parsed.__notice__.kind === 'ban') {
       const name = String(parsed.__notice__.name || 'ユーザー').slice(0, 40);
       return { kind: 'ban', name, text: `${name}がFワードを言ったためBanしました。` };
     }
   }
   if (encrypted) {
     const out = { kind: 'encrypted', text: '暗号化されたメッセージ' };
-    if (typeof content === 'string' && /^e[23]:/.test(content) && content.length <= 8000) out.cipher = content;
+    if (typeof content === 'string' && /^e[235]:/.test(content) && content.length <= 8000) out.cipher = content;
     return out;
   }
   return { kind: 'text', text: content };
@@ -83,7 +92,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       encrypted, repliedToId, mediaKeys,
     } = req.body;
     // 画像・動画の鍵を、相手と自分の全端末に向けて包んだもの(e3)。無ければ従来どおり
-    if (mediaKeys != null && (typeof mediaKeys !== 'string' || !mediaKeys.startsWith('e3:') || mediaKeys.length > 8000 || !/^[A-Za-z0-9+/=:.,]+$/.test(mediaKeys.slice(3)))) {
+    if (mediaKeys != null && (typeof mediaKeys !== 'string' || !/^e[35]:/.test(mediaKeys) || mediaKeys.length > 8000 || !/^[A-Za-z0-9+/=:.,]+$/.test(mediaKeys.slice(3)))) {
       return res.status(400).json({ error: 'mediaKeysの形式が不正です' });
     }
     if (!recipientId || typeof recipientId !== 'string' || !content) {
@@ -93,6 +102,15 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // mediaUrlはCloudinaryのみ = 相手の端末を他所へ取りに行かせない)
     const badInput = validateMessageInput(req.body);
     if (badInput) return res.status(badInput === 'メッセージが長すぎます' ? 413 : 400).json({ error: badInput });
+
+    // 承認待ちの端末からは送らせない(パスワードを盗んだ人が本人になりすまして送るのを止める)。形式を問わず、セッションで見る
+    if (await require('../utils/deviceKeys').isPendingSession(req.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
+    const senderKey = /^e[35]:([A-Za-z0-9+/=]{44}):/.exec(typeof content === 'string' ? content : '');
+    if (senderKey && await require('../utils/deviceKeys').isPending(req.userId, senderKey[1])) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
 
     const recipient = await db.get('SELECT id FROM users WHERE id = ?', [recipientId]);
     if (!recipient) return res.status(404).json({ error: 'recipient not found' });
@@ -124,8 +142,9 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     if (repliedToId) {
       const replied = await db.get(
         `SELECT id FROM messages
-          WHERE id = ? AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`,
-        [repliedToId, req.userId, recipientId, recipientId, req.userId]
+          WHERE id = ? AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+            AND ${disappearing.notExpiredSql()}`,
+        [repliedToId, req.userId, recipientId, recipientId, req.userId, disappearing.nowParam()]
       );
       if (!replied) return res.status(404).json({ error: 'replied message not found' });
     }
@@ -150,9 +169,11 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
       finalContent = JSON.stringify({ text: content, media: mediaData, mediaType });
     }
 
+    // 消えるメッセージ: この会話にタイマーがあれば、送った時刻から数えた期限を押す(無ければ NULL = 消えない)
+    const expiresAt = await disappearing.expiresAtFor(disappearing.dmKey(req.userId, recipientId));
     await db.run(
-      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id, hidden_for_recipient) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null, hiddenForRecipient]
+      'INSERT INTO messages (id, sender_id, recipient_id, content, msg_type, encrypted, replied_to_id, hidden_for_recipient, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.userId, recipientId, finalContent, msgType, !!encrypted, repliedToId || null, hiddenForRecipient, expiresAt]
     );
 
     const msg = await db.get('SELECT * FROM messages WHERE id = ?', [msgId]);
@@ -170,6 +191,7 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         encrypted: !!msg.encrypted,
         repliedToId: msg.replied_to_id || null,
         createdAt: msg.created_at,
+        expiresAt: expiresAt,
       }
     };
     if (!hiddenForRecipient) broadcastToUser(recipientId, payload);
@@ -182,18 +204,20 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
     // 「メッセージが届いた」ことと送信者名だけを載せる(プライバシー配慮)。
     // APK(FCM)には常に送る。アプリが裏にいてもWebSocketが一時的に生きていることがあり、
     // 「オンラインなら送らない」だと通知が来なかった。開いているトークなら端末側で出さない。
-    if (!req.body.noPush) {
+    // 相手がこのトークをミュートしている時は、Push(Web Push / FCM)を送らない(画面のリアルタイム表示は今まで通り)
+    const muted = req.body.noPush ? false : await chatPrefs.isMuted(recipientId, 'dm', req.userId);
+    if (!req.body.noPush && !muted) {
       db.get('SELECT display_name, public_key, profile_pic FROM users WHERE id = ?', [req.userId]).then(sender => {
         const preview = mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージ';
         // 本文は暗号文のまま載せ、相手の端末の中でだけ復号して通知に出す(サーバーは読めないまま)。
         // FCMの上限4KBに収まる文字メッセージだけ。
         const cipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 3000) ? content : '';
         require('../utils/fcm').sendMessageNotification(recipientId, sender?.display_name || 'ユーザー', preview, 'dm',
-          { senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '', senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic) })
+          { containsMessage: true, senderId: req.userId, cipher, senderPub: cipher ? (sender?.public_key || '') : '', senderPic: require('../utils/pushPic').pushPic(sender?.profile_pic) })
           .catch(err => console.error('[fcm] new_message failed:', err.message));
       }).catch(() => {});
     }
-    if (!isUserOnline(recipientId) && !req.body.noPush) {
+    if (!isUserOnline(recipientId) && !req.body.noPush && !muted) {
       const sender = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [req.userId]);
       const { sendPushToUser } = require('../utils/webPush');
       const wpCipher = (!mediaType && encrypted && typeof content === 'string' && content.length <= 2800) ? content : undefined;
@@ -208,12 +232,62 @@ router.post('/send', messageSendLimiter, auth, async (req, res) => {
         // 本文は暗号文のまま。受け取った端末のService Workerの中でだけ復号して表示する
         cipher: wpCipher,
         senderPub,
-      }).catch(err => console.error('[push] new_message send failed:', err.message));
+      }, { containsMessage: true }).catch(err => console.error('[push] new_message send failed:', err.message));
     }
 
     res.json({ ok: true, message: payload.message });
   } catch (e) {
     console.error('Error sending message:', e.message);
+    sendServerError(res, e);
+  }
+});
+
+// otherId から届いている未読を既読にし、相手へ read_receipt_bulk を流す(履歴を開いた時と、開かずに既読にする時で共通)。
+// 既読を送らない設定の人・ブロックしている/されている相手には、DBは既読にしても相手へは知らせない。
+// 戻り値: 既読にした件数
+async function markDmRead(readerId, otherId) {
+  const now = new Date().toISOString();
+  const { getSettings } = require('../utils/userSettings');
+  const { isBlockedEither } = require('../utils/relations');
+  const iShowRead = (await getSettings(readerId)).sendReadReceipts !== false && !(await isBlockedEither(readerId, otherId));
+  // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
+  // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
+  const newlyRead = await db.all(
+    "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND " + disappearing.notExpiredSql(),
+    [otherId, readerId, disappearing.nowParam()]
+  );
+  await db.run(
+    "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
+    [now, otherId, readerId]
+  );
+  // 履歴を開いただけ(WS経由のread_receiptイベントを個別に送っていないケース)でも
+  // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
+  // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
+  //  既読マークが付かないバグがあった)
+  if (newlyRead.length > 0 && iShowRead) {
+    const { broadcastToUser } = require('../ws/wsServer');
+    broadcastToUser(otherId, {
+      type: 'read_receipt_bulk',
+      readerId,
+      messageIds: newlyRead.map(m => m.id),
+      readAt: now,
+    });
+  }
+  return newlyRead.length;
+}
+
+// トークを開かずに既読にする(トークリストの「既読にする」)
+// POST /api/messages/read/:userId  -> { ok: true, count }
+router.post('/read/:userId', auth, async (req, res) => {
+  try {
+    const otherId = req.params.userId;
+    if (!otherId || otherId.length > 64 || otherId === req.userId) {
+      return res.status(400).json({ error: '相手の指定が正しくありません' });
+    }
+    const count = await markDmRead(req.userId, otherId);
+    res.json({ ok: true, count });
+  } catch (e) {
+    console.error('Error marking read:', e.message);
     sendServerError(res, e);
   }
 });
@@ -232,8 +306,16 @@ router.get('/history/:userId', auth, async (req, res) => {
     let sql = `
       SELECT * FROM messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
+        AND ${disappearing.notExpiredSql()}
     `;
-    const params = [req.userId, otherId, otherId, req.userId];
+    const params = [req.userId, otherId, otherId, req.userId, disappearing.nowParam()];
+
+    // 「トークを削除」(自分だけ)した時刻より前は、この人にだけ見せない
+    const { clearedAt } = await chatPrefs.getPref(req.userId, 'dm', otherId);
+    if (clearedAt > 0) {
+      sql += ' AND created_at > ?';
+      params.push(chatPrefs.tsParam(clearedAt));
+    }
 
     if (before) {
       sql += ' AND created_at < ?';
@@ -255,38 +337,12 @@ router.get('/history/:userId', auth, async (req, res) => {
 
     const rows = await db.all(sql, params);
 
-    const now = new Date().toISOString();
     const { getSettings } = require('../utils/userSettings');
-    const { isBlockedEither } = require('../utils/relations');
     // 裏で開いているだけ(タブが隠れている時の同期)なら既読にしない
     const markRead = req.query.markRead !== '0';
-    // 既読を知らせない設定の人には、既読を送らない/見せない
-    const iShowRead = (await getSettings(req.userId)).sendReadReceipts !== false && !(await isBlockedEither(req.userId, otherId));
+    // 既読を知らせない設定の人には、既読を見せない
     const peerShowsRead = (await getSettings(otherId)).sendReadReceipts !== false;
-    // 未読だったメッセージのIDを先に取得しておく(既読化SQL実行前)。
-    // WebSocket通知で「どのメッセージが既読になったか」を相手に伝えるために必要。
-    const newlyRead = !markRead ? [] : await db.all(
-      "SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
-      [otherId, req.userId]
-    );
-    if (markRead) await db.run(
-      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false",
-      [now, otherId, req.userId]
-    );
-
-    // 履歴を開いただけ(WS経由のread_receiptイベントを個別に送っていないケース)でも
-    // 相手の画面にリアルタイムで既読マークが反映されるよう、まとめて通知する。
-    // (以前はDB上は既読になるのに相手には何も届かず、相手が再読み込みするまで
-    //  既読マークが付かないバグがあった)
-    if (newlyRead.length > 0 && iShowRead) {
-      const { broadcastToUser } = require('../ws/wsServer');
-      broadcastToUser(otherId, {
-        type: 'read_receipt_bulk',
-        readerId: req.userId,
-        messageIds: newlyRead.map(m => m.id),
-        readAt: now,
-      });
-    }
+    if (markRead) await markDmRead(req.userId, otherId);
 
     // リアクションはまとめて1回で取る(以前は1通ごとに問い合わせていて、100通開くと100回DBを叩いていた)
     const reactBy = new Map();
@@ -316,6 +372,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         editedAt: m.edited_at,
         deletedAt: m.deleted_at,
         pinnedAt: m.pinned_at,
+        expiresAt: m.expires_at || null,
         reactions: reactions.map(r => ({ emoji: r.emoji, count: Number(r.cnt) })),
       });
     }
@@ -337,13 +394,14 @@ router.get('/talks', auth, async (req, res) => {
 
     // 1) 相手ごとの最新メッセージ(自分自身へのメッセージは除外)
     const latest = await db.all(`
-      SELECT m.sender_id, m.recipient_id, m.content, m.encrypted, m.created_at, m.deleted_at
+      SELECT m.sender_id, m.recipient_id, m.content, m.encrypted, m.created_at, m.deleted_at, m.msg_type
       FROM messages m
       WHERE m.id IN (
         SELECT (
           SELECT x.id FROM messages x
-          WHERE (x.sender_id = p.other_id AND x.recipient_id = ? AND COALESCE(x.hidden_for_recipient, false) = false)
-             OR (x.sender_id = ? AND x.recipient_id = p.other_id)
+          WHERE ((x.sender_id = p.other_id AND x.recipient_id = ? AND COALESCE(x.hidden_for_recipient, false) = false)
+             OR (x.sender_id = ? AND x.recipient_id = p.other_id))
+             AND ${disappearing.notExpiredSql('x')}
           ORDER BY x.created_at DESC, x.id DESC LIMIT 1
         )
         FROM (
@@ -352,14 +410,31 @@ router.get('/talks', auth, async (req, res) => {
           WHERE (sender_id = ? OR (recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false)) AND sender_id != recipient_id
         ) p
       )
-    `, [me, me, me, me, me]);
+    `, [me, me, disappearing.nowParam(), me, me, me]);
 
     // 2) 相手ごとの未読数
     const unreadRows = await db.all(
-      'SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false GROUP BY sender_id',
-      [me]
+      `SELECT sender_id, COUNT(*) AS cnt FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND ${disappearing.notExpiredSql()} GROUP BY sender_id`,
+      [me, disappearing.nowParam()]
     );
     const unreadBy = new Map(unreadRows.map(r => [r.sender_id, Number(r.cnt)]));
+
+    // チャットごとの設定(ピン留め・ミュート・非表示・トーク削除)は1回でまとめて読む
+    const prefs = await chatPrefs.loadPrefs(me);
+    // 「トークを削除」した相手の未読は、削除した時刻より後に届いた分だけ数え直す(その相手の分だけ追加で1回引く)
+    const clearedPeers = [...prefs.values()].filter(p => p.kind === 'dm' && p.clearedAt > 0).map(p => p.peerId);
+    if (clearedPeers.length) {
+      const ur = await db.all(
+        `SELECT sender_id, created_at FROM messages WHERE recipient_id = ? AND read_at IS NULL AND COALESCE(hidden_for_recipient, false) = false AND ${disappearing.notExpiredSql()} AND sender_id IN (${clearedPeers.map(() => '?').join(',')})`,
+        [me, disappearing.nowParam(), ...clearedPeers]
+      );
+      for (const id of clearedPeers) unreadBy.set(id, 0);
+      for (const r of ur) {
+        if (chatPrefs.toMs(r.created_at) > prefs.get(chatPrefs.key('dm', r.sender_id)).clearedAt) {
+          unreadBy.set(r.sender_id, (unreadBy.get(r.sender_id) || 0) + 1);
+        }
+      }
+    }
 
     // 3) メッセージのない友達
     const friendRows = await db.all(`
@@ -373,6 +448,8 @@ router.get('/talks', auth, async (req, res) => {
     const rows = latest
       .map(m => ({ ...m, other_id: m.sender_id === me ? m.recipient_id : m.sender_id }))
       .filter(m => !myBlocks.has(m.other_id))
+      // 「トークを削除」した時刻より前が最新なら、その相手とは何も話していない扱いにする
+      .filter(m => chatPrefs.toMs(m.created_at) > chatPrefs.prefOf(prefs, 'dm', m.other_id).clearedAt)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const withMsg = new Set(rows.map(r => r.other_id));
     const ids = [...new Set([...rows.map(r => r.other_id), ...friendRows.map(f => f.friend_id)])];
@@ -399,7 +476,7 @@ router.get('/talks', auth, async (req, res) => {
         profilePic: user.profile_pic,
         ...(() => {
           if (row.deleted_at) return { lastMessage: '（送信取り消し済み）', lastKind: 'unsent' };
-          const pv = toPreview(row.content, row.encrypted);
+          const pv = toPreview(row.content, row.encrypted, row.msg_type);
           const o = { lastMessage: pv.text, lastKind: pv.kind };
           if (pv.cipher) o.lastCipher = pv.cipher;
           if (pv.call) o.lastCall = pv.call;
@@ -409,6 +486,7 @@ router.get('/talks', auth, async (req, res) => {
         lastFromMe: row.sender_id === me,
         lastTime: row.created_at,
         unreadCount: unreadBy.get(row.other_id) || 0,
+        ...chatPrefs.listFields(chatPrefs.prefOf(prefs, 'dm', row.other_id), chatPrefs.toMs(row.created_at)),
       });
     }
     // メッセージのない友達も含める
@@ -425,6 +503,7 @@ router.get('/talks', auth, async (req, res) => {
         lastMessage: '',
         lastTime: null, // 以前は「今」を入れていて、話していない友だちが一番上に来て毎回点滅していた
         unreadCount: 0,
+        ...chatPrefs.listFields(chatPrefs.prefOf(prefs, 'dm', f.friend_id), 0),
       });
     }
 
@@ -447,6 +526,9 @@ async function blockedByOther(actor, msg) {
 // body: { messageId, content }
 router.post('/edit', auth, async (req, res) => {
   try {
+    if (await require('../utils/deviceKeys').isPendingSession(req.userId, req.user && req.user.sid)) {
+      return res.status(403).json({ error: 'この端末は承認待ちです。ログイン済みの別の端末で許可してください', code: 'DEVICE_PENDING' });
+    }
     if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content']);
     const { messageId, content, encrypted } = req.body;
     if (!messageId || !content) return res.status(400).json({ error: 'messageId and content required' });
@@ -607,7 +689,9 @@ router.post('/react', auth, async (req, res) => {
       } catch (e) {
         // 同時に2回押された時は片方が重複で弾かれる。付いた状態になっていれば成功として扱う
         const again = await db.get('SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', [messageId, req.userId, emoji]);
-        if (!again) throw e;
+        // 別の押下が直後に取り消していれば、もう行は無い。それでも重複で弾かれただけなら失敗ではない
+        const dup = e && (e.code === '23505' || /UNIQUE|unique/.test(String(e.message)));
+        if (!again && !dup) throw e;
       }
       action = 'added';
     }
@@ -645,9 +729,9 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     const rows = await db.all(`
       SELECT * FROM messages
       WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ? AND COALESCE(hidden_for_recipient, false) = false))
-      AND pinned_at IS NOT NULL AND deleted_at IS NULL
+      AND pinned_at IS NOT NULL AND deleted_at IS NULL AND ${disappearing.notExpiredSql()}
       ORDER BY pinned_at DESC
-    `, [req.userId, otherId, otherId, req.userId]);
+    `, [req.userId, otherId, otherId, req.userId, disappearing.nowParam()]);
 
     res.json(rows.map(m => ({
       id: m.id,
@@ -659,6 +743,62 @@ router.get('/pinned/:userId', auth, async (req, res) => {
     })));
   } catch (e) {
     console.error('Error fetching pinned messages:', e.message);
+    sendServerError(res, e);
+  }
+});
+
+// --- 消えるメッセージ(1対1) ---
+// 友だち同士なら、どちらでもこの会話のタイマーを見たり変えたりできる。
+// GET /api/messages/ttl/:otherUserId  -> { ttlSeconds }
+// PUT /api/messages/ttl/:otherUserId  body: { ttlSeconds: 0 | 3600 | 86400 | 604800 }
+//   -> { ok, ttlSeconds }。変えた時は会話にお知らせを残し、両者へ WS 'conversation_ttl' を流す
+async function requireDmPartner(req, res) {
+  const otherId = req.params.otherUserId;
+  if (!otherId || typeof otherId !== 'string' || otherId.length > 64 || otherId === req.userId) {
+    res.status(400).json({ error: '相手の指定が正しくありません' });
+    return null;
+  }
+  const { areFriends } = require('../utils/relations');
+  if (!(await areFriends(req.userId, otherId))) {
+    res.status(403).json({ error: 'このユーザーとは友達ではありません' });
+    return null;
+  }
+  return otherId;
+}
+
+router.get('/ttl/:otherUserId', auth, async (req, res) => {
+  try {
+    const otherId = await requireDmPartner(req, res);
+    if (!otherId) return;
+    res.json({ ttlSeconds: await disappearing.getTtl(disappearing.dmKey(req.userId, otherId)) });
+  } catch (e) {
+    console.error('Error getting ttl:', e.message);
+    sendServerError(res, e);
+  }
+});
+
+router.put('/ttl/:otherUserId', auth, async (req, res) => {
+  try {
+    const otherId = await requireDmPartner(req, res);
+    if (!otherId) return;
+    const ttl = req.body && req.body.ttlSeconds;
+    if (!disappearing.isAllowedTtl(ttl)) return res.status(400).json({ error: '指定できない時間です' });
+    const key = disappearing.dmKey(req.userId, otherId);
+    const before = await disappearing.getTtl(key);
+    if (before === ttl) return res.json({ ok: true, ttlSeconds: ttl, changed: false });
+    await disappearing.setTtl(key, ttl, req.userId);
+
+    // 相手にブロックされている時は、相手の画面にお知らせもイベントも出さない(ブロックを悟らせない)
+    const { blockState } = require('../utils/relations');
+    const byThem = (await blockState(req.userId, otherId)).byThem;
+    await disappearing.postTtlNotice({ actorId: req.userId, peerId: otherId, ttlSeconds: ttl, hiddenForPeer: byThem });
+    const { broadcastToUser } = require('../ws/wsServer');
+    const ev = (peerId) => ({ type: 'conversation_ttl', scope: 'dm', conversationKey: key, peerId, ttlSeconds: ttl, changedBy: req.userId });
+    broadcastToUser(req.userId, ev(otherId));
+    if (!byThem) broadcastToUser(otherId, ev(req.userId));
+    res.json({ ok: true, ttlSeconds: ttl, changed: true });
+  } catch (e) {
+    console.error('Error setting ttl:', e.message);
     sendServerError(res, e);
   }
 });

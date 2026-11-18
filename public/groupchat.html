@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <script src="/js/themeBoot.js"></script>
+<script src="/js/appLock.js"></script>
+<script src="/js/schoolMode.js"></script>
 <script>
 // 最初の描画より前に、端末に保存してある見た目の設定(ダーク/テーマ/省アニメ/背景画像の有無)をhtmlに付ける。
 // 以前は defer の globalSettings.js / globalBg.js が後から付けていたため、開いた直後に一瞬
@@ -56,7 +58,7 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .pin-banner.show{opacity:1;transform:translateY(0);pointer-events:auto}
 .pin-text{flex:1;font-size:12px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pin-cls{font-size:14px;color:#64748b;cursor:pointer}
-.cs{flex:1;padding:8px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.cs{flex:1;padding:8px 16px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:10px}
 .msg{display:flex;width:100%;align-items:flex-end;gap:8px}
 .msg.out{justify-content:flex-end}
 .msg.inc{justify-content:flex-start}
@@ -80,8 +82,10 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .dlbtn{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:5px 12px;background:rgba(59,130,246,.12);border:none;border-radius:999px;font-size:12px;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:none}
 .mmeta{align-self:flex-end;margin-top:4px;margin-bottom:-3px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:rgba(15,23,42,.5)}
 .chk1{stroke:rgba(15,23,42,.3);transition:stroke .4s ease}
-.chk1.lit{stroke:#059669;animation:chkPop .35s cubic-bezier(.34,1.56,.64,1)}
-@keyframes chkPop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+.chk1.lit{stroke:#059669}
+/* 履歴の再描画で鳴らさないため、アニメは .pop が付いた時(送信が届いた瞬間)だけ */
+.chk1.lit.pop{animation:gcChk .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+@keyframes gcChk{0%{transform:scale(.4)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
 .chk1{transform-origin:center;transform-box:fill-box}
 .rdrow{display:flex;align-items:center;gap:2px;margin-top:3px}
 .rav{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;cursor:pointer;border:1px solid rgba(255,255,255,.8);flex-shrink:0;background-size:cover;background-position:center;transition:transform .15s ease}
@@ -92,6 +96,13 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .rbadge{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);border:1.5px solid rgba(255,255,255,.9);border-radius:999px;padding:3px 8px;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .15s ease}
 .rbadge.active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3)}
 .ibc{padding:10px 16px 14px;width:100%}
+/* 一番下へ戻るボタン。個人チャット(admin.html)と同じ見た目・同じ動き */
+.sd-btn{position:absolute;right:20px;bottom:calc(100% + 6px);width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
+  background:rgba(255,255,255,.82);border:1px solid rgba(255,255,255,.7);box-shadow:0 6px 18px rgba(15,23,42,.16);
+  opacity:0;transform:translateY(14px) scale(.6);pointer-events:none;transition:opacity .2s ease,transform .42s cubic-bezier(.34,1.56,.64,1)}
+.sd-btn.show{opacity:1;transform:none;pointer-events:auto}
+html.dark-mode .sd-btn{background:rgba(30,41,59,.9);border-color:rgba(255,255,255,.14)}
+html.dark-mode .sd-btn svg{stroke:#e2e8f0}
 .ibar{display:flex;flex-direction:column;background:rgba(255,255,255,.3);backdrop-filter:blur(20px) saturate(200%);-webkit-backdrop-filter:blur(20px) saturate(200%);border:1px solid rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.9);border-left:1px solid rgba(255,255,255,.9);box-shadow:0 16px 40px rgba(0,0,0,.08);padding:10px 14px;border-radius:28px;max-height:54px;transition:all .45s cubic-bezier(.25,1,.5,1);overflow:hidden;width:100%}
 .ibar.open{max-height:240px;border-radius:22px}
 .imrow{display:flex;align-items:center;width:100%;height:34px;min-width:0}
@@ -123,6 +134,9 @@ html.dark-mode .c-copy{color:#e2e8f0}
 .rpicker.show{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
 .rpbtn{font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:transform .15s ease}
 .rpbtn:hover{transform:scale(1.3)}
+.rpbtn{display:inline-flex;align-items:center;justify-content:center}
+.gc-ric{display:inline-flex;line-height:0}.gc-ric svg{display:block}
+.rbadge{gap:4px}.gc-rcnt{font-size:12px;font-weight:700;color:#475569;line-height:1}
 .conf-ov{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:500;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .25s ease}
 .conf-ov.show{opacity:1;pointer-events:auto}
 .conf-box{background:rgba(255,255,255,.9);border-radius:24px;padding:24px 20px;width:80%;max-width:300px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.15)}
@@ -179,11 +193,6 @@ html.dark-mode .c-copy{color:#e2e8f0}
 .crop-reset-btn{width:100%;margin-top:8px;padding:9px;border-radius:12px;font-size:13px;font-weight:700;color:#0f172a;cursor:pointer;border:none}
 .inv-row{display:flex;gap:8px;margin-top:10px}
 .inv-input{flex:1;padding:10px 14px;background:rgba(255,255,255,.8);border:1px solid rgba(15,23,42,.1);border-radius:12px;font-size:14px;outline:none}
-.mm-ov{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;background:rgba(0,0,0,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity .3s ease;overflow:hidden}
-.mm-ov.show{opacity:1;pointer-events:auto}
-.mm-inner{width:100%;height:100%;display:flex;justify-content:center;align-items:center;position:relative}
-.mm-inner img,.mm-inner video{max-width:96%;max-height:96%;border-radius:12px;object-fit:contain}
-.mm-cls{position:absolute;top:22px;right:22px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:42px;height:42px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:420}
 /* グループの「入力中」。打っている人のアイコンを1つの丸の中に小さく並べる */
 #gTyping{display:flex;align-items:flex-end;gap:8px;width:100%;margin:2px 0 6px;transform-origin:left bottom;transition:transform .38s cubic-bezier(.34,1.56,.64,1),opacity .25s ease}
 #gTyping.gt-hide{transform:scale(.55);opacity:0}
@@ -208,6 +217,112 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 .up-ov button{position:relative;width:52px;height:52px;border-radius:50%;border:0;background:rgba(15,23,42,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .up-ov button:active{transform:scale(.94)}
 .up-ov .ring{position:absolute;inset:0;transform:rotate(-90deg)}
+/* ================= モーション(transform/opacityのみ。backdrop-filter等は増やさない) ================= */
+/* 新着メッセージ: 個人チャット(admin.html)と同じスライド+スプリング。クラスはJSが約0.7秒後に外す */
+@keyframes gcSlideR{from{opacity:0;transform:translateX(28px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes gcSlideL{from{opacity:0;transform:translateX(-28px) scale(.92)}to{opacity:1;transform:none}}
+.msg.msg-slide-right{transform-origin:100% 100%;animation:gcSlideR .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.msg.msg-slide-left{transform-origin:0 100%;animation:gcSlideL .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 発言者が切り替わった時だけ、アイコンがポンと着地して名前がふわっと出る */
+@keyframes gcAvLand{from{opacity:0;transform:translateY(10px) scale(.2) rotate(-18deg)}to{opacity:1;transform:none}}
+@keyframes gcNameIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.msg.gc-newsender .sav{animation:gcAvLand .46s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .06s backwards}
+.msg.gc-newsender .sname{animation:gcNameIn .36s ease-out .16s backwards}
+/* 開いた直後(初回表示)だけ、画面内の履歴を上から順に立ち上げる */
+.cs.gc-boot{opacity:0}
+@keyframes gcHist{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+.gc-hist-in{animation:gcHist .46s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) calc(var(--gi,0)*30ms) backwards}
+/* 送信ボタンの紙飛行機が飛び立つ */
+@keyframes gcLaunch{0%{transform:translate(0,0) rotate(0) scale(1);opacity:1}55%{transform:translate(10px,-14px) rotate(18deg) scale(1.15);opacity:.4}100%{transform:translate(0,0) rotate(0) scale(1);opacity:1}}
+#sbtn.gc-launch svg{animation:gcLaunch .42s cubic-bezier(.4,0,.2,1) both}
+/* リアクションのチップ: 新しく付いた時はポップ、人数が変わった時は跳ねる */
+@keyframes gcRPop{0%{transform:scale(0)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+@keyframes gcRBump{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}
+.rbadge.gc-rpop{animation:gcRPop .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.rbadge.gc-rbump{animation:gcRBump .3s ease-out}
+/* 既読アイコンが新しく増えた時だけ、横からポンと入る */
+@keyframes gcRavIn{from{opacity:0;transform:translateX(-8px) scale(0)}to{opacity:1;transform:none}}
+.rav.gc-rin{animation:gcRavIn .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 長押しメニュー・リアクションピッカー: ボタンが順にポップ(hoverのscaleを潰さないよう backwards) */
+@keyframes gcCtxIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.ctx.show .ctxbtn{animation:gcCtxIn .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.ctx.show .ctxbtn:nth-child(1){animation-delay:.04s}.ctx.show .ctxbtn:nth-child(3){animation-delay:.08s}.ctx.show .ctxbtn:nth-child(5){animation-delay:.12s}
+.ctx.show .ctxbtn:nth-child(7){animation-delay:.16s}.ctx.show .ctxbtn:nth-child(9){animation-delay:.2s}.ctx.show .ctxbtn:nth-child(11){animation-delay:.24s}
+@keyframes gcRpIn{from{opacity:0;transform:scale(0) translateY(6px)}to{opacity:1;transform:none}}
+.rpicker.show .rpbtn{animation:gcRpIn .34s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.rpicker.show .rpbtn:nth-child(2){animation-delay:.025s}.rpicker.show .rpbtn:nth-child(3){animation-delay:.05s}.rpicker.show .rpbtn:nth-child(4){animation-delay:.075s}
+.rpicker.show .rpbtn:nth-child(5){animation-delay:.1s}.rpicker.show .rpbtn:nth-child(6){animation-delay:.125s}.rpicker.show .rpbtn:nth-child(7){animation-delay:.15s}.rpicker.show .rpbtn:nth-child(8){animation-delay:.175s}
+/* 返信の引用から元メッセージへ飛んだ時、既存の背景フラッシュに加えて吹き出しがぷるっと跳ねる */
+@keyframes gcJump{0%{transform:scale(1)}30%{transform:scale(1.05)}60%{transform:scale(.99)}100%{transform:scale(1)}}
+.reply-jump-flash .mwrap{animation:gcJump .6s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+/* 取り消し/お知らせ */
+@keyframes gcDelOut{to{opacity:0;transform:scale(.8)}}
+.msg.gc-del-out{animation:gcDelOut .22s cubic-bezier(.4,0,1,1) forwards}
+.msg.out.gc-del-out{transform-origin:100% 50%}.msg.inc.gc-del-out{transform-origin:0 50%}
+@keyframes gcNoticeIn{from{opacity:0;transform:scale(.9) translateY(6px)}to{opacity:1;transform:none}}
+.gc-notice-in{animation:gcNoticeIn .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+/* 後から復号される画像/動画: ふわっとズームが収まりながら現れる(blurは重いので使わない) */
+@keyframes gcMediaIn{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:none}}
+.bub.mbub img.gc-media-in,.bub.mbub video.gc-media-in{animation:gcMediaIn .5s cubic-bezier(.22,1,.36,1) backwards}
+/* ヘッダー(グループ名・人数・アイコン)が変わった時 */
+@keyframes gcHPop{from{opacity:.25;transform:translateY(6px) scale(.94)}to{opacity:1;transform:none}}
+.gc-hpop{transform-origin:0 50%;animation:gcHPop .45s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.gav.gc-hpop{transform-origin:50% 50%;animation:gcAvLand .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+/* ピン留めバナーはバネで降りてくる */
+.pin-banner{transform:translateY(-14px) scale(.96);transition:opacity .25s ease,transform .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+.pin-banner.show{transform:none}
+/* 添付メニューの項目・＋ボタン・返信プレビュー */
+@keyframes gcMoptIn{from{opacity:0;transform:translateX(-14px) scale(.85)}to{opacity:1;transform:none}}
+.ibar.open .mopt{animation:gcMoptIn .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.ibar.open .mopt:nth-child(2){animation-delay:.05s}.ibar.open .mopt:nth-child(3){animation-delay:.1s}.ibar.open .mopt:nth-child(4){animation-delay:.15s}
+.pbtn{transition:transform .45s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1))}
+@keyframes gcRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+#replyPreview{animation:gcRise .32s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.up-ov{animation:gcFade .2s ease}
+@keyframes gcFade{from{opacity:0}to{opacity:1}}
+@keyframes gcPopIn{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.up-ov button{animation:gcPopIn .38s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .05s backwards}
+/* シート: 下からオーバーシュート付きで上がる。行き過ぎた分で下に隙間が出ないよう、
+   下に32pxはみ出させて(margin負)その分paddingで中身の位置は据え置く */
+.sheet{margin-bottom:-32px;padding-bottom:52px;transition:transform .26s cubic-bezier(.4,0,1,1)}
+.sheet-ov.show .sheet{transition:transform .52s cubic-bezier(.22,1.18,.36,1)}
+.sheet-ov.show .sheet>*:not(#memList):not(#readList){animation:gcRise .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.sheet-ov.show .sheet>*:nth-child(1){animation-delay:.14s}.sheet-ov.show .sheet>*:nth-child(2){animation-delay:.18s}.sheet-ov.show .sheet>*:nth-child(3){animation-delay:.22s}
+.sheet-ov.show .sheet>*:nth-child(4){animation-delay:.26s}.sheet-ov.show .sheet>*:nth-child(5){animation-delay:.3s}.sheet-ov.show .sheet>*:nth-child(n+6){animation-delay:.34s}
+.sheet-ov.show .litem{animation:gcRise .4s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) backwards}
+.sheet-ov.show .litem:nth-child(1){animation-delay:.16s}.sheet-ov.show .litem:nth-child(2){animation-delay:.2s}.sheet-ov.show .litem:nth-child(3){animation-delay:.24s}
+.sheet-ov.show .litem:nth-child(4){animation-delay:.28s}.sheet-ov.show .litem:nth-child(5){animation-delay:.32s}.sheet-ov.show .litem:nth-child(n+6){animation-delay:.36s}
+/* 確認ダイアログ: 背景はフェード、箱はバネで膨らむ */
+.conf-box{transform:scale(.82) translateY(18px);opacity:0;transition:transform .22s cubic-bezier(.4,0,1,1),opacity .18s ease}
+.conf-ov.show .conf-box{transform:none;opacity:1;transition:transform .5s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)),opacity .2s ease}
+/* 入力中: 下からせり上がり、吹き出しがぽんと出る */
+#gTyping.gt-hide{transform:translateY(10px) scale(.55)}
+@keyframes gcBubIn{from{transform:scale(.5);opacity:0}to{transform:none;opacity:1}}
+#gTyping:not(.gt-hide) .gt-bub{transform-origin:0 100%;animation:gcBubIn .42s var(--spring-bouncy,cubic-bezier(.34,1.56,.64,1)) .05s backwards}
+/* 消えるメッセージ: 期限が来たら縮んで消える(transform/opacityのみ) */
+@keyframes gcExpOut{to{opacity:0;transform:scale(.88) translateY(-4px)}}
+.msg.gc-exp-out{animation:gcExpOut .24s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
+.msg.out.gc-exp-out{transform-origin:100% 50%}.msg.inc.gc-exp-out{transform-origin:0 50%}
+html.reduce-motion .msg.gc-exp-out{animation:none!important;opacity:0}
+.gc-exp{flex-shrink:0;opacity:.7}
+/* 電波が悪くて送れなかった(自動で再送する)メッセージ */
+.msg.send-pending .bub{opacity:.72}
+.pend-note{font-size:11px;margin-top:4px;color:#64748b}
+/* グループ設定シート先頭のメニュー行 */
+.gc-mrow{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:10px 12px;margin-bottom:6px;border:0;border-radius:14px;background:rgba(255,255,255,.6);color:#0f172a;font-size:15px;font-weight:600;cursor:pointer;text-align:left}
+.gc-mrow:active{background:rgba(255,255,255,.85)}
+.gc-mrow svg{flex-shrink:0;color:#475569}
+.gc-mgrp{margin-bottom:14px}
+#gcTtlSlot{display:none;margin-top:1px}
+/* 省アニメ/OSの「動きを減らす」: 全部止めて最終状態だけにする(待機中に透明のまま残さない) */
+html.reduce-motion .msg.msg-slide-right,html.reduce-motion .msg.msg-slide-left,html.reduce-motion .msg.gc-newsender .sav,html.reduce-motion .msg.gc-newsender .sname,html.reduce-motion .gc-hist-in,html.reduce-motion #sbtn.gc-launch svg,html.reduce-motion .rbadge.gc-rpop,html.reduce-motion .rbadge.gc-rbump,html.reduce-motion .rav.gc-rin,html.reduce-motion .ctx.show .ctxbtn,html.reduce-motion .rpicker.show .rpbtn,html.reduce-motion .reply-jump-flash .mwrap,html.reduce-motion .msg.gc-del-out,html.reduce-motion .gc-notice-in,html.reduce-motion .bub.mbub img.gc-media-in,html.reduce-motion .bub.mbub video.gc-media-in,html.reduce-motion .gc-hpop,html.reduce-motion .ibar.open .mopt,html.reduce-motion #replyPreview,html.reduce-motion .up-ov,html.reduce-motion .up-ov button,html.reduce-motion .sheet-ov.show .sheet>*,html.reduce-motion .sheet-ov.show .litem,html.reduce-motion #gTyping .gt-bub,html.reduce-motion .chk1.lit.pop{animation:none!important}
+html.reduce-motion .cs.gc-boot{opacity:1}
+html.reduce-motion .msg.gc-del-out{opacity:0}
+@media (prefers-reduced-motion:reduce){
+.msg.msg-slide-right,.msg.msg-slide-left,.msg.gc-newsender .sav,.msg.gc-newsender .sname,.gc-hist-in,#sbtn.gc-launch svg,.rbadge.gc-rpop,.rbadge.gc-rbump,.rav.gc-rin,.ctx.show .ctxbtn,.rpicker.show .rpbtn,.reply-jump-flash .mwrap,.msg.gc-del-out,.gc-notice-in,.bub.mbub img.gc-media-in,.bub.mbub video.gc-media-in,.gc-hpop,.ibar.open .mopt,#replyPreview,.up-ov,.up-ov button,.sheet-ov.show .sheet>*,.sheet-ov.show .litem,#gTyping .gt-bub,.chk1.lit.pop{animation:none!important}
+.cs.gc-boot{opacity:1}
+.msg.gc-del-out{opacity:0}
+}
 </style>
 <script src="/js/nacl.min.js"></script>
 <script src="/js/nacl-util.min.js"></script>
@@ -216,11 +331,13 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script src="/js/libsodium-wrappers.min.js"></script>
 <script src="/js/signalkeymanager.js"></script>
 <script src="/js/groupE2E.js"></script>
+<script src="/js/callAuth.js"></script>
 <script src="/js/groupCall.js"></script>
 <script src="/js/live.js"></script>
 <script src="/js/session.js"></script>
 <script src="/js/pasteMedia.js"></script>
 <script src="/js/keyBackup.js"></script>
+<script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
 <script src="/js/e2eKeys.js"></script>
@@ -228,10 +345,21 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script src="/js/userSettings.js"></script>
+<script src="/js/privacyScreen.js"></script>
+<script src="/js/blurhash.js"></script>
+<script src="/js/chatSearch.js"></script>
+<script src="/js/chatMedia.js"></script>
+<script src="/js/draftStore.js"></script>
+<script src="/js/outbox.js"></script>
+<script src="/js/linkPreview.js"></script>
+<script src="/js/ttlSheet.js"></script>
+
 <script defer src="/js/spring.js"></script>
 <script defer src="/js/liquidGlass.js"></script>
 <script defer src="/js/lgControls.js"></script>
 <script defer src="/js/pushSubscribe.js"></script>
+<script src="/js/cloudinarySign.js"></script>
+<script defer src="/js/stripMeta.js"></script>
 <script defer src="/js/cloudinaryE2EUpload.js"></script>
 <script defer src="/js/fileCard.js"></script>
 <script src="/js/actions.js"></script>
@@ -247,7 +375,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v1.28.292 beta</div>
+  <div class="version-badge">Bro Chat v2.1.3</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -259,6 +387,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       <div class="hinfo" id="hinfoEl">
         <div class="gname" id="gnameEl" data-i18n="group">グループ</div>
         <div class="mcnt" id="mcntEl" data-i18n="members_count">メンバー 0人</div>
+        <div id="gcTtlSlot"></div>
       </div>
       <button class="hbtn glass-interactive" id="liveBtnG" type="button" aria-label="ライブ配信">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2" fill="#e11d48"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/></svg>
@@ -276,7 +405,7 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   </div>
 
   <div class="pin-banner" id="pinBanner">
-    <span style="color:#999;">●</span>
+    <span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#999;flex-shrink:0"></span>
     <span class="pin-text" id="pinText"></span>
     <span class="pin-cls" id="pinCls">×</span>
   </div>
@@ -288,9 +417,10 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
       <button type="button" id="keyBtnRekey" style="border:0;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:700;background:rgba(0,0,0,.08);color:#111"></button>
     </div>
   </div>
-  <div class="cs" id="cs"></div>
+  <div class="cs gc-boot" id="cs"></div>
 
   <div class="ibc">
+    <button type="button" class="sd-btn glass-interactive" id="scrollDownBtn" aria-label="一番下へ" tabindex="-1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
     <div class="ibar" id="ibar">
       <div id="replyPreview" class="reply-preview" style="display:none;opacity:0;transition:opacity .2s">
         <div class="rp-body">
@@ -375,6 +505,11 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
   <div class="sheet-ov" id="gsOv">
     <div class="sheet">
       <div class="sh-title" data-i18n="group_settings">グループ設定</div>
+      <div class="gc-mgrp" id="gcMenuGrp">
+        <button type="button" class="gc-mrow glass-interactive" id="gcMenuSearch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span data-i18n="bro_search_menu">トーク内検索</span></button>
+        <button type="button" class="gc-mrow glass-interactive" id="gcMenuMedia"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span data-i18n="bro_media_menu">写真・リンク</span></button>
+        <button type="button" class="gc-mrow glass-interactive" id="gcMenuTtl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg><span data-i18n="bro_ttl_title">消えるメッセージ</span></button>
+      </div>
       <div class="srow">
         <span class="slabel" data-i18n="group_icon">グループアイコン</span>
         <div class="crop-wrap">
@@ -405,16 +540,73 @@ html.reduce-motion .gt-dots span,html.reduce-motion .gt-av i{animation:none!impo
     </div>
   </div>
 
-  <div class="mm-ov" id="mmOv">
-    <div class="mm-inner" id="mmIn"></div>
-    <button class="mm-cls glass-clear glass-interactive" id="mmCls" type="button">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
 </div>
 
 <script>
-const REACTIONS=['❤️','😂','👍','😮','😢','🔥','👏','🎉'];
+// リアクションの値(サーバーに保存・送信する文字列)は従来と同じ。画面には文字として出さず、必ずSVGに置き換えて描く。
+// 値は \u エスケープで持つ(ソースに絵文字文字を置かない)。未知の値は汎用の星アイコンで描く。
+const REACTIONS=['\u2764\uFE0F','\uD83D\uDE02','\uD83D\uDC4D','\uD83D\uDE2E','\uD83D\uDE22','\uD83D\uDD25','\uD83D\uDC4F','\uD83C\uDF89'];
+const GC_REACT_KEY={'\u2764':'heart','\uD83D\uDE02':'laugh','\uD83D\uDC4D':'like','\uD83D\uDE2E':'wow','\uD83D\uDE22':'sad','\uD83D\uDD25':'fire','\uD83D\uDC4F':'clap','\uD83C\uDF89':'party'};
+const GC_REACT_LABEL={heart:['react_heart','ハート'],laugh:['react_laugh','笑う'],like:['react_like','いいね'],wow:['react_wow','驚き'],sad:['react_sad','悲しい'],fire:['react_fire','炎'],clap:['react_clap','拍手'],party:['react_party','お祝い'],other:['react_other','リアクション']};
+const GC_REACT_SVG={
+  heart:'<path d="M12 21.2l-1.4-1.3C5.4 15.2 2 12.1 2 8.3 2 5.2 4.4 3 7.4 3c1.7 0 3.4.8 4.6 2.1C13.2 3.8 14.9 3 16.6 3 19.6 3 22 5.2 22 8.3c0 3.8-3.4 6.9-8.6 11.6z" fill="#ef4444"/><path d="M6.2 7.2c.6-.9 1.6-1.3 2.6-1.1" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.5" stroke-linecap="round"/>',
+  laugh:'<circle cx="12" cy="12" r="10" fill="#fbbf24"/><path d="M6.8 9.6q1.7-2.4 3.4 0M13.8 9.6q1.7-2.4 3.4 0" fill="none" stroke="#78350f" stroke-width="1.7" stroke-linecap="round"/><path d="M6.6 13h10.8a5.4 5.4 0 0 1-10.8 0z" fill="#7c2d12"/><path d="M9 16.6q3-1.6 6 0" fill="none" stroke="#f87171" stroke-width="1.6" stroke-linecap="round"/>',
+  like:'<path d="M2 11.5a1.5 1.5 0 0 1 1.5-1.5H7v11H3.5A1.5 1.5 0 0 1 2 19.5z" fill="#2563eb"/><path d="M8.5 10l3.6-7.4A2.6 2.6 0 0 1 14.7 5.2V8.6h4.7a2.1 2.1 0 0 1 2.1 2.4l-1.2 8a2.4 2.4 0 0 1-2.4 2H8.5z" fill="#3b82f6"/>',
+  wow:'<circle cx="12" cy="12" r="10" fill="#fbbf24"/><circle cx="8.6" cy="9.8" r="1.6" fill="#78350f"/><circle cx="15.4" cy="9.8" r="1.6" fill="#78350f"/><ellipse cx="12" cy="16.2" rx="2.4" ry="3" fill="#7c2d12"/><path d="M6.4 6.4q2-1.4 4-.4M17.6 6.4q-2-1.4-4-.4" fill="none" stroke="#78350f" stroke-width="1.4" stroke-linecap="round"/>',
+  sad:'<circle cx="12" cy="12" r="10" fill="#fbbf24"/><circle cx="8.6" cy="10" r="1.5" fill="#78350f"/><circle cx="15.4" cy="10" r="1.5" fill="#78350f"/><path d="M8.2 17.2q3.8-3.6 7.6 0" fill="none" stroke="#78350f" stroke-width="1.7" stroke-linecap="round"/><path d="M16.6 12.2c1.1 1.5 1.4 2.4.5 3.2-.9.6-1.8-.2-1.2-1.4z" fill="#60a5fa"/>',
+  fire:'<path d="M12 2c.7 3.2-1.5 5-3.1 6.9C7.4 10.6 6 12.4 6 15a6 6 0 0 0 12 0c0-2.4-1.1-4.1-2.2-5.5-.3 1.3-1 2.2-1.9 2.6.7-3.3-.3-7.4-1.9-10.1z" fill="#f97316"/><path d="M12 22a3.6 3.6 0 0 1-3.6-3.6c0-1.9 1.3-2.9 2.3-4.2.4 1 1 1.5 1.6 1.8.2-.5.2-1 .1-1.5 1.2 1 3.2 2.1 3.2 3.9A3.6 3.6 0 0 1 12 22z" fill="#fde047"/>',
+  clap:'<ellipse cx="9.4" cy="14.6" rx="3.8" ry="6.4" transform="rotate(-24 9.4 14.6)" fill="#fbbf24"/><ellipse cx="14.8" cy="14.6" rx="3.8" ry="6.4" transform="rotate(24 14.8 14.6)" fill="#f59e0b"/><path d="M12 2.6v2.6M6 4.4l1.5 2M18 4.4l-1.5 2" fill="none" stroke="#f97316" stroke-width="1.7" stroke-linecap="round"/>',
+  party:'<path d="M3 21.2l4.6-12.6 8 8z" fill="#f59e0b"/><path d="M5.6 14.2l4.4 4.4M7.2 10.4l6.4 6.4" fill="none" stroke="#b45309" stroke-opacity=".5" stroke-width="1.2"/><circle cx="14" cy="5" r="1.5" fill="#ec4899"/><circle cx="19.5" cy="9.5" r="1.4" fill="#3b82f6"/><circle cx="19" cy="3.6" r="1.1" fill="#10b981"/><path d="M11 6.5l1.4 2M16.4 11.2l2.4.2M14.4 2.2l.4 1.6" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-linecap="round"/>',
+  other:'<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z" fill="#a78bfa"/>',
+};
+function gcReactName(v){return GC_REACT_KEY[String(v==null?'':v).replace(/\uFE0F/g,'')]||'other';}
+// リアクション1つぶんのSVG(<span>に入れて返す。中身は上の固定文字列だけ = ユーザー入力は混ざらない)
+function gcReactIcon(v,size){
+  const k=gcReactName(v),sp=document.createElement('span');
+  sp.className='gc-ric';sp.setAttribute('role','img');
+  sp.setAttribute('aria-label',(window.i18n&&i18n.t)?i18n.t(GC_REACT_LABEL[k][0],GC_REACT_LABEL[k][1]):GC_REACT_LABEL[k][1]);
+  const n=size||18;
+  sp.innerHTML='<svg viewBox="0 0 24 24" width="'+n+'" height="'+n+'" aria-hidden="true" focusable="false">'+GC_REACT_SVG[k]+'</svg>';
+  return sp;
+}
+// ---- モーション用の共通ヘルパー ----
+// gcQuiet: 履歴の描画中など「新しく起きたこと」ではない更新で、ポップ等を鳴らさないための印
+let gcQuiet=false;
+const gcReduce=()=>document.documentElement.classList.contains('reduce-motion')||!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+// 一時クラスを付けて、終わった頃に外す(外さないと次の再描画やクラス操作で再生し直されうる)
+function gcTemp(el,cls,ms){if(!el)return;el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),ms||700);}
+// 新着メッセージの入場。履歴の一括描画では呼ばない(isRealtimeの時だけ)
+function gcEnterMsg(msgDiv,isInc,member){
+  if(gcReduce())return;
+  gcTemp(msgDiv,isInc?'msg-slide-left':'msg-slide-right',800);
+  if(isInc&&member&&member.id){
+    const prev=msgDiv.previousElementSibling;
+    if(!prev||prev.dataset.sid!==member.id)gcTemp(msgDiv,'gc-newsender',800);
+  }
+}
+function gcNoticeIn(el){if(el&&!gcReduce())gcTemp(el,'gc-notice-in',700);}
+function gcSendLaunch(){const b=document.getElementById('sbtn');if(b&&!gcReduce())gcTemp(b,'gc-launch',460);}
+// 後から復号される画像/動画が出た時のズームイン。灰色の下地は動きが終わるまで残す
+function gcMediaIn(el,done){
+  if(!el)return;
+  if(!gcReduce())gcTemp(el,'gc-media-in',600);
+  if(done)setTimeout(done,gcReduce()?0:480);
+}
+// 初回表示: 読み込み中は#csを透明にしておき、できたら画面内の最後の14件を上から順に立ち上げる
+let gcBootDone=false;
+function gcReveal(){
+  if(gcBootDone)return;gcBootDone=true;
+  const cs=document.getElementById('cs');if(!cs)return;
+  if(gcReduce()){cs.classList.remove('gc-boot');return;}
+  const top=cs.getBoundingClientRect().top;
+  const kids=[...cs.children].filter(e=>e.id!=='gTyping');
+  const vis=[];
+  for(let i=kids.length-1;i>=0&&vis.length<14;i--){if(kids[i].getBoundingClientRect().bottom<top)break;vis.unshift(kids[i]);}
+  vis.forEach((el,i)=>{el.style.setProperty('--gi',i);el.classList.add('gc-hist-in');});
+  cs.classList.remove('gc-boot');
+  setTimeout(()=>vis.forEach(el=>{el.classList.remove('gc-hist-in');el.style.removeProperty('--gi');}),1300);
+}
+setTimeout(gcReveal,10000); // 通信が詰まっても透明のまま残さない保険
 const COLORS=['#3b82f6','#ec4899','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
 
 function nameColor(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))&0xffffffff;return COLORS[Math.abs(h)%COLORS.length]}
@@ -612,10 +804,21 @@ let cropX=0,cropY=0,cropS=1,cropDrag=false,cropSX=0,cropSY=0;
 const pp=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#007aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 const ck=`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+let gcHdrPrev=null;
+function gcHdrPulse(){
+  if(gcReduce()){gcHdrPrev=null;return;}
+  const cur={n:gi.name,c:gi.members.length,a:gi.avatarImg||''};
+  const p=gcHdrPrev;gcHdrPrev=cur;
+  if(!p)return;
+  if(p.n!==cur.n)gcTemp(document.getElementById('gnameEl'),'gc-hpop',550);
+  if(p.c!==cur.c)gcTemp(document.getElementById('mcntEl'),'gc-hpop',550);
+  if(p.a!==cur.a)gcTemp(document.getElementById('gavEl'),'gc-hpop',600);
+}
 function refreshHdr(){
+  gcHdrPulse();
   document.getElementById('gnameEl').textContent=gi.name;
   const cnt=gi.members.length;
-  document.getElementById('mcntEl').textContent=cnt>0?`メンバー ${cnt}人`:'読み込み中...';
+  BroDots.set(document.getElementById('mcntEl'),cnt>0?`メンバー ${cnt}人`:'読み込み中...');
   const av=document.getElementById('gavEl');
   if(gi.avatarImg){
     av.style.background=''; // 先に消す(後で消すと入れた画像まで消えていた)
@@ -638,6 +841,7 @@ function refreshHdr(){
 document.addEventListener('DOMContentLoaded', () => {
   const pcEl = document.querySelector('.pc');
   if (pcEl) pcEl.classList.add('lg-page-push-in');
+  if (window.LiquidGlass && window.LiquidGlass.armChatBack && groupId) window.LiquidGlass.armChatBack('g:' + groupId, document.getElementById('gavEl'));
 });
 refreshHdr();
 window.GroupCall.init({
@@ -656,7 +860,7 @@ document.getElementById('videoBtnG').onclick = () => window.GroupCall.join(true)
 // リアクションピッカー生成
 const rp=document.getElementById('rpicker');
 REACTIONS.forEach(e=>{
-  const b=document.createElement('button');b.className='rpbtn';b.textContent=e;
+  const b=document.createElement('button');b.type='button';b.className='rpbtn';b.appendChild(gcReactIcon(e,26));b.setAttribute('aria-label',gcReactIcon(e).getAttribute('aria-label'));
   b.onclick=()=>{if(window.LiquidGlass)window.LiquidGlass.haptic('selection');if(reactTarget)addReact(reactTarget,e);rp.classList.remove('show');};
   rp.appendChild(b);
 });
@@ -668,16 +872,24 @@ function renderReacts(wrap,reactions){
   const list=Array.isArray(reactions)?reactions.filter(r=>r&&r.emoji&&Array.isArray(r.userIds)&&r.userIds.length):[];
   if(!list.length){if(bar)bar.remove();return;}
   if(!bar){bar=document.createElement('div');bar.className='rbar';wrap.appendChild(bar);}
+  const prevR=bar.__p||{},nextR={}; // 前回の絵文字→人数。増えた/変わった物だけ動かす
   bar.textContent='';
   list.forEach(r=>{
     const b=document.createElement('button');
     b.type='button';
     b.className='rbadge'+(r.userIds.includes(myUserId)?' active':'');
     b.dataset.e=r.emoji;b.dataset.c=r.userIds.length;
-    b.textContent=r.emoji+' '+r.userIds.length;
+    b.appendChild(gcReactIcon(r.emoji,16));
+    const cn=document.createElement('span');cn.className='gc-rcnt';cn.textContent=String(r.userIds.length);b.appendChild(cn);
     b.onclick=ev=>{ev.stopPropagation();sendReact(wrap,r.emoji);};
+    nextR[r.emoji]=r.userIds.length;
+    if(!gcQuiet&&!gcReduce()){
+      if(!(r.emoji in prevR))b.classList.add('gc-rpop');
+      else if(prevR[r.emoji]!==r.userIds.length)b.classList.add('gc-rbump');
+    }
     bar.appendChild(b);
   });
+  bar.__p=nextR;
 }
 const reactBusy=new Set();
 async function sendReact(wrap,emoji){
@@ -800,7 +1012,7 @@ async function handleMediaGroup(f,t){
       msgDiv.dataset.msgId = data.message.id;
       msgDiv.classList.remove('uploading');
       applyEarlyReads(msgDiv, data.message.id);
-      const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit'); // サーバーに届いたので緑
+      const c1 = msgDiv.querySelector('.chk1'); if (c1) c1.classList.add('lit','pop'); // サーバーに届いたので緑(この瞬間だけポップ)
     } else {
       console.error('メディア送信に失敗しました:', data);
       msgDiv.remove();
@@ -823,10 +1035,12 @@ document.getElementById('tform').onsubmit=async e=>{
   const profane=!!(window.BCProfanity&&window.BCProfanity.containsBannedWord(txt));
   if(profane)txt=window.BCProfanity.censor(txt);
   if(window.LiquidGlass) window.LiquidGlass.haptic('light');
+  if(!isEditing) gcSendLaunch();
 
   document.getElementById('mi').value='';
   document.getElementById('ibar').classList.remove('open');
 
+  gcDraftClear();
   if(isEditing){
     // 編集モード: 実際にサーバーへ保存し、成功したら該当メッセージのテキストを書き換える
     const targetMsgId=editTargetMsgId;
@@ -900,15 +1114,20 @@ document.getElementById('tform').onsubmit=async e=>{
     }
     if(data&&data.ok&&data.message){
       msgDiv.dataset.msgId=data.message.id;
-      const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit'); // サーバーに届いたので緑
+      const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit','pop'); // サーバーに届いたので緑(この瞬間だけポップ)
       applyEarlyReads(msgDiv,data.message.id);
+      gcSetExpiry(msgDiv,data.message.expires_at||data.message.expiresAt);
+      gcLinkPreview(msgDiv,txt);
+      gcDraftClear(); // 送れたので下書きを消す(送信中に打ち始めた次の文があれば残す)
     }else{
       console.error('送信に失敗しました:',data);
       markSendFailed(msgDiv,txt,data&&data.error);
     }
   }catch(err){
     console.error('送信エラー:',err);
-    markSendFailed(msgDiv,txt,null);
+    // 電波が悪くて届かなかっただけなら、失敗にせず「送信待ち」にして、つながったら自動で送り直す
+    if(gcIsNetErr(err)&&gcQueueOutbox(msgDiv,txt,tempId,replyTo)){ gcDraftClear(); }
+    else markSendFailed(msgDiv,txt,null);
   }
   if(profane)window.BCProfanity.reportAfterSend({where:'group',groupId});
 };
@@ -1049,13 +1268,23 @@ function createNotice(msgId,content){
   let n=null;try{n=JSON.parse(content).__notice__;}catch(e){}
   const nm=String((n&&n.name)||'ユーザー').slice(0,40);
   const T=(k,f)=>(window.i18n?i18n.t(k,f):f);
-  const label=(n&&n.kind==='ban')?`${nm}がFワードを言ったためBanしました。`
+  const isTtl=!!(n&&n.kind==='ttl'&&typeof n.text==='string'&&n.text);
+  const label=isTtl?String(n.text).slice(0,120)
+    :(n&&n.kind==='ban')?`${nm}がFワードを言ったためBanしました。`
     :(n&&n.kind==='left')?T('notice_left','{name}が退出しました').replace('{name}',nm)
     :(n&&n.kind==='removed')?T('notice_removed','{name}がグループから外されました').replace('{name}',nm)
     :'お知らせ';
   const div=document.createElement('div');
   if(msgId)div.dataset.msgId=msgId;
   div.className='bc-notice';
+  if(isTtl){
+    // 消えるメッセージの設定変更: 真ん中に中立色の1行だけ出す
+    div.classList.add('cancel-notice');div.textContent=label;
+    const ti0=document.getElementById('gTyping');
+    if(ti0&&ti0.parentNode===cs)cs.insertBefore(div,ti0);else cs.appendChild(div);
+    cs.scrollTop=cs.scrollHeight;
+    return div;
+  }
   div.style.cssText='width:100%;text-align:center;margin:10px 0;font-size:12px;color:#ef4444;font-weight:600;display:flex;align-items:center;gap:8px;';
   const line=()=>{const l=document.createElement('div');l.style.cssText='flex:1;height:1px;background:rgba(239,68,68,.35);';return l;};
   const t=document.createElement('span');t.textContent=label;
@@ -1080,6 +1309,9 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   const isInc=!!incoming;
   msgDiv.classList.add('msg',isInc?'inc':'out');
   if(msgId) msgDiv.dataset.msgId=msgId;
+  // 検索・写真/リンク一覧・期限切れ処理が使う「メモリ上の記録」(画面の要素に持たせる = 消えれば一緒に消える)
+  msgDiv._gc={text:text||'',media:media||null,createdAt:createdAt||new Date().toISOString(),expiresAt:0};
+  if(isInc&&member&&member.id) msgDiv.dataset.sid=member.id; // 発言者が変わった所を見分ける(アイコン着地演出用)
 
   const wrap=document.createElement('div');wrap.classList.add('mwrap');
 
@@ -1107,7 +1339,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
     bub.classList.add('mbub');
     const ph=document.createElement('div');
     ph.style.cssText='width:210px;height:54px;border-radius:8px;background:rgba(148,163,184,.25);display:flex;align-items:center;justify-content:center;color:#999;font-size:12px';
-    ph.textContent='ファイル 読み込み中...';
+    BroDots.set(ph,'ファイル 読み込み中...');BroDots.skeleton(ph);
     bub.appendChild(ph);
     const go=()=>{ if(window.BroFile) BroFile.render(ph,media.fileOpts); else setTimeout(go,100); };
     setTimeout(go,0);
@@ -1139,15 +1371,18 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   // 履歴の一括読み込みではなく、自分の送信直後・リアルタイム受信の時だけ
   // ガラスが凝縮するように出現させる(大量の履歴に一斉適用すると
   // 視覚的にうるさく描画負荷にもなるため)
-  if(isRealtime&&window.LiquidGlass){
-    window.LiquidGlass.materializeIn(msgDiv,true);
+  // 入場はadmin.htmlと同じスライド+スプリング(materializeInと二重に動かさない)
+  if(isRealtime){
+    gcEnterMsg(msgDiv,isInc,member);
   }
 
   // 長押しイベント: 自分のメッセージのみ編集/取り消し
   attachPress(msgDiv,wrap,bub,!isInc);
+  // リンクのプレビュー(設定でオンの人だけ。作り直しで二重に付かない・アニメを再生しない)
+  if(!media&&text)gcLinkPreview(msgDiv,text);
 
   if(mediaEl&&media){
-    mediaEl.addEventListener('click',()=>openMM(mediaEl,media.mediaType));
+    mediaEl.addEventListener('click',()=>openMM(mediaEl));
   }
 
   ['imgI','vidI','fileI'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -1183,10 +1418,12 @@ async function flushReadReceipts(){
 }
 
 function renderRD(rdDiv,readers,t){
+  const prevN=rdDiv.__rn||0; // 前回までに出していた人数。それより後ろの人だけ入場させる
   rdDiv.innerHTML='';
   const MAX=5;const shown=readers.slice(0,MAX);const extra=readers.length-MAX;
-  shown.forEach(m=>{
-    const av=document.createElement('div');av.className='rav';av.style.background=m.color||'#64748b';
+  rdDiv.__rn=shown.length;
+  shown.forEach((m,idx)=>{
+    const av=document.createElement('div');av.className='rav'+((!gcQuiet&&idx>=prevN&&!gcReduce())?' gc-rin':'');av.style.background=m.color||'#64748b';
     if(m.avatarImg)setAvBg(av,m.avatarImg);else av.textContent=m.initials||m.name?.charAt(0)||'?';
     av.onclick=()=>openReadModal(readers,t);rdDiv.appendChild(av);
   });
@@ -1217,8 +1454,14 @@ function showMenu(msgDiv,wrap,bub,x,y,own){
   document.getElementById('editBtn').style.display=own&&hasText?'flex':'none';
   document.getElementById('delBtn').style.display=own?'flex':'none';
   const ctx=document.getElementById('ctx');
-  ctx.style.left=`${Math.max(10,Math.min(x-95,innerWidth-210))}px`;
-  ctx.style.top=`${Math.max(10,Math.min(y-70,innerHeight-240))}px`;
+  // メニューの実際の高さで画面内に収める(高さ240px固定で計算していて、項目が多いと下の「送信取り消し」が画面外に切れていた)
+  const mh=ctx.offsetHeight||330,mw=ctx.offsetWidth||200;
+  const vh=(window.visualViewport?visualViewport.height:innerHeight);
+  let top=y-70;
+  if(top+mh>vh-16)top=y-mh-12;            // 下に入らなければ指の上に出す
+  top=Math.max(10,Math.min(top,vh-mh-16));
+  ctx.style.left=`${Math.max(10,Math.min(x-mw/2,innerWidth-mw-10))}px`;
+  ctx.style.top=`${top}px`;
   document.getElementById('mov').classList.add('show');
   ctx.classList.add('show');
 }
@@ -1268,7 +1511,7 @@ function attachGQuote(msgDiv,replyTo){
     const t=document.querySelector('#cs [data-msg-id="'+CSS.escape(replyTo)+'"]');
     if(!t)return;
     t.scrollIntoView({behavior:'smooth',block:'center'});
-    t.classList.remove('reply-jump-flash');void t.offsetWidth;t.classList.add('reply-jump-flash');
+    gcTemp(t,'reply-jump-flash',1300);
   });
   bub.insertBefore(q,bub.firstChild);
 }
@@ -1371,7 +1614,7 @@ document.getElementById('delBtn').onclick=()=>{
     notice.className='cancel-notice';
     notice.textContent=`${sname}がメッセージの送信を取り消しました`;
     // サーバーからの知らせで先に置き換わっていることがある(以前はここで例外になっていた)
-    if(target.parentNode) target.parentNode.replaceChild(notice,target);
+    if(target.parentNode){ target.parentNode.replaceChild(notice,target); gcNoticeIn(notice); }
     refreshGQuotes(targetMsgId); if(gReplyTo===String(targetMsgId))cancelGReply();
     if(isEditing&&editTargetMsgId===targetMsgId){
       isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;
@@ -1660,24 +1903,10 @@ document.getElementById('gSaveBtn').onclick=async()=>{
   gImgSrc='';
 };
 
-// メディアモーダル
-let sc=1,px=0,py=0,dr=false,sx=0,sy=0,tm='',ip=0,is=1;
-function openMM(el,type){
-  const clone=el.cloneNode(true);if(type==='video'){clone.controls=true;clone.autoplay=true;}
-  sc=1;px=0;py=0;clone.style.transformOrigin='center';
-  const inner=document.getElementById('mmIn');inner.innerHTML='';inner.appendChild(clone);
-  document.getElementById('mmOv').classList.add('show');
+// 画像/動画の拡大表示は js/mediaGallery.js(左右スワイプで前後のメディアへ)
+function openMM(el){
+  BroGallery.open(el,{selector:'.bub.mbub img, .bub.mbub video'});
 }
-function updMM(){const e=document.getElementById('mmIn').firstElementChild;if(e)e.style.transform=`translate(${px}px,${py}px) scale(${sc})`;}
-const gd=(a,b)=>Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
-document.getElementById('mmOv').addEventListener('wheel',e=>{e.preventDefault();const o=sc;sc=e.deltaY<0?Math.min(sc+.15,5):Math.max(sc-.15,.7);if(sc!==o){px*=sc/o;py*=sc/o;}updMM();},{passive:false});
-document.getElementById('mmOv').addEventListener('mousedown',e=>{if(e.target.closest('#mmCls')||!document.getElementById('mmIn').firstElementChild)return;dr=true;tm='pan';sx=e.clientX-(px/sc);sy=e.clientY-(py/sc);});
-document.getElementById('mmOv').addEventListener('touchstart',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(t.length===2){tm='zoom';ip=gd(t[0],t[1]);is=sc;}else if(t.length===1){tm='pan';dr=true;sx=t[0].clientX-(px/sc);sy=t[0].clientY-(py/sc);}},{passive:true});
-window.addEventListener('mousemove',e=>{if(!dr||tm!=='pan')return;px=(e.clientX-sx)*sc;py=(e.clientY-sy)*sc;updMM();});
-window.addEventListener('touchmove',e=>{const t=e.touches;if(!document.getElementById('mmIn').firstElementChild)return;if(tm==='zoom'&&t.length===2){e.preventDefault();const o=sc;sc=Math.max(.7,Math.min(is*(gd(t[0],t[1])/ip),5));if(sc!==o){px*=sc/o;py*=sc/o;}updMM();}else if(tm==='pan'&&dr&&t.length===1){e.preventDefault();px=(t[0].clientX-sx)*sc;py=(t[0].clientY-sy)*sc;updMM();}},{passive:false});
-window.addEventListener('mouseup',()=>{dr=false;tm='';});window.addEventListener('touchend',()=>{dr=false;tm='';});
-document.getElementById('mmCls').onclick=()=>{document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);};
-document.getElementById('mmOv').onclick=e=>{if(e.target===document.getElementById('mmOv')){document.getElementById('mmOv').classList.remove('show');setTimeout(()=>document.getElementById('mmIn').innerHTML='',300);}};
 
 // サーバーのcontentカラムは以下のいずれかの形式:
 // 1. 平文テキスト(暗号化前の古いメッセージ、または鍵未配布時の互換)
@@ -1690,9 +1919,25 @@ function fillDeferredMedia(div, media){
   if(!div||!media||!media.deferred)return;
   const el=div.querySelector('img, video');
   if(el){el.style.minHeight='160px';el.style.minWidth='160px';el.style.background='rgba(148,163,184,.25)';}
-  media.deferred.then(u=>{ if(el){ if(el.tagName==='VIDEO'){ prepVideoEl(el,u); } else { el.src=u;el.style.minHeight='';el.style.minWidth='';el.style.background=''; } } })
+  // 本物が出るまでの間、灰色の箱ではなく画像の色合いと縦横比を見せる(本物が先に出たら描かない)
+  let shown=false;
+  const unblur=()=>{shown=true;if(el&&window.BroBlurhash){BroBlurhash.clear(el);el.style.aspectRatio='';el.style.maxHeight='';}};
+  if(el&&media.peek){
+    media.peek().then(info=>{
+      if(!info||shown||!el.isConnected)return;
+      if(BroBlurhash.paint(el,info,{maxH:'260px'})){el.style.backgroundColor='';media.bh=info;if(div._gc)div._gc.bh=info;}
+    }).catch(()=>{});
+  }
+  media.deferred.then(u=>{ if(el){ if(el.tagName==='VIDEO'){ el.addEventListener('loadeddata',unblur,{once:true}); prepVideoEl(el,u); gcMediaIn(el); } else {
+      // 読み込めた瞬間にズームイン。灰色の下地は動きが終わるまで残す(失敗時もサイズ指定は必ず戻す)
+      const clear=()=>{el.style.minHeight='';el.style.minWidth='';el.style.background='';unblur();};
+      el.addEventListener('load',()=>{el.style.minHeight='';el.style.minWidth='';gcMediaIn(el,clear);},{once:true});
+      el.addEventListener('error',clear,{once:true});
+      el.src=u;
+  } } })
     .catch(()=>{
       if(!el)return;
+      shown=true;
       const p=document.createElement('div');
       p.textContent='(メディアを読み込めませんでした)';
       p.style.cssText='padding:12px;font-size:13px;opacity:.7';
@@ -1740,7 +1985,13 @@ async function parseMsgContent(rawContent, isEncrypted, keyVersion){
       })();
       deferred.catch(()=>{});
       const ph = parsed.mediaType==='image' ? 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==' : '';
-      return{text:parsed.text||'', media:{mediaType:parsed.mediaType, mediaData:ph, deferred}};
+      // ぼかしプレビュー(BlurHash)は暗号化メタデータの中だけにある。本体を落とさずにメタデータだけ復号して取り出す(古いメッセージは null = 今までどおり)
+      const peek=()=>(async()=>{
+        if(!window.BroBlurhash)return null;
+        await waitUploader();
+        return BroBlurhash.fromEncryptedMetadata(parsed.encryptedMetadata, await ensureGroupKey(keyVersion));
+      })();
+      return{text:parsed.text||'', media:{mediaType:parsed.mediaType, mediaData:ph, deferred, peek}};
     }
 
     // 旧Base64直送り方式のメディア(暗号化されていない)
@@ -1775,6 +2026,8 @@ async function renderHistoryMsg(msg){
 }
 async function renderHistoryMsgInner(msg){
   if(msg.msg_type==='notice')return createNotice(msg.id,msg.content)||null;
+  // 期限が過ぎているものは出さない(サーバーも除いているが、端末の時計とのずれ・古い応答の保険)
+  if(msg.expires_at&&Date.parse(msg.expires_at)<=Date.now())return null;
   // 今はもういない(抜けた・外された)人のメッセージにも、その時の名前を付ける
   let member=gi.members.find(m=>m.id===msg.sender_id);
   if(!member&&msg.sender_id!==myUserId){
@@ -1786,8 +2039,9 @@ async function renderHistoryMsgInner(msg){
   const incoming=msg.sender_id!==myUserId;
   const msgDiv=createMsg(text,media,incoming,member,msg.id,msg.created_at);
   if(msg.replied_to_id)attachGQuote(msgDiv,msg.replied_to_id);
+  gcSetExpiry(msgDiv,msg.expires_at);
   fillDeferredMedia(msgDiv,media);
-  if(Array.isArray(msg.reactions)&&msg.reactions.length)renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);
+  if(Array.isArray(msg.reactions)&&msg.reactions.length)gcQuiet=true;try{renderReacts(msgDiv.querySelector('.mwrap'),msg.reactions);}finally{gcQuiet=false;} // 履歴ではポップさせない
   if(!incoming&&Array.isArray(msg.reader_ids)&&msg.reader_ids.length)historyReaderIds[msg.id]=msg.reader_ids;
   if(msg.edited_at){
     const meta=msgDiv.querySelector('.mmeta .time');
@@ -1836,6 +2090,22 @@ async function loadOlderGroup(){
 }
 document.getElementById('cs').addEventListener('scroll',function(){if(this.scrollTop<120)loadOlderGroup();},{passive:true});
 
+// 一番下へ戻るボタン: 一番下から離れている時だけ出す(個人チャットと同じ動き)。
+// scrollで見るのは「出す/隠す」が切り替わる時の1回だけにして、毎回のscrollで触らない
+(function(){
+  const cs=document.getElementById('cs'),btn=document.getElementById('scrollDownBtn');
+  if(!cs||!btn)return;
+  const smooth=()=>{try{return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return true;}};
+  let shown=false;
+  const upd=()=>{
+    const far=cs.scrollHeight-cs.scrollTop-cs.clientHeight>260;
+    if(far===shown)return;
+    shown=far;btn.classList.toggle('show',far);btn.tabIndex=far?0:-1;
+  };
+  cs.addEventListener('scroll',upd,{passive:true});
+  btn.addEventListener('click',()=>{cs.scrollTo({top:cs.scrollHeight,behavior:smooth()?'smooth':'auto'});});
+})();
+
 async function loadGroupMessages(pre){
   try{
     // 最初の1回と10分に1回は全件。それ以外(画面に戻った時・つなぎ直した時)は新着だけ
@@ -1851,6 +2121,7 @@ async function loadGroupMessages(pre){
         await renderHistoryMsg(msg);
       }
     }
+    if(pre)gcReveal(); // 初回だけ、履歴を描き終えたところで立ち上げ演出
     // ピン留め中のメッセージがあればバナーを表示
     const pinned=await api('/api/groups/'+groupId+'/pinned');
     if(Array.isArray(pinned)&&pinned.length>0){
@@ -1863,9 +2134,261 @@ async function loadGroupMessages(pre){
         document.getElementById('pinBanner').dataset.msgId=latest.id;
       }
     }
-  }catch(err){console.error('load messages error:',err);}
+  }catch(err){console.error('load messages error:',err);gcReveal();}
 }
 
+
+// ================= 追加機能: 下書き / 自動再送 / リンクプレビュー / 消えるメッセージ / 検索・写真リンク =================
+const GC_OB_KEY='g_'+groupId;
+const gcMi=document.getElementById('mi');
+
+// ---- 下書き(トークごとに端末へ保存。送れたら消す) ----
+// 入力欄は1行の <input>。復元時は 'bro:draftrestored'(inputは出ない = 「入力中」を相手に送らない)
+function gcAfterDraft(){ if(gcMi.tagName==='TEXTAREA'){ gcMi.style.height='auto'; gcMi.style.height=gcMi.scrollHeight+'px'; } }
+gcMi.addEventListener('bro:draftrestored',gcAfterDraft);
+if(window.BroDrafts){ try{ BroDrafts.attach(gcMi,GC_OB_KEY); }catch(e){} }
+function gcDraftClear(){ try{ if(window.BroDrafts&&!gcMi.value.trim())BroDrafts.clear(GC_OB_KEY); }catch(e){} }
+
+// ---- 自動再送(ネットワーク失敗の文章だけ) ----
+function gcIsNetErr(e){ return navigator.onLine===false||!!(e&&e.name==='TypeError'&&/fetch|network|load failed/i.test(String(e.message))); }
+function gcMarkPending(div){
+  if(!div)return;
+  div.classList.add('send-pending');
+  const bub=div.querySelector('.bub')||div;
+  if(!bub.querySelector('.pend-note')){
+    const n=document.createElement('div');n.className='pend-note';
+    n.textContent=gT('outbox_pending','送信待ち...つながったら自動で送ります');
+    bub.appendChild(n);
+  }
+}
+function gcClearPending(div){
+  if(!div)return;
+  div.classList.remove('send-pending');
+  const n=div.querySelector('.pend-note');if(n)n.remove();
+}
+function gcQueueOutbox(div,txt,tempId,replyTo){
+  if(!window.BroOutbox)return false;
+  let ok=false;
+  try{ ok=!!BroOutbox.add(GC_OB_KEY,{text:txt,tempId,replyTo:replyTo||null}); }catch(e){}
+  if(ok)gcMarkPending(div);
+  return ok;
+}
+const gcByTemp=id=>document.querySelector('#cs [data-msg-id="'+CSS.escape(String(id))+'"]');
+// 再送。いつもの送信と同じ道(今のグループ鍵で暗号化し直して送る)。HTTPの失敗は status を付けて投げる(4xxは再送しても直らないので捨てる)
+async function gcOutboxSend(item){
+  const post=async(key,ver)=>{
+    const body={content:await groupE2E.encryptGroupText(item.text,key),encrypted:true,keyVersion:ver};
+    if(item.replyTo)body.repliedToId=item.replyTo;
+    const r=await fetch('/api/groups/'+groupId+'/messages/send',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let d=null;try{d=await r.json();}catch(_){}
+    return{r,d};
+  };
+  let k=await ensureGroupKey();
+  let res=await post(k,cachedGroupKeyVersion);
+  if(res.d&&res.d.staleKey){ invalidateGroupKey(); k=await ensureGroupKey(); res=await post(k,cachedGroupKeyVersion); }
+  if(!res.r.ok||!res.d||!res.d.ok||!res.d.message){
+    const e=new Error('http '+res.r.status);e.status=res.r.status;
+    if(res.r.ok)e.permanent=true;
+    throw e;
+  }
+  return res.d.message;
+}
+function gcObInit(){
+  if(!window.BroOutbox||gcObInit.done)return;
+  gcObInit.done=true;
+  BroOutbox.register(GC_OB_KEY,gcOutboxSend,{
+    onSent:(item,msg)=>{
+      const div=item.tempId&&gcByTemp(item.tempId);
+      if(!div){ gSyncSoon(); return; }  // 開き直した後などで仮の吹き出しが無い: 履歴を取り直して本物を出す
+      const dup=msg&&document.querySelector('#cs [data-msg-id="'+CSS.escape(String(msg.id))+'"]');
+      if(dup&&dup!==div){ div.remove(); return; }
+      div.dataset.msgId=msg.id;
+      gcClearPending(div);
+      const c1=div.querySelector('.chk1');if(c1)c1.classList.add('lit','pop');
+      applyEarlyReads(div,msg.id);
+      gcSetExpiry(div,msg.expires_at||msg.expiresAt);
+      gcLinkPreview(div,item.text);
+    },
+    onFailedPermanently:(item)=>{
+      const div=item.tempId&&gcByTemp(item.tempId);
+      if(!div)return;
+      gcClearPending(div);
+      markSendFailed(div,item.text,null);
+    },
+  });
+}
+// 前回の送信待ちが残っていれば、仮の吹き出しとして出し直す(ページを開き直しても見える)
+function gcRestorePending(){
+  if(!window.BroOutbox)return;
+  let list=[];try{ list=BroOutbox.pending(GC_OB_KEY); }catch(e){}
+  list.forEach(it=>{
+    if(!it||!it.tempId||gcByTemp(it.tempId))return;
+    const div=createMsg(it.text,null,false,null,it.tempId,new Date(it.ts||Date.now()).toISOString(),false);
+    if(it.replyTo)attachGQuote(div,it.replyTo);
+    gcMarkPending(div);
+  });
+}
+window.addEventListener('online',()=>{ try{ if(window.BroOutbox)BroOutbox.kick(GC_OB_KEY); }catch(e){} });
+
+// ---- リンクのプレビュー(設定オンの時だけ。吹き出しごとに1回・作り直しでアニメを再生しない) ----
+function gcLinkPreview(div,text){
+  if(!window.BroLinkPreview||!div||!text)return;
+  const bub=div.querySelector('.bub');if(!bub)return;
+  const id=String(div.dataset.msgId||'');
+  BroLinkPreview.attach(bub,text,{
+    offlineDraft:id.indexOf('temp-')===0,
+    encryptedFailed:text==='(復号に失敗しました)',
+    onAdd:()=>{
+      const cs=document.getElementById('cs'),c=bub.querySelector('.blp'),m=bub.querySelector('.mmeta');
+      const h=c?c.offsetHeight+6:0;
+      if(c&&m&&c.nextElementSibling!==m)bub.insertBefore(c,m); // 時刻の行はカードの下
+      if(cs.scrollHeight-cs.scrollTop-cs.clientHeight-h<80)cs.scrollTop=cs.scrollHeight; // 一番下を見ていた時だけ付いていく
+    },
+  });
+}
+
+// ---- 消えるメッセージ ----
+let gcTtl=0;
+function gcSetTtl(sec){
+  sec=Number(sec)||0;
+  const slot=document.getElementById('gcTtlSlot');if(!slot)return;
+  if(sec===gcTtl&&(slot.firstChild||sec===0))return; // 変わっていなければ作り直さない
+  gcTtl=sec;
+  slot.textContent='';
+  const b=window.BroTtl&&BroTtl.badge?BroTtl.badge(sec):null;
+  if(b){slot.appendChild(b);slot.style.display='block';}else slot.style.display='none';
+}
+async function gcLoadTtl(){
+  try{
+    const r=await fetch('/api/groups/'+groupId+'/ttl',{headers:{'Authorization':'Bearer '+token}});
+    if(r.ok){ const d=await r.json(); gcSetTtl(d&&d.ttlSeconds); }
+  }catch(e){}
+}
+const gcExpiring=new Set();
+const GC_CLOCK='<svg class="gc-exp" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>';
+// 期限(REST は expires_at、WS は expiresAt。どちらもISO文字列)を吹き出しに持たせ、時刻の横に小さな時計を付ける
+function gcSetExpiry(div,v){
+  if(!div||v==null||v==='')return;
+  const t=typeof v==='number'?v:Date.parse(v);
+  if(!isFinite(t)||t<=0)return;
+  if(div._gc)div._gc.expiresAt=t;
+  gcExpiring.add(div);
+  const meta=div.querySelector('.mmeta');
+  if(meta&&!meta.querySelector('.gc-exp'))meta.insertAdjacentHTML('afterbegin',GC_CLOCK);
+}
+function gcDropEl(div){
+  if(!div||!div.parentNode||div.classList.contains('gc-exp-out'))return;
+  gcExpiring.delete(div);
+  const id=div.dataset.msgId;
+  const fin=()=>{
+    if(div.parentNode)div.remove();
+    if(!id)return;
+    refreshGQuotes(id);
+    if(gReplyTo===String(id))cancelGReply();
+    const pb=document.getElementById('pinBanner');
+    if(pb&&pb.dataset.msgId===String(id))pb.classList.remove('show');
+    if(isEditing&&editTargetMsgId===String(id)){ isEditing=false;editNode=null;editMeta=null;editTargetMsgId=null;gcMi.value='';const sb=document.getElementById('sbtn');if(sb)sb.querySelector('svg').outerHTML=pp; }
+  };
+  if(gcReduce()){fin();return;}
+  div.classList.add('gc-exp-out');
+  setTimeout(fin,260);
+}
+function gcExpireIds(ids){
+  if(!Array.isArray(ids))return;
+  ids.forEach(id=>{ const d=document.querySelector('#cs [data-msg-id="'+CSS.escape(String(id))+'"]'); if(d)gcDropEl(d); });
+}
+function gcSweepExpired(){
+  const now=Date.now();
+  gcExpiring.forEach(d=>{
+    if(!d.isConnected){gcExpiring.delete(d);return;}
+    if(d._gc&&d._gc.expiresAt&&d._gc.expiresAt<=now)gcDropEl(d);
+  });
+}
+setInterval(gcSweepExpired,30000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible')gcSweepExpired(); });
+
+// ---- トーク内検索 / 写真・リンク / 消えるメッセージの設定(グループ設定シートの先頭) ----
+function gcJumpTo(id){
+  const t=document.querySelector('#cs [data-msg-id="'+CSS.escape(String(id))+'"]');
+  if(!t)return;
+  t.scrollIntoView({behavior:gcReduce()?'auto':'smooth',block:'center'});
+  gcTemp(t,'reply-jump-flash',1300);
+}
+function gcSearchMessages(){
+  const out=[];
+  document.querySelectorAll('#cs .msg[data-msg-id]').forEach(d=>{
+    const id=d.dataset.msgId;
+    if(!id||id.indexOf('temp-')===0||!d._gc||d._gc.media||d.classList.contains('send-failed'))return; // 写真・動画・ファイル・お知らせは対象外
+    const tx=d.querySelector('.msg-text');if(!tx)return;
+    const t=tx.textContent;
+    if(!t||t==='(復号に失敗しました)')return;
+    out.push({id,text:t,mine:d.classList.contains('out'),senderName:(d.querySelector('.sname')||{}).textContent||'',time:d._gc.createdAt});
+  });
+  return out;
+}
+const GC_MEDIA_SEL='.bub.mbub img, .bub.mbub video';
+function gcMediaItems(){
+  const items=[];
+  document.querySelectorAll('#cs .msg[data-msg-id]').forEach(d=>{
+    const id=d.dataset.msgId,g=d._gc;
+    if(!id||id.indexOf('temp-')===0||!g)return;
+    const m=g.media;
+    if(m&&(m.mediaType==='image'||m.mediaType==='video')){
+      const el=d.querySelector(GC_MEDIA_SEL);
+      let src=el?(el.currentSrc||el.getAttribute('src')||''):'';
+      if(/^data:image\/gif/.test(src))src=''; // まだ復号されていない仮の画像
+      const it={id,kind:m.mediaType,time:g.createdAt};
+      if(src)it.src=src;
+      if(g.bh)it.bh=g.bh;
+      items.push(it);
+    }else if(m&&m.mediaType==='file'){
+      const fn=d.querySelector('.fname'),fs=d.querySelector('.fsz');
+      items.push({id,kind:'file',title:fn?fn.textContent:'',sub:fs?fs.textContent:'',time:g.createdAt});
+    }else if(!m){
+      const tx=d.querySelector('.msg-text');if(!tx)return;
+      (tx.textContent.match(/https?:\/\/[^\s<>"'`　]+/gi)||[]).forEach((u,i)=>{
+        items.push({id:id+'#l'+i,kind:'link',url:u.replace(/[.,!?;:、。！？）)\]」』】>]+$/,''),time:g.createdAt});
+      });
+    }
+  });
+  return items;
+}
+function gcCloseGs(){ document.getElementById('gsOv').classList.remove('show'); }
+document.getElementById('gcMenuSearch').addEventListener('click',()=>{
+  gcCloseGs();
+  if(!window.BroChatSearch)return;
+  BroChatSearch.open({getMessages:gcSearchMessages,onJump:gcJumpTo,title:gT('bro_search_menu','トーク内検索')});
+});
+document.getElementById('gcMenuMedia').addEventListener('click',()=>{
+  gcCloseGs();
+  if(!window.BroChatMedia)return;
+  let h=null;
+  h=BroChatMedia.open({
+    getItems:gcMediaItems,
+    title:gT('bro_media_menu','写真・リンク'),
+    onOpen:(item)=>{
+      const mid=String(item.id).split('#')[0];
+      if(item.kind==='image'||item.kind==='video'){
+        const d=document.querySelector('#cs [data-msg-id="'+CSS.escape(mid)+'"]');
+        const el=d&&d.querySelector(GC_MEDIA_SEL);
+        if(el&&window.BroGallery)BroGallery.open(el,{selector:GC_MEDIA_SEL});
+      }else{ if(h&&h.close)h.close(); gcJumpTo(mid); }
+    },
+  });
+});
+document.getElementById('gcMenuTtl').addEventListener('click',()=>{
+  gcCloseGs();
+  if(!window.BroTtl)return;
+  BroTtl.openSheet({
+    current:gcTtl,
+    onPick:async(sec)=>{
+      const r=await fetch('/api/groups/'+groupId+'/ttl',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({ttlSeconds:sec})});
+      if(!r.ok)throw new Error('http '+r.status);
+      let d=null;try{d=await r.json();}catch(_){}
+      gcSetTtl(d&&d.ttlSeconds!=null?d.ttlSeconds:sec);
+    },
+  });
+});
 
 // 初期化順序: グループ情報(メンバー一覧)を取得してから履歴を読み込む
 // (メンバー名・アバターを正しく紐付けるため)
@@ -1898,11 +2421,12 @@ async function loadGroupMessages(pre){
   const historyP = api('/api/groups/'+groupId+'/messages');
   historyP.catch(() => {});
   loadGroupInfo().then(() => loadGroupMessages(historyP)).then(() => {
+    gcRestorePending(); gcObInit(); gcLoadTtl();
     markSeenSoon();
     applyHistoryReaders();refreshGQuotes();
     checkGroupKeyHealth();
     connectGroupWS();
-  }).catch(err => console.error('初期化エラー:', err));
+  }).catch(err => { console.error('初期化エラー:', err); gcObInit(); });
 })();
 
 // --- WebSocketでリアルタイム受信 ---
@@ -1923,6 +2447,9 @@ function applyEarlyReads(msgDiv,id){
 const historyReaderIds={}; // 履歴で受け取った「誰が読んだか」(メッセージID→ユーザーID[])
 // メンバー一覧と履歴の両方がそろってから、自分が送ったメッセージに既読アイコンを付ける
 function applyHistoryReaders(){
+  gcQuiet=true;try{applyHistoryReadersInner();}finally{gcQuiet=false;}
+}
+function applyHistoryReadersInner(){
   Object.keys(historyReaderIds).forEach(mid=>{
     const msgDiv=document.querySelector(`[data-msg-id="${mid}"]`);
     if(!msgDiv||msgDiv.classList.contains('inc'))return;
@@ -1945,7 +2472,7 @@ function connectGroupWS(){
     try{
       const data=JSON.parse(e.data);
       if(window.bcHandleWsAuth&&window.bcHandleWsAuth(data))return;
-      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); if(window.Live.onAuthed)window.Live.onAuthed(); window.Live.requestStatus(); if(window.__gEverAuthed){ invalidateGroupKey(); gSyncSoon(); } window.__gEverAuthed=true; return; }
+      if(data.type==='auth_ok'){ window.GroupCall.requestStatus(); if(window.Live.onAuthed)window.Live.onAuthed(); window.Live.requestStatus(); if(window.__gEverAuthed){ invalidateGroupKey(); gSyncSoon(); } window.__gEverAuthed=true; try{ if(window.BroOutbox)BroOutbox.kick(GC_OB_KEY); }catch(_){} return; }
       if((data.type==='group_typing'||data.type==='group_typing_stop')&&data.groupId===groupId){
         if(data.userId!==myUserId)gtSet(data.userId,data.type==='group_typing');
         return;
@@ -1955,7 +2482,7 @@ function connectGroupWS(){
       if(data.type==='group_message'&&data.groupId===groupId){
         markSeenSoon();
         const msg=data.message;
-        if(msg.msgType==='notice'){createNotice(msg.id,msg.content);return;}
+        if(msg.msgType==='notice'){gcNoticeIn(createNotice(msg.id,msg.content));return;}
         if(msg.senderId===myUserId){
           // この端末から送った分は表示済み。自分のほかの端末(スマホ等)から送った分だけ出す
           const cs=document.getElementById('cs');
@@ -1963,6 +2490,7 @@ function connectGroupWS(){
           const own=await parseMsgContent(msg.content, msg.encrypted, msg.keyVersion);
           const od=createMsg(own.text,own.media,false,null,msg.id,msg.createdAt,true);
           if(msg.repliedToId)attachGQuote(od,msg.repliedToId);
+          gcSetExpiry(od,msg.expiresAt);
           fillDeferredMedia(od,own.media);
           return;
         }
@@ -1975,6 +2503,7 @@ function connectGroupWS(){
         if(gHasMsg(msg.id))return;
         const nd=createMsg(text,media,true,member,msg.id,msg.createdAt,true);
         if(msg.repliedToId)attachGQuote(nd,msg.repliedToId);
+        gcSetExpiry(nd,msg.expiresAt);
         fillDeferredMedia(nd,media);
         // タブが非表示(バックグラウンド)の時のみブラウザ通知を送る
         // (見ている最中に通知を出すのは煩わしいため)
@@ -2028,14 +2557,24 @@ function connectGroupWS(){
         }
       }else if(data.type==='group_message_deleted'&&data.groupId===groupId){
         const msgDiv=document.querySelector(`[data-msg-id="${data.messageId}"]`);
-        if(msgDiv){
-          const notice=document.createElement('div');
-          notice.className='cancel-notice';
-          notice.textContent='メッセージが取り消されました';
-          msgDiv.parentNode.replaceChild(notice,msgDiv);
-          refreshGQuotes(data.messageId);
-          if(gReplyTo===String(data.messageId))cancelGReply();
+        if(msgDiv&&!msgDiv.classList.contains('gc-del-out')){
+          // 吹き出しが縮んで消えてから「取り消されました」に置き換える
+          const swap=()=>{
+            if(!msgDiv.parentNode)return;
+            const notice=document.createElement('div');
+            notice.className='cancel-notice';
+            notice.textContent='メッセージが取り消されました';
+            msgDiv.parentNode.replaceChild(notice,msgDiv);
+            gcNoticeIn(notice);
+            refreshGQuotes(data.messageId);
+            if(gReplyTo===String(data.messageId))cancelGReply();
+          };
+          if(gcReduce())swap();else{msgDiv.classList.add('gc-del-out');setTimeout(swap,230);}
         }
+      }else if(data.type==='conversation_ttl'&&data.scope==='group'&&data.groupId===groupId){
+        gcSetTtl(data.ttlSeconds);
+      }else if(data.type==='messages_expired'&&data.scope==='group'&&data.groupId===groupId){
+        gcExpireIds(data.messageIds);
       }else if(data.type==='added_to_group'){
         // 自分が新しいグループに追加された通知(トーク一覧側で表示更新が必要になるため、
         // 現在開いているのが別グループの場合は何もしない)
@@ -2083,11 +2622,14 @@ document.querySelectorAll('a[data-back-to-talklist]').forEach(a => {
     if (window.parent !== window) { window.parent.postMessage({ type: 'pc-close-chat' }, location.origin); return; }
     let fromList = false;
     try { fromList = !!document.referrer && new URL(document.referrer).origin === location.origin && new URL(document.referrer).pathname === '/talklist.html'; } catch (_) {}
-    if (fromList && history.length > 1) history.back();
-    else location.replace('/talklist.html');
+    const go = () => { if (fromList && history.length > 1) history.back(); else location.replace('/talklist.html'); };
+    if (window.LiquidGlass && window.LiquidGlass.leaveChat) window.LiquidGlass.leaveChat(document.querySelector('.pc'), document.getElementById('gavEl'), go);
+    else go();
   });
 });
 </script>
+<script src="/js/mediaSave.js"></script>
+<script src="/js/mediaGallery.js"></script>
 <script src="/js/keepBottom.js"></script>
 <script src="/js/viewportFix.js"></script>
 </body>

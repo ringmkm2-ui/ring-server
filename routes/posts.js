@@ -26,11 +26,11 @@ function isValidMediaUrl(value) {
   // 以前は Base64 の data: URI (最大約40MB)も受け付けていて、数件投稿するだけで
   // タイムラインを開いた人ごとにサーバーのメモリを使い切れた
   if (value.length > 500) return false;
-  if (/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/[A-Za-z0-9_\-./%]+$/.test(value)) return true;
+  if (require('../utils/messageContent').isOwnCloudinaryUrl(value, /^[A-Za-z0-9_\-./%]+$/)) return true;
   // 100MBを超える動画はGoogleドライブ(このサーバーの /m/p/<id>)に置く
   return !!driveIdOf(value);
 }
-const SELF_HOSTS = new Set(['ring-server-50sy.onrender.com', ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
+const SELF_HOSTS = new Set([...require('../utils/siteHosts').SITE_HOSTS, ...String(process.env.PUBLIC_BASE_URL || '').replace(/^https?:\/\//, '').split(/[\/,]/).filter(Boolean)]);
 function driveIdOf(url) {
   const m = /^https?:\/\/([A-Za-z0-9.-]+(?::\d+)?)\/m\/p\/([A-Za-z0-9_-]{10,100})$/.exec(url || '');
   if (!m) return null;
@@ -311,7 +311,7 @@ router.get('/:postId/comments', verifyToken, asyncHandler(async (req, res) => {
     `SELECT * FROM post_comments WHERE post_id = ? AND deleted_at IS NULL
        AND EXISTS (SELECT 1 FROM posts p WHERE p.id = post_comments.post_id AND p.deleted_at IS NULL)
        AND author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?) AND author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
-     ORDER BY created_at ASC`,
+     ORDER BY created_at ASC LIMIT 500`,
     [req.params.postId, req.user.userId, req.user.userId]
   );
   if (rows.length === 0) return res.json([]);
@@ -418,7 +418,7 @@ router.post('/channel/:channelId/subscribe', verifyToken, asyncHandler(async (re
 router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => {
   const channelId = req.params.channelId;
   const me = req.user.userId;
-  const u = await db.get('SELECT id, display_name, profile_pic, bio, created_at FROM users WHERE id = ?', [channelId]);
+  const u = await db.get('SELECT id, display_name, profile_pic, bio, banner_url, created_at FROM users WHERE id = ?', [channelId]);
   if (!u) return res.status(404).json({ error: 'チャンネルが見つかりません' });
   // ブロック関係の相手のチャンネルは存在しないのと同じ扱い(フィードと同じ)
   if (channelId !== me && await isBlockedEither(me, channelId)) return res.status(404).json({ error: 'チャンネルが見つかりません' });
@@ -444,6 +444,7 @@ router.get('/channel/:channelId', verifyToken, asyncHandler(async (req, res) => 
     likesReceived,
     name: u.display_name || '不明なユーザー',
     pic: u.profile_pic || null,
+    banner: u.banner_url || null,
     bio: typeof u.bio === 'string' ? u.bio.slice(0, 500) : '',
     joinedAt: u.created_at || null,
     subscriberCount: Number(c?.cnt || 0),

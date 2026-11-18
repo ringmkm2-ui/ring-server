@@ -11,6 +11,8 @@ const { rejectIfProfane, censorBodyAndBanAfter } = require('../utils/moderation'
 const { messageSendLimiter } = require('../utils/rateLimits');
 const { isValidIconUrl } = require('../utils/iconStore');
 const { areFriends, isBlockedEither } = require('../utils/relations');
+const disappearing = require('../utils/disappearing');
+const chatPrefs = require('../utils/chatPrefs');
 
 // 暗号化済みグループ鍵1件の上限(X3DHで包んだ32バイト鍵なら数百文字。巨大な値でDBを埋めさせない)
 const MAX_ENC_KEY_LENGTH = 8192;
@@ -60,6 +62,8 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
   const membersBy = new Map();
   const lastBy = new Map();
   const unreadBy = new Map();
+  // チャットごとの設定(ピン留め・ミュート・非表示・トーク削除)は1回でまとめて読む
+  const prefs = await chatPrefs.loadPrefs(me);
   if (ids.length) {
     const ph = ids.map(() => '?').join(',');
     const mrows = await db.all(
@@ -74,15 +78,17 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
     }
     // 参加前のメッセージは一覧にも出さない(履歴と同じ)
     const lrows = await db.all(
-      `SELECT x.group_id, x.content, x.created_at, x.encrypted, x.key_version
+      `SELECT x.group_id, x.content, x.created_at, x.encrypted, x.key_version, x.msg_type
          FROM group_messages x
          JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ? AND gm.left_at IS NULL
         WHERE x.group_id IN (${ph}) AND x.deleted_at IS NULL AND (gm.joined_at IS NULL OR x.created_at >= gm.joined_at)
+          AND ${disappearing.notExpiredSql('x')}
           AND x.id = (
             SELECT y.id FROM group_messages y
              WHERE y.group_id = x.group_id AND y.deleted_at IS NULL AND (gm.joined_at IS NULL OR y.created_at >= gm.joined_at)
+               AND ${disappearing.notExpiredSql('y')}
              ORDER BY y.created_at DESC, y.id DESC LIMIT 1)`,
-      [me, ...ids]
+      [me, ...ids, disappearing.nowParam(), disappearing.nowParam()]
     );
     for (const l of lrows) lastBy.set(l.group_id, l);
     // 未読数: 最後に開いた時(まだ開いていなければ参加した時)より後に、他の人が送った分
@@ -93,15 +99,40 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
         WHERE x.group_id IN (${ph}) AND x.sender_id != ? AND x.deleted_at IS NULL
           AND COALESCE(gm.last_read_at, gm.joined_at) IS NOT NULL
           AND x.created_at > COALESCE(gm.last_read_at, gm.joined_at)
+          AND ${disappearing.notExpiredSql('x')}
         GROUP BY x.group_id`,
-      [me, ...ids, me]
+      [me, ...ids, me, disappearing.nowParam()]
     );
     for (const u of urows) unreadBy.set(u.group_id, Number(u.c) || 0);
+    // 「トークを削除」(自分だけ)したグループは、削除した時刻より後の分だけで数え直す(その分だけ追加で1回引く)
+    const clearedIds = ids.filter(id => chatPrefs.prefOf(prefs, 'group', id).clearedAt > 0);
+    if (clearedIds.length) {
+      const cph = clearedIds.map(() => '?').join(',');
+      const crows = await db.all(
+        `SELECT x.group_id, x.created_at
+           FROM group_messages x
+           JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ? AND gm.left_at IS NULL
+          WHERE x.group_id IN (${cph}) AND x.sender_id != ? AND x.deleted_at IS NULL
+            AND COALESCE(gm.last_read_at, gm.joined_at) IS NOT NULL
+            AND x.created_at > COALESCE(gm.last_read_at, gm.joined_at)
+            AND ${disappearing.notExpiredSql('x')}`,
+        [me, ...clearedIds, me, disappearing.nowParam()]
+      );
+      for (const id of clearedIds) unreadBy.set(id, 0);
+      for (const r of crows) {
+        if (chatPrefs.toMs(r.created_at) > chatPrefs.prefOf(prefs, 'group', r.group_id).clearedAt) {
+          unreadBy.set(r.group_id, (unreadBy.get(r.group_id) || 0) + 1);
+        }
+      }
+    }
   }
   const groups = [];
   for (const g of rows) {
     const members = membersBy.get(g.id) || [];
-    const lastMsg = lastBy.get(g.id) || null;
+    const pref = chatPrefs.prefOf(prefs, 'group', g.id);
+    let lastMsg = lastBy.get(g.id) || null;
+    // 「トークを削除」した時刻より前が最新なら、まだ何も話していない扱いにする
+    if (lastMsg && chatPrefs.toMs(lastMsg.created_at) <= pref.clearedAt) lastMsg = null;
     const unreadCount = unreadBy.get(g.id) || 0;
     groups.push({
       groupId: g.id,
@@ -111,8 +142,9 @@ router.get('/list', verifyToken, asyncHandler(async (req, res) => {
       keyVersion: g.key_version,
       avatarUrl: g.avatar_url || null,
       members: members.map(m => ({ userId: m.user_id, displayName: m.display_name, profilePic: m.profile_pic })),
-      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version } : null,
+      lastMessage: lastMsg ? { content: lastMsg.content, createdAt: lastMsg.created_at, encrypted: !!lastMsg.encrypted, keyVersion: lastMsg.key_version, msgType: lastMsg.msg_type || 'text' } : null,
       unreadCount,
+      ...chatPrefs.listFields(pref, lastMsg ? chatPrefs.toMs(lastMsg.created_at) : 0),
     });
   }
   // 新しいメッセージがあったグループを上に(LINEと同じ。以前は作った順のままだった)
@@ -284,12 +316,15 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
     'UPDATE group_members SET left_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ?',
     [groupId, removeUserId]
   );
+  // 抜けた人のこのグループの設定(ピン留め・ミュートなど)は要らないので消す(ピン留めの数を食い続けないように)
+  await db.run("DELETE FROM chat_prefs WHERE user_id = ? AND kind = 'group' AND peer_id = ?", [removeUserId, groupId]);
   if (newOwnerId) await db.run('UPDATE groups SET owner_id = ? WHERE id = ?', [newOwnerId, groupId]);
   const remaining = await db.get('SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
   if (!remaining || Number(remaining.n) === 0) {
     // 最後の1人が抜けた。誰も読めない暗号文と鍵を残しておく意味は無いので消す(グループ自体は誰の一覧にも出なくなる)
     await db.run('DELETE FROM group_messages WHERE group_id = ?', [groupId]);
     await db.run('DELETE FROM group_key_distributions WHERE group_id = ?', [groupId]);
+    await db.run('DELETE FROM conversation_ttl WHERE conv_key = ?', [disappearing.groupKey(groupId)]);
   } else {
     // 「〇〇が退出しました」(外された時は「〇〇を退出させました」)をトークに出す
     try {
@@ -434,6 +469,19 @@ router.post('/:groupId/rotate-key', rotateLimiter, verifyToken, asyncHandler(asy
   }
   const mine = encryptedKeysForMembers.find(e => e && e.userId === req.user.userId && typeof e.encryptedGroupKey === 'string');
   if (!mine) return res.status(400).json({ error: '自分宛の鍵が含まれていません' });
+  // オーナー以外が作り直す時は、鍵を受け取れる(身元鍵を登録済みの)メンバー全員分を必須にする。
+  // 以前は自分の分だけで版を進められ、他のメンバー全員が新しいメッセージを読めなくなる嫌がらせができた(コミュニティは対策済み)
+  if (group.owner_id !== req.user.userId) {
+    const need = await db.all(
+      `SELECT m.user_id FROM group_members m JOIN identity_keys k ON k.user_id = m.user_id
+        WHERE m.group_id = ? AND m.left_at IS NULL`,
+      [groupId]
+    );
+    const given = new Set(encryptedKeysForMembers.filter(isEncKeyEntry).map(e => e.userId));
+    if (need.some(n => !given.has(n.user_id))) {
+      return res.status(400).json({ error: 'メンバー全員分の鍵が必要です' });
+    }
+  }
 
   const newVersion = group.key_version + 1;
   // 版の更新は「期待した版のときだけ」。先に取った人が勝つ
@@ -530,7 +578,7 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
   const wantVer = parseInt(req.query.version, 10);
   const row = Number.isInteger(wantVer)
     ? await db.get(
-        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=? LIMIT 1`,
+        `SELECT * FROM group_key_distributions WHERE group_id=? AND user_id=? AND key_version=? ORDER BY created_at DESC LIMIT 1`,
         [req.params.groupId, req.user.userId, wantVer]
       )
     : await db.get(
@@ -545,7 +593,7 @@ router.get('/:groupId/my-key', verifyToken, asyncHandler(async (req, res) => {
 // body: { content, mediaType?, mediaData?, encrypted? }
 // mediaType: 'image' | 'video' | null（テキスト）
 // mediaData: base64エンコードされたデータ
-router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHandler(async (req, res) => {
+router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, deviceKeys.requireApprovedSession, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   // 暗号化されていない(平文で届いた)時だけサーバーで調べられる。暗号文は送る側の端末が調べる
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
@@ -586,14 +634,16 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   // 返信先は同じグループの、消されていないメッセージだけ(ほかのグループのIDを指して中身を探られないように)
   let replyTo = null;
   if (repliedToId) {
-    const r = await db.get('SELECT id FROM group_messages WHERE id = ? AND group_id = ? AND deleted_at IS NULL', [repliedToId, groupId]);
+    const r = await db.get(`SELECT id FROM group_messages WHERE id = ? AND group_id = ? AND deleted_at IS NULL AND ${disappearing.notExpiredSql()}`, [repliedToId, groupId, disappearing.nowParam()]);
     if (!r) return res.status(400).json({ error: '返信先のメッセージが見つかりません' });
     replyTo = r.id;
   }
   const msgId = uuidv4();
+  // 消えるメッセージ: グループにタイマーがあれば期限を押す(無ければ NULL = 消えない)
+  const expiresAt = await disappearing.expiresAtFor(disappearing.groupKey(groupId));
   await db.run(
-    'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version, replied_to_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= group.key_version) ? keyVersion : group.key_version, replyTo]
+    'INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, encrypted, key_version, replied_to_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, groupId, req.user.userId, finalContent, msgType, !!encrypted, (Number.isInteger(keyVersion) && keyVersion >= 1 && keyVersion <= group.key_version) ? keyVersion : group.key_version, replyTo, expiresAt]
   );
 
   const msg = await db.get('SELECT * FROM group_messages WHERE id = ?', [msgId]);
@@ -607,6 +657,9 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
   const sender = await db.get('SELECT display_name, profile_pic FROM users WHERE id = ?', [req.user.userId]);
   const senderPic = require('../utils/pushPic').pushPic(sender?.profile_pic);
   const { sendPushToUser } = require('../utils/webPush');
+
+  // このグループをミュートしているメンバーには、Push(FCM / Web Push)を送らない(画面のリアルタイム表示は今まで通り)
+  const mutedIds = await chatPrefs.mutedUserIds(members.map(m => m.user_id), 'group', groupId);
 
   members.forEach(m => {
     const isSelf = m.user_id === req.user.userId;
@@ -623,16 +676,17 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
         keyVersion: msg.key_version,
         repliedToId: msg.replied_to_id || null,
         createdAt: msg.created_at,
+        expiresAt,
       }
     });
 
     // 自分自身はスキップ(送信元端末には既に表示済み)、Push通知も不要
-    if (isSelf) return;
+    if (isSelf || mutedIds.has(m.user_id)) return;
 
     require('../utils/fcm').sendMessageNotification(
       m.user_id, `${sender?.display_name || 'ユーザー'} (${group.name})`,
       mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージが届きました',
-      'group', { senderId: req.userId, chatId: groupId, senderPic }
+      'group', { containsMessage: true, senderId: req.userId, chatId: groupId, senderPic }
     ).catch(err => console.error('[fcm] group message failed:', err.message));
 
     // オフラインのメンバーにはPush通知。E2E暗号化のためcontentは復号できないので、
@@ -645,7 +699,7 @@ router.post('/:groupId/messages/send', messageSendLimiter, verifyToken, asyncHan
         senderName: sender?.display_name || 'ユーザー',
         senderPic,
         preview: mediaType ? `[${mediaType === 'image' ? '画像' : mediaType === 'file' ? 'ファイル' : '動画'}]` : 'メッセージが届きました',
-      }).catch(err => console.error('[push] group message send failed:', err.message));
+      }, { containsMessage: true }).catch(err => console.error('[push] group message send failed:', err.message));
     }
   });
 
@@ -666,9 +720,13 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
   // 参加する前のメッセージは出さない(LINEと同じ。鍵も配られていないので、出しても「復号に失敗」が並ぶだけだった)
   const mem = await db.get('SELECT joined_at FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [groupId, req.user.userId]);
   const params = [groupId];
-  let where = 'gm.group_id = ? AND gm.deleted_at IS NULL';
+  let where = 'gm.group_id = ? AND gm.deleted_at IS NULL AND ' + disappearing.notExpiredSql('gm');
+  params.push(disappearing.nowParam());
   if (mem && mem.joined_at) { where += ' AND gm.created_at >= ?'; params.push(mem.joined_at); }
   if (before) { where += ' AND gm.created_at < ?'; params.push(before); }
+  // 「トークを削除」(自分だけ)した時刻より前は、この人にだけ見せない
+  const { clearedAt } = await chatPrefs.getPref(req.user.userId, 'group', groupId);
+  if (clearedAt > 0) { where += ' AND gm.created_at > ?'; params.push(chatPrefs.tsParam(clearedAt)); }
   // since: 画面に戻った時などの取りこぼし確認用。この時刻より後に届いた分だけ返す。
   // 以前は毎回最新100件を丸ごとDBから取っていて、Neonの転送量(無料枠は月5GB)を使い切った。
   // 端末は、出ている分は描き直さない作りなので、新着だけで足りる(編集・取り消し・リアクションはWSで届く)。
@@ -728,6 +786,33 @@ router.post('/:groupId/seen', verifyToken, asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// --- グループを開かずに既読にする(トークリストの「既読にする」) ---
+// 開いた時と同じこと(/seen で未読を0にする + 未読メッセージを既読として記録する)をサーバー側でやる。
+// 個別の既読API(/messages/read)と同じく、既読を知らせない設定の人には記録しない・1回200件まで
+router.post('/:groupId/read-all', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const me = req.user.userId;
+  const group = await db.get('SELECT id FROM groups WHERE id = ?', [groupId]);
+  if (!group) return res.status(404).json({ error: 'グループが見つかりません' });
+  if (!(await isGroupMember(groupId, me))) {
+    return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  }
+  const mem = await db.get('SELECT joined_at FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [groupId, me]);
+  // 未読にあたるメッセージ(自分以外が送った・まだ自分が既読にしていない・参加前のものと消えたものは除く)を、先に取っておく
+  let unread = [];
+  if ((await require('../utils/userSettings').getSettings(me)).sendReadReceipts !== false) {
+    const params = [me, groupId, me, disappearing.nowParam()];
+    let where = `x.sender_id != ? AND x.group_id = ? AND x.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM group_message_reads r WHERE r.message_id = x.id AND r.user_id = ?)
+      AND ${disappearing.notExpiredSql('x')}`;
+    if (mem && mem.joined_at) { where += ' AND x.created_at >= ?'; params.push(mem.joined_at); }
+    unread = await db.all(`SELECT x.id FROM group_messages x WHERE ${where} ORDER BY x.created_at DESC LIMIT 200`, params);
+  }
+  await db.run('UPDATE group_members SET last_read_at = CURRENT_TIMESTAMP WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [groupId, me]);
+  if (unread.length) await recordGroupReads(groupId, me, unread.map(r => r.id));
+  res.json({ ok: true });
+}));
+
 // --- グループメッセージのリアクション(押す/もう一度押すと外す) ---
 // body: { emoji }
 router.post('/:groupId/messages/:msgId/react', verifyToken, asyncHandler(async (req, res) => {
@@ -762,6 +847,42 @@ router.post('/:groupId/messages/:msgId/react', verifyToken, asyncHandler(async (
   res.json({ ok: true, reactions });
 }));
 
+// 自分(readerId)が読んだメッセージを group_message_reads に記録し、メンバー全員へ何人読んだかを流す。
+// 自分の送信メッセージ・このグループのものでないID・すでに記録済みのものは数えない(個別の既読API・まとめて既読で共通)
+async function recordGroupReads(groupId, readerId, messageIds) {
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+
+  for (const msgId of messageIds) {
+    if (typeof msgId !== 'string') continue;
+    const msg = await db.get('SELECT sender_id FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
+    if (!msg) continue;
+    if (msg.sender_id === readerId) continue; // 自分の送信メッセージは既読対象外
+    const already = await db.get('SELECT * FROM group_message_reads WHERE message_id = ? AND user_id = ?', [msgId, readerId]);
+    if (already) continue;
+    try {
+      await db.run('INSERT INTO group_message_reads (message_id, user_id) VALUES (?, ?)', [msgId, readerId]);
+    } catch (e) {
+      // 同時に2回呼ばれた時の重複は、もう既読になっているだけなので飛ばす
+      const dup = await db.get('SELECT 1 AS ok FROM group_message_reads WHERE message_id = ? AND user_id = ?', [msgId, readerId]);
+      if (dup) continue;
+      throw e;
+    }
+
+    // 何人が既読したかをメンバー全員に通知(自分のアイコンを表示するのではなく人数ベースで良い)
+    const readCount = await db.get('SELECT COUNT(*) as cnt FROM group_message_reads WHERE message_id = ?', [msgId]);
+    members.forEach(m => {
+      broadcastToUser(m.user_id, {
+        type: 'group_message_read',
+        groupId,
+        messageId: msgId,
+        readerUserId: readerId,
+        readCount: Number(readCount.cnt),
+        totalMembers: members.length,
+      });
+    });
+  }
+}
+
 // --- グループメッセージ既読マーク ---
 // body: { messageIds: [id, ...] } (まとめて既読にする)
 router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res) => {
@@ -776,30 +897,7 @@ router.post('/:groupId/messages/read', verifyToken, asyncHandler(async (req, res
   // 既読を知らせない設定の人は、グループでも既読にしない(個人チャットと同じ)
   if ((await require('../utils/userSettings').getSettings(req.user.userId)).sendReadReceipts === false) return res.json({ ok: true });
 
-  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
-
-  for (const msgId of messageIds) {
-    if (typeof msgId !== 'string') continue;
-    const msg = await db.get('SELECT sender_id FROM group_messages WHERE id = ? AND group_id = ?', [msgId, groupId]);
-    if (!msg) continue;
-    if (msg.sender_id === req.user.userId) continue; // 自分の送信メッセージは既読対象外
-    const already = await db.get('SELECT * FROM group_message_reads WHERE message_id = ? AND user_id = ?', [msgId, req.user.userId]);
-    if (already) continue;
-    await db.run('INSERT INTO group_message_reads (message_id, user_id) VALUES (?, ?)', [msgId, req.user.userId]);
-
-    // 何人が既読したかをメンバー全員に通知(自分のアイコンを表示するのではなく人数ベースで良い)
-    const readCount = await db.get('SELECT COUNT(*) as cnt FROM group_message_reads WHERE message_id = ?', [msgId]);
-    members.forEach(m => {
-      broadcastToUser(m.user_id, {
-        type: 'group_message_read',
-        groupId,
-        messageId: msgId,
-        readerUserId: req.user.userId,
-        readCount: Number(readCount.cnt),
-        totalMembers: members.length,
-      });
-    });
-  }
+  await recordGroupReads(groupId, req.user.userId, messageIds);
 
   res.json({ ok: true });
 }));
@@ -820,7 +918,7 @@ router.get('/:groupId/messages/:msgId/reads', verifyToken, asyncHandler(async (r
 }));
 
 // --- グループメッセージ編集 ---
-router.post('/:groupId/messages/:msgId/edit', verifyToken, asyncHandler(async (req, res) => {
+router.post('/:groupId/messages/:msgId/edit', verifyToken, deviceKeys.requireApprovedSession, asyncHandler(async (req, res) => {
   const { groupId, msgId } = req.params;
   if (!req.body?.encrypted) censorBodyAndBanAfter(req, res, ['content'], { groupId });
   const { content, encrypted, keyVersion } = req.body;
@@ -887,11 +985,36 @@ router.get('/:groupId/pinned', verifyToken, asyncHandler(async (req, res) => {
   const rows = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id
-     WHERE gm.group_id = ? AND gm.pinned_at IS NOT NULL AND gm.deleted_at IS NULL
-     ORDER BY gm.pinned_at DESC`,
-    [req.params.groupId]
+     WHERE gm.group_id = ? AND gm.pinned_at IS NOT NULL AND gm.deleted_at IS NULL AND ${disappearing.notExpiredSql('gm')}
+     ORDER BY gm.pinned_at DESC LIMIT 100`,
+    [req.params.groupId, disappearing.nowParam()]
   );
   res.json(rows);
+}));
+
+// --- 消えるメッセージ(グループ) ---
+// メンバーなら誰でも見たり変えたりできる(グループ名の変更と同じ)。部外者は403。
+// GET /api/groups/:groupId/ttl -> { ttlSeconds }
+// PUT /api/groups/:groupId/ttl  body: { ttlSeconds: 0 | 3600 | 86400 | 604800 } -> { ok, ttlSeconds }
+router.get('/:groupId/ttl', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  if (!(await isGroupMember(groupId, req.user.userId))) return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  res.json({ ttlSeconds: await disappearing.getTtl(disappearing.groupKey(groupId)) });
+}));
+
+router.put('/:groupId/ttl', verifyToken, asyncHandler(async (req, res) => {
+  const { groupId } = req.params;
+  const me = req.user.userId;
+  if (!(await isGroupMember(groupId, me))) return res.status(403).json({ error: 'このグループのメンバーではありません' });
+  const ttl = req.body && req.body.ttlSeconds;
+  if (!disappearing.isAllowedTtl(ttl)) return res.status(400).json({ error: '指定できない時間です' });
+  const key = disappearing.groupKey(groupId);
+  if ((await disappearing.getTtl(key)) === ttl) return res.json({ ok: true, ttlSeconds: ttl, changed: false });
+  await disappearing.setTtl(key, ttl, me);
+  await disappearing.postTtlNotice({ actorId: me, groupId, ttlSeconds: ttl });
+  const members = await db.all('SELECT user_id FROM group_members WHERE group_id = ? AND left_at IS NULL', [groupId]);
+  members.forEach(m => broadcastToUser(m.user_id, { type: 'conversation_ttl', scope: 'group', conversationKey: key, groupId, ttlSeconds: ttl, changedBy: me }));
+  res.json({ ok: true, ttlSeconds: ttl, changed: true });
 }));
 
 // --- グループメッセージ削除 ---

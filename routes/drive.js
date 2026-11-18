@@ -9,6 +9,9 @@ const { verifyToken } = require('../utils/authMiddleware');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { adminUserIds } = require('../utils/adminNotify');
 const gd = require('../utils/gdrive');
+const { canUploadTo } = require('../utils/uploadScope');
+const { reserve } = require('../utils/uploadQuota');
+const { isGuestUser } = require('../utils/guest');
 
 const router = express.Router();
 const MAX_BYTES = 610 * 1024 * 1024; // 端末側の上限(600MB)+暗号化の分
@@ -17,17 +20,11 @@ async function isStaff(userId) {
   try { return (await adminUserIds('STAFF_USERS', require('../utils/adminNotify').DEFAULT_STAFF)).includes(userId); } catch (e) { return false; }
 }
 
-// 置き場所(端末が付ける folder 名)を、本人が当事者の会話に限る
+// 置き場所(端末が付ける folder 名)を、本人が当事者の会話に限る(Cloudinaryの署名と同じ基準。utils/uploadScope.js)
+// ドライブはファイルIDの下位フォルダを付けないので、ここでは付いていない形だけを通す
 async function canUseScope(userId, scope) {
-  if (typeof scope !== 'string' || scope.length > 200) return false;
-  const dm = /^brochat\/dm\/([A-Za-z0-9_-]+)$/.exec(scope);
-  if (dm) return dm[1].split('_').includes(userId);
-  const gr = /^brochat\/groups\/([A-Za-z0-9-]+)$/.exec(scope);
-  if (gr) return !!(await db.get('SELECT 1 AS ok FROM group_members WHERE group_id = ? AND user_id = ? AND left_at IS NULL', [gr[1], userId]));
-  // 投稿(タイムライン)の画像・動画。自分の分だけ
-  const po = /^brochat\/posts\/([A-Za-z0-9_-]+)$/.exec(scope);
-  if (po) return po[1] === userId;
-  return false;
+  if (typeof scope !== 'string' || !/^brochat\/(dm\/[A-Za-z0-9_-]+|groups\/[A-Za-z0-9-]+|posts\/[A-Za-z0-9_-]+)$/.test(scope)) return false;
+  return canUploadTo(userId, scope);
 }
 const isPostScope = scope => /^brochat\/posts\//.test(scope || '');
 // 読む時は、抜けたメンバーでも当時のメッセージを見られるように left_at は問わない
@@ -95,6 +92,21 @@ const driveUploadLimiter = rateLimit({
   ...require('../utils/rateLimits').perUser,
   message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
 });
+// 1人あたりの1日の上限。公式アカウントのドライブ(15GB)を1人で埋められないように
+const DAILY_BYTES = Number(process.env.DRIVE_DAILY_BYTES_PER_USER) || 2 * 1024 * 1024 * 1024;
+async function usedToday(userId) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  const r = await db.get('SELECT COALESCE(SUM(size), 0) AS total FROM drive_files WHERE owner_id = ? AND created_at > ?', [userId, since]);
+  return Number((r && r.total) || 0);
+}
+// ゲストの投稿の1日の上限。ゲストは使い捨てで何人でも作れ、投稿はログインなしで誰でも見られるので、
+// ここを広くすると公式アカウントのドライブが無料のファイル置き場にされる。トークの分は絞らない(招待してくれた人と話すため)
+const GUEST_POST_DAILY_BYTES = Number(process.env.GUEST_POST_DAILY_BYTES) || 100 * 1024 * 1024;
+async function postsUsedToday(userId) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  const r = await db.get('SELECT COALESCE(SUM(size), 0) AS total FROM drive_files WHERE owner_id = ? AND scope = ? AND created_at > ?', [userId, 'brochat/posts/' + userId, since]);
+  return Number((r && r.total) || 0);
+}
 router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req, res) => {
   if (!(await gd.isConnected())) return res.status(503).json({ error: 'drive not connected' });
   const scope = String(req.get('x-scope') || '');
@@ -109,25 +121,60 @@ router.post('/upload', driveUploadLimiter, verifyToken, asyncHandler(async (req,
     mime = String(req.get('x-content-type') || '').toLowerCase();
     if (!/^(image\/(jpeg|png|gif|webp|heic|heif|avif)|video\/(mp4|quicktime|webm|x-matroska|3gpp))$/.test(mime)) return res.status(415).json({ error: 'この種類のファイルは投稿できません' });
   }
-  let out;
+  // 容量を始める前に予約する。保存済みの合計だけを見ると、同時に送られた分がどれも上限の手前に見えて全部通ってしまう
+  const staff = await isStaff(req.userId);
+  const guestPost = !staff && post && (await isGuestUser(req.userId));
+  const OVER = '今日アップロードできる量を超えました。明日またお試しください';
+  const slot = await reserve(req.userId, size, post, async (cur) => {
+    if (staff) return null;
+    if ((await usedToday(req.userId)) + cur.bytes + size > DAILY_BYTES) return OVER;
+    if (guestPost && (await postsUsedToday(req.userId)) + cur.postBytes + size > GUEST_POST_DAILY_BYTES) return OVER;
+    return null;
+  });
+  if (slot.error) return res.status(429).json({ error: slot.error });
+  // 相手が途中で切った時にも返す(Googleの応答を待ち続けて、予約が残ったままにならないように)
+  res.once('close', slot.release);
   try {
-    out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}${post ? '' : '.bin'}`, mime);
-  } catch (e) {
-    console.error('[drive] upload failed:', e.message);
-    return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
+    let out;
+    try {
+      out = await gd.uploadStream(Readable.toWeb(req), size, `${Date.now()}_${Math.random().toString(36).slice(2, 10)}${post ? '' : '.bin'}`, mime);
+    } catch (e) {
+      console.error('[drive] upload failed:', e.message);
+      return res.status(502).json({ error: 'ドライブへの保存に失敗しました' });
+    }
+    await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
+    console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
+    const base = (require('../utils/siteHosts').knownBase(req) || process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
+  } finally {
+    // drive_files に載せた後で返す(その間に割り込まれても、合計から漏れない)
+    slot.release();
   }
-  await db.run('INSERT INTO drive_files (file_id, owner_id, scope, size) VALUES (?, ?, ?, ?)', [out.id, req.userId, scope, out.size]);
-  console.log(`[drive] stored ${Math.round(out.size / 1024)}KB`);
-  const base = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  res.json({ url: `${base}/m/${post ? 'p' : 'd'}/${out.id}`, publicId: 'gd_' + out.id });
 }));
+
+// ファイルIDごとの置き場所を少しの間だけ覚える。
+// 動画は Range で何十回も取りに来る(シークするたびに増える)ので、そのたびにDBを引くと
+// 1本見られるだけで数十クエリになる。置き場所は後から変わらないので覚えてよい。
+// 消した時は忘れる(removeOwned)。
+const scopeCache = new Map(); // file_id -> { scope, exp }
+const SCOPE_TTL_MS = 10 * 60 * 1000;
+const SCOPE_CACHE_MAX = 500;
+async function scopeOf(id) {
+  const hit = scopeCache.get(id);
+  if (hit && hit.exp > Date.now()) return hit.scope;
+  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
+  const scope = row ? row.scope : null;
+  if (scopeCache.size >= SCOPE_CACHE_MAX) scopeCache.clear();
+  scopeCache.set(id, { scope, exp: Date.now() + SCOPE_TTL_MS });
+  return scope;
+}
 
 // GET /m/d/:id (index.js から付ける。/api の回数制限に掛けないため)
 async function serveFile(req, res) {
   const id = String(req.params.id || '');
   if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return res.status(404).end();
-  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
-  if (!row || !(await canReadScope(req.userId, row.scope))) return res.status(404).end();
+  const scope = await scopeOf(id);
+  if (!scope || !(await canReadScope(req.userId, scope))) return res.status(404).end();
   let r;
   try { r = await gd.openDownload(id); } catch (e) { return res.status(503).end(); }
   if (!r.ok || !r.body) return res.status(r.status === 404 ? 404 : 502).end();
@@ -146,8 +193,8 @@ async function serveFile(req, res) {
 async function servePublic(req, res) {
   const id = String(req.params.id || '');
   if (!/^[A-Za-z0-9_-]{10,100}$/.test(id)) return res.status(404).end();
-  const row = await db.get('SELECT scope FROM drive_files WHERE file_id = ?', [id]);
-  if (!row || !isPostScope(row.scope)) return res.status(404).end();
+  const scope = await scopeOf(id);
+  if (!scope || !isPostScope(scope)) return res.status(404).end();
   const range = typeof req.headers.range === 'string' && /^bytes=\d*-\d*$/.test(req.headers.range) ? req.headers.range : null;
   let r;
   try { r = await gd.openDownload(id, range); } catch (e) { return res.status(503).end(); }
@@ -167,6 +214,7 @@ async function removeOwned(userId, publicId) {
   const id = String(publicId || '').replace(/^gd_/, '');
   const row = await db.get('SELECT owner_id FROM drive_files WHERE file_id = ?', [id]);
   if (!row || row.owner_id !== userId) return false;
+  scopeCache.delete(id);
   await gd.remove(id);
   await db.run('DELETE FROM drive_files WHERE file_id = ?', [id]);
   return true;

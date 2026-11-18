@@ -9,11 +9,13 @@ const { sendServerError } = require('../utils/errorResponse');
 // 認証ロジックを1箇所に統一し、トークン失効チェックも一律に効くようにする。
 const { verifyToken: auth } = require('../utils/authMiddleware');
 const { rejectIfProfane } = require('../utils/moderation');
-const { blockState, bumpBlockVersion } = require('../utils/relations');
+const { blockState, bumpBlockVersion, isAcquainted } = require('../utils/relations');
 
 const { searchLimiter } = require('../utils/rateLimits');
 const { parseDataUrl, storeIcon, baseUrl, isValidIconUrl } = require('../utils/iconStore');
 const deviceKeys = require('../utils/deviceKeys');
+const { markRemoved, clearRemoved } = require('../utils/inviteCore');
+
 const router = express.Router();
 const picUploads = new Map(); // userId -> [アップロード時刻]
 
@@ -52,7 +54,7 @@ function isValidProfilePic(value, req) {
 // プロフィール更新
 router.post('/me', auth, async (req, res) => {
   try {
-    const { displayName, bio, profilePic, publicKey } = req.body || {};
+    const { displayName, bio, profilePic, banner, publicKey } = req.body || {};
     if (await rejectIfProfane(req, res, typeof displayName === 'string' ? displayName : '', typeof bio === 'string' ? bio : '')) return;
     if ((displayName != null && typeof displayName !== 'string') || (bio != null && typeof bio !== 'string')) {
       return res.status(400).json({ error: '入力の形式が正しくありません' });
@@ -84,6 +86,24 @@ router.post('/me', auth, async (req, res) => {
       }
       await db.run('UPDATE users SET profile_pic = ? WHERE id = ?', [picToSave, req.userId]);
     }
+    // チャンネルのバナー(投稿タブのチャンネルページ上部の横長画像)。空文字で削除
+    if (banner !== undefined) {
+      if (!isValidProfilePic(banner, req)) {
+        return res.status(400).json({ error: 'バナー画像の形式が不正です' });
+      }
+      let bannerToSave = banner || null;
+      if (banner && banner.startsWith('data:')) {
+        const parsed = parseDataUrl(banner);
+        if (!parsed) return res.status(400).json({ error: 'バナー画像の形式が不正です' });
+        const now = Date.now();
+        const hist = (picUploads.get(req.userId) || []).filter(t => now - t < 60 * 60 * 1000);
+        if (hist.length >= 30) return res.status(429).json({ error: '画像の変更が多すぎます。しばらくしてからお試しください。' });
+        hist.push(now);
+        picUploads.set(req.userId, hist);
+        bannerToSave = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
+      }
+      await db.run('UPDATE users SET banner_url = ? WHERE id = ?', [bannerToSave, req.userId]);
+    }
     // 送られてきた項目だけ更新する。以前は名前だけ・画像だけを送っても、送っていない自己紹介が空に上書きされていた
     if (typeof displayName === 'string' && displayName.trim()) {
       await db.run('UPDATE users SET display_name = ? WHERE id = ?', [displayName, req.userId]);
@@ -96,7 +116,9 @@ router.post('/me', auth, async (req, res) => {
       if (typeof publicKey !== 'string' || publicKey.length > 200 || !/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
         return res.status(400).json({ error: '公開鍵の形式が不正です' });
       }
-      await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
+      // 端末の承認を素通りしないよう、登録は必ず deviceKeys.touch を通す(ここで users.public_key を直接書かない)
+      if (publicKey.length !== 44) return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
+      await registerDeviceKey(req.userId, publicKey, req.user && req.user.sid);
     }
     res.json({ ok: true });
   } catch (e) {
@@ -105,6 +127,17 @@ router.post('/me', auth, async (req, res) => {
 });
 
 // E2E暗号化用の公開鍵を登録（初回ログイン時にクライアントが自動で呼ぶ）
+// 公開鍵の登録の共通処理。新しく有効になれば相手に知らせ、承認待ちなら本人の端末に知らせる
+async function registerDeviceKey(userId, publicKey, sid) {
+  const reg = await deviceKeys.touch(userId, publicKey, sid);
+  if (reg.activated) await deviceKeys.announce(userId);
+  if (reg.isNew && reg.status === 'pending') {
+    try { require('../ws/wsServer').broadcastToUser(userId, { type: 'device_pending' }); } catch (e) {}
+    require('./devices').mailPending(userId, publicKey).catch(() => {});
+  }
+  return reg;
+}
+
 router.post('/publickey', auth, async (req, res) => {
   try {
     const { publicKey } = req.body;
@@ -117,21 +150,11 @@ router.post('/publickey', auth, async (req, res) => {
     if (!/^[A-Za-z0-9+/=]+$/.test(publicKey) || publicKey.length !== 44) {
       return res.status(400).json({ error: '公開鍵はBase64形式である必要があります' });
     }
-    await db.run('UPDATE users SET public_key = ? WHERE id = ?', [publicKey, req.userId]);
-    const isNew = await deviceKeys.touch(req.userId, publicKey);
-    if (isNew) {
-      // 新しい端末が増えた。同じグループの人(と自分のほかの端末)に、その端末あてにグループ鍵を配り直してもらう
-      try {
-        const { broadcastToUser } = require('../ws/wsServer');
-        const peers = await db.all(
-          `SELECT DISTINCT gm2.user_id FROM group_members gm1
-           JOIN group_members gm2 ON gm2.group_id = gm1.group_id AND gm2.left_at IS NULL
-           WHERE gm1.user_id = ? AND gm1.left_at IS NULL`,
-          [req.userId]
-        );
-        for (const p of peers) broadcastToUser(p.user_id, { type: 'member_keys_ready', userId: req.userId });
-      } catch (e) { console.error('[friends] member_keys_ready broadcast failed:', e.message); }
-    }
+    // 同じ鍵の別表記(末尾の未使用ビット等)を別の端末として登録させない
+    { const raw = Buffer.from(publicKey, 'base64');
+      if (raw.length !== 32 || (raw[31] & 0x80) || raw.toString('base64') !== publicKey) return res.status(400).json({ error: '公開鍵の形式が不正です' }); }
+    const reg = await registerDeviceKey(req.userId, publicKey, req.user && req.user.sid);
+    if (reg.status === 'pending') return res.json({ ok: true, status: 'pending', approveAfter: reg.approveAfter, code: deviceKeys.codeFor(publicKey) });
     res.json({ ok: true });
   } catch (e) {
     sendServerError(res, e);
@@ -178,8 +201,13 @@ router.put('/key-backup', auth, async (req, res) => {
 });
 
 // 特定ユーザーの公開鍵を取得（メッセージ暗号化のため）
+// 友だち・同じグループ/コミュニティ・自分だけ(/prekeys/identity と同じ)。以前は誰の鍵でも取れ、
+// 検索で出るIDから「誰がいつ端末を増やしたか」まで覗けた
 router.get('/publickey/:userId', auth, async (req, res) => {
   try {
+    if (typeof req.params.userId !== 'string' || !(await isAcquainted(req.userId || (req.user && req.user.userId), req.params.userId))) {
+      return res.status(404).json({ error: 'user not found' });
+    }
     const user = await db.get('SELECT id, public_key FROM users WHERE id = ?', [req.params.userId]);
     if (!user) return res.status(404).json({ error: 'user not found' });
     const publicKeys = (await deviceKeys.activeKeysMany([user])).get(user.id) || [];
@@ -242,6 +270,7 @@ router.post('/request', auth, async (req, res) => {
         const full = await db.get('SELECT requested_by FROM friendships WHERE id = ?', [existing.id]);
         if (full && full.requested_by !== req.userId) {
           await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [new Date().toISOString(), existing.id]);
+          await clearRemoved(req.userId, targetUser.id); // 自分から戻したので、招待コードの制限も外す
           notifyFriendChange(req.userId, targetUser.id, 'accepted');
           return res.json({ ok: true, friendshipId: existing.id, accepted: true });
         }
@@ -251,6 +280,7 @@ router.post('/request', auth, async (req, res) => {
 
     const friendshipId = uuidv4();
     await db.run('INSERT INTO friendships (id, user_a_id, user_b_id, status, requested_by) VALUES (?, ?, ?, ?, ?)', [friendshipId, userA, userB, 'pending', req.userId]);
+    await clearRemoved(req.userId, targetUser.id); // 自分から申請したので、招待コードの制限も外す
     notifyFriendChange(req.userId, targetUser.id, 'request');
     res.json({ ok: true, friendshipId });
   } catch (e) {
@@ -277,6 +307,7 @@ router.post('/accept', auth, async (req, res) => {
 
     const now = new Date().toISOString();
     await db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE id = ?", [now, friendshipId]);
+    await clearRemoved(req.userId, friendship.user_a_id === req.userId ? friendship.user_b_id : friendship.user_a_id); // 自分から戻したので、招待コードの制限も外す
     notifyFriendChange(friendship.user_a_id, friendship.user_b_id, 'accepted');
     res.json({ ok: true });
   } catch (e) {
@@ -302,6 +333,19 @@ async function dropFriendship(req, res, allowed) {
     if (f.user_a_id !== req.userId && f.user_b_id !== req.userId) return res.status(403).json({ error: 'not authorized' });
     if (!allowed(f, req.userId)) return res.status(400).json({ error: 'この状態では実行できません' });
     await db.run('DELETE FROM friendships WHERE id = ?', [friendshipId]);
+    if (f.status === 'accepted') {
+      // 友だちを外したら、その2人の間の招待コードの「使用済み」の記録も消す。
+      // 残しておくと、外された人が使い切りのコードでも黙って友だちに戻れてしまう(戻るなら、新しく人数を1つ使う)。
+      try {
+        for (const [who, owner] of [[f.user_a_id, f.user_b_id], [f.user_b_id, f.user_a_id]]) {
+          await db.run('DELETE FROM invite_redemptions WHERE user_id = ? AND code IN (SELECT code FROM invite_codes WHERE owner_id = ?)', [who, owner]);
+        }
+      } catch (e) { console.warn('[friends] invite redemption cleanup failed:', e.message); }
+      // 外した人を覚える。上の記録を消すだけだと、人数に空きのあるコードで黙って戻れてしまう
+      try {
+        await markRemoved(req.userId, f.user_a_id === req.userId ? f.user_b_id : f.user_a_id);
+      } catch (e) { console.warn('[friends] invite removal record failed:', e.message); }
+    }
     notifyFriendChange(f.user_a_id, f.user_b_id, 'removed');
     res.json({ ok: true });
   } catch (e) {

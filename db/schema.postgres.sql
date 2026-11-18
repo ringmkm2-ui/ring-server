@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   profile_pic TEXT,
   bio TEXT,
+  banner_url TEXT,
   public_key TEXT,
   token_revoked_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT now()
@@ -243,6 +244,19 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
 
+-- 管理Exeの操作ログ(パスワードや鍵は入れない)
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id TEXT PRIMARY KEY,
+  at TIMESTAMP DEFAULT now(),
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  target_label TEXT,
+  detail TEXT,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_offline_queue_recipient ON offline_queue(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_media_expires ON media_files(expires_at);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
@@ -266,6 +280,19 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id TEXT PRIMARY KEY,
   data TEXT NOT NULL DEFAULT '{}',
   updated_at TIMESTAMP DEFAULT now()
+);
+
+-- トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)。時刻は epoch ミリ秒
+CREATE TABLE IF NOT EXISTS chat_prefs (
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  peer_id TEXT NOT NULL,
+  pinned_at BIGINT,
+  muted BOOLEAN NOT NULL DEFAULT false,
+  hidden_at BIGINT,
+  cleared_at BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT now(),
+  PRIMARY KEY (user_id, kind, peer_id)
 );
 
 -- コミュニティのE2E暗号化(グループと同じ方式: 共有鍵をメンバーごとに暗号化して配る)

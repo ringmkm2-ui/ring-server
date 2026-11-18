@@ -1,0 +1,564 @@
+// utils/linkPreview.js
+// リンクのプレビュー(タイトル・説明・画像)を、サーバーがURL先を取りに行って作る。
+//
+// 一番の危険は SSRF: 利用者が好きなURLを渡せるので、そのまま取りに行くとサーバーから見た
+// 内部ネットワーク(127.0.0.1・社内IP・クラウドのメタデータ 169.254.169.254 など)を覗かれる。
+// そのため以下を全部守る。
+//  - http / https だけ、ユーザー名・パスワード付きは不可、ポートは 80 / 443 だけ
+//  - DNS はこちらで引き、返った全てのアドレスが公開IPであること(1つでも内部なら拒否)
+//  - 接続は検証済みのIPに固定する(検証と接続の間にDNSを書き換えられる DNS rebinding を防ぐ)
+//  - リダイレクトは3回まで、毎回同じ検証をやり直す
+//  - 全体で5秒、本文は(展開後)2MBまで、text/html だけ。</head> が閉じたらそこで読むのをやめる
+//  - 返すのは平文のテキストだけ(HTMLは通さない)。画像は https のURLだけ
+const dns = require('dns');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+const zlib = require('zlib');
+
+const MAX_REDIRECTS = 3;
+const TOTAL_TIMEOUT_MS = 5000;
+// YouTube のように <head> の中で巨大なスクリプトが先に来るサイトは、タイトルが700KB付近にある。
+// 普通は </head> を見つけた時点で読むのをやめるので、この上限まで読むのは head が閉じないページだけ。
+const MAX_BODY = 2 * 1024 * 1024;
+const MAX_IMG = 1536 * 1024;
+const IMG_CACHE_MAX_BYTES = 24 * 1024 * 1024;
+const CACHE_MS = 10 * 60 * 1000;
+const CACHE_MAX = 300;
+
+// --- IP の判定 ---------------------------------------------------------
+
+function v4ToInt(ip) {
+  const p = ip.split('.').map(Number);
+  return (((p[0] * 256 + p[1]) * 256 + p[2]) * 256 + p[3]) >>> 0;
+}
+// [開始, 長さ(ビット)]
+const BLOCKED_V4 = [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16],
+  ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16],
+  ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
+].map(([a, bits]) => ({ base: v4ToInt(a), mask: bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0 }));
+
+function isBlockedV4(ip) {
+  const n = v4ToInt(ip);
+  return BLOCKED_V4.some(r => ((n & r.mask) >>> 0) === r.base);
+}
+
+// IPv6 を 16bit x 8 に展開する。読めなければ null
+function parseV6(ip) {
+  if (ip.includes('%')) return null; // ゾーンID付きは扱わない
+  let s = ip.toLowerCase();
+  // 末尾が a.b.c.d の形(IPv4埋め込み)
+  const m = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (m) {
+    if (net.isIPv4(m[2]) === false) return null;
+    const n = v4ToInt(m[2]);
+    s = m[1] + ((n >>> 16) & 0xffff).toString(16) + ':' + (n & 0xffff).toString(16);
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  let groups;
+  if (halves.length === 2) {
+    const fill = 8 - head.length - tail.length;
+    if (fill < 1) return null;
+    groups = [...head, ...Array(fill).fill('0'), ...tail];
+  } else {
+    groups = head;
+  }
+  if (groups.length !== 8) return null;
+  const out = [];
+  for (const g of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    out.push(parseInt(g, 16));
+  }
+  return out;
+}
+function v4FromGroups(hi, lo) { return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`; }
+
+function isBlockedV6(ip) {
+  const g = parseV6(ip);
+  if (!g) return true; // 読めないものは通さない
+  const allZeroUpTo = (n) => g.slice(0, n).every(x => x === 0);
+  if (g.every(x => x === 0)) return true;                            // ::
+  if (allZeroUpTo(7) && g[7] === 1) return true;                     // ::1
+  if (allZeroUpTo(5) && g[5] === 0xffff) return isBlockedV4(v4FromGroups(g[6], g[7])); // ::ffff:a.b.c.d (IPv4-mapped)
+  if (allZeroUpTo(6)) return true;                                   // ::a.b.c.d (互換アドレス、廃止済み)
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every(x => x === 0)) return isBlockedV4(v4FromGroups(g[6], g[7])); // 64:ff9b::/96 (NAT64)
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true;   // 64:ff9b:1::/48
+  if (g[0] === 0x100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true; // 100::/64 (discard)
+  if ((g[0] & 0xfe00) === 0xfc00) return true;                       // fc00::/7 (ULA)
+  if ((g[0] & 0xffc0) === 0xfe80) return true;                       // fe80::/10 (link-local)
+  if ((g[0] & 0xffc0) === 0xfec0) return true;                       // fec0::/10 (site-local, 廃止)
+  if ((g[0] & 0xff00) === 0xff00) return true;                       // ff00::/8 (multicast)
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true;               // documentation
+  if (g[0] === 0x3fff && (g[1] & 0xf000) === 0) return true; // 3fff::/20 (documentation, RFC 9637)
+  if (allZeroUpTo(4) && g[4] === 0xffff && g[5] === 0) return isBlockedV4(v4FromGroups(g[6], g[7])); // ::ffff:0:a.b.c.d (SIIT)
+  if (g[0] === 0x2001 && g[1] === 0) return true;                    // Teredo
+  if (g[0] === 0x2002) return isBlockedV4(v4FromGroups(g[1], g[2])); // 6to4: 埋め込まれたIPv4を見る
+  return false;
+}
+
+// true = 内部/予約/不正なので接続してはいけない
+function isBlockedIp(ip) {
+  const s = String(ip || '').replace(/^\[|\]$/g, '');
+  if (net.isIPv4(s)) return isBlockedV4(s);
+  if (net.isIPv6(s)) return isBlockedV6(s);
+  return true;
+}
+
+// --- テスト用の抜け道 ----------------------------------------------------
+// テストは 127.0.0.1 のローカルサーバーを相手にするため、NODE_ENV==='test' の時だけ、
+// LINK_PREVIEW_TEST_ALLOW(カンマ区切りのホスト名/IP)に書いたホストは内部IP・ポート制限を免除する。
+// 本番(NODE_ENV が test 以外)では環境変数が書かれていても読まない。
+function testAllowed(hostname) {
+  if (process.env.NODE_ENV !== 'test') return false;
+  const list = String(process.env.LINK_PREVIEW_TEST_ALLOW || '').split(',').map(x => x.trim()).filter(Boolean);
+  return list.includes(hostname);
+}
+
+// --- URL の検証と名前解決 -------------------------------------------------
+
+class PreviewError extends Error {
+  constructor(msg, status) { super(msg); this.status = status || 400; }
+}
+
+function parseHttpUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch (e) { throw new PreviewError('URLの形式が正しくありません'); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new PreviewError('http/https のURLだけ使えます');
+  if (u.username || u.password) throw new PreviewError('このURLは使えません');
+  if (!u.hostname) throw new PreviewError('URLの形式が正しくありません');
+  return u;
+}
+
+// 取りに行ってよい宛先か確かめ、接続に使うIPを1つ返す
+async function resolveSafe(u, resolver) {
+  const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const allowTest = testAllowed(host);
+  if (!allowTest) {
+    const port = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80);
+    if (port !== 80 && port !== 443) throw new PreviewError('このURLは使えません');
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+      throw new PreviewError('このURLは使えません');
+    }
+  }
+  let addrs;
+  if (net.isIP(host)) {
+    addrs = [{ address: host, family: net.isIPv4(host) ? 4 : 6 }];
+  } else {
+    try {
+      addrs = await resolver(host);
+    } catch (e) {
+      throw new PreviewError('取得できませんでした', 422);
+    }
+  }
+  if (!Array.isArray(addrs) || !addrs.length) throw new PreviewError('取得できませんでした', 422);
+  if (!allowTest && addrs.some(a => isBlockedIp(a.address))) throw new PreviewError('このURLは使えません');
+  return addrs.find(a => a.family === 4) || addrs[0]; // 片方しか試さないので、IPv6が使えない環境でも通りやすいIPv4を先に
+}
+
+const defaultResolver = async (host) => dns.promises.lookup(host, { all: true, verbatim: true });
+
+// 検証済みのIPにだけつなぐ(URLのホスト名はそのまま残すので、TLSの証明書確認とHostヘッダは本来の名前で行われる)
+function pinnedLookup(addr) {
+  return (hostname, options, cb) => {
+    if (typeof options === 'function') { cb = options; options = {}; }
+    setImmediate(() => {
+      if (options && options.all) return cb(null, [{ address: addr.address, family: addr.family }]);
+      cb(null, addr.address, addr.family);
+    });
+  };
+
+}
+
+function requestOnce(u, addr, deadline, image) {
+  return new Promise((resolve, reject) => {
+    const left = deadline - Date.now();
+    if (left <= 0) return reject(new PreviewError('時間内に取得できませんでした', 504));
+    const mod = u.protocol === 'https:' ? https : http;
+    const req = mod.request({
+      protocol: u.protocol,
+      hostname: u.hostname.replace(/^\[|\]$/g, ''),
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
+      method: 'GET',
+      lookup: pinnedLookup(addr),
+      agent: false,
+      headers: {
+        'User-Agent': 'BroChatLinkPreview/1.0',
+        'Accept': image ? 'image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9' : 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
+        'Accept-Language': 'ja,en;q=0.8',
+        'Accept-Encoding': image ? 'identity' : 'gzip, deflate, br',
+      },
+    });
+    let bodyFinish = null;
+    const timer = setTimeout(() => { if (bodyFinish) bodyFinish(); else req.destroy(new PreviewError('時間内に取得できませんでした', 504)); }, left);
+    req.on('error', (e) => { clearTimeout(timer); reject(e instanceof PreviewError ? e : new PreviewError('取得できませんでした', 422)); });
+    req.on('response', (res) => {
+      const status = res.statusCode || 0;
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume();
+        clearTimeout(timer);
+        return resolve({ redirect: String(res.headers.location) });
+      }
+      if (status !== 200) { res.resume(); clearTimeout(timer); return reject(new PreviewError('取得できませんでした', 422)); }
+      const ct = String(res.headers['content-type'] || '').toLowerCase();
+      if (image) {
+        // 画像は途中で切ると壊れるので、上限を超えたら諦める。SVG は中にスクリプトを持てるので通さない
+        const m = /^image\/(png|jpeg|jpg|gif|webp|avif)\s*(;|$)/.exec(ct);
+        const len = Number(res.headers['content-length']);
+        if (!m || (Number.isFinite(len) && len > MAX_IMG)) { res.resume(); clearTimeout(timer); return reject(new PreviewError('画像を取得できませんでした', 422)); }
+        const parts = [];
+        let n = 0, fin = false;
+        const end = (err) => {
+          if (fin) return; fin = true; clearTimeout(timer);
+          if (err) return reject(err);
+          resolve({ body: Buffer.concat(parts), contentType: m[1] === 'jpg' ? 'image/jpeg' : 'image/' + m[1] });
+        };
+        res.on('data', (c) => {
+          n += c.length;
+          if (n > MAX_IMG) { res.destroy(); return end(new PreviewError('画像が大きすぎます', 422)); }
+          parts.push(c);
+        });
+        res.on('end', () => end());
+        res.on('error', () => end(new PreviewError('画像を取得できませんでした', 422)));
+        res.on('aborted', () => end(new PreviewError('画像を取得できませんでした', 422)));
+        return;
+      }
+      if (!/^(text\/html|application\/xhtml\+xml)\b/.test(ct)) { res.resume(); clearTimeout(timer); return reject(new PreviewError('プレビューできないページです', 422)); }
+      // 圧縮されて来ても読む。上限は「展開した後」の大きさで数える(小さく圧縮した巨大データ=zip爆弾を避ける)
+      const enc = String(res.headers['content-encoding'] || '').toLowerCase().trim();
+      let src = res;
+      if (enc === 'gzip' || enc === 'x-gzip') src = res.pipe(zlib.createGunzip());
+      else if (enc === 'deflate') src = res.pipe(zlib.createInflate());
+      else if (enc === 'br') src = res.pipe(zlib.createBrotliDecompress());
+      else if (enc && enc !== 'identity') { res.resume(); clearTimeout(timer); return reject(new PreviewError('取得できませんでした', 422)); }
+      const chunks = [];
+      let size = 0, done = false, tail = Buffer.alloc(0);
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        bodyFinish = null;
+        // 読むのをやめたら、展開ストリームも壊す。res だけ壊すと、入力済みの圧縮データが最後まで展開され続けて CPU を食う(圧縮爆弾)
+        try { if (src !== res) { res.unpipe(src); src.destroy(); } res.destroy(); } catch (e) { /* 既に閉じている */ }
+        resolve({ body: Buffer.concat(chunks), contentType: ct });
+      };
+      bodyFinish = finish; // 時間切れの時は、読めた分でプレビューを作る
+      src.on('data', (c) => {
+        if (done) return;
+        size += c.length;
+        if (size > MAX_BODY) {
+          chunks.push(c.subarray(0, c.length - (size - MAX_BODY)));
+          res.destroy(); // 512KB 読めば <head> には十分
+          finish();
+        } else {
+          chunks.push(c);
+          // <head> が閉じたら十分(以降はプレビューに使わない)。境界をまたぐ場合に備えて前の末尾も一緒に見る
+          const win = Buffer.concat([tail, c]).toString('latin1');
+          if (/<\/head\s*>/i.test(win)) { res.destroy(); return finish(); }
+          tail = c.subarray(Math.max(0, c.length - 16));
+        }
+      });
+      src.on('end', finish);
+      src.on('error', finish);   // 途中で切れても、ここまで読めた分でプレビューを作る
+      if (src !== res) res.on('error', finish);
+    });
+    req.end();
+  });
+}
+
+// 名前解決が遅い相手でも、全体の5秒を超えて待たない
+function withDeadline(p, deadline) {
+  const left = deadline - Date.now();
+  if (left <= 0) { p.catch(() => {}); return Promise.reject(new PreviewError('時間内に取得できませんでした', 504)); }
+  let t;
+  const timeout = new Promise((_, rej) => { t = setTimeout(() => rej(new PreviewError('時間内に取得できませんでした', 504)), left); });
+  p.catch(() => {});
+  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+}
+
+// リダイレクトを辿って本文を取る。毎回、検証と名前解決をやり直す
+async function fetchHtml(startUrl, resolver, image) {
+  const deadline = Date.now() + TOTAL_TIMEOUT_MS;
+  let u = parseHttpUrl(startUrl);
+  for (let i = 0; i <= MAX_REDIRECTS; i++) {
+    const addr = await withDeadline(resolveSafe(u, resolver), deadline);
+    const r = await requestOnce(u, addr, deadline, image);
+    if (r.body !== undefined) return image ? { buf: r.body, contentType: r.contentType } : { body: decodeBody(r.body, r.contentType), finalUrl: u };
+    let next;
+    try { next = new URL(r.redirect, u); } catch (e) { throw new PreviewError('取得できませんでした', 422); }
+    const nextUrl = parseHttpUrl(next.href);
+    // 画像は https だけの約束なので、リダイレクトで http へ落ちるのも認めない(getImage の入口の検査をすり抜けさせない)
+    if (image && u.protocol === 'https:' && nextUrl.protocol !== 'https:') throw new PreviewError('https の画像だけ使えます');
+    u = nextUrl;
+  }
+  throw new PreviewError('リダイレクトが多すぎます', 422);
+}
+
+// --- 文字コード ----------------------------------------------------------------
+// 日本語サイトには Shift_JIS / EUC-JP がまだ多い。UTF-8 と決めつけて読むと文字化けするので、
+// ①BOM ②Content-Type の charset ③先頭の <meta charset> の順に見て、分からなければ UTF-8。
+function knownCharset(label) { try { new TextDecoder(label); return true; } catch (e) { return false; } }
+function pickCharset(buf, contentType) {
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return 'utf-8';
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return 'utf-16le';
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return 'utf-16be';
+  const h = /charset\s*=\s*["']?([\w:.-]+)/i.exec(String(contentType || ''));
+  if (h && knownCharset(h[1])) return h[1]; // 知らない名前なら、<meta> の宣言を見る
+  const head = buf.subarray(0, 4096).toString('latin1');
+  const m = /<meta\b[^>]*?charset\s*=\s*["']?([\w:.-]+)/i.exec(head);
+  return m ? m[1] : 'utf-8';
+}
+function decodeBody(buf, contentType) {
+  const cs = pickCharset(buf, contentType);
+  try { return new TextDecoder(cs).decode(buf); } catch (e) { /* 知らない名前 */ }
+  return new TextDecoder('utf-8').decode(buf);
+}
+
+// --- HTML の読み取り -------------------------------------------------------
+// 正規表現だけの小さな読み取り。タグは1つも返さず、取り出した値は全部平文にする。
+
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+function decodeEntities(s) {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const cp = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      if (!Number.isFinite(cp) || cp < 32 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return ' ';
+      return String.fromCodePoint(cp);
+    }
+    const v = ENTITIES[e.toLowerCase()];
+    return v === undefined ? m : v;
+  });
+}
+function plain(s, max) {
+  if (typeof s !== 'string') return '';
+  // 長すぎる入力は先に切る(以降の正規表現が長い入力で遅くなるのを避ける。表示は max 文字までなので十分)
+  if (s.length > max * 8) s = s.slice(0, max * 8);
+  // 先にエンティティを戻してからタグを落とす(&lt;b&gt; のように隠した形でも、最終的にタグは残らない)
+  let t = decodeEntities(s).replace(/<[^>]*>/g, ' ');
+  t = t.replace(/[<>]/g, '');                    // 閉じていない < > も落とす(HTMLとして解釈させない)
+  // eslint-disable-next-line no-control-regex
+  t = t.replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ');
+  t = t.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  let cut = t.slice(0, max - 1);
+  if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1); // 絵文字などの真ん中で切らない
+  return cut + '…';
+}
+
+function parseAttrs(tag) {
+  const attrs = {};
+  const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+  let m;
+  while ((m = re.exec(tag))) {
+    const k = m[1].toLowerCase();
+    if (!(k in attrs)) attrs[k] = m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : '';
+  }
+  return attrs;
+}
+
+// 正規表現ではなく、indexOf と1回なぞるだけの走査で読む。
+// 以前の正規表現は「閉じない引用符」を含む入力で、<meta の出現ごとに末尾まで読み直す2乗の時間になり、
+// 悪意あるページ1つでサーバー全体が数秒〜止まった(ReDoS)。ここは入力が何であっても、かかる時間が入力の大きさに比例する。
+const META_TAG_MAX = 4096;     // 1つのタグの最大長。これを超える(=閉じない)タグは読み飛ばす
+const META_TRIES_MAX = 400;    // 試すタグの数の上限(正常なページの head にある meta は多くても数十個)
+function lowerAscii(s) { return s.replace(/[A-Z]/g, c => String.fromCharCode(c.charCodeAt(0) + 32)); } // 長さを変えない小文字化
+function scanMetaTags(head, low) {
+  const out = [];
+  let pos = 0;
+  for (let tries = 0; tries < META_TRIES_MAX; tries++) {
+    const i = low.indexOf('<meta', pos);
+    if (i < 0) break;
+    const nc = low.charCodeAt(i + 5);
+    if (nc !== 62 && nc !== 47 && !(nc === 32 || (nc >= 9 && nc <= 13))) { pos = i + 5; continue; } // <metadata> などは別物
+    const lim = Math.min(head.length, i + 5 + META_TAG_MAX);
+    let q = 0, end = -1;
+    for (let j = i + 5; j < lim; j++) {
+      const c = head.charCodeAt(j);
+      if (q) { if (c === q) q = 0; } else if (c === 34 || c === 39) q = c; else if (c === 62) { end = j; break; } // 引用符の中の > では閉じない
+    }
+    if (end < 0) { pos = i + 5; continue; }
+    out.push(head.slice(i + 5, end));
+    pos = end + 1;
+  }
+  return out;
+}
+function scanTitle(head, low) {
+  const i = low.indexOf('<title');
+  if (i < 0) return '';
+  const nc = low.charCodeAt(i + 6);
+  if (nc !== 62 && !(nc === 32 || (nc >= 9 && nc <= 13))) return '';
+  const gt = low.indexOf('>', i + 6);
+  if (gt < 0) return '';
+  const te = low.indexOf('</title', gt + 1);
+  return head.slice(gt + 1, te < 0 ? gt + 1 + 2000 : Math.min(te, gt + 1 + 2000));
+}
+
+// コメント・script・style の中身を取り除く。indexOf だけで前へ進むので、閉じないものが大量にあっても入力の大きさに比例する時間で終わる
+// (正規表現の /<!--[\s\S]*?-->/ は、閉じない <!-- が多いと2乗の時間になる)。閉じていないものは、ブラウザと同じく最後まで中身として捨てる
+function stripBlocks(html) {
+  const low = lowerAscii(html);
+  const kinds = [['<!--', '-->'], ['<script', '</script'], ['<style', '</style']];
+  const next = [-2, -2, -2]; // -2: 未計算 / -1: もう無い
+  const out = [];
+  let pos = 0;
+  for (;;) {
+    let best = -1, bk = -1;
+    for (let k = 0; k < kinds.length; k++) {
+      if (next[k] === -1) continue;
+      if (next[k] < pos) next[k] = low.indexOf(kinds[k][0], pos);
+      if (next[k] >= 0 && (best < 0 || next[k] < best)) { best = next[k]; bk = k; }
+    }
+    if (best < 0) break;
+    out.push(html.slice(pos, best));
+    const close = low.indexOf(kinds[bk][1], best + kinds[bk][0].length);
+    if (close < 0) { pos = html.length; break; }
+    if (bk === 0) pos = close + 3;
+    else { const gt = low.indexOf('>', close); pos = gt < 0 ? html.length : gt + 1; }
+  }
+  out.push(html.slice(pos));
+  return out.join(' ');
+}
+
+function extractMeta(html, baseUrl) {
+  // <head> の外(本文)のmetaは見ない。無ければ全体(読む量はもともと上限がある)
+  // コメントと script/style の中身は読まない(コメントアウトされた古い meta や、スクリプトの文字列に入ったタグを拾わない)
+  html = stripBlocks(html);
+  const headEnd = html.search(/<\/head\s*>/i);
+  const head = headEnd > 0 ? html.slice(0, headEnd) : html;
+  const low = lowerAscii(head);
+  const meta = {};
+  for (const tag of scanMetaTags(head, low)) {
+    const a = parseAttrs(tag);
+    const key = (a.property || a.name || '').toLowerCase();
+    if (key && a.content !== undefined && !(key in meta)) meta[key] = a.content;
+  }
+  const titleText = scanTitle(head, low);
+
+  let image = '';
+  const rawImg = meta['og:image'] || meta['og:image:url'] || meta['twitter:image'] || meta['twitter:image:src'] || '';
+  if (rawImg) {
+    try {
+      const iu = new URL(decodeEntities(rawImg).trim(), baseUrl);
+      // クライアントが <img> で読むので https だけ。ユーザー名付き・長すぎるものは捨てる
+      if ((iu.protocol === 'https:' || (iu.protocol === 'http:' && testAllowed(iu.hostname))) && !iu.username && !iu.password && iu.href.length <= 500) image = iu.href;
+    } catch (e) { /* 無効なら画像なし */ }
+  }
+  return {
+    title: plain(meta['og:title'] || meta['twitter:title'] || titleText, 200),
+    description: plain(meta['og:description'] || meta['twitter:description'] || meta['description'] || '', 300),
+    image,
+    siteName: plain(meta['og:site_name'] || '', 100),
+  };
+}
+
+// --- キャッシュ(LRU, 10分) ---------------------------------------------------
+const cache = new Map(); // url -> { v, exp }
+function cacheGet(k) {
+  const e = cache.get(k);
+  if (!e) return null;
+  if (e.exp < Date.now()) { cache.delete(k); return null; }
+  cache.delete(k); cache.set(k, e); // 使ったものを一番新しい位置へ
+  return e.v;
+}
+function cachePut(k, v) {
+  cache.delete(k);
+  cache.set(k, { v, exp: Date.now() + CACHE_MS });
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+}
+function _clearCache() { cache.clear(); imgCache.clear(); imgBytes = 0; }
+
+// 画像の縦横(ピクセル)をヘッダーだけから読む。読めなければ null。
+// 1.5MBに収まっても、20000x20000のような巨大な画像はあり、見る人のブラウザが展開しきれず落ちる(画像爆弾)。
+const MAX_PIXELS = 25 * 1000 * 1000;
+function imageSize(buf, type) {
+  try {
+    if (type === 'image/png') {
+      if (buf.length < 24 || buf.toString('latin1', 1, 4) !== 'PNG') return null;
+      return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+    }
+    if (type === 'image/gif') {
+      if (buf.length < 10) return null;
+      return [buf.readUInt16LE(6), buf.readUInt16LE(8)];
+    }
+    if (type === 'image/jpeg') {
+      let i = 2;
+      while (i + 9 < buf.length) {
+        if (buf[i] !== 0xff) { i++; continue; }
+        const m = buf[i + 1];
+        if (m === 0xff) { i++; continue; }
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        const len = buf.readUInt16BE(i + 2);
+        if ((m >= 0xc0 && m <= 0xc3) || (m >= 0xc5 && m <= 0xc7) || (m >= 0xc9 && m <= 0xcb) || (m >= 0xcd && m <= 0xcf)) {
+          return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+        }
+        if (len < 2) return null;
+        i += 2 + len;
+      }
+      return null;
+    }
+    if (type === 'image/webp') {
+      if (buf.length < 30 || buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WEBP') return null;
+      const k = buf.toString('latin1', 12, 16);
+      if (k === 'VP8X') return [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)];
+      if (k === 'VP8L') { const b = buf.readUInt32LE(21); return [1 + (b & 0x3fff), 1 + ((b >> 14) & 0x3fff)]; }
+      if (k === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+      return null;
+    }
+    if (type === 'image/avif') {
+      const i = buf.indexOf('ispe');
+      if (i < 0 || i + 16 > buf.length) return null;
+      return [buf.readUInt32BE(i + 8), buf.readUInt32BE(i + 12)];
+    }
+  } catch (e) { /* 読めない */ }
+  return null;
+}
+
+// 画像のプロキシ。クライアントが外のサイトの画像を直接読むと、見た人のIPが相手サイトに伝わり、CSPも通らない。
+// なのでサーバーが代わりに取り(上と同じSSRF対策)、1.5MBまでのpng/jpeg/gif/webp/avifだけ返す。
+const imgCache = new Map(); // url -> { v:{buf,contentType}, exp }
+let imgBytes = 0;
+function imgCachePut(k, v) {
+  const old = imgCache.get(k);
+  if (old) { imgBytes -= old.v.buf.length; imgCache.delete(k); }
+  imgCache.set(k, { v, exp: Date.now() + CACHE_MS });
+  imgBytes += v.buf.length;
+  while (imgBytes > IMG_CACHE_MAX_BYTES && imgCache.size) {
+    const first = imgCache.keys().next().value;
+    imgBytes -= imgCache.get(first).v.buf.length; imgCache.delete(first);
+  }
+}
+async function getImage(rawUrl, resolver = defaultResolver) {
+  const u = parseHttpUrl(rawUrl);
+  if (u.protocol !== 'https:' && !testAllowed(u.hostname.replace(/^\[|\]$/g, '').toLowerCase())) throw new PreviewError('https の画像だけ使えます');
+  const key = u.href;
+  const hit = imgCache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.v;
+  if (hit) { imgBytes -= hit.v.buf.length; imgCache.delete(key); }
+  const r = await fetchHtml(key, resolver, true);
+  if (!r.buf.length) throw new PreviewError('画像を取得できませんでした', 422);
+  const dim = imageSize(r.buf, r.contentType);
+  if (!dim || !dim[0] || !dim[1] || dim[0] * dim[1] > MAX_PIXELS) throw new PreviewError('画像が大きすぎます', 422);
+  const v = { buf: r.buf, contentType: r.contentType };
+  imgCachePut(key, v);
+  return v;
+}
+
+// 本体。成功した結果だけキャッシュする。resolver はテストで差し替えられる
+async function getPreview(rawUrl, resolver = defaultResolver) {
+  const start = parseHttpUrl(rawUrl);
+  const key = start.href;
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const { body, finalUrl } = await fetchHtml(key, resolver);
+  const meta = extractMeta(body, finalUrl);
+  const out = { url: key.length <= 2000 ? key : key.slice(0, 2000) };
+  for (const k of ['title', 'description', 'image', 'siteName']) if (meta[k]) out[k] = meta[k];
+  cachePut(key, out);
+  return out;
+}
+
+module.exports = { getPreview, getImage, imageSize, isBlockedIp, extractMeta, parseHttpUrl, PreviewError, _clearCache };

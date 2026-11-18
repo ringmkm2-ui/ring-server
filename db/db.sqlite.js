@@ -100,7 +100,28 @@ async function initDB() {
       public_key TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       last_seen_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      approve_after INTEGER,
+      pending_sid TEXT,
       PRIMARY KEY (user_id, public_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS device_prekeys (
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL,
+      spk_id INTEGER NOT NULL,
+      spk_pub TEXT NOT NULL,
+      spk_sig TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, device_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS device_otks (
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL,
+      otk_id INTEGER NOT NULL,
+      pub TEXT NOT NULL,
+      PRIMARY KEY (device_key, otk_id)
     );
 
     CREATE TABLE IF NOT EXISTS password_resets (
@@ -111,6 +132,28 @@ async function initDB() {
       last_sent_ms INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS auth_misses (
+      key TEXT PRIMARY KEY,
+      n INTEGER NOT NULL DEFAULT 0,
+      since_ms INTEGER NOT NULL
+    );
+
+    -- 招待コードの持ち主が友だちから外した相手(コードで黙って戻れないように)
+    CREATE TABLE IF NOT EXISTS invite_removals (
+      owner_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      removed_ms INTEGER NOT NULL,
+      PRIMARY KEY (owner_id, user_id)
+    );
+
+    -- 字幕(Deepgram)を人ごと・日ごとに使った秒数。再起動で消えないようにDBに置く
+    CREATE TABLE IF NOT EXISTS call_assist_usage (
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day)
+    );
+
     CREATE TABLE IF NOT EXISTS user_sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -118,7 +161,8 @@ async function initDB() {
       ip TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      revoked_at TEXT
+      revoked_at TEXT,
+      revoked_reason TEXT
     );
 
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -127,7 +171,56 @@ async function initDB() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- トークリストの操作(ピン留め・ミュート・非表示・自分だけトーク削除)。db.postgres.js と同じ形
+    CREATE TABLE IF NOT EXISTS chat_prefs (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      peer_id TEXT NOT NULL,
+      pinned_at INTEGER,
+      muted INTEGER NOT NULL DEFAULT 0,
+      hidden_at INTEGER,
+      cleared_at INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, kind, peer_id)
+    );
+
     CREATE TABLE IF NOT EXISTS app_kv (k TEXT PRIMARY KEY, v TEXT);
+
+    -- 友だち招待コード(1人が複数作れて、1つのコードを複数人が使える)
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      code TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      max_uses INTEGER,
+      uses INTEGER NOT NULL DEFAULT 0,
+      expires_ms INTEGER,
+      created_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_invite_codes_owner ON invite_codes(owner_id);
+    CREATE TABLE IF NOT EXISTS invite_redemptions (
+      code TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      redeemed_ms INTEGER NOT NULL,
+      PRIMARY KEY (code, user_id)
+    );
+
+    -- 招待コードで始めたゲストが、あとからメール+パスワードを付ける途中の状態(メールの持ち主だと確かめるコードを待っている間)
+    CREATE TABLE IF NOT EXISTS guest_upgrades (
+      user_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_ms INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_sent_ms INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- 消えるメッセージ(会話ごとのタイマー)。conv_key は 'dm:<小さいID>:<大きいID>' または 'g:<groupId>'
+    CREATE TABLE IF NOT EXISTS conversation_ttl (
+      conv_key TEXT PRIMARY KEY,
+      ttl_seconds INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 
     CREATE TABLE IF NOT EXISTS drive_files (
       file_id TEXT PRIMARY KEY,
@@ -385,6 +478,18 @@ async function initDB() {
       resolved_at TEXT
     );
 
+    -- 管理Exeの操作ログ(誰が何をしたか。パスワードや鍵は入れない)
+    CREATE TABLE IF NOT EXISTS admin_audit (
+      id TEXT PRIMARY KEY,
+      at TEXT DEFAULT CURRENT_TIMESTAMP,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      target_label TEXT,
+      detail TEXT,
+      ip TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS fcm_tokens (
       user_id TEXT NOT NULL,
       token TEXT NOT NULL,
@@ -451,21 +556,28 @@ async function initDB() {
   // 本番(PostgreSQL)側で後から足した列を、既存のローカルDBにも足す。
   // 以前は banned_until が無く、ローカル(SQLite)ではログインした瞬間に「トークンが無効」になっていた
   const addCols = {
-    users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT']],
+    users: [['banned_until', 'INTEGER'], ['ban_reason', 'TEXT'], ['real_name', 'TEXT'], ['banner_url', 'TEXT']],
     reports: [['claude_note', 'TEXT'], ['claude_at', 'TEXT'], ['media_urls', 'TEXT']],
     posts: [['view_count', 'INTEGER NOT NULL DEFAULT 0'], ['duration_sec', 'INTEGER']],
     groups: [['avatar_url', 'TEXT']],
-    group_messages: [['replied_to_id', 'TEXT']],
+    group_messages: [['replied_to_id', 'TEXT'], ['expires_at', 'TEXT']],
+    messages: [['expires_at', 'TEXT']],
     key_backups: [['strong', 'INTEGER DEFAULT 0']],
     group_members: [['last_read_at', 'TEXT']],
+    user_sessions: [['revoked_reason', 'TEXT']],
     communities: [['key_version', 'INTEGER DEFAULT 1'], ['rekey_needed', 'INTEGER DEFAULT 0']],
     community_messages: [['encrypted', 'INTEGER DEFAULT 0'], ['key_version', 'INTEGER']],
+    fcm_tokens: [['push_key', 'TEXT']], // 端末ごとのFCM暗号鍵(db.postgres.js と同じ)
   };
   for (const [table, cols] of Object.entries(addCols)) {
     const info = db.exec(`PRAGMA table_info(${table})`);
     const have = new Set(info.length ? info[0].values.map(r => r[1]) : []);
     for (const [col, type] of cols) if (!have.has(col)) db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
   }
+
+  // 期限つきの行だけを見る部分索引(掃除用)。列は上の addCols で足したあとに作る
+  db.run('CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(expires_at) WHERE expires_at IS NOT NULL');
+  db.run('CREATE INDEX IF NOT EXISTS idx_group_messages_expires ON group_messages(expires_at) WHERE expires_at IS NOT NULL');
 
   persist();
   console.log('[db] initialized (' + DB_FILE + ')');

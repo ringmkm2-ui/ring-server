@@ -6,7 +6,7 @@ let S;
 before(async () => { S = await startServer(); });
 after(() => S && S.stop());
 
-const URL_OK = 'https://res.cloudinary.com/demo/raw/upload/brochat/dm/abc123';
+const URL_OK = 'https://res.cloudinary.com/a6rxinoz/raw/upload/brochat/dm/abc123';
 const meta = { encrypted: 'AAAA', nonce: 'BBBB' };
 
 test('ファイル(mediaType=file)をDMで送れて、一覧には「ファイルが送信されました」と出る', async () => {

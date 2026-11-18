@@ -20,6 +20,8 @@ function parseDataUrl(dataUrl) {
 }
 
 function baseUrl(req) {
+  const known = require('./siteHosts').knownBase(req);
+  if (known) return known;
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
   return `${req.protocol}://${req.get('host')}`;
 }
@@ -27,8 +29,17 @@ function baseUrl(req) {
 async function uploadToCloudinary(buf, mime) {
   const form = new FormData();
   form.append('file', new Blob([buf], { type: mime }), 'icon');
-  form.append('upload_preset', UPLOAD_PRESET);
   form.append('folder', 'brochat/icons');
+  // 秘密鍵があれば署名付きで送る(署名なしプリセットは誰でも使えるので、将来は止める)
+  if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const sig = require('crypto').createHash('sha256').update(`folder=brochat/icons&timestamp=${timestamp}` + process.env.CLOUDINARY_API_SECRET).digest('hex');
+    form.append('api_key', process.env.CLOUDINARY_API_KEY);
+    form.append('timestamp', String(timestamp));
+    form.append('signature', sig);
+  } else {
+    form.append('upload_preset', UPLOAD_PRESET);
+  }
   const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
     method: 'POST', body: form, signal: AbortSignal.timeout(12000),
   });
@@ -63,7 +74,10 @@ function isValidIconUrl(value, req) {
   if (value.startsWith(`https://res.cloudinary.com/${CLOUD_NAME}/`) && /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value)) return true;
   const own = req ? baseUrl(req) : '';
   const m = /^(https:\/\/[a-zA-Z0-9.\-]+(?::\d+)?)\/icons\/[0-9a-f\-]{36}$/.exec(value);
-  return !!(m && own && m[1] === own);
+  // 自分のホストか、このアプリの別ホスト(元のURL・独自ドメイン)なら通す。
+  // 独自ドメインから、元のURLで保存済みのアイコンをそのまま保存し直す時に弾かないため
+  const sites = require('./siteHosts').SITE_ORIGINS;
+  return !!(m && ((own && m[1] === own) || sites.includes(m[1])));
 }
 
 module.exports = { parseDataUrl, storeIcon, isValidIconUrl, baseUrl, MAX_ICON_BYTES, ALLOWED_MIME };

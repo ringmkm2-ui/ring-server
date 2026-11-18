@@ -16,6 +16,8 @@ const CLOUDINARY_IMAGE_LIMIT = 9.5 * 1024 * 1024; // 少し余裕を持たせて
  */
 async function compressImageIfNeeded(file) {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  // 送る前に撮影情報(位置情報など)を必ず消す。縮める時も、元の写真の情報が残らないよう先に消しておく
+  if (window.bcStripMeta) file = await window.bcStripMeta.stripFile(file);
   // Googleドライブに置く時は10MBの壁が無いので、25MBまでは撮ったままの画質で送る
   const onDrive = window.cloudinaryE2EUploader && window.cloudinaryE2EUploader._drive && window.cloudinaryE2EUploader._drive.on;
   if (file.size <= (onDrive ? 25 * 1024 * 1024 : CLOUDINARY_IMAGE_LIMIT)) return file;
@@ -73,9 +75,14 @@ class CloudinaryE2EUploader {
     // Cloudinaryの上限(10MB)を超える画像は、暗号化・送信前に圧縮しておく。
     // 動画や既に上限内のファイルはそのまま(compressImageIfNeeded内で判定)。
     file = await compressImageIfNeeded(file);
+    // 動画の位置情報も送る前に消す(画像は compressImageIfNeeded の中で消している)
+    if (window.bcStripMeta && /^video\//.test(file.type || '')) file = await window.bcStripMeta.stripFile(file);
 
     const fileId = this.generateFileId();
     const chunks = Math.ceil(file.size / CHUNK_SIZE);
+    // ぼかしプレビュー用の blurhash と幅/高さ。暗号化の裏で計算し、あとで「暗号化メタデータの中だけ」に入れる
+    // (平文のフィールドやリクエストには絶対に出さない。js/blurhash.js 参照)
+    const blurPromise = this.computeBlurInfo(file);
 
     this.uploadingFiles.set(fileId, {
       progress: 0,
@@ -132,6 +139,9 @@ class CloudinaryE2EUploader {
 
       // メタデータも暗号化して保存（chunkLengthsを必ず含める）
       const fullMetadata = { ...this.uploadingFiles.get(fileId).metadata, chunkLengths };
+      // ↓ここはまだ平文のオブジェクト。直後の encryptMetadata で暗号化されてから外に出る
+      const bh = await blurPromise;
+      if (bh) { fullMetadata.blurhash = bh.blurhash; fullMetadata.width = bh.w; fullMetadata.height = bh.h; }
       const metadata = {
         fileId,
         cloudinaryUrl,
@@ -219,6 +229,58 @@ class CloudinaryE2EUploader {
   }
 
   /**
+   * 画像(動画は1コマ)の blurhash と幅/高さを求める。失敗・非対応は null(アップロードは止めない)。
+   * 結果は encryptMetadata に渡すオブジェクトの中にだけ入れること。
+   */
+  async computeBlurInfo(file) {
+    try {
+      if (!file || !/^(image|video)\//.test(file.type || '')) return null;
+      if (!window.BroBlurhash) await this.loadScriptOnce('/js/blurhash.js');
+      if (!window.BroBlurhash) return null;
+      return await window.BroBlurhash.describe(file);
+    } catch (e) { return null; }
+  }
+
+  loadScriptOnce(src) {
+    return new Promise((resolve) => {
+      try {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = s.onerror = () => resolve();
+        document.head.appendChild(s);
+        setTimeout(resolve, 3000);
+      } catch (e) { resolve(); }
+    });
+  }
+
+  /**
+   * メタデータ(数百バイト)だけを復号して {blurhash,w,h,fileType} を返す。本体のダウンロードは不要。
+   * keyOrKeys は共有鍵1つか配列(世代違いを順に試す)。復号できない/古い形式なら null。
+   * 古いメッセージ(blurhashなし)は blurhash:null で返るので、そのまま従来表示にすればよい。
+   */
+  peekMetadata(encryptedMetadata, keyOrKeys) {
+    try {
+      let em = encryptedMetadata;
+      if (typeof em === 'string') em = JSON.parse(em);
+      if (!em || !em.encrypted || !em.nonce || !window.nacl || !window.nacl.util) return null;
+      const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
+      for (const k of keys) {
+        if (!k) continue;
+        try {
+          const m = this.decryptMetadata(em, k);
+          return {
+            blurhash: typeof m.blurhash === 'string' ? m.blurhash : null,
+            w: Number(m.width) || 0,
+            h: Number(m.height) || 0,
+            fileType: m.fileType || '',
+          };
+        } catch (e) { /* 次の鍵を試す */ }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  /**
    * 暗号化されたメタデータを復号
    */
   decryptMetadata(encryptedMetadata, key) {
@@ -276,8 +338,8 @@ class CloudinaryE2EUploader {
     });
   }
 
-  async uploadToCloudinary(blob, path, onProgress, signal) {
-    if (await this.driveEnabled()) {
+  async uploadToCloudinary(blob, path, onProgress, signal, _unsigned) {
+    if (!_unsigned && await this.driveEnabled()) {
       try {
         return await this.uploadToDrive(blob, String(path).split('/').slice(0, -1).join('/'), onProgress, signal);
       } catch (e) {
@@ -288,7 +350,10 @@ class CloudinaryE2EUploader {
     }
     const formData = new FormData();
     formData.append('file', blob);
-    formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET);
+    // サーバーの署名付きで送る(取れない時だけ署名なしプリセット)。js/cloudinarySign.js
+    const signed = window.bcCloudinarySign
+      ? await window.bcCloudinarySign.apply(formData, path, { unsigned: !!_unsigned })
+      : (formData.append('upload_preset', CLOUDINARY_UNSIGNED_PRESET), false);
     formData.append('folder', path);
     // NOTE: 暗号化済みバイナリ(application/octet-stream)はCloudinary側で
     // 画像/動画として中身を解析できないため、resource_type:'auto'だと
@@ -308,6 +373,12 @@ class CloudinaryE2EUploader {
 
       xhr.addEventListener('load', () => {
         if (xhr.status < 200 || xhr.status >= 300) {
+          // 署名が通らなかった時(設定の食い違い)は、プリセットが生きている間だけ署名なしでやり直す
+          if (signed && xhr.status === 401 && !_unsigned) {
+            console.warn('[cloudinaryUpload] signed upload rejected, retrying unsigned');
+            resolve(this.uploadToCloudinary(blob, path, onProgress, signal, true));
+            return;
+          }
           let detail = '';
           try { detail = JSON.parse(xhr.responseText)?.error?.message || ''; } catch {}
           console.error('[cloudinaryUpload] status', xhr.status, 'response:', xhr.responseText);

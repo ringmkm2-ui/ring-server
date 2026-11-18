@@ -68,15 +68,23 @@ router.post('/unsubscribe', auth, async (req, res) => {
 // FCMトークン登録（Capacitorアプリ用）
 router.post('/fcm-register', auth, async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, pushKey } = req.body;
     if (!token) return res.status(400).json({ error: 'token required' });
     if (typeof token !== 'string' || token.length > 4096 || !/^[A-Za-z0-9_:\-.]+$/.test(token)) {
       return res.status(400).json({ error: 'token が正しくありません' });
     }
+    // pushKey: 新しいAPKが端末で作った32バイトの鍵(Base64)。FCMの中身をこの鍵で暗号化して送る(utils/fcmCrypto.js)。
+    // 古いAPK・Web側の登録は送ってこない(その時は保存済みの鍵を残したまま)。形が違えば登録ごと断る
+    // (黙って平文に落とすと、端末側は暗号化されていると思ったまま中身がGoogleを通ってしまうため)。
+    const { isValidPushKey } = require('../utils/fcmCrypto');
+    if (pushKey !== undefined && pushKey !== null && !isValidPushKey(pushKey)) {
+      return res.status(400).json({ error: 'pushKey が正しくありません' });
+    }
     const fcm = require('../utils/fcm');
-    await fcm.saveToken(req.userId, token);
-    console.log(`[FCM] token registered user=${req.userId} ua=${(req.get('user-agent') || '').slice(0, 40)}`);
-    res.json({ success: true });
+    await fcm.saveToken(req.userId, token, pushKey || null);
+    console.log(`[FCM] token registered user=${req.userId} sealed=${pushKey ? 1 : 0} ua=${(req.get('user-agent') || '').slice(0, 40)}`);
+    // sealed: この端末向けのFCMが暗号化されるか(APKが鍵の登録に成功したかの確認用)
+    res.json({ success: true, sealed: !!pushKey });
   } catch (e) {
     sendServerError(res, e);
   }

@@ -18,11 +18,14 @@
 
   function upload(file, onProgress) {
     const type = file.type.startsWith('video/') ? 'video' : 'image';
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const fd = new FormData();
       fd.append('file', file, file.name || 'upload');
-      fd.append('upload_preset', 'brochat_upload');
+      if (window.bcCloudinarySign) await window.bcCloudinarySign.apply(fd, 'brochat/reports');
+      else fd.append('upload_preset', 'brochat_upload');
       fd.append('folder', 'brochat/reports');
+      return fd;
+    })().then(fd => new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener('progress', ev => { if (ev.lengthComputable && onProgress) onProgress(ev.loaded / ev.total); });
       xhr.addEventListener('load', () => {
@@ -33,7 +36,7 @@
       xhr.addEventListener('error', () => reject(new Error(T('report_attach_failed', '添付のアップロードに失敗しました'))));
       xhr.open('POST', 'https://api.cloudinary.com/v1_1/a6rxinoz/' + type + '/upload');
       xhr.send(fd);
-    });
+    }));
   }
 
   // container: 部品を入れる要素。戻り値 { validate(), uploadAll(onStatus), reset() }

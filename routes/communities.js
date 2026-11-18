@@ -28,7 +28,7 @@ const MAX_COMMUNITY_TEXT = 2000;
 function isValidCommunityMediaUrl(value) {
   if (!value) return true;
   if (typeof value !== 'string' || value.length > 500) return false;
-  return /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_\-./,]+$/.test(value);
+  return require('../utils/messageContent').isOwnCloudinaryUrl(value, /^[a-zA-Z0-9_\-./,]+$/);
 }
 
 // 招待コードの総当たり対策: 参加の試行はユーザー単位で15分に20回まで
@@ -219,6 +219,22 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
 
   // 日時として読めない値(配列や変な文字列)はDBでエラー(500)になるので無視する
   const before = typeof req.query.before === 'string' && req.query.before.length < 40 && !isNaN(Date.parse(req.query.before)) ? req.query.before : null;
+
+  // 画面は5秒ごとに取りに来る。毎回50件を本文ごと返していたため、開いたままの端末1台で
+  // 1日1〜2GBのDB転送になり、Neonの無料枠(1か月5GB)を使い切ってDBが止まった(2026-10-28)。
+  // そこで「変わったかどうか」だけを数十バイトで先に確かめ、変わっていなければ本文を返さない。
+  // 印は件数と一番新しい時刻でできる(足された/消された→件数が動く、直された→edited_atが動く)。
+  // 過去ログを遡る時(before付き)は毎回違う範囲なので、この近道は使わない
+  if (!before) {
+    const s = await db.get(
+      `SELECT COUNT(*) AS n, MAX(created_at) AS c, MAX(COALESCE(edited_at, created_at)) AS e
+         FROM community_messages WHERE channel_id = ? AND deleted_at IS NULL`,
+      [req.params.channelId]
+    );
+    const v = `${(s && s.n) || 0}.${(s && s.c) ? new Date(s.c).getTime() : 0}.${(s && s.e) ? new Date(s.e).getTime() : 0}`;
+    if (typeof req.query.v === 'string' && req.query.v === v) return res.json({ ok: true, unchanged: true, v });
+    res.locals.msgVersion = v;
+  }
   let query = `SELECT m.id, m.channel_id, m.sender_id, m.content, m.media_url, m.media_type,
                       m.created_at, m.edited_at, m.encrypted, m.key_version,
                       u.display_name as sender_name, u.profile_pic as sender_pic
@@ -234,11 +250,11 @@ router.get('/:id/channels/:channelId/messages', verifyToken, asyncHandler(async 
   query += ' ORDER BY m.created_at DESC LIMIT 50';
 
   const messages = await db.all(query, params);
-  res.json({ ok: true, messages: messages.reverse() });
+  res.json({ ok: true, messages: messages.reverse(), v: res.locals.msgVersion });
 }));
 
 // --- チャンネルにメッセージ送信 ---
-router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
+router.post('/:id/channels/:channelId/messages', verifyToken, require('../utils/deviceKeys').requireApprovedSession, messageSendLimiter, asyncHandler(async (req, res) => {
   const member = await db.get(
     'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ?',
     [req.params.id, req.user.userId]
@@ -282,7 +298,7 @@ router.post('/:id/channels/:channelId/messages', verifyToken, messageSendLimiter
 }));
 
 // --- 自分のメッセージの編集 ---
-router.post('/:id/messages/:messageId/edit', verifyToken, messageSendLimiter, asyncHandler(async (req, res) => {
+router.post('/:id/messages/:messageId/edit', verifyToken, require('../utils/deviceKeys').requireApprovedSession, messageSendLimiter, asyncHandler(async (req, res) => {
   const m = await db.get(
     `SELECT m.id, m.sender_id FROM community_messages m
      JOIN community_channels c ON c.id = m.channel_id
@@ -454,7 +470,13 @@ router.post('/:id/distribute-keys', verifyToken, asyncHandler(async (req, res) =
 }));
 
 // 鍵の作り直し。誰かが抜けた後や、誰も今の鍵を読めなくなった時にメンバーの端末が呼ぶ
-router.post('/:id/rotate-key', verifyToken, asyncHandler(async (req, res) => {
+// 作り直しは1時間5回まで(グループと同じ。以前はコミュニティだけ無制限で、版を進め続けられた)
+const communityRotateLimiter = require('express-rate-limit')({
+  windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  ...require('../utils/rateLimits').perUser,
+  message: { error: '鍵の作り直しが多すぎます。しばらくしてから試してください' },
+});
+router.post('/:id/rotate-key', communityRotateLimiter, verifyToken, asyncHandler(async (req, res) => {
   const { expectedVersion, encryptedKeysForMembers } = req.body || {};
   const c = await db.get('SELECT key_version FROM communities WHERE id = ?', [req.params.id]);
   if (!c) return res.status(404).json({ error: 'コミュニティが見つかりません' });
