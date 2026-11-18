@@ -342,6 +342,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
 <script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/stampArt.js"></script>
 <script src="/js/stamps.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/iconUpload.js"></script>
@@ -378,7 +379,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v2.2.1</div>
+  <div class="version-badge">Bro Chat v2.3.0</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -919,18 +920,28 @@ if(window.bcAttachPasteMedia)bcAttachPasteMedia(document.getElementById('mi'),(f
 // 位置情報送信（グループ）
 // スタンプ送信: 本文 [[stamp:ID]] のテキストとして、普通の送信(暗号化)と同じ道に流す。
 // 送信処理は入力欄の中身を読んでその場で空にするので、書きかけの文は退避して送ったあとに戻す
-document.getElementById('stampBtn').onclick = () => {
-  document.getElementById('ibar').classList.remove('open');
-  if (!window.BroStamps) return;
-  BroStamps.openPicker({ onPick: id => {
+// 入力欄の横のボタンで、LINEのスタンプキーボードと同じ欄が下に出る。サジェストもここで付く
+const stampCtl = window.BroStamps ? BroStamps.attach({
+  input: document.getElementById('mi'),
+  form: document.getElementById('tform'),
+  buttonBefore: document.getElementById('sbtn'),
+  dock: document.querySelector('.ibc'),
+  scroller: document.getElementById('cs'),
+  canSend: () => !isEditing,
+  beforeOpen: () => document.getElementById('ibar').classList.remove('open'),
+  send: text => {
     if (isEditing) return;
     const mi = document.getElementById('mi');
     const draft = mi.value;
-    mi.value = BroStamps.encode(id);
+    mi.value = text;
     document.getElementById('tform').onsubmit({ preventDefault() {} });
     mi.value = draft;
     if (draft) { try { mi.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
-  } });
+  },
+}) : null;
+document.getElementById('stampBtn').onclick = () => {
+  document.getElementById('ibar').classList.remove('open');
+  if (stampCtl) stampCtl.open();
 };
 
 document.getElementById('locationBtn').onclick = async () => {
@@ -1358,7 +1369,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   }else if(text&&window.BroStamps&&BroStamps.parse(text)){
     // スタンプ: 背景なしで絵だけ置く(本文は [[stamp:ID]] のテキスト。暗号化もそのまま通る)
     bub.classList.add('stamp-bub');
-    bub.appendChild(BroStamps.el(BroStamps.parse(text),128));
+    bub.appendChild(BroStamps.el(BroStamps.parse(text),140,{live:!!isRealtime}));
   }else if(text){
     const sp=document.createElement('span');sp.className='msg-text';setLinkedText(sp,text);bub.appendChild(sp);
   }

@@ -37,6 +37,12 @@ async function removeAccount(userId) {
     await db.run('DELETE FROM invite_removals WHERE owner_id = ? OR user_id = ?', [userId, userId]);
     await db.run('DELETE FROM call_assist_usage WHERE user_id = ?', [userId]);
   } catch (e) { console.error('[auth] removal/usage cleanup:', e.message); }
+  // スタンプ: 作ったパックはショップ・マイスタンプから消す(送ったトークの中の絵は残す)。マイスタンプ・お気に入りも消す
+  try {
+    await db.run('UPDATE sticker_packs SET deleted_at = CURRENT_TIMESTAMP WHERE owner_id = ? AND deleted_at IS NULL', [userId]);
+    await db.run('DELETE FROM user_sticker_packs WHERE user_id = ? OR pack_id IN (SELECT id FROM sticker_packs WHERE owner_id = ?)', [userId, userId]);
+    await db.run('DELETE FROM user_sticker_favs WHERE user_id = ?', [userId]);
+  } catch (e) { console.error('[auth] sticker cleanup:', e.message); }
   // 投稿とコメントも消す(以前は退会後も「退会済みユーザー」の名前で公開のまま残っていた)
   try {
     await db.run('UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE author_id = ? AND deleted_at IS NULL', [userId]);
