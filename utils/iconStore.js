@@ -26,14 +26,16 @@ function baseUrl(req) {
   return `${req.protocol}://${req.get('host')}`;
 }
 
-async function uploadToCloudinary(buf, mime) {
+async function uploadToCloudinary(buf, mime, opt) {
+  const folder = (opt && opt.folder) || 'brochat/icons';
+  const size = (opt && opt.size) || 256;
   const form = new FormData();
   form.append('file', new Blob([buf], { type: mime }), 'icon');
-  form.append('folder', 'brochat/icons');
+  form.append('folder', folder);
   // 秘密鍵があれば署名付きで送る(署名なしプリセットは誰でも使えるので、将来は止める)
   if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
     const timestamp = Math.floor(Date.now() / 1000);
-    const sig = require('crypto').createHash('sha256').update(`folder=brochat/icons&timestamp=${timestamp}` + process.env.CLOUDINARY_API_SECRET).digest('hex');
+    const sig = require('crypto').createHash('sha256').update(`folder=${folder}&timestamp=${timestamp}` + process.env.CLOUDINARY_API_SECRET).digest('hex');
     form.append('api_key', process.env.CLOUDINARY_API_KEY);
     form.append('timestamp', String(timestamp));
     form.append('signature', sig);
@@ -46,8 +48,9 @@ async function uploadToCloudinary(buf, mime) {
   if (!r.ok) throw new Error('cloudinary ' + r.status);
   const j = await r.json();
   if (!j.secure_url) throw new Error('cloudinary: no url');
-  // 表示は小さいので256px上限に縮めて配信する
-  return j.secure_url.replace('/upload/', '/upload/w_256,h_256,c_limit,q_auto/');
+  // 表示は小さいので上限(アイコン256px・スタンプ320px)に縮めて配信する。
+  // スタンプは透明部分を残したいので q_auto だけ付けて形式は変えない(GIFの動きもそのまま)
+  return j.secure_url.replace('/upload/', `/upload/w_${size},h_${size},c_limit,q_auto/`);
 }
 
 async function saveToServer(buf, mime, base) {
@@ -57,9 +60,10 @@ async function saveToServer(buf, mime, base) {
 }
 
 // 戻り値: 保存された画像のhttps URL
-async function storeIcon(buf, mime, base) {
+// opt: { folder, size } (スタンプは { folder: 'brochat/stickers', size: 320 })
+async function storeIcon(buf, mime, base, opt) {
   try {
-    return await uploadToCloudinary(buf, mime);
+    return await uploadToCloudinary(buf, mime, opt);
   } catch (e) {
     console.warn('[icons] cloudinary failed, storing on server:', e.message);
     return saveToServer(buf, mime, base);

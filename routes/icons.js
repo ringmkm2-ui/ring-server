@@ -37,7 +37,8 @@ publicRouter.get('/:id', asyncHandler(async (req, res) => {
   if (!row) return res.status(404).end();
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.set('X-Content-Type-Options', 'nosniff');
-  res.type(row.mime).send(row.data);
+  // SQLiteはBLOBをUint8Arrayで返す。そのまま send すると JSON になってしまうので Buffer にする
+  res.type(row.mime).send(Buffer.from(row.data));
 }));
 
 module.exports = { uploadRouter, publicRouter };
