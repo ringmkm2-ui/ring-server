@@ -94,6 +94,8 @@ html.dark-mode .name{color:#f1f5f9}
 .outgoing .bubble{border-radius:20px 20px 4px 20px}
 .incoming .bubble{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.82)}
 .bubble.media-bub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
+.bubble.stamp-bub{background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:none!important;box-shadow:none!important;padding:2px 2px 0!important;min-width:unset}
+.bubble.stamp-bub .msg-meta{align-self:flex-end}
 .bubble.media-bub img,.bubble.media-bub video{display:block;width:100%;max-height:280px;object-fit:cover;cursor:pointer}
 .file-inner{display:flex;align-items:center;gap:10px}
 .file-icon{font-size:28px;flex-shrink:0}
@@ -505,6 +507,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/stamps.js"></script>
 <script src="/js/profanity.js"></script>
 </head>
 <body>
@@ -517,7 +520,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v2.1.2</div>
+  <div class="version-badge">Bro Chat v2.2.0</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -587,6 +590,10 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileInput" hidden>
         </label>
+        <button class="mopt" type="button" id="stampBtn" style="border:none;background:none;cursor:pointer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5q3.5 3 7 0"/><circle cx="9" cy="10" r=".6" fill="#f59e0b"/><circle cx="15" cy="10" r=".6" fill="#f59e0b"/></svg>
+          <span data-i18n="stamp_title">スタンプ</span>
+        </button>
         <button class="mopt" type="button" id="locationBtn" style="border:none;background:none;cursor:pointer">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="8"/></svg>
           <span>位置情報</span>
@@ -1449,6 +1456,17 @@ document.getElementById('vidInput').onchange = e => { handleMedia(e.target.files
 document.getElementById('fileInput').onchange = e => { handleMedia(e.target.files[0], 'file'); e.target.value = ''; };
 // キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
 if (window.bcAttachPasteMedia) bcAttachPasteMedia(document.getElementById('msgInput'), (f, t) => handleMedia(f, t));
+
+// スタンプ送信: 本文 [[stamp:ID]] のテキストとして、普通のメッセージと同じ道(暗号化して保存)で送る
+document.getElementById('stampBtn').onclick = () => {
+  document.getElementById('inputBar').classList.remove('media-open');
+  if (!window.BroStamps) return;
+  BroStamps.openPicker({ onPick: id => {
+    if (isEditing) return;
+    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
+    sendRealMessage(BroStamps.encode(id));
+  } });
+};
 
 // 位置情報送信
 document.getElementById('locationBtn').onclick = async () => {
@@ -2512,7 +2530,7 @@ function renderMessageImpl(msg) {
       const { displayText: repliedText, mediaType: repliedMediaType } = parseMsgContent(repliedMsg.content);
       const repliedPreview = repliedMediaType === 'image' ? t('photo_label', '[画像]')
         : repliedMediaType === 'video' ? t('video_label', '[動画]')
-        : repliedText.substring(0, 80);
+        : (window.BroStamps && BroStamps.previewText(repliedText)) || repliedText.substring(0, 80);
       replyQuote.innerHTML = '<b></b><span></span>';
       replyQuote.firstChild.textContent = senderName;
       replyQuote.lastChild.textContent = repliedPreview;
@@ -2560,6 +2578,10 @@ function renderMessageImpl(msg) {
       setLinkedText(cap, displayText);
       bubble.appendChild(cap);
     }
+  } else if (displayText && window.BroStamps && BroStamps.parse(displayText)) {
+    // スタンプ: 吹き出しの背景なしで絵だけ置く(本文は [[stamp:ID]] のテキスト。暗号化もそのまま通る)
+    bubble.classList.add('stamp-bub');
+    bubble.appendChild(BroStamps.el(BroStamps.parse(displayText), 128));
   } else if (displayText) {
     const sp = document.createElement('span'); sp.className = 'msg-text'; setLinkedText(sp, displayText);
     bubble.appendChild(sp);
@@ -2651,7 +2673,7 @@ function renderMessageImpl(msg) {
   }
   msgDiv._lastContent = msg.content;
   msgDiv._live = true; msgDiv._deleted = false;
-  if (!mediaSrc && displayText) attachDmLinkPreview(msgDiv, bubble, meta, displayText, msg);
+  if (!mediaSrc && displayText && !bubble.classList.contains('stamp-bub')) attachDmLinkPreview(msgDiv, bubble, meta, displayText, msg);
 
   if (isNew) {
     cs.appendChild(msgDiv);

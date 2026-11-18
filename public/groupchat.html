@@ -73,6 +73,8 @@ body.has-custom-bg .bg-orb,body.has-custom-bg .pc::before{display:none}
 .out .bub{border-radius:20px 20px 4px 20px}
 .inc .bub{border-radius:20px 20px 20px 4px;background:rgba(255,255,255,.55)}
 .bub.mbub{padding:0!important;background:none!important;backdrop-filter:none!important;border:none!important;box-shadow:0 12px 30px rgba(0,0,0,.15)!important;border-radius:16px!important;overflow:hidden;min-width:unset}
+.bub.stamp-bub{background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:none!important;box-shadow:none!important;padding:2px 2px 0!important;min-width:unset}
+.bub.stamp-bub .mmeta{align-self:flex-end}
 .bub.mbub img,.bub.mbub video{display:block;width:100%;max-height:260px;object-fit:cover;cursor:pointer}
 .fi{display:flex;align-items:center;gap:10px}
 .ficon{font-size:26px;flex-shrink:0}
@@ -340,6 +342,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
 <script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/stamps.js"></script>
 <script src="/js/e2eKeys.js"></script>
 <script src="/js/iconUpload.js"></script>
 <script defer src="/js/globalBg.js"></script>
@@ -375,7 +378,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
   </defs>
 </svg>
 <div class="pc">
-  <div class="version-badge">Bro Chat v2.1.2</div>
+  <div class="version-badge">Bro Chat v2.2.0</div>
   <div class="bg-orb o1"></div>
   <div class="bg-orb o2"></div>
   <div class="bg-orb o3"></div>
@@ -446,6 +449,7 @@ html.reduce-motion .msg.gc-del-out{opacity:0}
         <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span data-i18n="send_photo">写真を送る</span><input type="file" id="imgI" accept="image/*" hidden></label>
         <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span data-i18n="send_video">動画を送る</span><input type="file" id="vidI" accept="video/*" hidden></label>
         <label class="mopt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span data-i18n="send_file">ファイルを送信</span><input type="file" id="fileI" hidden></label>
+        <button class="mopt" type="button" id="stampBtn" style="border:none;background:none;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5q3.5 3 7 0"/><circle cx="9" cy="10" r=".6" fill="#f59e0b"/><circle cx="15" cy="10" r=".6" fill="#f59e0b"/></svg><span data-i18n="stamp_title">スタンプ</span></button>
         <button class="mopt" type="button" id="locationBtn" style="border:none;background:none;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="8"/></svg><span>位置情報</span></button>
       </div>
     </div>
@@ -913,6 +917,22 @@ document.getElementById('fileI').onchange=e=>{handleMediaGroup(e.target.files[0]
 if(window.bcAttachPasteMedia)bcAttachPasteMedia(document.getElementById('mi'),(f,t)=>handleMediaGroup(f,t));
 
 // 位置情報送信（グループ）
+// スタンプ送信: 本文 [[stamp:ID]] のテキストとして、普通の送信(暗号化)と同じ道に流す。
+// 送信処理は入力欄の中身を読んでその場で空にするので、書きかけの文は退避して送ったあとに戻す
+document.getElementById('stampBtn').onclick = () => {
+  document.getElementById('ibar').classList.remove('open');
+  if (!window.BroStamps) return;
+  BroStamps.openPicker({ onPick: id => {
+    if (isEditing) return;
+    const mi = document.getElementById('mi');
+    const draft = mi.value;
+    mi.value = BroStamps.encode(id);
+    document.getElementById('tform').onsubmit({ preventDefault() {} });
+    mi.value = draft;
+    if (draft) { try { mi.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
+  } });
+};
+
 document.getElementById('locationBtn').onclick = async () => {
   document.getElementById('ibar').classList.remove('open');
   if (!navigator.geolocation) { alert('位置情報がサポートされていません'); return; }
@@ -1117,7 +1137,7 @@ document.getElementById('tform').onsubmit=async e=>{
       const c1=msgDiv.querySelector('.chk1');if(c1)c1.classList.add('lit','pop'); // サーバーに届いたので緑(この瞬間だけポップ)
       applyEarlyReads(msgDiv,data.message.id);
       gcSetExpiry(msgDiv,data.message.expires_at||data.message.expiresAt);
-      gcLinkPreview(msgDiv,txt);
+      if(!(window.BroStamps&&BroStamps.parse(txt)))gcLinkPreview(msgDiv,txt);
       gcDraftClear(); // 送れたので下書きを消す(送信中に打ち始めた次の文があれば残す)
     }else{
       console.error('送信に失敗しました:',data);
@@ -1335,6 +1355,10 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
     bub.appendChild(ph);
     const go=()=>{ if(window.BroFile) BroFile.render(ph,media.fileOpts); else setTimeout(go,100); };
     setTimeout(go,0);
+  }else if(text&&window.BroStamps&&BroStamps.parse(text)){
+    // スタンプ: 背景なしで絵だけ置く(本文は [[stamp:ID]] のテキスト。暗号化もそのまま通る)
+    bub.classList.add('stamp-bub');
+    bub.appendChild(BroStamps.el(BroStamps.parse(text),128));
   }else if(text){
     const sp=document.createElement('span');sp.className='msg-text';setLinkedText(sp,text);bub.appendChild(sp);
   }
@@ -1371,7 +1395,7 @@ function createMsg(text,media,incoming,member,msgId,createdAt,isRealtime){
   // 長押しイベント: 自分のメッセージのみ編集/取り消し
   attachPress(msgDiv,wrap,bub,!isInc);
   // リンクのプレビュー(設定でオンの人だけ。作り直しで二重に付かない・アニメを再生しない)
-  if(!media&&text)gcLinkPreview(msgDiv,text);
+  if(!media&&text&&!bub.classList.contains('stamp-bub'))gcLinkPreview(msgDiv,text);
 
   if(mediaEl&&media){
     mediaEl.addEventListener('click',()=>openMM(mediaEl));
@@ -1481,6 +1505,7 @@ function gMsgSummary(md){
     if(md.querySelector('.bub img'))text=gT('photo_label','[画像]');
     else if(md.querySelector('.bub video'))text=gT('video_label','[動画]');
     else if(md.querySelector('.fname'))text=md.querySelector('.fname').textContent;
+    else if(md.querySelector('.bro-stamp')&&window.BroStamps)text=BroStamps.previewText(BroStamps.encode(md.querySelector('.bro-stamp').dataset.stamp))||'';
   }
   return{who,text:(text||'').slice(0,100)};
 }
