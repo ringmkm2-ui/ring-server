@@ -1104,7 +1104,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v2.2.0</div>
+  <div class="version-badge">Bro Chat v2.2.1</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -5004,6 +5004,8 @@ setInterval(() => {
 // 画面が落ち着いてから、鍵バックアップの案内(必要な時だけ)を出す
 // 登録した直後(auth.html が印を付ける)は待たずに出す。鍵ができるのを待つ処理は init の中にある
 window.addEventListener('load', () => setTimeout(() => { if (window.bcKeyBackup) window.bcKeyBackup.init(); }, localStorage.getItem('bc_new_account') === '1' ? 800 : 2500));
+// スタンプ機能のお知らせ(この端末で1回だけ)。ログイン済みの時だけ、鍵の確認などが落ち着いてから出す
+window.addEventListener('load', () => setTimeout(() => { try { if (localStorage.getItem('ring_token') && window.BroStamps) BroStamps.announceOnce(); } catch (e) {} }, 4500));
 
 // ログアウトの時、この端末に暗号鍵を残すか。以前は必ず残していて、共用の端末だと次に使う人が
 // 前の人の秘密鍵と、自分が送った文の控え(own_plaintext_)を読めた。
