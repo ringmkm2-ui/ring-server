@@ -180,5 +180,54 @@
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('on')));
   }
 
-  window.BroStamps = { list: () => DEFS.map(d => d[0]), encode, parse, label, previewText, el, svgMarkup, openPicker };
+  // ---- 初回のお知らせ(この端末で1回だけ)。全画面ではなく、中央のカードで出す ----
+  const SEEN_KEY = 'bro_seen_stamp_announce_v1';
+  function announceOnce() {
+    try { if (localStorage.getItem(SEEN_KEY)) return; } catch (e) {}
+    if (document.getElementById('bro-stamp-ann')) return;
+    css();
+    if (!document.getElementById('bro-stamp-ann-css')) {
+      const st = document.createElement('style');
+      st.id = 'bro-stamp-ann-css';
+      st.textContent =
+        '.bsta{--bg:#fff;--fg:#0f172a;position:fixed;inset:0;z-index:20700;display:flex;align-items:center;justify-content:center;padding:24px;font-family:inherit;-webkit-tap-highlight-color:transparent}' +
+        'html.dark-mode .bsta{--bg:#1e293b;--fg:#e2e8f0}' +
+        '.bsta-bd{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;transition:opacity .25s ease}' +
+        '.bsta-c{position:relative;width:100%;max-width:320px;background:var(--bg);color:var(--fg);border-radius:22px;padding:22px 20px 18px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);opacity:0;transform:scale(.92);transition:opacity .25s ease,transform .45s cubic-bezier(.2,1.05,.3,1)}' +
+        '.bsta.on .bsta-bd{opacity:1}.bsta.on .bsta-c{opacity:1;transform:none}' +
+        '.bsta-r{display:flex;justify-content:center;gap:2px;margin-bottom:6px}' +
+        '.bsta-t{font-size:22px;font-weight:800;line-height:1.3;word-break:break-all}' +
+        '.bsta-s{text-wrap:balance;margin-top:6px;font-size:16px;font-weight:700;line-height:1.5;word-break:break-all}' +
+        '.bsta-b{display:block;width:100%;min-height:46px;margin-top:16px;border:0;border-radius:12px;background:#007aff;color:#fff;font:inherit;font-size:16px;font-weight:700;cursor:pointer}' +
+        'html.reduce-motion .bsta .bsta-c,html.reduce-motion .bsta .bsta-bd{transition:none!important}' +
+        '@media (prefers-reduced-motion:reduce){.bsta .bsta-c,.bsta .bsta-bd{transition:none!important}}';
+      document.head.appendChild(st);
+    }
+    const root = document.createElement('div'); root.className = 'bsta'; root.id = 'bro-stamp-ann';
+    root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true');
+    const bd = document.createElement('div'); bd.className = 'bsta-bd';
+    const c = document.createElement('div'); c.className = 'bsta-c';
+    const row = document.createElement('div'); row.className = 'bsta-r';
+    ['iine', 'warai', 'suki'].forEach(id => row.appendChild(el(id, 84)));
+    const t = document.createElement('div'); t.className = 'bsta-t'; t.textContent = 'アップデート!!!!!!!';
+    const sub = document.createElement('div'); sub.className = 'bsta-s'; sub.textContent = 'スタンプ機能が追加されましたぁぁぁぁぁ';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'bsta-b'; b.textContent = 'OK';
+    c.appendChild(row); c.appendChild(t); c.appendChild(sub); c.appendChild(b);
+    root.setAttribute('aria-label', t.textContent + sub.textContent);
+    root.appendChild(bd); root.appendChild(c);
+    document.body.appendChild(root);
+    let done = false;
+    function close() {
+      if (done) return; done = true;
+      // 出した時点で「見た」にする(閉じ忘れて毎回出るのを防ぐ)
+      root.classList.remove('on');
+      setTimeout(() => root.remove(), 280);
+    }
+    try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
+    b.addEventListener('click', close);
+    bd.addEventListener('click', close);
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('on')));
+  }
+
+  window.BroStamps = { announceOnce, list: () => DEFS.map(d => d[0]), encode, parse, label, previewText, el, svgMarkup, openPicker };
 })();
