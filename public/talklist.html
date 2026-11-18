@@ -926,6 +926,7 @@ window.ensureGroupCrypto = (function () {
 <script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/stamps.js"></script>
 <script defer src="/js/globalBg.js"></script>
 <script defer src="/js/globalSettings.js"></script>
 <script src="/js/userSettings.js"></script>
@@ -1103,7 +1104,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v2.1.2</div>
+  <div class="version-badge">Bro Chat v2.2.0</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -2592,7 +2593,7 @@ function buildGroupRow(g, prevU) {
     msgEl.className = 'tmsg';
     const nMem = g.members ? g.members.length : 0;
     const memberSuffix = ' ・ ' + (window.i18n && i18n.getLang() !== 'ja' ? nMem + (nMem === 1 ? ' member' : ' members') : nMem + '人');
-    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? t2('message_generic', 'メッセージ') : previewFromGroupContent(g.lastMessage.content, g.lastMessage.msgType)) : t2('no_messages_yet', 'まだメッセージがありません');
+    const lastMsg = g.lastMessage ? (g.lastMessage.encrypted ? t2('message_generic', 'メッセージ') : pvStamp(previewFromGroupContent(g.lastMessage.content, g.lastMessage.msgType))) : t2('no_messages_yet', 'まだメッセージがありません');
     msgEl.textContent = lastMsg + memberSuffix;
     // 暗号化メッセージは、そのグループの鍵が端末に保存済みの時だけ復号してプレビューに出す。
     // (libsodiumは重いので、鍵が無いグループのためだけに読み込むことはしない)
@@ -2625,6 +2626,9 @@ function buildGroupRow(g, prevU) {
   }
 }
 
+// スタンプ([[stamp:ID]]だけの本文)は一覧・覗き見では「スタンプ: OK」と出す。スタンプでなければそのまま
+function pvStamp(t) { return (typeof t === 'string' && window.BroStamps && BroStamps.previewText(t)) || t; }
+
 // グループ一覧の最新メッセージ用: JSON形式(メディア/暗号文)をプレビュー文字にする
 // msgType が 'notice'(サーバーが作るお知らせ)の時だけ __notice__ を読む。普通のメッセージで偽のBan通知を出させない
 function previewFromGroupContent(raw, msgType) {
@@ -2656,7 +2660,7 @@ async function decryptGroupPreview(g) {
   if (!parsed || !parsed.ciphertext || !parsed.nonce) return null;
   await window.ensureGroupCrypto();
   const key = new Uint8Array(JSON.parse(cached));
-  const text = await window.groupE2E.decryptGroupText(lm.content, key);
+  const text = pvStamp(await window.groupE2E.decryptGroupText(lm.content, key));
   return text.length > 60 ? text.slice(0, 60) + '…' : text;
 }
 
@@ -3298,7 +3302,7 @@ function openPreviewCipher(cipher, fromMe, peerId, wantFull) {
   }
   if (wantFull) return text;
   if (text !== null) {
-    text = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    text = pvStamp(text.replace(/\s+/g, ' ').trim().slice(0, 120));
     if (_pvCache.size > 300) _pvCache.clear();
     _pvCache.set(cipher, text);
   }
@@ -3315,7 +3319,7 @@ function openPreviewRatchet(cipher, fromMe, peerId) {
     if (text[0] === '{') {
       try { const j = JSON.parse(text); if (j && typeof j.text === 'string') text = j.text || (j.mediaType ? t2('preview_image', '画像が送信されました') : ''); } catch (e) {}
     }
-    text = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    text = pvStamp(text.replace(/\s+/g, ' ').trim().slice(0, 120));
     if (_pvCache.size > 300) _pvCache.clear();
     _pvCache.set(cipher, text);
     document.querySelectorAll('.tmsg[data-pv-cipher]').forEach(el => { if (el.__pvCipher === cipher) el.textContent = text; });
@@ -3344,7 +3348,7 @@ function dmPreview(t) {
       const txt = openPreviewCipher(t.lastCipher, !!t.lastFromMe, t.userId);
       return txt !== null && txt !== '' ? txt : t2('message_generic', 'メッセージ');
     }
-    default: return t.lastMessage || '';
+    default: return pvStamp(t.lastMessage || '');
   }
 }
 
@@ -3397,7 +3401,7 @@ async function peekDecryptDm(m, peerId) {
       if (j && typeof j.text === 'string') text = j.text;
     } catch (e) {}
   }
-  return { kind: 'text', text: text.slice(0, 4000) };
+  return { kind: 'text', text: pvStamp(text).slice(0, 4000) };
 }
 async function peekDecryptGroup(m, g) {
   const gid = g.groupId || g.id;
@@ -3418,7 +3422,7 @@ async function peekDecryptGroup(m, g) {
   if (!cached) return { kind: 'locked' };
   await window.ensureGroupCrypto();
   const text = await window.groupE2E.decryptGroupText(raw, new Uint8Array(JSON.parse(cached)));
-  return { kind: 'text', text: String(text).slice(0, 4000) };
+  return { kind: 'text', text: pvStamp(String(text)).slice(0, 4000) };
 }
 if (window.ChatPeek) {
   ChatPeek.init({
