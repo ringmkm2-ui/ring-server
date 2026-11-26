@@ -1287,7 +1287,9 @@ function initWebSocketServer(server) {
     };
     // 例外が外に漏れるとプロセスごと落ちる(未処理のPromise rejection)ため必ずここで握る
     ws.on('message', (raw, isBinary) => {
-      handleWsMessage(raw, isBinary).catch(e => console.error('[ws] メッセージ処理エラー:', e && e.message));
+      // 中で出たエラーログに、この接続のユーザー(認証後なら)を付ける(utils/auditLog.js)
+      require('../utils/auditLog').runWs(() => userId, () => handleWsMessage(raw, isBinary))
+        .catch(e => console.error('[ws] メッセージ処理エラー:', e && e.message));
     });
 
     ws.on('close', () => {

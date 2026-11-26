@@ -1,6 +1,9 @@
 // index.js - Ring サーバー エントリーポイント
 const express = require('express');
 require('./utils/asyncErrors').installProcessGuards();
+// エラーのログに「誰の・どのAPIの処理中か」を付ける(utils/auditLog.js)。他のrequireより先に入れておく
+const auditLog = require('./utils/auditLog');
+auditLog.installConsoleContext();
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -194,6 +197,10 @@ async function main() {
     return smallJson(req, res, next);
   });
 
+  // 操作ログ([audit] の行)と、エラーログへのユーザー・APIの付記(utils/auditLog.js)。
+  // JSONの読み込みより後に置く(前に置くと、本文の読み込み中に「今のリクエスト」を見失うため)
+  app.use(auditLog.middleware);
+
   // 「今アプリが使われている」印(utils/activity.js)。後回しでいい定期処理は、この印を見て
   // 誰も使っていない間は動かない。DBを眠らせてNeonのコンピュート時間を節約するため。
   // keepAliveの /health はここを通らないので、自分へのpingでは「使われている」ことにならない
@@ -337,7 +344,8 @@ async function main() {
       const status = err.type === 'entity.too.large' ? 413 : 400;
       return res.status(status).json({ error: status === 413 ? 'データが大きすぎます' : 'リクエストの形式が正しくありません' });
     }
-    console.error('[unhandled error]', err && err.stack ? err.stack : err);
+    // ここへは next(err) 経由で来るので、念のためリクエストの印を戻してからログを出す(誰のどのAPIで落ちたか分かるように)
+    auditLog.withReq(req, () => console.error('[unhandled error]', err && err.stack ? err.stack : err));
     res.status(500).json({ error: 'サーバーエラーが発生しました。しばらくしてから再度お試しください。' });
   });
 
@@ -358,11 +366,14 @@ async function main() {
       for (const u of rows) {
         const parsed = parseDataUrl(u.profile_pic);
         if (!parsed) continue;
-        try {
-          const url = await storeIcon(parsed.buf, parsed.mime, base.replace(/\/$/, ''));
-          await db.run('UPDATE users SET profile_pic = ? WHERE id = ? AND profile_pic = ?', [url, u.id, u.profile_pic]);
-          done++;
-        } catch (e) { console.warn('[icons] migrate failed for a user:', e.message); }
+        // どのユーザーの移行中に失敗したか分かるよう、印を付けて動かす(中で出る cloudinary failed にも付く)
+        await auditLog.runSystem('icons.migrate user:' + u.id, async () => {
+          try {
+            const url = await storeIcon(parsed.buf, parsed.mime, base.replace(/\/$/, ''));
+            await db.run('UPDATE users SET profile_pic = ? WHERE id = ? AND profile_pic = ?', [url, u.id, u.profile_pic]);
+            done++;
+          } catch (e) { console.warn('[icons] migrate failed:', e.message); }
+        });
       }
       if (rows.length) console.log(`[icons] Base64アイコンを移行: ${done}/${rows.length}`);
     } catch (e) { console.warn('[icons] migration error:', e.message); }

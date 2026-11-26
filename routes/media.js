@@ -50,8 +50,10 @@ const signLimiter = require('express-rate-limit')({
   message: { error: 'アップロードが多すぎます。しばらくしてからお試しください。' },
 });
 router.post('/sign', signLimiter, verifyToken, asyncHandler(async (req, res) => {
-  if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return res.status(503).json({ error: 'not configured' });
   const folder = req.body && req.body.folder;
+  // 署名そのものはログに出さない(知っていればアップロードできてしまう)。どの置き場所向けかだけ残す
+  require('../utils/auditLog').mark({ action: 'media.sign', target: typeof folder === 'string' ? 'folder:' + folder : '' });
+  if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return res.status(503).json({ error: 'not configured' });
   if (!(await canUploadTo(req.user.userId, folder))) return res.status(403).json({ error: 'この場所には置けません' });
   const uid = req.user.userId;
   const lim = SIGN_LIMITS[(await isGuestUser(uid)) ? 'guest' : 'member'];

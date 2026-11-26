@@ -35,6 +35,8 @@ function requireAdmin(req, res, next) {
   if (!key || key.length < 16) return res.status(404).json({ error: 'Not Found' });
   const given = req.get('x-admin-key') || '';
   if (!crypto.timingSafeEqual(sha(given), sha(key))) return res.status(401).json({ error: '管理キーが違います' });
+  // 管理キーはユーザーではないので、操作ログでは user=admin とする(キーそのものは出さない)
+  require('../utils/auditLog').setUser('admin');
   next();
 }
 
@@ -46,6 +48,9 @@ async function count(sql, params = []) {
 
 // 操作ログ。失敗しても本処理は落とさない。パスワードや鍵は渡さないこと
 async function audit(req, action, target, detail) {
+  // Renderのログにも同じ操作を残す(DBの admin_audit が見られない時でも追えるように)。detailは中身を出さない
+  const tt = target || {};
+  require('../utils/auditLog').mark({ action: 'admin.' + action, target: tt.id ? `${tt.type || 'id'}:${tt.id}` : '' });
   try {
     const t = target || {};
     await db.run(

@@ -62,6 +62,8 @@ async function storeIcon(buf, mime, base) {
     return await uploadToCloudinary(buf, mime);
   } catch (e) {
     console.warn('[icons] cloudinary failed, storing on server:', e.message);
+    // 操作ログにも「Cloudinaryに置けずサーバーに保存した」ことを残す(誰の操作かは auditLog が付ける)
+    require('./auditLog').mark({ result: 'fallback_local', err: e.message });
     return saveToServer(buf, mime, base);
   }
 }

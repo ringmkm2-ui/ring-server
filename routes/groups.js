@@ -377,6 +377,7 @@ router.post('/remove-member', verifyToken, asyncHandler(async (req, res) => {
 router.post('/:groupId/icon', verifyToken, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
   const { url } = req.body || {};
+  require('../utils/auditLog').mark({ action: url ? 'group.icon.update' : 'group.icon.remove', target: 'group:' + groupId });
   if (!(await isGroupMember(groupId, req.user.userId))) {
     return res.status(403).json({ error: 'このグループのメンバーではありません' });
   }

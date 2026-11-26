@@ -55,6 +55,11 @@ function isValidProfilePic(value, req) {
 router.post('/me', auth, async (req, res) => {
   try {
     const { displayName, bio, profilePic, banner, publicKey } = req.body || {};
+    // どの項目を変えたかだけを残す(中身の名前・自己紹介・画像は出さない)
+    require('../utils/auditLog').mark({
+      action: 'profile.update', target: 'user:' + req.userId,
+      detail: [profilePic !== undefined && 'pic', banner !== undefined && 'banner', typeof displayName === 'string' && 'name', typeof bio === 'string' && 'bio', publicKey && 'key'].filter(Boolean).join('+'),
+    });
     if (await rejectIfProfane(req, res, typeof displayName === 'string' ? displayName : '', typeof bio === 'string' ? bio : '')) return;
     if ((displayName != null && typeof displayName !== 'string') || (bio != null && typeof bio !== 'string')) {
       return res.status(400).json({ error: '入力の形式が正しくありません' });

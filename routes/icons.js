@@ -26,6 +26,7 @@ const publicRouter = express.Router();
 uploadRouter.post('/', verifyToken, iconUploadLimiter, asyncHandler(async (req, res) => {
   const parsed = parseDataUrl(req.body && req.body.dataUrl);
   if (!parsed) return res.status(400).json({ error: '画像の形式またはサイズが不正です(png/jpeg/webp/gif、1.5MBまで)' });
+  require('../utils/auditLog').mark({ action: 'icon.upload', target: 'user:' + req.userId });
   const url = await storeIcon(parsed.buf, parsed.mime, baseUrl(req));
   res.json({ url });
 }));
