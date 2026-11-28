@@ -573,6 +573,27 @@ async function initDB() {
     console.log('[db] icon migration skip:', e.message);
   }
 
+  // スタンプ(自作パック・マイスタンプ・お気に入り)
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS sticker_packs (
+      id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT,
+      is_public INTEGER DEFAULT 1, add_count INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT now(), updated_at TIMESTAMP DEFAULT now(), deleted_at TIMESTAMP)`);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_sticker_packs_owner ON sticker_packs(owner_id)');
+    await pool.query(`CREATE TABLE IF NOT EXISTS stickers (
+      id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, owner_id TEXT NOT NULL, position INTEGER DEFAULT 0,
+      image_url TEXT NOT NULL, label TEXT, keywords TEXT, animated INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT now(), deleted_at TIMESTAMP)`);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_stickers_pack ON stickers(pack_id)');
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_sticker_packs (
+      user_id TEXT NOT NULL, pack_id TEXT NOT NULL, position INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0,
+      added_at TIMESTAMP DEFAULT now(), PRIMARY KEY (user_id, pack_id))`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_sticker_favs (
+      user_id TEXT NOT NULL, sticker_key TEXT NOT NULL, position INTEGER DEFAULT 0, PRIMARY KEY (user_id, sticker_key))`);
+  } catch (e) {
+    console.log('[db] sticker migration skip:', e.message);
+  }
+
   // 管理Exeの操作ログ
   try {
     await pool.query(`

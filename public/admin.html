@@ -507,6 +507,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
 <script src="/js/loadingDots.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/linkify.js"></script>
+<script src="/js/stampArt.js"></script>
 <script src="/js/stamps.js"></script>
 <script src="/js/profanity.js"></script>
 </head>
@@ -520,7 +521,7 @@ html.reduce-motion .ud-line,html.reduce-motion .ud-txt,html.reduce-motion .call-
   </defs>
 </svg>
 <div class="phone-container">
-  <div class="version-badge">Bro Chat v2.2.2</div>
+  <div class="version-badge">Bro Chat v2.3.0</div>
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
@@ -1457,15 +1458,22 @@ document.getElementById('fileInput').onchange = e => { handleMedia(e.target.file
 // キーボード(Gboard等)のスクショ貼り付け・GIF、Ctrl+V、ドロップで画像/動画をそのまま送る
 if (window.bcAttachPasteMedia) bcAttachPasteMedia(document.getElementById('msgInput'), (f, t) => handleMedia(f, t));
 
-// スタンプ送信: 本文 [[stamp:ID]] のテキストとして、普通のメッセージと同じ道(暗号化して保存)で送る
+// スタンプ: 入力欄の横のボタンで、LINEのスタンプキーボードと同じ欄が下に出る(入力欄は上に押し上がる)。
+// 本文 [[stamp:キー]] のテキストとして、普通のメッセージと同じ道(暗号化して保存)で送る。
+// 入力中の言葉に合うスタンプのサジェストもここで付く
+const stampCtl = window.BroStamps ? BroStamps.attach({
+  input: document.getElementById('msgInput'),
+  form: document.getElementById('chatForm'),
+  buttonBefore: document.getElementById('sendBtn'),
+  dock: document.querySelector('.input-bar-container'),
+  scroller: document.getElementById('chatScreen'),
+  canSend: () => !isEditing,
+  beforeOpen: () => document.getElementById('inputBar').classList.remove('media-open'),
+  send: text => sendRealMessage(text),
+}) : null;
 document.getElementById('stampBtn').onclick = () => {
   document.getElementById('inputBar').classList.remove('media-open');
-  if (!window.BroStamps) return;
-  BroStamps.openPicker({ onPick: id => {
-    if (isEditing) return;
-    if (window.LiquidGlass) window.LiquidGlass.haptic('light');
-    sendRealMessage(BroStamps.encode(id));
-  } });
+  if (stampCtl) stampCtl.open();
 };
 
 // 位置情報送信
@@ -2581,7 +2589,7 @@ function renderMessageImpl(msg) {
   } else if (displayText && window.BroStamps && BroStamps.parse(displayText)) {
     // スタンプ: 吹き出しの背景なしで絵だけ置く(本文は [[stamp:ID]] のテキスト。暗号化もそのまま通る)
     bubble.classList.add('stamp-bub');
-    bubble.appendChild(BroStamps.el(BroStamps.parse(displayText), 128));
+    bubble.appendChild(BroStamps.el(BroStamps.parse(displayText), 140, { live: isNew && !isBulkHistoryLoad }));
   } else if (displayText) {
     const sp = document.createElement('span'); sp.className = 'msg-text'; setLinkedText(sp, displayText);
     bubble.appendChild(sp);

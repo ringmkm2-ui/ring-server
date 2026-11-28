@@ -501,6 +501,47 @@ async function initDB() {
       id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- スタンプ(自作パック・マイスタンプ・お気に入り)
+    CREATE TABLE IF NOT EXISTS sticker_packs (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      is_public INTEGER DEFAULT 1,
+      add_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sticker_packs_owner ON sticker_packs(owner_id);
+    CREATE TABLE IF NOT EXISTS stickers (
+      id TEXT PRIMARY KEY,
+      pack_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      image_url TEXT NOT NULL,
+      label TEXT,
+      keywords TEXT,
+      animated INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_stickers_pack ON stickers(pack_id);
+    CREATE TABLE IF NOT EXISTS user_sticker_packs (
+      user_id TEXT NOT NULL,
+      pack_id TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      hidden INTEGER DEFAULT 0,
+      added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, pack_id)
+    );
+    CREATE TABLE IF NOT EXISTS user_sticker_favs (
+      user_id TEXT NOT NULL,
+      sticker_key TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      PRIMARY KEY (user_id, sticker_key)
+    );
+
     CREATE TABLE IF NOT EXISTS communities (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
