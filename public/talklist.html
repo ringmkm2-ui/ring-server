@@ -350,6 +350,8 @@ html.dark-mode .ti.cp-pinned{background:rgba(148,163,184,.1)}
 .cp-ov.on .cp-card{transform:none;opacity:1}
 .cp-head{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;background:rgba(255,255,255,.55);flex-shrink:0}
 .cp-av{width:32px;height:32px;border-radius:50%;background:#94a3b8 center/cover;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cp-go{display:flex;align-items:center;gap:10px;flex:1;min-width:0;border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.cp-stamp{line-height:0}
 .cp-name{flex:1;min-width:0;font-size:15px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cp-icobtn{width:34px;height:34px;border-radius:50%;border:0;background:rgba(15,23,42,.08);color:#0f172a;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
 .cp-icobtn:active{background:rgba(15,23,42,.16)}
@@ -1104,7 +1106,7 @@ window.ensureGroupCrypto = (function () {
       </section>
     </main>
   </div>
-  <div class="version-badge">Bro Chat v2.2.1</div>
+  <div class="version-badge">Bro Chat v2.2.2</div>
 </div>
 <!-- 全画面で重ねる視聴ページ/チャンネルページ。変形(transform)やぼかしを持つ親の中に置くと
      position:fixed が親の枠に閉じ込められ、下のタブバーも上に出てしまうので、bodyの直下に置く -->
@@ -2354,7 +2356,7 @@ function pinnedFirst(list) {
 function renderTalkList(merged, animate) {
   window.__chatData = Object.assign(window.__chatData || {}, { dm: merged || [] });
   merged = pinnedFirst((merged || []).filter(t => !t.hidden)); // 非表示は出さない(新着が来るとサーバーが hidden を外す)
-  _unread.dm = (merged || []).reduce((s, t) => s + (t.kind !== 'group' && t.unreadCount > 0 ? t.unreadCount : 0), 0);
+  _unread.dm = (merged || []).reduce((s, t) => s + (t.kind !== 'group' && !t.muted && t.unreadCount > 0 ? t.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('talkList');
   // 4秒ごとの自動更新は「変化があった時だけ」DOMを触る。
@@ -2549,7 +2551,7 @@ function openGroupChat(groupId, name) {
 function renderGroups(groups, enter) {
   window.__chatData = Object.assign(window.__chatData || {}, { groups: Array.isArray(groups) ? groups : [] });
   groups = pinnedFirst((Array.isArray(groups) ? groups : []).filter(g => !g.hidden));
-  _unread.group = (groups || []).reduce((s, g) => s + (g.unreadCount > 0 ? g.unreadCount : 0), 0);
+  _unread.group = (groups || []).reduce((s, g) => s + (!g.muted && g.unreadCount > 0 ? g.unreadCount : 0), 0);
   updateTalkBadge();
   const list = document.getElementById('groupList');
   // 4秒ごとの自動更新で毎回作り直していて、裏で読み込むたびにグループ欄がチラついていた
@@ -3401,7 +3403,7 @@ async function peekDecryptDm(m, peerId) {
       if (j && typeof j.text === 'string') text = j.text;
     } catch (e) {}
   }
-  return { kind: 'text', text: pvStamp(text).slice(0, 4000) };
+  return { kind: 'text', text: text.slice(0, 4000) };
 }
 async function peekDecryptGroup(m, g) {
   const gid = g.groupId || g.id;
@@ -3422,7 +3424,7 @@ async function peekDecryptGroup(m, g) {
   if (!cached) return { kind: 'locked' };
   await window.ensureGroupCrypto();
   const text = await window.groupE2E.decryptGroupText(raw, new Uint8Array(JSON.parse(cached)));
-  return { kind: 'text', text: pvStamp(String(text)).slice(0, 4000) };
+  return { kind: 'text', text: String(text).slice(0, 4000) };
 }
 if (window.ChatPeek) {
   ChatPeek.init({

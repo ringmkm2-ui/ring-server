@@ -109,6 +109,18 @@ function tsParam(ms) {
   return process.env.DATABASE_URL ? iso : iso.replace('T', ' ').replace('Z', '');
 }
 
+// `col > (ms の時刻)` の条件。{ sql, param } を返すので、sql をWHEREに足して param を末尾のパラメータに足す。
+// PostgreSQL の created_at は TIMESTAMP(タイムゾーン無し)で、DEFAULT now() は「接続のタイムゾーンの壁時計」で入る。
+// ISO文字列(UTC)を渡すと、接続が UTC 以外(例: Asia/Tokyo)の時に9時間ずれて、消したはずのメッセージが出る/新着が消える。
+// なので PG は epoch ミリ秒を to_timestamp → ::timestamp にして、now() と同じ接続のタイムゾーンで壁時計にそろえる。
+// (パラメータの型は CAST で決める。PG は `? / 1000.0` だけだと型を決められない)
+function afterCond(col, ms) {
+  if (process.env.DATABASE_URL) {
+    return { sql: `${col} > (to_timestamp(CAST(? AS double precision) / 1000.0)::timestamp)`, param: ms };
+  }
+  return { sql: `${col} > ?`, param: tsParam(ms) };
+}
+
 // 一覧の1件に足す { pinnedAt, muted, hidden }。lastMs はそのチャットの最新メッセージの時刻(無ければ 0)。
 // hidden は「非表示にした後に、新しいメッセージが来ていない」間だけ true(LINEと同じ。来たら戻る)
 function listFields(pref, lastMs) {
@@ -121,5 +133,5 @@ function listFields(pref, lastMs) {
 
 module.exports = {
   KINDS, MAX_PINNED, truthy, num, key, shapeRow, defaultPref,
-  loadPrefs, getPref, prefOf, isMuted, mutedUserIds, toMs, tsParam, listFields,
+  loadPrefs, getPref, prefOf, isMuted, mutedUserIds, toMs, tsParam, afterCond, listFields,
 };

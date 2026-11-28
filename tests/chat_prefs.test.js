@@ -452,6 +452,23 @@ describe('ミュートした人には通知を送らない(共通ヘルパー)',
     assert.ok(!/chatPrefs|isMuted/.test(ws));
   });
 
+  // PostgreSQL の created_at は TIMESTAMP(タイムゾーン無し)で、now() は接続のタイムゾーンの壁時計で入る。
+  // ISO(UTC)文字列と比べると、接続が UTC 以外(Asia/Tokyo など)で9時間ずれ、削除した分が出る/新着が消えていた
+  test('afterCond: SQLiteは書式をそろえた文字列、PostgreSQLは接続のタイムゾーンに依らない to_timestamp 比較', () => {
+    const ms = Date.UTC(2026, 0, 2, 3, 4, 5, 678);
+    const lite = cp.afterCond('gm.created_at', ms);
+    assert.deepEqual(lite, { sql: 'gm.created_at > ?', param: '2026-01-02 03:04:05.678' });
+    const saved = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://x/y';
+    try {
+      const pg = cp.afterCond('created_at', ms);
+      assert.equal(pg.param, ms);
+      assert.match(pg.sql, /^created_at > \(to_timestamp\(CAST\(\? AS double precision\) \/ 1000\.0\)::timestamp\)$/);
+    } finally {
+      if (saved === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = saved;
+    }
+  });
+
   test('時刻の変換と一覧の hidden 判定', () => {
     assert.equal(cp.toMs('2026-01-02 03:04:05'), Date.UTC(2026, 0, 2, 3, 4, 5));
     assert.equal(cp.toMs('2026-01-02T03:04:05.123Z'), Date.UTC(2026, 0, 2, 3, 4, 5, 123));

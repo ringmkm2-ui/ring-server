@@ -726,7 +726,11 @@ router.get('/:groupId/messages', verifyToken, asyncHandler(async (req, res) => {
   if (before) { where += ' AND gm.created_at < ?'; params.push(before); }
   // 「トークを削除」(自分だけ)した時刻より前は、この人にだけ見せない
   const { clearedAt } = await chatPrefs.getPref(req.user.userId, 'group', groupId);
-  if (clearedAt > 0) { where += ' AND gm.created_at > ?'; params.push(chatPrefs.tsParam(clearedAt)); }
+  if (clearedAt > 0) {
+    const after = chatPrefs.afterCond('gm.created_at', clearedAt);
+    where += ' AND ' + after.sql;
+    params.push(after.param);
+  }
   const messages = await db.all(
     `SELECT gm.*, u.display_name FROM group_messages gm
      LEFT JOIN users u ON u.id = gm.sender_id

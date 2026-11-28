@@ -313,8 +313,9 @@ router.get('/history/:userId', auth, async (req, res) => {
     // 「トークを削除」(自分だけ)した時刻より前は、この人にだけ見せない
     const { clearedAt } = await chatPrefs.getPref(req.userId, 'dm', otherId);
     if (clearedAt > 0) {
-      sql += ' AND created_at > ?';
-      params.push(chatPrefs.tsParam(clearedAt));
+      const after = chatPrefs.afterCond('created_at', clearedAt);
+      sql += ' AND ' + after.sql;
+      params.push(after.param);
     }
 
     if (before) {
