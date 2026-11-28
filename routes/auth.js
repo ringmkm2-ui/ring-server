@@ -79,6 +79,8 @@ const reqMeta = (req) => {
 
 // 端末ごとのセッションを作ってJWTに sid を入れる(端末単位のサインアウトのため)
 async function issueToken(user, meta) {
+  // ログイン・登録はトークン無しで来るので、ここで「誰になったか」を操作ログに渡す
+  require('../utils/auditLog').setUser(user.id);
   const sid = await createSession(user.id, meta || {});
   const payload = { userId: user.id, username: user.username };
   if (sid) payload.sid = sid;
@@ -101,6 +103,9 @@ async function sessionResponse(user, extra = {}, meta) {
 async function finishLogin(user, extra = {}, meta) {
   if (truthy(user.totp_enabled)) {
     const twoFaToken = jwt.sign({ userId: user.id, purpose: '2fa' }, TWOFA_SECRET, { expiresIn: TWOFA_TOKEN_TTL });
+    // パスワードは通ったが2段階認証の入力待ち。ログには「誰の」「途中まで」だけ残す
+    require('../utils/auditLog').setUser(user.id);
+    require('../utils/auditLog').mark({ result: 'need_2fa' });
     return { needs2fa: true, twoFaToken };
   }
   return sessionResponse(user, extra, meta);
