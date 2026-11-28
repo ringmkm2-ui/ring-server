@@ -105,6 +105,7 @@
     cp_mark_read: { ja: "既読にする", en: "Mark as read", "zh-CN": "标为已读", ko: "읽음으로 표시" },
     cp_delete: { ja: "削除", en: "Delete", "zh-CN": "删除", ko: "삭제" },
     cp_cancel: { ja: "キャンセル", en: "Cancel", "zh-CN": "取消", ko: "취소" },
+    cp_open: { ja: "トークを開く", en: "Open chat", "zh-CN": "打开聊天", ko: "채팅 열기" },
     cp_close: { ja: "閉じる", en: "Close", "zh-CN": "关闭", ko: "닫기" },
     cp_hint: { ja: "未読のまま過去のトークを確認可能", en: "Peek at older messages without marking them read", "zh-CN": "无需标为已读即可查看历史聊天", ko: "읽지 않은 채로 이전 대화 확인 가능" },
     cp_unread_divider: { ja: "ここから未読", en: "Unread messages", "zh-CN": "以下为未读消息", ko: "여기부터 읽지 않음" },

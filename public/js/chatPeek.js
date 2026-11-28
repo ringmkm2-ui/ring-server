@@ -94,6 +94,8 @@
     try { r = c.kind === 'dm' ? await O.decryptDm(raw, c.id) : await O.decryptGroup(raw, c.group); }
     catch (e) { r = { kind: 'locked' }; }
     if (!r) r = { kind: 'locked' };
+    // 本文が [[stamp:ID]] だけのメッセージはスタンプ(js/stamps.js)。絵で出す
+    if (r.kind === 'text' && window.BroStamps) { const sid = BroStamps.parse(r.text); if (sid) r = { kind: 'stamp', text: sid }; }
     const sender = c.kind === 'dm' ? raw.senderId : raw.sender_id;
     return {
       id: raw.id,
@@ -111,6 +113,18 @@
     if (m.kind === 'notice') {
       row.className = 'cp-row cp-center';
       row.appendChild(el('div', 'cp-notice', m.text));
+      return row;
+    }
+    if (m.kind === 'stamp' && window.BroStamps) {
+      const sc = el('div', 'cp-col');
+      if (!m.mine && m.name) sc.appendChild(el('div', 'cp-who', m.name));
+      const sl = el('div', 'cp-line');
+      const st = el('div', 'cp-stamp');
+      st.appendChild(BroStamps.el(m.text, 88));
+      const stm = el('span', 'cp-time', hhmm(m.at));
+      if (m.mine) { sl.appendChild(stm); sl.appendChild(st); } else { sl.appendChild(st); sl.appendChild(stm); }
+      sc.appendChild(sl);
+      row.appendChild(sc);
       return row;
     }
     const col = el('div', 'cp-col');
@@ -347,8 +361,13 @@
     const head = el('div', 'cp-head');
     const av = el('div', 'cp-av');
     if (O.setAvatar) O.setAvatar(av, c.pic, (c.name || '?').charAt(0)); else av.textContent = (c.name || '?').charAt(0);
-    head.appendChild(av);
-    head.appendChild(el('div', 'cp-name', c.name || ''));
+    const go = el('button', 'cp-go'); go.type = 'button';
+    go.setAttribute('aria-label', t('cp_open', 'トークを開く'));
+    go.appendChild(av);
+    go.appendChild(el('div', 'cp-name', c.name || ''));
+    // 一度プレビューを閉じて(履歴を戻して)から、本物のトーク画面へ
+    go.addEventListener('click', () => { if (c.openChat && !c.pendingOpen) { c.pendingOpen = true; history.back(); } });
+    head.appendChild(go);
     const toggle = el('button', 'cp-icobtn'); toggle.type = 'button'; c.toggle = toggle;
     toggle.addEventListener('click', () => setExpanded(!c.expanded));
     head.appendChild(toggle);
@@ -405,7 +424,14 @@
     // 自分で閉じた時は、積んだ履歴を1つ戻す(戻るボタンで閉じた時は、もう戻っている)
     try { if (history.state && history.state.cp) history.back(); } catch (e) {}
   }
-  window.addEventListener('popstate', () => { if (cur) close(); });
+  window.addEventListener('popstate', () => {
+    if (!cur) return;
+    const c = cur;
+    close();
+    if (c.pendingOpen && c.openChat) c.openChat();
+  });
+  // PCはEscで閉じる
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && cur) { e.preventDefault(); history.back(); } });
 
   // ---- 長押し ----
   function bind(item, getCtx) {
@@ -414,7 +440,9 @@
     const fire = () => {
       fired = true; firedAt = Date.now();
       try { if (navigator.vibrate && localStorage.getItem('haptics') !== '0') navigator.vibrate(12); } catch (e) {}
-      open(getCtx());
+      const ctx = getCtx();
+      ctx.openChat = () => { fired = false; firedAt = 0; item.click(); };
+      open(ctx);
       // 指を離した時の click が来なかった時のために戻しておく
       setTimeout(() => { fired = false; }, 700);
     };
